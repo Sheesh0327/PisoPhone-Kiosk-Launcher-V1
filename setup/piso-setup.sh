@@ -21,7 +21,7 @@
 # Everything is generated here (Wi-Fi password, box admin password, gateway key) and printed once at the end and saved in
 # /root/piso-setup-summary.txt. Running the file again is safe: it keeps what it already made.
 #
-# Other commands (after setup): piso-setup status | wifi-name "<name>" | guest-port [lanN|off] | voucher-choice [on|off] | pair | summary | test-coin | diag | box-diag | set-password | reconcile [rebase] | telegram | rotate-box-wifi | export [file] | import <file> | space | forget-summary | kiosk-wifi | verify | handout | lock-admin | unlock-admin | update [check] (installs the newest release from the website; same as self-update) | self-update [check] | box-update [check] (installs the coin box's newest firmware) | auto-update on|off
+# Other commands (after setup): piso-setup status | wifi-name "<name>" | guest-port [lanN|off] | voucher-choice [on|off] | pair | summary | test-coin | diag | box-diag | set-password | reconcile [rebase] | telegram | rotate-box-wifi | export [file] | import <file> | space | forget-summary | kiosk-wifi | verify | handout | lock-admin | unlock-admin | wifi-admin [on|off] | update [check] (installs the newest release from the website; same as self-update) | self-update [check] | box-update [check] (installs the coin box's newest firmware) | auto-update on|off
 #
 # Options:  --dry-run  print the router settings instead of applying them (needs nothing but the uci command)
 #           --yes      do not ask for confirmation
@@ -29,7 +29,7 @@
 
 VERSION="dev"
 # the release of this file (setup/RELEASE): routers install only a higher release that the owner signed
-PISO_RELEASE='1.5.8'
+PISO_RELEASE='1.5.10'
 # the CPU family the portal program in this file is built for (router_family below names the family of the router it runs on)
 PISO_ARCH='mipsel'
 
@@ -382,6 +382,18 @@ modem_addresses() {
 	} | awk '/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ && !seen[$0]++'
 }
 
+# apply_isolation: puts the bridge rules in place now (guests apart from each other; rental phones reach the router and the coin box
+# only; the router's login pages not offered on Wi-Fi). The firewall hotplug script does the same at each firewall reload.
+apply_isolation() {
+	[ "$DRY" = 1 ] && return 0
+	[ -x "$PISO_ROOT/etc/hotplug.d/firewall/50-piso-isolation" ] || return 0
+	PISO_CONF="$CONF" PISO_COINSLOT_CONF="$PISO_ROOT/etc/coinslot.conf" sh "$PISO_ROOT/etc/hotplug.d/firewall/50-piso-isolation"
+	return 0
+}
+
+# isolation_on: both bridge tables are loaded (they need the kernel's bridge firewall support)
+isolation_on() { nft list table bridge piso_guest > /dev/null 2>&1 && nft list table bridge piso_kiosk > /dev/null 2>&1; }
+
 # portal_uci <guest name>: the guest-facing portal: openNDS sends new guests to pisoportal (FAS) and only the guest network
 # is gated; guests may reach the portal's port. The same lines are applied by the setup and by an update (which is how a
 # router set up with the earlier ThemeSpec portal is moved to this one).
@@ -404,6 +416,35 @@ set firewall.guest_nomodem.proto='all'
 set firewall.guest_nomodem.target='REJECT'
 delete firewall.guest_nomodem.dest_ip
 $(modem_addresses | while read -r _ma; do echo "add_list firewall.guest_nomodem.dest_ip='$_ma'"; done)
+# and nothing else on the far side of the modem either (the shop's other computers, the modem's neighbours): private and link-local
+# addresses are refused from the guest network, public addresses (the internet) are not. A narrow firewall rule again, not openNDS's list.
+set firewall.guest_noprivate=rule
+set firewall.guest_noprivate.name='Guest-No-Private'
+set firewall.guest_noprivate.src='guest'
+set firewall.guest_noprivate.dest='wan'
+set firewall.guest_noprivate.proto='all'
+set firewall.guest_noprivate.target='REJECT'
+delete firewall.guest_noprivate.dest_ip
+add_list firewall.guest_noprivate.dest_ip='10.0.0.0/8'
+add_list firewall.guest_noprivate.dest_ip='172.16.0.0/12'
+add_list firewall.guest_noprivate.dest_ip='192.168.0.0/16'
+add_list firewall.guest_noprivate.dest_ip='169.254.0.0/16'
+add_list firewall.guest_noprivate.dest_ip='100.64.0.0/10'
+# the same for the rental phones on Wi-Fi (the bridge rules in router/piso_isolation.sh mark what comes from Wi-Fi; a computer on a LAN cable
+# is not marked and keeps its way to the modem's pages). The mark is outside the bits openNDS and the traffic shaping use.
+set firewall.phone_noprivate=rule
+set firewall.phone_noprivate.name='Kiosk-Wi-Fi-No-Private'
+set firewall.phone_noprivate.src='lan'
+set firewall.phone_noprivate.dest='wan'
+set firewall.phone_noprivate.proto='all'
+set firewall.phone_noprivate.mark='0x00200000/0x00200000'
+set firewall.phone_noprivate.target='REJECT'
+delete firewall.phone_noprivate.dest_ip
+add_list firewall.phone_noprivate.dest_ip='10.0.0.0/8'
+add_list firewall.phone_noprivate.dest_ip='172.16.0.0/12'
+add_list firewall.phone_noprivate.dest_ip='192.168.0.0/16'
+add_list firewall.phone_noprivate.dest_ip='169.254.0.0/16'
+add_list firewall.phone_noprivate.dest_ip='100.64.0.0/10'
 
 # --- openNDS gates only the guest network -------------------------------------------------------------------------------
 set opennds.@opennds[0].enabled='1'
@@ -570,6 +611,7 @@ EOT
 	if grep -q '^GW_KEY=' "$_cf.new"; then mv "$_cf.new" "$_cf"; else rm -f "$_cf.new"; umask 022; die "could not write $_cf (is the router's flash full? piso-setup space)"; fi
 	umask 022
 	chmod 600 "$_cf"
+	apply_isolation   # (the coin box's address is in it: the rules for the rental phones name it)
 }
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -882,6 +924,7 @@ check_all() {  # prints PASS/FAIL lines, returns the number of failures
 	_ck "the portal can talk to the box (signed request)" "/usr/bin/pisoportal box | grep -qi answers"
 	_gp=$(conf_get GUEST_PORT)
 	[ -z "$_gp" ] || _ck "router port $_gp is on the guest network (an access point plugged in there is gated)" "uci -q get \$(net_section br-guest).ports | grep -qw '$_gp'"
+	isolation_on || log "WARN  guests can still reach each other and rental phones can still reach each other and the router's login pages: this router cannot load the bridge rules (install kmod-nft-bridge, then run piso-setup update)"
 	_ck "openNDS is running" "wait_until 30 'ndsctl status'"   # (it needs a few seconds after it was started)
 	_ck "openNDS sends new guests to the portal (FAS)" "[ \"\$(uci -q get opennds.@opennds[0].fasport)\" = $PORTAL_PORT ]"
 	_ck "the router looks for signed updates every hour (scheduler running)" update_timer_ok
@@ -898,6 +941,7 @@ stage2() {
 	sleep 5
 	wifi reload > /dev/null 2>&1
 	/etc/init.d/firewall reload > /dev/null 2>&1
+	apply_isolation
 	/etc/init.d/dnsmasq restart > /dev/null 2>&1
 	sleep 8
 	ip -4 addr show br-guest | grep -q "inet $GUEST_IP/" || die "the guest network did not come up on $GUEST_IP"
@@ -1144,6 +1188,7 @@ cmd_diag() {
 	echo "--- ledger vs box"; cmd_reconcile 2>&1
 	echo "--- coin box link"; cmd_box_diag 2>&1
 	echo "--- firewall tables"; nft list tables 2> /dev/null
+	echo "--- guests apart; phones reach the router and the coin box only (both tables must be listed; if not, this router lacks kmod-nft-bridge)"; nft list table bridge piso_guest 2>&1 | head -12; nft list table bridge piso_kiosk 2>&1 | head -40
 	echo "--- openNDS"; uci -q get opennds.@opennds[0].gatewayinterface; ndsctl status 2>&1 | head -12
 	echo "--- guests as openNDS sees them (a paying phone must be Authenticated)"; ndsctl json 2> /dev/null | grep -E '"(mac|ip|state|session_end|download_this_session)"' | head -40
 	echo "--- rules openNDS built for guests (an Authenticated phone's traffic must reach an accept rule)"
@@ -1184,6 +1229,7 @@ cmd_update() {
 		/etc/init.d/firewall reload > /dev/null 2>&1
 		/etc/init.d/opennds stop > /dev/null 2>&1; /etc/init.d/opennds start > /dev/null 2>&1
 	fi
+	apply_isolation
 	if [ -n "$(uci changes dropbear 2> /dev/null)$(uci changes uhttpd 2> /dev/null)" ]; then
 		uci commit dropbear; uci commit uhttpd 2> /dev/null
 		restart_router_access
@@ -1680,6 +1726,19 @@ cmd_unlock_admin() {
 	echo "The router's admin ports are open to the whole kiosk network again."
 }
 
+# wifi-admin [on|off|status]: whether the router's login pages (SSH, LuCI) answer on Wi-Fi. Off is the normal state: a rental phone cannot even
+# see them; a computer on a LAN cable always can. The owner's console page (its own port, signed login) is not affected.
+cmd_wifi_admin() {
+	case "${1:-status}" in
+		on) [ "$(id -u)" = 0 ] || die "run as root"; conf_set WIFI_ADMIN on; apply_isolation
+			echo "The router's login pages answer on Wi-Fi again, also to the rental phones. Turn it off again with: piso-setup wifi-admin off" ;;
+		off) [ "$(id -u)" = 0 ] || die "run as root"; conf_set WIFI_ADMIN off; apply_isolation
+			echo "The router's login pages no longer answer on Wi-Fi. Use a computer on a LAN cable (or: piso-setup wifi-admin on)." ;;
+		status) if [ "$(conf_get WIFI_ADMIN)" = on ]; then echo "on: the router's login pages answer on Wi-Fi"; else echo "off: the router's login pages answer on a LAN cable only"; fi ;;
+		*) die "usage: piso-setup wifi-admin [on|off|status]" ;;
+	esac
+}
+
 cmd_set_password() {
 	[ "$(id -u)" = 0 ] || die "run as root"
 	echo "Choose a new router (SSH / LuCI) password; it is saved in $CONF and shown by: piso-setup summary"
@@ -1696,7 +1755,7 @@ cmd_set_password() {
 # ---------------------------------------------------------------------------------------------------------------------
 # What the system keeps when the router's own firmware is upgraded (sysupgrade): the settings, the revenue ledger, the monitor and the
 # programs, so a router that is upgraded (or whose settings are restored) still pairs with its box and still has its records.
-KEEP_FILES="/etc/piso-setup.conf /etc/coinslot.conf /etc/coinslot.d /etc/piso-monitor.conf /etc/crontabs/root /usr/sbin/piso-setup /usr/bin/pisoportal /usr/bin/piso-monitor.sh /etc/init.d/pisoportal /etc/init.d/piso_monitor /usr/lib/opennds/pisoportal_status.sh"
+KEEP_FILES="/etc/piso-setup.conf /etc/coinslot.conf /etc/coinslot.d /etc/piso-monitor.conf /etc/crontabs/root /usr/sbin/piso-setup /usr/bin/pisoportal /usr/bin/piso-monitor.sh /etc/init.d/pisoportal /etc/init.d/piso_monitor /usr/lib/opennds/pisoportal_status.sh /etc/hotplug.d/firewall/50-piso-isolation"
 
 keep_across_upgrades() {
 	_kf="${PISO_SYSUPGRADE_CONF:-$PISO_ROOT/etc/sysupgrade.conf}"
@@ -1966,7 +2025,7 @@ main() {
 		case "$1" in
 			--dry-run) DRY=1 ;;
 			--yes | -y) ASSUME_YES=1 ;;
-			status | pair | summary | wifi-name | guest-port | kiosk-wifi | verify | uninstall-info | test-coin | diag | box-diag | set-password | reconcile | telegram | rotate-box-wifi | handout | console | export | import | space | forget-summary | lock-admin | lock-admin-confirm | unlock-admin | update | self-update | box-update | auto-update | voucher-choice) CMD="$1"; shift; ARG="$1"; ARGS="$*"; break ;;
+			status | pair | summary | wifi-name | guest-port | kiosk-wifi | verify | uninstall-info | test-coin | diag | box-diag | set-password | reconcile | telegram | rotate-box-wifi | handout | console | export | import | space | forget-summary | lock-admin | lock-admin-confirm | unlock-admin | wifi-admin | update | self-update | box-update | auto-update | voucher-choice) CMD="$1"; shift; ARG="$1"; ARGS="$*"; break ;;
 			-h | --help) sed -n '2,/^# Options:/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 			*) echo "unknown option: $1 (try --help)" >&2; exit 1 ;;
 		esac
@@ -2000,6 +2059,7 @@ main() {
 			cmd_lock_admin $ARGS ;;
 		lock-admin-confirm) cmd_lock_admin_confirm ;;
 		unlock-admin) cmd_unlock_admin ;;
+		wifi-admin) cmd_wifi_admin "$ARG" ;;
 		verify) cmd_verify ;;
 		kiosk-wifi)
 			DRY=0; [ "$(id -u)" = 0 ] || die "run as root"
@@ -2273,6 +2333,130 @@ cat << HTML
 <script>location.replace("$url")</script>
 </body></html>
 HTML
+#@@FILE /etc/hotplug.d/firewall/50-piso-isolation 755
+#!/bin/sh
+# Who may talk to whom on the router's own networks, below the layer where the firewall's zones work. Installed as a firewall
+# hotplug script: applied again each time the firewall is reloaded; setup, update and `piso-setup wifi-admin` also run it.
+# Safe to run any number of times. Two small tables, both in the bridge family:
+#
+#  piso_guest  Guests do not reach each other. The guest Wi-Fi keeps the clients of one radio apart, but a guest on 2.4 GHz and one
+#              on 5 GHz, or anything behind an access point on a guest port, share the guest bridge. Frames for the router itself
+#              (DHCP, DNS, the portal) are delivered locally and never pass this rule.
+#  piso_kiosk  The kiosk network (rental phones): a phone reaches the router (internet, DHCP, DNS) and the coin box, nothing else.
+#              No phone to phone, none to the print server or to computers, and none the other way except the coin box. The
+#              router's own login pages (SSH, LuCI: ports 22, 80, 443, 8080, 8443) do not answer on Wi-Fi at all; a computer on a
+#              LAN cable is not touched. `piso-setup wifi-admin on` lets Wi-Fi in again. Packets from Wi-Fi are also marked so the
+#              firewall (rule Kiosk-Wi-Fi-No-Private) can refuse the modem's network to them.
+#
+# Needs the kernel's nftables bridge support (kmod-nft-bridge). Without it nothing is changed and the reason is logged; the Wi-Fi
+# isolation of each radio stays as it was. `piso-setup diag` shows whether the tables are in place.
+CONF="${PISO_CONF:-/etc/piso-setup.conf}"
+COIN="${PISO_COINSLOT_CONF:-/etc/coinslot.conf}"
+SYS="${PISO_SYS:-/sys/class/net}"
+NFT="${PISO_NFT:-nft}"
+GUEST_BR=br-guest
+LAN_BR=br-lan
+MARK=0x00200000                     # also in setup/src/30-router-settings.sh (Kiosk-Wi-Fi-No-Private)
+WIFI_PORTS="phy* wlan* wl* ra*"     # the names a Wi-Fi access point port can have, on the router's drivers
+ADMIN_PORTS="22, 80, 443, 8080, 8443"
+
+command -v "$NFT" > /dev/null 2>&1 || exit 0
+
+cget() { sed -n "s/^$2='\\(.*\\)'\$/\\1/p" "$1" 2> /dev/null | tail -n 1; }
+
+# load <table> <rules file>: replaces the table; false when the router cannot load it
+load() {
+	"$NFT" delete table bridge "$1" > /dev/null 2>&1
+	"$NFT" -f "$2" > /dev/null 2>&1
+}
+
+fail() { logger -t piso-setup "$1"; }
+
+T=$(mktemp 2> /dev/null) || exit 0
+trap 'rm -f "$T"' EXIT
+
+# ---- guests -------------------------------------------------------------------------------------------------------------------
+if [ -d "$SYS/$GUEST_BR" ]; then
+	# the bridge's name in the rule when the router can match it; otherwise the names of its ports (they keep their names when
+	# the Wi-Fi restarts)
+	cat > "$T" << EOT
+table bridge piso_guest {
+	chain forward {
+		type filter hook forward priority -200; policy accept;
+		meta ibrname "$GUEST_BR" counter drop comment "guests do not reach each other"
+	}
+}
+EOT
+	if ! load piso_guest "$T"; then
+		_ports=""
+		for _f in "$SYS/$GUEST_BR/brif"/*; do
+			[ -e "$_f" ] || continue
+			_ports="${_ports:+$_ports,}\"${_f##*/}\""
+		done
+		if [ -n "$_ports" ]; then
+			cat > "$T" << EOT
+table bridge piso_guest {
+	chain forward {
+		type filter hook forward priority -200; policy accept;
+		iifname { $_ports } oifname { $_ports } counter drop comment "guests do not reach each other"
+	}
+}
+EOT
+			load piso_guest "$T" || fail "guest isolation is NOT active: this router cannot load a bridge firewall rule (install kmod-nft-bridge); guests on different radios can still reach each other"
+		fi
+	fi
+else
+	"$NFT" delete table bridge piso_guest > /dev/null 2>&1
+fi
+
+# ---- rental phones ------------------------------------------------------------------------------------------------------------
+if [ -d "$SYS/$LAN_BR" ]; then
+	BOX_MAC=$(cget "$COIN" GW_BOX_MAC | tr 'A-F' 'a-f')
+	BOX_IP=$(cget "$COIN" GW_BOX)
+	LAN_IP=$(cget "$COIN" CONSOLE_BIND)
+	WIFI_ADMIN=$(cget "$CONF" WIFI_ADMIN)
+	case "$BOX_MAC" in [0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]) ;; *) BOX_MAC="" ;; esac
+	case "$BOX_IP" in *[!0-9.]*) BOX_IP="" ;; esac
+	case "$LAN_IP" in *[!0-9.]*) LAN_IP="" ;; esac
+	{
+		echo "table bridge piso_kiosk {"
+		echo "	chain forward {"
+		echo "		type filter hook forward priority -200; policy accept;"
+		# the coin box talks to phones and phones to the coin box (ARP included); everything else on a Wi-Fi port is dropped
+		if [ -n "$BOX_MAC" ]; then
+			echo "		ether saddr $BOX_MAC accept"
+			echo "		ether daddr $BOX_MAC accept"
+		fi
+		[ -z "$BOX_IP" ] || echo "		arp daddr ip $BOX_IP accept"
+		for _p in $WIFI_PORTS; do
+			echo "		iifname \"$_p\" counter drop comment \"a Wi-Fi client reaches the router and the coin box only\""
+			echo "		oifname \"$_p\" counter drop"
+		done
+		echo "	}"
+		echo "	chain input {"
+		echo "		type filter hook input priority -200; policy accept;"
+		# (only what is addressed to the router's kiosk address: a guest's web request to any website is not touched)
+		if [ "$WIFI_ADMIN" != on ] && [ -n "$LAN_IP" ]; then
+			for _p in $WIFI_PORTS; do
+				echo "		iifname \"$_p\" ip daddr $LAN_IP tcp dport { $ADMIN_PORTS } counter drop comment \"the router's login pages are not offered on Wi-Fi\""
+			done
+		fi
+		echo "	}"
+		echo "	chain prerouting {"
+		echo "		type filter hook prerouting priority -200; policy accept;"
+		for _p in $WIFI_PORTS; do
+			if [ -n "$BOX_MAC" ]; then
+				echo "		iifname \"$_p\" ether saddr != $BOX_MAC meta mark set meta mark | $MARK"
+			else
+				echo "		iifname \"$_p\" meta mark set meta mark | $MARK"
+			fi
+		done
+		echo "	}"
+		echo "}"
+	} > "$T"
+	load piso_kiosk "$T" || fail "phone isolation is NOT active: this router cannot load a bridge firewall rule (install kmod-nft-bridge); rental phones can still reach each other and the router's login pages"
+fi
+exit 0
 #@@B64 /usr/bin/pisoportal 755 da9a105142509af22726cf0dd78ae72c990fe8762ced9a9b880f407321acd04a
 f0VMRgEBAQABAAAAAAAAAAIACAABAAAAkC1AADQAAAD0Bw8ABRAAcDQAIAAHACgAFAATAAMAAHAY
 AQAAGAFAABgBQAAYAAAAGAAAAAQAAAAIAAAAAQAAAAAAAAAAAEAAAABAAMi/DgDIvw4ABQAAAAAA

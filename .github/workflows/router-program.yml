@@ -20,6 +20,7 @@ on:
       - 'router/*.init'
       - 'router/piso_monitor.sh'
       - 'router/pisoportal_status.sh'
+      - 'router/piso_isolation.sh'
       - 'setup/piso-setup.sh.in'
       - 'setup/src/**'
       - 'tools/build_piso_setup.py'

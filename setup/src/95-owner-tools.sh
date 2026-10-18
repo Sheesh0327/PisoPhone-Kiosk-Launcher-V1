@@ -140,6 +140,19 @@ cmd_unlock_admin() {
 	echo "The router's admin ports are open to the whole kiosk network again."
 }
 
+# wifi-admin [on|off|status]: whether the router's login pages (SSH, LuCI) answer on Wi-Fi. Off is the normal state: a rental phone cannot even
+# see them; a computer on a LAN cable always can. The owner's console page (its own port, signed login) is not affected.
+cmd_wifi_admin() {
+	case "${1:-status}" in
+		on) [ "$(id -u)" = 0 ] || die "run as root"; conf_set WIFI_ADMIN on; apply_isolation
+			echo "The router's login pages answer on Wi-Fi again, also to the rental phones. Turn it off again with: piso-setup wifi-admin off" ;;
+		off) [ "$(id -u)" = 0 ] || die "run as root"; conf_set WIFI_ADMIN off; apply_isolation
+			echo "The router's login pages no longer answer on Wi-Fi. Use a computer on a LAN cable (or: piso-setup wifi-admin on)." ;;
+		status) if [ "$(conf_get WIFI_ADMIN)" = on ]; then echo "on: the router's login pages answer on Wi-Fi"; else echo "off: the router's login pages answer on a LAN cable only"; fi ;;
+		*) die "usage: piso-setup wifi-admin [on|off|status]" ;;
+	esac
+}
+
 cmd_set_password() {
 	[ "$(id -u)" = 0 ] || die "run as root"
 	echo "Choose a new router (SSH / LuCI) password; it is saved in $CONF and shown by: piso-setup summary"

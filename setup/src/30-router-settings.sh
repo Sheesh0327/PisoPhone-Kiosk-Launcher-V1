@@ -147,6 +147,18 @@ modem_addresses() {
 	} | awk '/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ && !seen[$0]++'
 }
 
+# apply_isolation: puts the bridge rules in place now (guests apart from each other; rental phones reach the router and the coin box
+# only; the router's login pages not offered on Wi-Fi). The firewall hotplug script does the same at each firewall reload.
+apply_isolation() {
+	[ "$DRY" = 1 ] && return 0
+	[ -x "$PISO_ROOT/etc/hotplug.d/firewall/50-piso-isolation" ] || return 0
+	PISO_CONF="$CONF" PISO_COINSLOT_CONF="$PISO_ROOT/etc/coinslot.conf" sh "$PISO_ROOT/etc/hotplug.d/firewall/50-piso-isolation"
+	return 0
+}
+
+# isolation_on: both bridge tables are loaded (they need the kernel's bridge firewall support)
+isolation_on() { nft list table bridge piso_guest > /dev/null 2>&1 && nft list table bridge piso_kiosk > /dev/null 2>&1; }
+
 # portal_uci <guest name>: the guest-facing portal: openNDS sends new guests to pisoportal (FAS) and only the guest network
 # is gated; guests may reach the portal's port. The same lines are applied by the setup and by an update (which is how a
 # router set up with the earlier ThemeSpec portal is moved to this one).
@@ -169,6 +181,35 @@ set firewall.guest_nomodem.proto='all'
 set firewall.guest_nomodem.target='REJECT'
 delete firewall.guest_nomodem.dest_ip
 $(modem_addresses | while read -r _ma; do echo "add_list firewall.guest_nomodem.dest_ip='$_ma'"; done)
+# and nothing else on the far side of the modem either (the shop's other computers, the modem's neighbours): private and link-local
+# addresses are refused from the guest network, public addresses (the internet) are not. A narrow firewall rule again, not openNDS's list.
+set firewall.guest_noprivate=rule
+set firewall.guest_noprivate.name='Guest-No-Private'
+set firewall.guest_noprivate.src='guest'
+set firewall.guest_noprivate.dest='wan'
+set firewall.guest_noprivate.proto='all'
+set firewall.guest_noprivate.target='REJECT'
+delete firewall.guest_noprivate.dest_ip
+add_list firewall.guest_noprivate.dest_ip='10.0.0.0/8'
+add_list firewall.guest_noprivate.dest_ip='172.16.0.0/12'
+add_list firewall.guest_noprivate.dest_ip='192.168.0.0/16'
+add_list firewall.guest_noprivate.dest_ip='169.254.0.0/16'
+add_list firewall.guest_noprivate.dest_ip='100.64.0.0/10'
+# the same for the rental phones on Wi-Fi (the bridge rules in router/piso_isolation.sh mark what comes from Wi-Fi; a computer on a LAN cable
+# is not marked and keeps its way to the modem's pages). The mark is outside the bits openNDS and the traffic shaping use.
+set firewall.phone_noprivate=rule
+set firewall.phone_noprivate.name='Kiosk-Wi-Fi-No-Private'
+set firewall.phone_noprivate.src='lan'
+set firewall.phone_noprivate.dest='wan'
+set firewall.phone_noprivate.proto='all'
+set firewall.phone_noprivate.mark='0x00200000/0x00200000'
+set firewall.phone_noprivate.target='REJECT'
+delete firewall.phone_noprivate.dest_ip
+add_list firewall.phone_noprivate.dest_ip='10.0.0.0/8'
+add_list firewall.phone_noprivate.dest_ip='172.16.0.0/12'
+add_list firewall.phone_noprivate.dest_ip='192.168.0.0/16'
+add_list firewall.phone_noprivate.dest_ip='169.254.0.0/16'
+add_list firewall.phone_noprivate.dest_ip='100.64.0.0/10'
 
 # --- openNDS gates only the guest network -------------------------------------------------------------------------------
 set opennds.@opennds[0].enabled='1'
