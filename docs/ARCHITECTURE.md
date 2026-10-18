@@ -146,7 +146,7 @@ The owner makes cards on their own computer with `scripts/make_cards.py` (the ca
 - **Coin box:** `firmware-images.yml` builds and signs the images; the box installs only a newer `PISO_FW_VERSION`, checks the signature and the hash, and goes back to its old image if the new one does not confirm itself.
 - **Router:** `publish-router.yml` signs `router-setup.sh` with a rollout percentage; a router installs only a newer, correctly signed release in its turn of the rollout, and undoes it if it does not run (`piso-setup self-update`).
 - **Path:** work on `beta`; `scripts/verify_release.py` checks keys, checksums, signatures and version rules; merging `beta` into `main` publishes. Details: `docs/RELEASE.md`, `docs/DEPLOY.md`.
-- A coin box is limited by its type: 6 phones for a purchased box, 12 for a rental box (`getDeviceCap`).
+- A coin box is limited by its slot licenses: 2 phones are free, each more needs a P500 license key signed for that box, 12 at most; a box that already had more phones when licensing arrived keeps them (`getDeviceCap`, `SlotLicense.h`, docs/LICENSING.md).
 
 ## 9. Where things live
 | area | files |

@@ -47,7 +47,8 @@ int main() {
     s.putUInt("total_coins", 12345);
     s.putUInt("earn_c", 1234500);
     s.putInt("vendor_split", 35);
-    s.putString("box_type", "rental");
+    s.putString("lic_ids", "0000000a,0000000b");
+    s.putInt("lic_floor", 6);
     s.putString("wifi_ssid", "shop-wifi");
     s.putString("admin_pw", "operatorpw");
 
@@ -58,15 +59,16 @@ int main() {
 
     CHECK(s.getUInt("total_coins", 0) == 12345); // lifetime revenue survives
     CHECK(s.getUInt("earn_c", 0) == 1234500);
-    CHECK(s.getInt("vendor_split", 0) == 35);             // the vendor split survives
-    CHECK(s.getString("box_type", "") == "rental");       // an operator's reset cannot change the box type
-    CHECK(!s.isKey("wifi_ssid") && !s.isKey("admin_pw")); // operator settings are gone
+    CHECK(s.getInt("vendor_split", 0) == 35);                 // the vendor split survives
+    CHECK(s.getString("lic_ids", "") == "0000000a,0000000b"); // an operator's reset cannot change the used license keys
+    CHECK(s.getInt("lic_floor", 0) == 6);                     // ... or the slots the box had before licensing
+    CHECK(!s.isKey("wifi_ssid") && !s.isKey("admin_pw"));     // operator settings are gone
 
     // a box that never had revenue or a split set restores nothing and invents nothing
     TypedStore empty;
     ownerdata::restore(empty, ownerdata::capture(empty));
     CHECK(!empty.isKey("vendor_split") && !empty.isKey("total_coins") && !empty.isKey("earn_c") &&
-          !empty.isKey("box_type"));
+          !empty.isKey("lic_ids") && !empty.isKey("lic_floor"));
 
     printf("owner_data: %d checks, %d failures\n", checks, failures);
     return failures ? 1 : 0;

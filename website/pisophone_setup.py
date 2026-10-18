@@ -2751,7 +2751,7 @@ def default_out_dir():
     return str((docs if docs.is_dir() else home) / "PisoPhone")
 
 
-# ---- owner tools: time cards, the admin QR code, the phone recovery code ------------------------------------------------------
+# ---- owner tools: slot licenses, time cards, the admin QR code, the phone recovery code ------------------------------------------------------
 # What used to be separate owner scripts (and the owner console) lives here, in the one program: the QR codes are drawn by this
 # program's own QR encoder and printed from the browser, so only the signing needs a package (`cryptography`, installed on request).
 # The key files are the same as the scripts' (the home folder), so keys and ledgers made earlier keep working.
@@ -2759,11 +2759,12 @@ CARD_PREFIX = "PISO1"
 CARD_MAX_SERIAL, CARD_MIN_SECONDS, CARD_MAX_SECONDS, CARD_MAX_BATCH = 65535, 60, 240 * 3600, 600
 CARD_COLS, CARD_ROWS = 3, 4
 CARD_LEDGER_FIELDS = ["serial", "seconds", "box", "printed", "batch", "sold", "note"]
+SLOT_PREFIX, FREE_SLOTS, MAX_SLOTS, SLOT_PRICE_PHP = "PSLOT1", 2, 12, 500   # SlotLicense.h
 ADMIN_PREFIX, RECOVERY_PREFIX, RECOVERY_MAX_MINUTES = "PISOADMIN1", "PISOREC1", 24 * 60
 KEY_FILES = {   # kind: (file in the home folder, what it is for)
     "card": ("pisophone_card_key.pem", "Time cards"),
     "admin": ("pisophone-superadmin.key", "Admin QR code"),
-    "owner": ("pisophone_license_key.pem", "Phone recovery code"),
+    "owner": ("pisophone_license_key.pem", "Slot licenses and phone recovery code"),
 }
 
 
@@ -3133,6 +3134,92 @@ def make_recovery_qr(minutes, key=None):
 
 
 
+# ---- slot license keys (SlotLicense.h) ---------------------------------------------------------------------------------------
+
+def licenses_ledger():
+    return os.path.join(keys_home(), "pisophone_licenses.csv")
+
+
+LICENSE_LEDGER_FIELDS = ["made", "box", "key", "note"]
+
+
+def read_license_ledger(path=None):
+    path = path or licenses_ledger()
+    if not os.path.exists(path):
+        return []
+    with open(path, newline="") as f:
+        return list(csv.DictReader(f))
+
+
+def slot_license_text(key, box, key_id):
+    """PSLOT1.<box code>.<key number>.<signature>: opens ONE more phone slot on that box, once (SlotLicense.h)."""
+    hashes, _serialization, ec = tool_crypto()
+    sig = key.sign(f"pisophone-slot-v1|{box}|{key_id}".encode(), ec.ECDSA(hashes.SHA256()))
+    return f"{SLOT_PREFIX}.{box}.{key_id}.{base64.b64encode(sig).decode()}"
+
+
+def slot_license_verify(public_key, text):
+    hashes, _serialization, ec = tool_crypto()
+    from cryptography.exceptions import InvalidSignature
+    try:
+        prefix, box, key_id, sig = text.split(".")
+        public_key.verify(base64.b64decode(sig, validate=True), f"pisophone-slot-v1|{box}|{key_id}".encode(), ec.ECDSA(hashes.SHA256()))
+        return prefix == SLOT_PREFIX
+    except (ValueError, InvalidSignature):
+        return False
+
+
+def make_slot_licenses(box, count, note="", key=None, ledger=None):
+    """Signs `count` new slot license keys for one box and records them in the ledger. A box holds at most MAX_SLOTS - FREE_SLOTS keys.
+    Returns {'box', 'keys': [text], 'total', 'ledger'}."""
+    box = card_box(box)
+    try:
+        count = int(count)
+    except (TypeError, ValueError):
+        raise ToolError("Type how many keys as a whole number.")
+    room = MAX_SLOTS - FREE_SLOTS
+    ledger = ledger or licenses_ledger()
+    have = [r for r in read_license_ledger(ledger) if r.get("box") == box]
+    if not 1 <= count <= room:
+        raise ToolError(f"Make 1 to {room} keys at a time.")
+    if len(have) + count > room:
+        raise ToolError(f"A box holds at most {room} license keys ({FREE_SLOTS} slots are free, {MAX_SLOTS} is the most). This box already has "
+                        f"{len(have)} on record, so {room - len(have)} more can be made.")
+    key = key or load_key("owner")
+    used = {r.get("key") for r in have}
+    made = []
+    for _ in range(count):
+        key_id = secrets.token_hex(4)
+        while key_id in used:
+            key_id = secrets.token_hex(4)
+        used.add(key_id)
+        text = slot_license_text(key, box, key_id)
+        if not slot_license_verify(key.public_key(), text):   # never hand out a key the box would refuse
+            raise ToolError("Self-check failed: nothing was made.")
+        made.append((key_id, text))
+    stamp = datetime.datetime.now().isoformat(timespec="seconds")
+    new = not os.path.exists(ledger)
+    os.makedirs(os.path.dirname(ledger) or ".", exist_ok=True)
+    with open(ledger, "a", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=LICENSE_LEDGER_FIELDS)
+        if new:
+            w.writeheader()
+        for key_id, _text in made:
+            w.writerow({"made": stamp, "box": box, "key": key_id, "note": note})
+    return {"box": box, "keys": [t for _i, t in made], "total": len(have) + count, "ledger": ledger}
+
+
+def reissue_slot_licenses(box, key=None, ledger=None):
+    """New signatures for the keys already sold to a box (after the box was erased and its keys were lost). The key numbers are the
+    recorded ones, so the box can never end up with more slots than were sold. Returns the keys."""
+    box = card_box(box)
+    rows = [r for r in read_license_ledger(ledger or licenses_ledger()) if r.get("box") == box]
+    if not rows:
+        raise ToolError("No keys were made for that box on this computer.")
+    key = key or load_key("owner")
+    return [slot_license_text(key, box, r["key"]) for r in rows]
+
+
 # ---- the setup page: a small web server on this computer ----------------------------------------------------------------------
 # The setup is a web page served by this program (standard library only), so it needs no screen on the computer that runs it:
 # open the address on any phone or laptop in the same network. A PIN keeps everyone else out.
@@ -3219,7 +3306,7 @@ class Session:
         self.deps = {"running": False, "lines": []}
         self.country = "PH"
         # the owner tools do not belong to one unit: they stay when the next unit starts
-        self.tools = {"error": None, "message": None, "batch": None, "qr": None, "prep": {"running": False, "lines": []}}
+        self.tools = {"error": None, "message": None, "batch": None, "licenses": None, "qr": None, "prep": {"running": False, "lines": []}}
         self.tool_files = []
         self.checkup = {"running": False, "done": False, "items": []}   # the Check-up page, also not tied to one unit
         self.reset_unit()
@@ -3706,6 +3793,21 @@ class Session:
                     self.tools["message"] += " Boxes accept it only after their firmware is built with its public half (a developer step)."
         self._tool(work)
 
+    def do_tool_licenses(self, a):
+        def work():
+            r = make_slot_licenses(a.get("box"), a.get("count"), str(a.get("note") or "")[:80])
+            with self.lock:
+                self.tools["licenses"] = {"box": r["box"], "keys": r["keys"], "total": r["total"], "ledger": self._offer(r["ledger"]), "reissued": False}
+        self._tool(work)
+
+    def do_tool_reissue(self, a):
+        def work():
+            box = card_box(a.get("box"))
+            keys = reissue_slot_licenses(box)
+            with self.lock:
+                self.tools["licenses"] = {"box": box, "keys": keys, "total": len(keys), "ledger": None, "reissued": True}
+        self._tool(work)
+
     def do_tool_cards(self, a):
         def work():
             shift = (float(a.get("shift_x") or 0), float(a.get("shift_y") or 0))
@@ -3754,7 +3856,7 @@ class Session:
             except ImportError:
                 have = False
         t = self.tools
-        return {"crypto": have, "keys": keys, "boxes": known_boxes(), "error": t["error"], "message": t["message"], "batch": t["batch"],
+        return {"crypto": have, "keys": keys, "boxes": known_boxes(), "error": t["error"], "message": t["message"], "batch": t["batch"], "licenses": t["licenses"],
                 "qr": t["qr"], "prep": dict(t["prep"], lines=list(t["prep"]["lines"][-40:]))}
 
     def tool_file(self, index):
@@ -4129,12 +4231,19 @@ a{color:var(--acc)}.hide{display:none!important}
 <main id="toolsMain" class="hide">
 <div>
  <h1>Owner tools</h1>
- <p class="mut">Everything that is not a new installation, in one place: time cards, your admin QR code and the phone recovery code. Your keys stay on this computer and are never uploaded.</p>
+ <p class="mut">Everything that is not a new installation, in one place: slot license keys, time cards, your admin QR code and the phone recovery code. Your keys stay on this computer and are never uploaded.</p>
  <div id="tBanner"></div>
  <div class="card"><h2>Check-up</h2><p class="mut">Is everything working? A read-only look at the router, the coin box, the update list and the print server. It changes nothing.</p>
   <button class="primary" id="btnCheckup">Check now</button><div id="cuList" style="margin-top:8px"></div></div>
  <div id="tPrep" class="card hide"><h2>One more package is needed</h2><p class="mut">The QR codes are signed with the <b>cryptography</b> package. It installs into this program's own folder (no administrator rights).</p>
   <button class="primary" id="btnPrep">Install what is missing</button><pre id="tPrepLog" class="hide"></pre></div>
+ <div class="card"><h2>Slot licenses</h2>
+  <p class="mut">Every coin box has 2 free phone slots; each more needs a license key (P500). A key opens ONE slot on ONE box, once. The customer reads you the <b>box code</b> from their admin page (Phone slots) and pastes the key there.</p>
+  <label for="lBox">Box code <span class="hint">like AA:BB:CC:DD:EE:FF</span></label><input id="lBox" list="cBoxes" autocomplete="off" placeholder="AA:BB:CC:DD:EE:FF">
+  <div class="row"><div><label for="lCount">How many keys</label><input id="lCount" type="number" min="1" max="10" value="1" style="width:100px"></div><div class="grow"><label for="lNote">Note for your records <span class="hint">customer, receipt</span></label><input id="lNote" autocomplete="off"></div></div>
+  <p style="margin-top:12px"><button class="primary" id="btnLicenses">Make the keys</button> <button id="btnReissue">Re-issue the keys already sold to this box</button></p>
+  <p class="mut small">Re-issue is for a box that was erased: it prints the keys sold before again (new signatures, the same numbers), never more. Every key you make is written to pisophone_licenses.csv in your home folder.</p>
+  <div id="lResult"></div></div>
  <div class="card"><h2>Time cards (QR)</h2>
   <p class="mut">Printable cards that add play time to a rental phone: the first scan adds the time on the card. Each card works on one coin box only and its number is never printed twice.</p>
   <label for="cBox">Coin box <span class="hint">the 12 characters on the coin box's page, like AA:BB:CC:DD:EE:FF</span></label><input id="cBox" list="cBoxes" autocomplete="off" placeholder="AA:BB:CC:DD:EE:FF"><datalist id="cBoxes"></datalist>
@@ -4351,6 +4460,10 @@ function paintTools(){
  const dl=$('#cBoxes');if(dl.children.length!==t.boxes.length){clear(dl);t.boxes.forEach(x=>dl.append(h('option',{value:x.box.replace(/(..)(?=.)/g,'$1:').toUpperCase()})))}
  const kl=$('#kList');clear(kl);t.keys.forEach(k=>kl.append(h('div',{class:'kv'},h('span',{style:'color:var(--'+(k.found?'ok':'warn')+')'},k.found?'Found':'Missing'),h('span',{style:'color:var(--ink)'},k.label+' '),h('span',{class:'mut small'},k.path))));
  const ks=$('#kKind');if(!ks.children.length)t.keys.forEach(k=>ks.append(h('option',{value:k.kind},k.label)));
+ const lr=$('#lResult');clear(lr);
+ if(t.licenses){const x=t.licenses;lr.append(note('ok',(x.reissued?'The ':'Made ')+x.keys.length+' key'+(x.keys.length>1?'s':'')+' for box '+x.box.replace(/(..)(?=.)/g,'$1:').toUpperCase()+(x.reissued?' (already sold)':'. This box now has '+x.total+' key'+(x.total>1?'s':'')+' on record, '+(2+x.total)+' slots')+'. Give the customer one line per slot, after they pay.'));
+  x.keys.forEach(k=>lr.append(h('div',{class:'kv'},h('code',{style:'word-break:break-all;font-size:12px;flex:1'},k),h('button',{class:'small',onclick:ev=>copyText(k,ev.target)},'Copy'))));
+  if(x.ledger!=null)lr.append(h('p',{class:'mut small'},h('a',{href:'/api/toolfile?i='+x.ledger,target:'_blank',rel:'noopener'},'Open the ledger of license keys')))}
  const cr=$('#cResult');clear(cr);
  if(t.batch){const x=t.batch;cr.append(note('ok','Made '+(x.last-x.first+1)+' cards, numbers '+x.first+' to '+x.last+', '+x.hours+' each, for box '+x.box+' ('+x.sheets+' sheet'+(x.sheets>1?'s':'')+').'),
   h('ul',{class:'steps'},h('li',{},'Open ',h('b',{},'Cards: QR sides'),', print it at 100% on A4 (Ctrl+P, no margins, no headers).'),h('li',{},'Turn the paper over and print ',h('b',{},'Cards: logo sides'),' on the back (try one sheet first). A printer that prints both sides: use ',h('b',{},'Cards: both sides'),'.'),h('li',{},'Cut along the grey lines.')),
@@ -4359,11 +4472,13 @@ function paintTools(){
  const q=$('#qrResult');const sig=t.qr?t.qr.title+t.qr.note:'';if(q.dataset.sig!==sig){q.dataset.sig=sig;clear(q);
   if(t.qr){const sv=h('div',{style:'max-width:360px;margin:10px 0;background:#fff;padding:4px;border-radius:8px'});sv.innerHTML=t.qr.svg;
    q.append(note('warn',t.qr.note),sv,h('p',{},h('a',{href:'/api/toolfile?i='+t.qr.file,target:'_blank',rel:'noopener'},'Open the printable page'),' ',h('button',{class:'small',onclick:()=>act('tool_hide')},'Hide it')))}}
- ['btnCards','btnAdminQr','btnRecovery','btnKeyImport','btnKeyCreate'].forEach(id=>$('#'+id).disabled=!t.crypto);
+ ['btnLicenses','btnReissue','btnCards','btnAdminQr','btnRecovery','btnKeyImport','btnKeyCreate'].forEach(id=>$('#'+id).disabled=!t.crypto);
 }
 $('#btnToCards').onclick=()=>{view='tools';paint()};
 $('#btnTools').onclick=()=>{view=view==='tools'?'setup':'tools';paint()};
 $('#btnPrep').onclick=()=>act('tool_prepare');
+$('#btnLicenses').onclick=()=>act('tool_licenses',{box:$('#lBox').value,count:$('#lCount').value,note:$('#lNote').value});
+$('#btnReissue').onclick=()=>act('tool_reissue',{box:$('#lBox').value});
 $('#btnCards').onclick=()=>act('tool_cards',{box:$('#cBox').value,count:$('#cCount').value,hours:$('#cHours').value,note:$('#cNote').value,flip:$('#cFlip').value,shift_x:$('#cSx').value,shift_y:$('#cSy').value});
 $('#btnAdminQr').onclick=()=>act('tool_adminqr');
 $('#btnRecovery').onclick=()=>act('tool_recovery',{minutes:$('#rMin').value});

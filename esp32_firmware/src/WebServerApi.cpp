@@ -135,7 +135,7 @@ void handleQueryTime() {
 void handleApiSlots() {
     if (!checkAdminAuth()) return;
     String json = "{\"maxSlots\":" + String(MAX_SUPPORTED_SLOTS) + ",\"deviceCap\":" + String(getDeviceCap()) +
-                  ",\"boxType\":\"" + boxlicense::name(getBoxType()) + "\",\"mac\":\"" + macAddressStr +
+                  ",\"licensedSlots\":" + String(getLicenseKeyCount()) + ",\"mac\":\"" + macAddressStr +
                   "\",\"slots\":[";
     for (int i = 0; i < MAX_SUPPORTED_SLOTS; i++) {
         if (i > 0) json += ",";
@@ -250,11 +250,12 @@ void handleApiSecuritySwitchKey() {
                    String("{\"success\":true,\"was_legacy\":") + (wasLegacy ? "true" : "false") + "}");
 }
 
-// The box type and how many phones it may pair (BoxLicense.h).
+// The phone slots this box has unlocked (SlotLicense.h).
 static String licenseJson(const char* extra = "") {
-    return String("{\"success\":true,\"type\":\"") + boxlicense::name(getBoxType()) +
-           "\",\"cap\":" + String(getDeviceCap()) + ",\"paired\":" + String(pairedDeviceCount()) +
-           ",\"max_cap\":" + String(boxlicense::CAP_RENTAL) + ",\"mac\":\"" + macAddressStr +
+    return String("{\"success\":true,\"cap\":") + String(getDeviceCap()) +
+           ",\"paired\":" + String(pairedDeviceCount()) + ",\"free\":" + String(slotlicense::FREE_SLOTS) +
+           ",\"licensed\":" + String(getLicenseKeyCount()) + ",\"max_cap\":" + String(slotlicense::MAX_SLOTS) +
+           ",\"price\":" + String(slotlicense::PRICE_PHP) + ",\"mac\":\"" + macAddressStr +
            "\",\"owner_key\":" + (LICENSE_PUBKEY_LEN > 0 ? "true" : "false") + extra + "}";
 }
 
@@ -263,44 +264,33 @@ void handleApiLicense() {
     webServer.send(200, "application/json", licenseJson());
 }
 
-// Changes the box type. Two ways, and only these two: a token the owner signed for THIS box (scripts/sign_box_type.py), or
-// the owner signed in with the admin QR code (then `type` is taken as given). The ordinary admin password is not enough.
+// Opens one more phone slot with a license key the owner signed for THIS box (scripts/make_slot_licenses.py). The key is the
+// only way: no password, not even the admin QR code, opens a slot without one.
 void handleApiLicenseSet() {
     if (!checkAdminAuth()) return;
-    boxlicense::Type wanted = boxlicense::Type::Purchased;
-    if (webServer.hasArg("token")) {
-        boxlicense::Check r =
-            boxlicense::verifyToken(std::string(webServer.arg("token").c_str()), std::string(macAddressStr.c_str()),
-                                    LICENSE_PUBKEY_DER, LICENSE_PUBKEY_LEN, wanted);
-        if (r != boxlicense::Check::Ok) {
-            const char* msg = r == boxlicense::Check::WrongBox ? "This token was signed for another box."
-                              : r == boxlicense::Check::NoKey
-                                  ? "This box has no owner key built in, so it cannot check a token."
-                              : r == boxlicense::Check::BadFormat ? "That does not look like a box-type token."
-                                                                  : "The token's signature is not the owner's.";
-            diagLog("[LICENSE] Box-type token refused: %s\n", msg);
-            webServer.send(403, "application/json",
-                           String("{\"success\":false,\"error\":\"TOKEN_REFUSED\",\"message\":\"") + msg + "\"}");
-            return;
-        }
-    } else if (webServer.hasArg("type")) {
-        if (!boxlicense::parseType(std::string(webServer.arg("type").c_str()), wanted)) {
-            webServer.send(400, "application/json",
-                           "{\"success\":false,\"error\":\"Type must be purchased or rental\"}");
-            return;
-        }
-        if (!authenticateSuperAdmin()) {
-            webServer.send(
-                403, "application/json",
-                "{\"success\":false,\"error\":\"OWNER_ONLY\",\"message\":\"Changing the box type needs the owner signed in with the admin QR code, or a token signed with the owner key.\"}");
-            return;
-        }
-    } else {
-        webServer.send(400, "application/json", "{\"success\":false,\"error\":\"Send a token or a type\"}");
+    if (!webServer.hasArg("token")) {
+        webServer.send(400, "application/json", "{\"success\":false,\"error\":\"Send a license key\"}");
         return;
     }
-    if (!setBoxType(wanted)) {
-        webServer.send(500, "application/json", "{\"success\":false,\"error\":\"Could not save the box type\"}");
+    std::string id;
+    slotlicense::Check r =
+        slotlicense::verifyToken(std::string(webServer.arg("token").c_str()), std::string(macAddressStr.c_str()),
+                                 LICENSE_PUBKEY_DER, LICENSE_PUBKEY_LEN, std::string(getLicenseIds().c_str()), id);
+    if (r != slotlicense::Check::Ok) {
+        const char* msg =
+            r == slotlicense::Check::WrongBox ? "This key was made for another box. Check the box code."
+            : r == slotlicense::Check::NoKey  ? "This box has no owner key built in, so it cannot check a license key."
+            : r == slotlicense::Check::BadFormat   ? "That does not look like a license key. Paste the whole line."
+            : r == slotlicense::Check::AlreadyUsed ? "This key was already used on this box."
+            : r == slotlicense::Check::NoRoom      ? "Every slot on this box is already unlocked."
+                                                   : "The key's signature is not the owner's.";
+        diagLog("[LICENSE] License key refused: %s\n", msg);
+        webServer.send(403, "application/json",
+                       String("{\"success\":false,\"error\":\"KEY_REFUSED\",\"message\":\"") + msg + "\"}");
+        return;
+    }
+    if (!addLicenseKey(String(id.c_str()))) {
+        webServer.send(500, "application/json", "{\"success\":false,\"error\":\"Could not save the license key\"}");
         return;
     }
     webServer.send(200, "application/json", licenseJson());

@@ -330,7 +330,8 @@ const char* const NVS_KEY_ADMIN_PW_CHANGED = cfgmig::K_ADMIN_PW_CHANGED;
 const char* const NVS_KEY_SETUP_AP_PASS = cfgmig::K_SETUP_AP_PASS;
 const char* const NVS_KEY_SHARED_SECRET = cfgmig::K_SHARED_SECRET;
 const char* const NVS_KEY_LEGACY_KEY = cfgmig::K_LEGACY_KEY;
-const char* const NVS_KEY_BOX_TYPE = "box_type"; // ownerdata::K_BOX_TYPE: survives an operator's factory reset
+const char* const NVS_KEY_LICENSES = "lic_ids";    // ownerdata::K_LICENSES: survives an operator's factory reset
+const char* const NVS_KEY_LIC_FLOOR = "lic_floor"; // ownerdata::K_LIC_FLOOR: the phones paired when licensing arrived
 const char* const NVS_KEY_P1 = "p1_ip";
 const char* const NVS_KEY_P2 = "p2_ip";
 const char* const NVS_KEY_MATCH = "match_minutes";
@@ -467,14 +468,24 @@ void loadSecretMode() {
     }
 }
 
-static boxlicense::Type boxType = boxlicense::Type::Purchased;
+static String licenseIds = ""; // the numbers of the license keys used on this box (SlotLicense.h), "id,id,..."
+static int licenseFloor =
+    0; // the phones this box had paired when licensing arrived: it never offers fewer slots than that
 
-boxlicense::Type getBoxType() {
-    return boxType;
+String getLicenseIds() {
+    return licenseIds;
+}
+
+int getLicenseFloor() {
+    return licenseFloor;
+}
+
+int getLicenseKeyCount() {
+    return slotlicense::usedKeys(licenseIds.c_str());
 }
 
 int getDeviceCap() {
-    return boxlicense::capFor(boxType);
+    return slotlicense::capWithFloor(getLicenseKeyCount(), licenseFloor);
 }
 
 int pairedDeviceCount() {
@@ -485,22 +496,45 @@ int pairedDeviceCount() {
     return n;
 }
 
-void loadBoxType() {
+void loadLicenses() {
     prefs.begin(NVS_NAMESPACE, false);
-    String saved = prefs.getString(NVS_KEY_BOX_TYPE, "");
+    String saved = prefs.getString(NVS_KEY_LICENSES, "");
+    licenseFloor = prefs.getInt(NVS_KEY_LIC_FLOOR, 0);
     prefs.end();
-    boxlicense::Type t = boxlicense::Type::Purchased; // no saved type, or one nobody recognises: the smaller limit
-    boxlicense::parseType(saved.c_str(), t);
-    boxType = t;
+    // (re-read through the parser: anything that is not a key number is dropped, and so are repeats)
+    licenseIds = slotlicense::joinIds(slotlicense::splitIds(saved.c_str())).c_str();
+    if (licenseFloor < 0 || licenseFloor > slotlicense::MAX_SLOTS) licenseFloor = 0;
 }
 
-bool setBoxType(boxlicense::Type type) {
+// The first start with licensing: a box already in a shop keeps as many slots as it has phones paired, so the shop can still replace
+// a phone. Done once (the number is kept, and survives an operator's factory reset: OwnerData.h); a new box records 0.
+void settleLicenseFloor() {
     prefs.begin(NVS_NAMESPACE, false);
-    size_t written = prefs.putString(NVS_KEY_BOX_TYPE, boxlicense::name(type));
+    bool known = prefs.isKey(NVS_KEY_LIC_FLOOR);
+    if (!known) {
+        int paired = pairedDeviceCount();
+        if (paired < 0) paired = 0;
+        if (paired > slotlicense::MAX_SLOTS) paired = slotlicense::MAX_SLOTS;
+        if (prefs.putInt(NVS_KEY_LIC_FLOOR, paired) > 0) {
+            licenseFloor = paired;
+            diagLog("[LICENSE] Licensing starts: this box keeps %d slot(s), the phones it has paired now.\n", paired);
+        }
+    }
+    prefs.end();
+}
+
+bool addLicenseKey(const String& id) {
+    std::string have = licenseIds.c_str();
+    std::string idNorm = slotlicense::normalizeId(id.c_str());
+    if (idNorm.empty() || slotlicense::hasId(have, idNorm) || slotlicense::usedKeys(have) >= slotlicense::MAX_KEYS)
+        return false;
+    String next = licenseIds.length() > 0 ? licenseIds + "," + idNorm.c_str() : String(idNorm.c_str());
+    prefs.begin(NVS_NAMESPACE, false);
+    size_t written = prefs.putString(NVS_KEY_LICENSES, next);
     prefs.end();
     if (written == 0) return false;
-    boxType = type;
-    diagLog("[LICENSE] Box type is now '%s' (up to %d phones).\n", boxlicense::name(type), boxlicense::capFor(type));
+    licenseIds = next;
+    diagLog("[LICENSE] License key %s used: this box may now pair up to %d phones.\n", idNorm.c_str(), getDeviceCap());
     return true;
 }
 
@@ -535,9 +569,10 @@ void loadAllConfig() {
     // 1. Load phone slots and terminal allocations safely
     runConfigMigrations(); // first: brings stored settings to this firmware's format
     loadSecretMode();
-    loadBoxType();
+    loadLicenses();
     initTxIdBootCounter();
     loadSlots();
+    settleLicenseFloor(); // (needs the phone slots: it records how many phones are paired when licensing starts)
     loadSuperAdminConfig();
     loadCredentials();
 
@@ -644,7 +679,7 @@ void factoryResetDefaults(bool ownerWipe) {
     }
     runConfigMigrations(); // a cleared box gets a fresh secret and new passwords (printed on the serial console)
     loadSecretMode();
-    loadBoxType(); // (an operator's reset keeps it, OwnerData.h; an owner wipe starts again as "purchased")
+    loadLicenses(); // (an operator's reset keeps the keys and the floor, OwnerData.h; an owner wipe starts again with the 2 free slots)
     loadCredentials();
 
     wifiSsid = setupgate::DEFAULT_WIFI_SSID;

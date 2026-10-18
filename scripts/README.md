@@ -39,7 +39,7 @@ Run everything from the repository root. **Find yours by who runs it and when**,
 | `make_admin_qr.py` | Makes the owner's admin QR code (and the key behind it the first time): scan it on a box's login page to be super admin. No password to publish (`docs/api/superadmin-qr.md`). |
 | `make_card_key.py`, `make_cards.py` | The separate card key, and printing a batch of QR time cards for one box. |
 | `make_recovery_code.py` | A recovery QR: scanned on a phone's lock screen it removes PisoPhone from that phone. |
-| `sign_box_type.py` | Signs a coin box's type (purchased: up to 6 phones, rental: up to 12) for that box's MAC address; the box checks it with the same owner key. |
+| `make_slot_licenses.py` | Makes slot license keys: each opens ONE more phone slot on ONE coin box (its MAC address), once; the box checks it with the same owner key. Also in the setup program's Owner tools. |
 | `make_wifi_poster.py` | Prints the PisoWiFi poster: a QR code that joins the customer Wi-Fi and one that opens the coin page. |
 
 Not run directly: `owner_key.py` (shared key loading for the signing tools) and `card_format.py` (the QR card format).

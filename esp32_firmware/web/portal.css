@@ -268,6 +268,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .slot.off .slot-ic { background: var(--bad-soft); color: var(--bad); }
 .slot.locked { border-style: dashed; background: var(--surface-2); }
 .slot.locked .slot-ic { background: var(--sel); color: var(--muted); }
+.licrow { display: flex; gap: 10px; align-items: center; margin-top: 10px; } .licrow .field { flex: 1; margin: 0; }
 .slot-name, .slot-sub { display: block; }
 .slot-name { font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .slot-sub { color: var(--muted); font-size: 12px; }
