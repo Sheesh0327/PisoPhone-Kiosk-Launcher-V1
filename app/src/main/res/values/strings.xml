@@ -66,6 +66,12 @@
     <string name="pill_boost">Boost</string>
     <string name="pill_boosting">Boosting…</string>
     <string name="pill_boost_hint">Closes your other apps. The one you are using stays open.</string>
+    <string name="pill_force_close">Force close app</string>
+    <string name="pill_force_closing">Closing…</string>
+    <string name="pill_force_close_hint">Closes the app you are using and opens it again. What is not saved in it is lost.</string>
+    <string name="pill_force_close_none">No app to close. Open the app first.</string>
+    <string name="pill_force_close_done">%1$s was closed and opened again</string>
+    <string name="pill_force_close_failed">%1$s was closed but did not open again</string>
     <string name="pill_boost_done">Boost done: %1$d apps closed, %2$d MB free</string>
     <string name="pill_wifi">Refresh Wi-Fi</string>
     <string name="pill_wifi_busy">Reconnecting…</string>
