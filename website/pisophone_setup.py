@@ -7,6 +7,10 @@ a Raspberry Pi, a laptop) can run it and you open the page on your phone.
     python3 pisophone_setup.py --branch beta      the same with the beta branch's files (testing)
     sudo python3 pisophone_setup.py --install-service   start the setup page by itself whenever the computer boots (Linux)
     python3 pisophone_setup.py --cli              the same in the terminal (no web page)
+    python3 pisophone_setup.py --phone-only       PisoPhone only in the terminal: the coin box on the shop's normal router, set up over USB
+                                                  (no OpenWrt, no SSH); the setup page offers the same choice at its start
+    python3 pisophone_setup.py --check-box        look at the coin box on USB (set up? online? its address)
+    python3 pisophone_setup.py --box AA:BB:CC:DD:EE:FF --count 2    make slot license keys (each opens one more phone slot)
     python3 pisophone_setup.py --update           new software only, on a router that is set up already (terminal)
     python3 pisophone_setup.py --cli --no-flash   the terminal mode without writing the coin box (it already has the software)
 
@@ -2234,6 +2238,7 @@ def usb_boards(comports=None):
     """[(port, description)] of the USB serial adapters coin box boards use, sorted. Empty when none is plugged in (or
     pyserial, which esptool brings, is missing)."""
     if comports is None:
+        use_private_libs()
         try:
             from serial.tools.list_ports import comports
         except ImportError:
@@ -2272,10 +2277,13 @@ class _Lines(io.TextIOBase):
 def run_esptool(tool, argv, emit):
     """Runs one esptool command in this process. Raises SetupError (with the tool's last words) when it fails."""
     seen = []
+    real_out, real_err = sys.stdout, sys.stderr
 
     def take(line):
         seen.append(line)
-        emit(line)
+        # (esptool's output is collected by redirecting stdout: a function that prints must print to the real one, or it feeds itself)
+        with contextlib.redirect_stdout(real_out), contextlib.redirect_stderr(real_err):
+            emit(line)
     out = _Lines(take)
     try:
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
@@ -2367,7 +2375,7 @@ def fetch_image(branch, build, cache_dir, opener=urllib.request.urlopen):
     return path
 
 
-def flash_box(branch, port, emit, cache_dir, opener=urllib.request.urlopen, tool=None):
+def flash_box(branch, port, emit, cache_dir, opener=urllib.request.urlopen, tool=None, image=None):
     """Writes the PisoPhone software to the board on `port`: detects the chip, takes the image for it (checked), erases the
     whole flash (a used box then forgets its old Wi-Fi), writes and verifies it, restarts the board. Returns (chip, version)."""
     tool = tool or esptool_module()
@@ -2388,13 +2396,17 @@ def flash_box(branch, port, emit, cache_dir, opener=urllib.request.urlopen, tool
     if not match:
         raise SetupError("the board did not say which chip it has. " + board_advice("failed to connect"))
     chip = match.group(1).upper()
-    manifest = flash_manifest(branch, cache_dir, opener, emit)
-    build = choose_build(manifest, chip)
-    if not build:
-        raise SetupError(f"this board is an {chip}; PisoPhone software exists for "
-                         f"{' and '.join(b['chip'] for b in manifest['builds'])}.")
-    emit(f"{chip} found. Software version {manifest.get('version', '?')} ({build['size'] / 1048576:.2f} MB).")
-    image = fetch_image(branch, build, cache_dir, opener)
+    if image:   # a merged image of your own build (terminal mode), written from the start of the flash
+        build, manifest = {"offset": 0}, {"version": "your own build"}
+        emit(f"{chip} found. Writing {image}.")
+    else:
+        manifest = flash_manifest(branch, cache_dir, opener, emit)
+        build = choose_build(manifest, chip)
+        if not build:
+            raise SetupError(f"this board is an {chip}; PisoPhone software exists for "
+                             f"{' and '.join(b['chip'] for b in manifest['builds'])}.")
+        emit(f"{chip} found. Software version {manifest.get('version', '?')} ({build['size'] / 1048576:.2f} MB).")
+        image = fetch_image(branch, build, cache_dir, opener)
     emit("== Writing the coin box software (erasing the board first; about a minute)")
     last = [-10]
 
@@ -2412,7 +2424,7 @@ def flash_box(branch, port, emit, cache_dir, opener=urllib.request.urlopen, tool
         run_esptool(tool, args, progress)
     except SetupError as e:
         raise SetupError(with_advice(e, str(e)))
-    emit("Written and verified. The board restarts by itself; keep it powered (the USB cable does that) while the router is set up.")
+    emit("Written and verified. The board restarts by itself; keep it powered (the USB cable does that) while it is set up.")
     return chip, manifest.get("version", "?")
 
 
@@ -3220,6 +3232,411 @@ def reissue_slot_licenses(box, key=None, ledger=None):
     return [slot_license_text(key, box, r["key"]) for r in rows]
 
 
+# ---- PisoPhone only: the coin box on the shop's normal router, set up over USB (no router software, no SSH) ---------------------
+SERIAL_BAUD = 115200
+
+
+# -- talking to the board over USB (SerialProvision.h) ---------------------------------------------------------------------
+
+def parse_status(line):
+    """'PISO-BOX fw=1.0.0 mac=aa:bb:.. setup=needed wifi=down ip=-' -> {'fw': '1.0.0', 'mac': ..., 'setup': 'needed', ...}, or None."""
+    if not line.startswith("PISO-BOX "):
+        return None
+    status = {}
+    for part in line.split()[1:]:
+        key, _, value = part.partition("=")
+        if key:
+            status[key] = value
+    return status
+
+
+def setup_line(wifi_name, wifi_password, admin_password):
+    """The PISO-SETUP line: the three values hex-encoded, so no character in them can be mistaken for a separator."""
+    return "PISO-SETUP " + " ".join(v.encode("utf-8").hex() for v in (wifi_name, wifi_password, admin_password))
+
+
+class BoxLink:
+    """One USB serial connection to the board. `port` is anything with write/read/close like pyserial's Serial."""
+
+    def __init__(self, port, clock=time.monotonic, sleep=time.sleep):
+        self.port, self.clock, self.sleep, self.buf = port, clock, sleep, b""
+
+    @classmethod
+    def open(cls, device):
+        use_private_libs()
+        try:
+            import serial
+        except ImportError:
+            raise SetupError("the serial library (pyserial) is missing: it comes with esptool (use 'Install what is missing', or run  python -m pip install pyserial).")
+        # (DTR and RTS are set low BEFORE the port opens: on a C3 board, raising them resets the chip or puts it in download mode)
+        port = serial.Serial()
+        port.port, port.baudrate, port.timeout = device, SERIAL_BAUD, 0.2
+        port.dtr = False
+        port.rts = False
+        try:
+            port.open()
+        except (OSError, serial.SerialException) as e:
+            raise SetupError(with_advice(f"the board's USB port {device} could not be opened ({e})", str(e)))
+        return cls(port)
+
+    def close(self):
+        try:
+            self.port.close()
+        except Exception:
+            pass
+
+    def send(self, line, chunk=24, pause=0.02):
+        """Writes a line a few bytes at a time: the board's USB buffer is small and it reads between loops."""
+        data = (line + "\n").encode("ascii")
+        for i in range(0, len(data), chunk):
+            self.port.write(data[i:i + chunk])
+            self.sleep(pause)
+
+    def read_line(self, timeout):
+        """The next complete line the board prints (None after `timeout` seconds)."""
+        end = self.clock() + timeout
+        while True:
+            if b"\n" in self.buf:
+                line, _, self.buf = self.buf.partition(b"\n")
+                return line.decode("utf-8", "replace").strip()
+            if self.clock() >= end:
+                return None
+            chunk = self.port.read(256)
+            if chunk:
+                self.buf += chunk
+            else:
+                self.sleep(0.02)
+
+    def expect(self, prefixes, timeout):
+        """Reads lines until one starts with one of `prefixes` (the board's boot messages are skipped). None on timeout."""
+        end = self.clock() + timeout
+        while self.clock() < end:
+            line = self.read_line(max(0.05, end - self.clock()))
+            if line and line.startswith(tuple(prefixes)):
+                return line
+        return None
+
+    def hello(self, timeout=12):
+        """Asks the board who it is (once a second); returns its status dict, or None if no PisoPhone software answers."""
+        end = self.clock() + timeout
+        while self.clock() < end:
+            self.send("PISO-HELLO")
+            line = self.expect(["PISO-BOX "], 1.2)
+            if line:
+                return parse_status(line)
+        return None
+
+
+def provision_box(link, wifi_name, wifi_password, admin_password, emit=say, tries=3):
+    """Gives a new board the shop's Wi-Fi and the admin password. Raises SetupError with the board's reason when it refuses."""
+    reasons = {
+        "already-set-up": "this box was set up already (to set it up again, write the software to it again: that erases it)",
+        "bad-wifi-name": "the board did not accept that Wi-Fi name (1 to 32 plain characters)",
+        "bad-wifi-password": "the board did not accept that Wi-Fi password (8 to 63 plain characters)",
+        "bad-admin-password": "the board did not accept that admin password (8 or more characters, not the factory one)",
+        "busy": "the board is busy; try again in a moment",
+        "could-not-save": "the board could not save the settings (its flash may be damaged)",
+    }
+    for attempt in range(1, tries + 1):
+        link.send(setup_line(wifi_name, wifi_password, admin_password))
+        answer = link.expect(["PISO-SETUP-OK", "PISO-SETUP-ERR"], 8)
+        if answer == "PISO-SETUP-OK":
+            return
+        if answer and answer.startswith("PISO-SETUP-ERR"):
+            why = answer.split(" ", 1)[1].strip() if " " in answer else ""
+            if why != "bad-format":   # (bad-format is a damaged line: it is sent again)
+                raise SetupError(reasons.get(why, f"the board refused ({why})") + ".")
+        emit(f"  The board did not take that (try {attempt} of {tries}); sending it again.")
+    raise SetupError("the board did not answer the setup. Unplug it, plug it in again and run this again.")
+
+
+def wait_online(find_device, wifi_name, emit=say, timeout=120, opener=BoxLink.open, clock=time.monotonic, sleep=time.sleep):
+    """Waits until the board says it is on the Wi-Fi (it restarts first, and its USB port may come back under another name).
+    Returns its status dict with the address; raises SetupError with what is usually wrong when it never joins."""
+    end = clock() + timeout
+    last = None
+    shown = False
+    while clock() < end:
+        device = find_device()
+        link = None
+        if device:
+            try:
+                link = opener(device)
+            except SetupError:
+                link = None
+        if link:
+            try:
+                status = link.hello(6)
+            finally:
+                link.close()
+            if status:
+                last = status
+                if status.get("wifi") == "up" and status.get("ip", "-") != "-":
+                    return status
+                if not shown:
+                    emit(f"  The board is up and joining '{wifi_name}'...")
+                    shown = True
+        sleep(2)
+    if last is None:
+        raise SetupError("the board did not come back on USB after the setup. Unplug it, plug it in again and run  check.")
+    raise SetupError(f"the board could not join the Wi-Fi '{wifi_name}'. Usual causes: a wrong Wi-Fi password; a 5 GHz-only network "
+                     "(the ESP32-C3 needs 2.4 GHz: many routers share one name for both, some need the 2.4 GHz band switched on); a "
+                     "router that only lets known devices join. Run the setup again with the right details.")
+
+
+
+
+# -- the PisoPhone-only setup, start to finish -------------------------------------------------------------------------------------------
+
+def wifi_name_problem(name):
+    """Why the board would refuse this Wi-Fi name, or None."""
+    if not 1 <= len(name) <= 32 or any(ord(c) < 32 or ord(c) > 126 for c in name):
+        return "use 1 to 32 plain characters (letters, digits, punctuation)"
+    return None
+
+
+def wifi_password_problem(password):
+    if not 8 <= len(password) <= 63 or any(ord(c) < 32 or ord(c) > 126 for c in password):
+        return "use 8 to 63 plain characters (a network without a password cannot be used)"
+    return None
+
+
+def wifi_problem(name, password):
+    p = wifi_name_problem(name)
+    return ("the Wi-Fi name: " + p + ".") if p else (("the Wi-Fi password: " + wifi_password_problem(password) + ".") if wifi_password_problem(password) else None)
+
+
+def admin_password_problem(value):
+    if len(value) < 8 or len(value) > 64:
+        return "use 8 to 64 characters"
+    if any(ord(c) < 33 or ord(c) > 126 for c in value):
+        return "use plain letters, digits and punctuation, no spaces"
+    if value == "Coinslot@Setup":
+        return "that is the factory password"
+    return None
+
+
+def choose_board(boards, read, emit=say):
+    """The board to use: the only one, or the one the owner picks. SetupError when none."""
+    if not boards:
+        raise SetupError("no coin box board found on USB. Plug the ESP32-C3 into this computer with a USB data cable (some cables only "
+                         "charge), wait a few seconds and run this again.")
+    if len(boards) == 1:
+        emit(f"Board found: {boards[0][1]} on {boards[0][0]}.")
+        return boards[0][0]
+    emit("Several USB boards are connected:")
+    for i, (port, description) in enumerate(boards, 1):
+        emit(f"  {i}. {description} on {port}")
+    while True:
+        pick = read("Which one is the coin box? (number): ").strip()
+        if pick.isdigit() and 1 <= int(pick) <= len(boards):
+            return boards[int(pick) - 1][0]
+
+
+def current_device(finder, port):
+    """The board's serial port now: the one it had, or the only board connected (the port may come back under another name)."""
+    boards = finder()
+    if any(p == port for p, _d in boards):
+        return port
+    return boards[0][0] if len(boards) == 1 else port
+
+
+def box_summary(status, wifi_name, admin_password):
+    ip = status.get("ip", "-")
+    return "\n".join([
+        f"PisoPhone coin box, set up {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}",
+        "",
+        f"Admin page : http://{ip}/",
+        "Sign in    : the password below (the user name is admin)",
+        f"Password   : {admin_password}",
+        f"Box code   : {status.get('mac', '?')}    (give this to the vendor when you buy a slot license; it is also on the admin page, Phone slots)",
+        f"Wi-Fi      : {wifi_name}    (the coin box and all rental phones use this network)",
+        f"Software   : {status.get('fw', '?')}",
+        "",
+        "Keep this file private. Slots: 2 are free, each more needs a license key.",
+        "",
+    ])
+
+
+def provision_new_box(find_port, wifi_name, wifi_password, admin_password, emit=say, opener=BoxLink.open, waiter=wait_online,
+                      sleep=time.sleep, stage=lambda n: None):
+    """After the software is written (or on a board that has it and is new): gives the board the shop's Wi-Fi and the admin password
+    over USB, then waits until it is on the Wi-Fi. `find_port()` says which serial port the board has now. Returns its status
+    (box code, address, ...). stage(1) and stage(2) tell the page where it is."""
+    stage(1)
+    emit("== Giving the board your Wi-Fi and a new admin password")
+    status = None
+    for _ in range(4):
+        sleep(3)   # (the board restarts after it is written; its USB port goes away and comes back, sometimes under another name)
+        try:
+            link = opener(find_port())
+        except SetupError:
+            continue
+        try:
+            status = link.hello(15)
+            if status:
+                if status.get("setup") != "needed":
+                    raise SetupError("the board is not in first-time setup mode after writing the software. Run this again.")
+                provision_box(link, wifi_name, wifi_password, admin_password, emit)
+                break
+        finally:
+            link.close()
+    if not status:
+        raise SetupError("no PisoPhone software answered on the board after writing it. Unplug it, plug it in again and run the check.")
+    stage(2)
+    emit("== Waiting for the board to join your Wi-Fi (up to two minutes)")
+    return waiter(find_port, wifi_name, emit)
+
+
+def run_phone_setup(args, read=input, read_secret=getpass.getpass, emit=say, finder=usb_boards, flasher=flash_box, opener=BoxLink.open,
+              waiter=wait_online, sleep=time.sleep, out_dir=None):
+    """The whole setup of one new coin box in the terminal (the same steps as the setup page). Returns the saved summary's path."""
+    emit(f"== {APP_NAME}")
+    emit("A new coin box needs: the board on USB, then the shop's Wi-Fi name and password. Nothing else.\n")
+    port = args.serial or choose_board(finder(), read, emit)
+
+    # 1. is a working box there already? Writing the software erases it, revenue totals and slot licenses included
+    link = None
+    try:
+        link = opener(port)
+        status = link.hello(4)
+    except SetupError:
+        status = None
+    finally:
+        if link:
+            link.close()
+    if status and status.get("setup") == "done":
+        emit(f"This board already runs a set-up coin box (box code {status.get('mac', '?')}).")
+        emit("Writing the software again ERASES everything on it: its settings, its sales totals and its slot license keys.")
+        emit("To only update a working box, use its admin page (Tools > Install update) instead.")
+        if read("Type ERASE to go on, or press Enter to stop: ").strip() != "ERASE":
+            raise SetupError("stopped; nothing was changed.")
+
+    # 2. what the owner types
+    wifi_name = args.wifi_name or read("Shop Wi-Fi name (2.4 GHz): ").strip()
+    wifi_password = args.wifi_password or read_secret("Shop Wi-Fi password: ")
+    problem = wifi_problem(wifi_name, wifi_password)
+    if problem:
+        raise SetupError(problem)
+    admin_password = args.admin_password or generate(12)
+    problem = admin_password_problem(admin_password)
+    if problem:
+        raise SetupError("the admin password: " + problem + ".")
+
+    # 3. the software, then the Wi-Fi and the admin password, then online
+    flasher(args.branch, port, emit, flash_cache_dir(), image=args.image)
+    status = provision_new_box(lambda: current_device(finder, port), wifi_name, wifi_password, admin_password, emit, opener, waiter, sleep)
+    folder = out_dir or default_out_dir()
+    mac = status.get("mac", "box").replace(":", "")
+    path = write_private_file(os.path.join(folder, f"pisophone-box-{mac}.txt"), box_summary(status, wifi_name, admin_password))
+    ip = status["ip"]
+    emit("")
+    emit("==== Done: the coin box is online ====")
+    emit(f"  Admin page : http://{ip}/        (open it from a phone or computer on the same Wi-Fi)")
+    emit(f"  Sign in    : admin / {admin_password}")
+    emit(f"  Box code   : {status.get('mac', '?')}")
+    emit(f"  Saved to   : {path}  (readable only by you)")
+    qr = terminal_qr(f"http://{ip}/")
+    if qr:
+        emit("\n  Scan to open the admin page:\n" + qr)
+    emit("\nNext: open the admin page, then Phone slots > Set up a phone: it installs the PisoPhone app on a rental phone.")
+    emit(f"The first {FREE_SLOTS} phone slots are free. For more, buy a slot license key (P{SLOT_PRICE_PHP} each) using the box code above.")
+    return path
+
+
+def check_items(finder, opener, probe, pick=None):
+    """What a read-only look at the coin box on USB shows, as the Check-up page's list [{name, state, text, fix}]."""
+    items = []
+
+    def add(name, state, text, fix=""):
+        items.append({"name": name, "state": state, "text": text, "fix": fix})
+    boards = finder()
+    if not boards:
+        add("Board on USB", "bad", "no coin box board found.", "Plug it in with a USB data cable and try again.")
+        return items
+    if len(boards) > 1 and not pick:
+        add("Board on USB", "bad", "several USB boards are connected.", "Unplug all but the coin box.")
+        return items
+    port = pick or boards[0][0]
+    add("Board on USB", "ok", f"{boards[0][1]} on {port}." if len(boards) == 1 else port)
+    try:
+        link = opener(port)
+    except SetupError as e:
+        add("Coin box software", "bad", str(e))
+        return items
+    try:
+        status = link.hello(12)
+    finally:
+        link.close()
+    if not status:
+        add("Coin box software", "bad", "no PisoPhone software answered.", "It may be empty or running other software: run the setup.")
+        return items
+    add("Coin box software", "ok", f"version {status.get('fw', '?')}, box code {status.get('mac', '?')}.")
+    add("Set up", "ok" if status.get("setup") == "done" else "bad", "yes" if status.get("setup") == "done" else "no, it still has the factory settings.",
+        "" if status.get("setup") == "done" else "Run the setup.")
+    online = status.get("wifi") == "up" and status.get("ip", "-") != "-"
+    add("Wi-Fi", "ok" if online else "bad", f"joined, address {status['ip']}." if online else "not joined.",
+        "" if online else "Check the Wi-Fi name and password (2.4 GHz); run the setup again if they are wrong.")
+    if online:
+        reached = probe(f"http://{status['ip']}/")
+        add("Admin page", "ok" if reached else "warn", f"answers at http://{status['ip']}/." if reached else
+            f"does not answer from this computer at http://{status['ip']}/.", "" if reached else "Is this computer on the same Wi-Fi?")
+    return items
+
+
+def run_box_check(args, emit=say, finder=usb_boards, opener=BoxLink.open, read=input, probe=None):
+    """Looks at the coin box on USB and, when it is online, whether its admin page answers. Changes nothing."""
+    port = args.serial or choose_board(finder(), read, emit)
+    items = check_items(finder, opener, probe or http_ok, pick=port)
+    for i in items:
+        mark = {"ok": "OK     ", "bad": "PROBLEM", "warn": "NOTE   "}[i["state"]]
+        emit(f"{mark} {i['name']}: {i['text']}" + (f" {i['fix']}" if i["fix"] and i["state"] != "ok" else ""))
+    return items
+
+
+def http_ok(url, opener=urllib.request.urlopen):
+    try:
+        with opener(urllib.request.Request(url, headers={"User-Agent": USER_AGENT}), timeout=5) as r:
+            return r.status < 500
+    except (urllib.error.URLError, OSError, ValueError):
+        return False
+
+
+
+def write_private_file(path, text):
+    """Writes a text file readable only by its owner (making its folder)."""
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    save_private(path, text)
+    return path
+
+
+def preflight_phone(branch, opener=urllib.request.urlopen, tool=esptool_module):
+    """The checks of the first page in the PisoPhone-only mode: [(what, ok, what to do when not)]. Nothing here changes anything."""
+    online, why = False, ""
+    try:
+        with opener(urllib.request.Request(f"{site_url(branch)}/flash/manifest.json", headers={"User-Agent": USER_AGENT}), timeout=15) as r:
+            online = r.status == 200
+    except urllib.error.HTTPError as e:
+        why = f"the website answered HTTP {e.code}"
+    except urllib.error.URLError as e:
+        why = f"{e.reason}"
+    except (OSError, ValueError) as e:
+        why = f"{type(e).__name__}: {e}"
+    advice = "This computer needs internet now (to download the coin box software)."
+    if why:
+        advice += f" The error was: {why}."
+        if "CERTIFICATE" in why.upper():
+            advice += " A security program or a proxy may be inspecting HTTPS traffic: pause it for the setup, or try another network."
+    return [(f"internet and the {urllib.parse.urlsplit(site_url(branch)).netloc} website", online, advice),
+            ("USB flashing tool (esptool)", tool() is not None, "Install it with the button below, or run  python -m pip install esptool.")]
+
+
+def serial_access_advice(port):
+    user = os.environ.get("USER") or "your-user"
+    return f"run  sudo usermod -aG dialout {user}  and log in again (or start this as root); another program may also be using {port}."
+
+
+
 # ---- the setup page: a small web server on this computer ----------------------------------------------------------------------
 # The setup is a web page served by this program (standard library only), so it needs no screen on the computer that runs it:
 # open the address on any phone or laptop in the same network. A PIN keeps everyone else out.
@@ -3230,6 +3647,9 @@ INSTALL_STAGES = ["Write the coin box software (USB)", "Prepare the router", f"M
                   "Check everything"]
 STAGE_ACTIVITY = ["Writing the coin box software", "Downloading the setup to the router", f"Waiting for the router at {TARGET_IP}",
                   "Installing on the router", "Checking"]
+PHONE_STEPS = [("welcome", "Start"), ("p_settings", "Settings"), ("p_install", "Install"), ("p_phones", "Phones"), ("p_finish", "Finish")]
+PHONE_STAGES = ["Write the coin box software (USB)", "Give it your Wi-Fi and a new admin password", "Wait until it joins your Wi-Fi"]
+PHONE_ACTIVITY = ["Writing the coin box software", "Giving the board your Wi-Fi and the admin password", "Waiting for the board to join your Wi-Fi"]
 PIN_RE = re.compile(r"[A-Za-z0-9]{6,32}")
 DEFAULT_PORT = 8765
 LOG_KEEP = 3000
@@ -3291,6 +3711,29 @@ class Core:
     def checkup(self):
         return run_checkup(self.branch)
 
+    # -- PisoPhone only (no router) ---------------------------------------------------------------------------------------------
+    def preflight_phone(self):
+        return preflight_phone(self.branch)
+
+    def probe_box(self, port):
+        """What the board on `port` says about itself (hello): a status dict, or None when no PisoPhone software answers."""
+        if not serial_access_fix(port, detect_system(), lambda text: None):
+            raise SetupError("this account may not use the USB port: " + serial_access_advice(port))
+        link = BoxLink.open(port)
+        try:
+            return link.hello(4)
+        finally:
+            link.close()
+
+    def provision(self, port, wifi_name, wifi_password, admin_password, emit, stage):
+        return provision_new_box(lambda: current_device(usb_boards, port), wifi_name, wifi_password, admin_password, emit, stage=stage)
+
+    def box_reachable(self, ip):
+        return http_ok(f"http://{ip}/")
+
+    def box_checkup(self):
+        return check_items(usb_boards, BoxLink.open, http_ok)
+
 
 class Session:
     """The state of the setup, for the web page: one unit after the other. Worker threads change it, the page reads it."""
@@ -3302,6 +3745,7 @@ class Session:
         self.install_deps = install_deps or (lambda emit: ensure_dependencies(emit, self.system))
         self.lock = threading.RLock()
         self.unit = 0
+        self.mode = None           # None until the owner chooses at the start: "full" (the router) or "phone" (PisoPhone only)
         self.checks = None
         self.deps = {"running": False, "lines": []}
         self.country = "PH"
@@ -3311,6 +3755,12 @@ class Session:
         self.checkup = {"running": False, "done": False, "items": []}   # the Check-up page, also not tied to one unit
         self.reset_unit()
         self.run_checks()
+
+    def steps(self):
+        return PHONE_STEPS if self.mode == "phone" else STEPS
+
+    def key(self):
+        return self.steps()[self.step][0]
 
     # -- state ---------------------------------------------------------------------------------------------------------------
     def reset_unit(self):
@@ -3332,6 +3782,10 @@ class Session:
             self.prov = {"state": None, "note": "", "url": "", "slot": 1}
             self.prov_auto = False
             self.box_up = None
+            # the PisoPhone-only mode keeps its own state (the full mode's is above)
+            self.p = {"values": {"WIFI_NAME": "", "WIFI_PASSWORD": "", "ADMIN_PASSWORD": generate(12)}, "flashed": False,
+                      "erase_needed": False, "erase_ok": False, "result": None, "final": {}, "box_up": None,
+                      "install": {"running": False, "stage": -1, "activity": "", "error": None, "banner": None, "ok": False, "lines": []}}
             self.coin = {"running": False, "ok": None, "lines": []}
             self.telegram = {"running": False, "ok": False, "error": None, "lines": [], "confirm": None}
             self._tg_answer = None
@@ -3357,7 +3811,7 @@ class Session:
     def run_checks(self):
         def work():
             try:
-                checks = self.core.preflight()
+                checks = self.core.preflight_phone() if self.mode == "phone" else self.core.preflight()
             except Exception as e:
                 checks = [("checks", False, str(e))]
             with self.lock:
@@ -3390,6 +3844,121 @@ class Session:
             self.run_checks()
         self.spawn(work)
 
+    # -- the mode: the full system (router) or PisoPhone only -----------------------------------------------------------------------
+    def do_set_mode(self, a):
+        with self.lock:
+            if a.get("mode") in ("full", "phone") and self.step == 0 and self.mode != a.get("mode"):
+                self.mode = a.get("mode")
+                self.checks = None
+        self.run_checks()
+
+    # -- PisoPhone only: the Wi-Fi settings, the installation over USB, the phones ---------------------------------------------------
+    def psettings_problems(self):
+        v = self.p["values"]
+        return {"WIFI_NAME": wifi_name_problem(v["WIFI_NAME"].strip()), "WIFI_PASSWORD": wifi_password_problem(v["WIFI_PASSWORD"]),
+                "ADMIN_PASSWORD": admin_password_problem(v["ADMIN_PASSWORD"])}
+
+    def do_pset(self, a):
+        with self.lock:
+            for key, value in (a.get("values") or {}).items():
+                if key in self.p["values"] and isinstance(value, str) and len(value) < 200:
+                    self.p["values"][key] = value
+
+    def do_perase_ok(self, a):
+        with self.lock:
+            self.p["erase_ok"] = bool(a.get("value"))
+
+    def plog(self, line):
+        with self.lock:
+            lines = self.p["install"]["lines"]
+            lines.append(line)
+            if len(lines) > LOG_KEEP:
+                del lines[:len(lines) - LOG_KEEP]
+            if line.startswith("== "):
+                self.p["install"]["activity"] = line[3:]
+            advice = board_advice(line)
+            if advice and (self.p["install"]["banner"] is None or self.p["install"]["banner"][0] == "info"):
+                self.p["install"]["banner"] = ("info", "Tip: " + advice)
+
+    def do_pstart_install(self, a):
+        with self.lock:
+            inst = self.p["install"]
+            if inst["running"] or self.key() != "p_install":
+                return
+            inst.update(running=True, stage=0, activity="Starting...", error=None, banner=None, ok=False, lines=[])
+            self.p["result"] = None
+            wifi, wifi_pw = self.p["values"]["WIFI_NAME"].strip(), self.p["values"]["WIFI_PASSWORD"]
+            admin = self.p["values"]["ADMIN_PASSWORD"]
+            write_box = not (self.skip_flash or self.p["flashed"])
+            erase_ok = self.p["erase_ok"]
+
+        def stage(n):
+            with self.lock:
+                inst["stage"] = n
+                inst["activity"] = PHONE_ACTIVITY[n]
+                inst["banner"] = None
+
+        def work():
+            error, result = None, None
+            try:
+                boards = self.core.usb_boards()
+                if not boards:
+                    raise SetupError("no coin box board found on USB. Plug it in with a USB data cable (some cables only charge) and try again, "
+                                     "or tick that it already has the PisoPhone software.")
+                if len(boards) > 1:
+                    raise SetupError("several USB boards are connected (" + ", ".join(p for p, _d in boards) + "): unplug all but the coin box.")
+                port = boards[0][0]
+                existing = self.core.probe_box(port)
+                if existing and existing.get("setup") == "done" and not erase_ok:
+                    with self.lock:
+                        self.p["erase_needed"] = True
+                    raise SetupError(f"this board already runs a set-up coin box (box code {existing.get('mac', '?')}). Writing it again ERASES "
+                                     "everything on it: its settings, its sales totals and its slot license keys. To update a working box use its "
+                                     "admin page (Tools > Install update). If you do want to erase it, tick the box below and try again.")
+                if not write_box and not existing:
+                    raise SetupError("no PisoPhone software answered on the board (it must be 3.11.0 or newer to be set up over USB). Untick "
+                                     "'Do not write it' so the software is written first.")
+                if write_box:
+                    stage(0)
+                    self.core.flash_box(port, self.plog)
+                    with self.lock:
+                        self.p["flashed"] = True
+                try:
+                    status = self.core.provision(port, wifi, wifi_pw, admin, self.plog, stage)
+                except SetupError as e:
+                    raise SetupError(str(e) + " (Setting up over USB needs coin box software 3.11.0 or newer.)" if "answer" in str(e) else str(e))
+                path = write_private_file(os.path.join(self.out_dir, f"pisophone-box-{status.get('mac', 'box').replace(':', '')}.txt"),
+                                          box_summary(status, wifi, admin))
+                result = {"ok": True, "status": status, "wifi": wifi, "admin": admin, "saved": [("Coin box summary (every password)", path)]}
+            except SetupError as e:
+                error = str(e)
+            except Exception as e:
+                error = f"unexpected error: {e}"
+            with self.lock:
+                inst["running"] = False
+                self.p["result"] = result
+                inst["error"] = error
+                if result and result["ok"]:
+                    inst.update(ok=True, stage=len(PHONE_STAGES), activity="Done.", banner=("ok", "The coin box is online."))
+                    s = result["status"]
+                    self.p["final"] = {"ip": s.get("ip", ""), "mac": s.get("mac", ""), "fw": s.get("fw", ""), "wifi": result["wifi"], "admin": result["admin"]}
+                    self.saved = [[label, path] for label, path in result["saved"]]
+                else:
+                    inst["activity"] = "Stopped."
+        self.spawn(work)
+
+    def do_precheck_box(self, a):
+        ip = (self.p["final"] or {}).get("ip")
+
+        def work():
+            try:
+                up = bool(ip) and self.core.box_reachable(ip)
+            except Exception:
+                up = False
+            with self.lock:
+                self.p["box_up"] = up
+        self.spawn(work)
+
     # -- the settings --------------------------------------------------------------------------------------------------------
     def kept(self):
         return self.router["state"] in ("configured", "password")
@@ -3420,7 +3989,15 @@ class Session:
 
     # -- moving between the steps -----------------------------------------------------------------------------------------------
     def can_next(self):
-        key = STEPS[self.step][0]
+        key = self.key()
+        if key == "welcome":
+            return self.mode is not None
+        if key == "p_settings":
+            return not any(self.psettings_problems().values())
+        if key == "p_install":
+            return bool(self.p["result"] and self.p["result"]["ok"])
+        if key == "p_finish":
+            return False
         if key == "settings":
             return not any(self.settings_problems().values())
         if key == "router":
@@ -3435,27 +4012,29 @@ class Session:
 
     def do_next(self, a):
         with self.lock:
-            key = STEPS[self.step][0]
+            key = self.key()
             if key == "router" and self.router["state"] == "password" and not self.router["login_ok"]:
                 return self._check_password()
-            if not self.can_next() or self.install["running"]:
+            if not self.can_next() or self.install["running"] or self.p["install"]["running"]:
                 return
             self.step += 1
             self._enter(self.step)
 
     def do_back(self, a):
         with self.lock:
-            if self.step > 0 and not self.install["running"]:
+            if self.step > 0 and not self.install["running"] and not self.p["install"]["running"]:
                 self.router["searching"] = False
                 self.step -= 1
                 self._enter(self.step)
 
     def _enter(self, n):
-        key = STEPS[n][0]
+        key = self.steps()[n][0]
         if key == "router" and (not self.router["host"] or self.router["error"]):
             self.do_search({})
-        elif key == "install" and self.usb is None:
+        elif key in ("install", "p_install") and self.usb is None:
             self.do_refresh_usb({})
+        elif key == "p_phones":
+            self.do_precheck_box({})
         elif key == "phones":
             self.do_recheck_box({})
             if not self.prov_auto and self.final:
@@ -3512,7 +4091,7 @@ class Session:
                 ok = False
             with self.lock:
                 self.router.update(login_ok=ok, login_failed=not ok)
-                if ok and STEPS[self.step][0] == "router":
+                if ok and self.key() == "router":
                     self.step += 1
                     self._enter(self.step)
         self.spawn(work)
@@ -3537,7 +4116,7 @@ class Session:
 
     def do_start_install(self, a):
         with self.lock:
-            if self.install["running"] or STEPS[self.step][0] != "install":
+            if self.install["running"] or self.key() != "install":
                 return
             self.install.update(running=True, stage=0, activity="Starting...", error=None, banner=None, ok=False, lines=[])
             self.result = None
@@ -3615,7 +4194,7 @@ class Session:
 
         def work():
             try:
-                items = self.core.checkup()
+                items = self.core.box_checkup() if self.mode == "phone" else self.core.checkup()
             except Exception as e:
                 items = [{"name": "Check-up", "state": "bad", "text": f"Could not run: {e}", "fix": ""}]
             with self.lock:
@@ -3725,7 +4304,7 @@ class Session:
 
     def do_next_unit(self, a):
         with self.lock:
-            if self.install["running"] or self.coin["running"] or self.telegram["running"]:
+            if self.install["running"] or self.p["install"]["running"] or self.coin["running"] or self.telegram["running"]:
                 return
             self.reset_unit()
 
@@ -3878,8 +4457,8 @@ class Session:
             inst = dict(self.install, lines=list(self.install["lines"][-600:]), total=len(self.install["lines"]))
             problems = {k: v for k, v in self.settings_problems().items() if v}
             return {
-                "unit": self.unit, "step": self.step, "steps": [label for _key, label in STEPS],
-                "keys": [key for key, _label in STEPS], "can_next": self.can_next(),
+                "unit": self.unit, "step": self.step, "steps": [label for _key, label in self.steps()], "mode": self.mode,
+                "keys": [key for key, _label in self.steps()], "can_next": self.can_next(),
                 "system": {"name": self.system["name"], "kind": self.system["kind"], "arch": self.system["arch"],
                            "root": self.system["root"]},
                 "checks": None if self.checks is None else [list(c) for c in self.checks],
@@ -3892,6 +4471,12 @@ class Session:
                 "review": {"public_wifi": self.answers()["GUEST_SSID"], "site": self.answers()["SITE_NAME"], "country": self.country,
                            "router": f"{self.router['host'] or '?'} -> {TARGET_IP}" if self.router["host"] == FACTORY_IP else TARGET_IP},
                 "phones": dict(self.prov, box_up=self.box_up, box_ip=BOX_IP, kiosk_ssid=(self.final or {}).get("KIOSK_SSID_NAME") or KIOSK_SSID),
+                "p": {"settings": {"values": dict(self.p["values"]), "problems": {k: v for k, v in self.psettings_problems().items() if v}},
+                      "review": {"wifi": self.p["values"]["WIFI_NAME"].strip()}, "flashed": self.p["flashed"], "erase_needed": self.p["erase_needed"],
+                      "erase_ok": self.p["erase_ok"], "stages": PHONE_STAGES, "final": dict(self.p["final"]),
+                      "install": dict(self.p["install"], lines=list(self.p["install"]["lines"][-600:]), total=len(self.p["install"]["lines"])),
+                      "phones": {"box_up": self.p["box_up"], "url": f"http://{self.p['final']['ip']}/" if self.p["final"].get("ip") else "",
+                                 "qr": qr_svg(f"http://{self.p['final']['ip']}/", 6, 4) if self.p["final"].get("ip") else ""}},
                 "coin": dict(self.coin), "telegram": dict(self.telegram), "tools": self.tools_snapshot(),
                 "checkup": dict(self.checkup, items=[dict(i) for i in self.checkup["items"]]),
             }
@@ -4222,6 +4807,7 @@ footer{position:fixed;left:0;right:0;bottom:0;background:var(--bg);border-top:1p
 footer .in{display:flex;gap:10px;justify-content:space-between;width:100%;max-width:760px;margin:0 auto}
 #login{position:fixed;inset:0;background:var(--bg);display:none;align-items:center;justify-content:center;padding:20px;z-index:9}#login .card{width:100%;max-width:360px}
 a{color:var(--acc)}.hide{display:none!important}
+.choice{display:flex;gap:10px;align-items:flex-start;font-weight:400;border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:8px 0;cursor:pointer}.choice input{width:auto;min-height:0;margin-top:5px}
 </style></head><body>
 <div id="login"><div class="card"><div class="hero"><img src="@@MASCOT@@" alt=""><h1>TechNet PisoHub Setup</h1></div><p class="mut">Type the PIN shown on the computer that runs the setup (in its terminal, or <code>pisophone-setup.service</code>'s log).</p>
 <label for="pin">PIN</label><input id="pin" type="password" inputmode="text" autocomplete="off"><div class="err" id="pinErr"></div>
@@ -4272,16 +4858,20 @@ a{color:var(--acc)}.hide{display:none!important}
 </div>
 </main>
 <main>
-<section id="s0">
+<section id="s0" data-key="welcome">
  <div class="hero"><img src="@@MASCOT@@" alt=""><h1>Set up your PisoHub system</h1></div>
- <p class="mut">One unit at a time: the coin box gets its software over USB, the router is set up and paired with it, then the rental phones. About 15 minutes. Nothing on the router is changed until you start the installation.</p>
- <div class="card"><h2>What you need</h2><ul class="steps"><li>The ESP32 coin box board and a USB <b>data</b> cable, plugged into this computer</li><li>An OpenWrt router (for example a 360T6M), factory reset</li><li>The modem in the router's WAN port, and a network cable from this computer to a LAN port</li><li>The rental phones, factory reset</li></ul></div>
+ <div class="card"><h2>What are you setting up?</h2>
+  <label class="choice"><input type="radio" name="mode" value="full"><span><b>The full TechNet PisoHub</b><br><span class="mut small">PisoWiFi customer Wi-Fi and PisoPhone rental phones with an OpenWrt router. The router is set up over a network cable (SSH), and the coin box over USB.</span></span></label>
+  <label class="choice"><input type="radio" name="mode" value="phone"><span><b>PisoPhone only</b><br><span class="mut small">Rental phones with the coin box on your shop's normal Wi-Fi router. Nothing is installed on the router and there is no SSH: only the ESP32 coin box is set up, over USB.</span></span></label></div>
+ <p class="mut" id="introText">One unit at a time: the coin box gets its software over USB, the router is set up and paired with it, then the rental phones. About 15 minutes. Nothing on the router is changed until you start the installation.</p>
+ <div class="card" id="needFull"><h2>What you need</h2><ul class="steps"><li>The ESP32 coin box board and a USB <b>data</b> cable, plugged into this computer</li><li>An OpenWrt router (for example a 360T6M), factory reset</li><li>The modem in the router's WAN port, and a network cable from this computer to a LAN port</li><li>The rental phones, factory reset</li></ul></div>
+ <div class="card hide" id="needPhone"><h2>What you need</h2><ul class="steps"><li>The ESP32 coin box board and a USB <b>data</b> cable, plugged into this computer</li><li>Your shop's Wi-Fi name and password: the <b>2.4 GHz</b> network (the ESP32-C3 cannot use 5 GHz)</li><li>The rental phones, factory reset (they are set up afterwards)</li></ul></div>
  <details class="card"><summary><b>My phone can't open this page</b></summary><p class="mut">The page runs on this computer, so the phone must be on a network that reaches it. A factory-reset router has no Wi-Fi yet, so the phone cannot use that one. Give this computer a second connection (its Wi-Fi or another network cable) to your own network and put the phone on that network; keep the cable to the router plugged in. Or use this computer's own browser at <b>http://127.0.0.1:8765</b>. A firewall may block the port (<b>--port</b> changes it).</p></details>
  <div class="card"><h2>This computer</h2><p class="mut small" id="sysline"></p><div id="checks"><p class="mut">Checking...</p></div>
   <div class="row" style="margin-top:8px"><button id="btnDeps" class="hide">Install what is missing</button><button id="btnRecheck">Check again</button></div>
   <pre id="depsLog" class="hide"></pre></div>
 </section>
-<section id="s1" class="hide">
+<section id="s1" data-key="router" class="hide">
  <h1>Connect the router</h1>
  <p class="mut">The router is set up over a network cable from this computer. It is found by itself as soon as it is connected.</p>
  <div class="card"><ul class="steps"><li>Factory reset the router (hold its reset button about 10 seconds) and wait 2 minutes.</li><li>Plug the modem into the router's <b>WAN</b> (internet) port.</li><li>Plug this computer into one of the router's <b>LAN</b> ports.</li><li>Turn this computer's Wi-Fi off if it is also on the router's network.</li></ul></div>
@@ -4290,7 +4880,7 @@ a{color:var(--acc)}.hide{display:none!important}
  <div id="pwRow" class="card hide"><label for="routerPw">Router password <span class="hint">this router was set up before and has a password (it is in your saved summary)</span></label><input id="routerPw" type="password" autocomplete="off"><div class="err" id="pwErr"></div></div>
  <button id="btnSearch">Search again</button>
 </section>
-<section id="s2" class="hide">
+<section id="s2" data-key="settings" class="hide">
  <h1 id="setTitle">This customer's names</h1>
  <p class="mut" id="setSub"></p>
  <div class="card" id="namesCard">
@@ -4306,7 +4896,7 @@ a{color:var(--acc)}.hide{display:none!important}
   <label for="BOX_NEW_ADMIN_PASSWORD">Coin box admin password <span class="hint">the box's admin page; also the phones' admin PIN</span></label><input id="BOX_NEW_ADMIN_PASSWORD" data-k="1" autocomplete="off"><div class="err" data-e="BOX_NEW_ADMIN_PASSWORD"></div>
   </details></div>
 </section>
-<section id="s3" class="hide">
+<section id="s3" data-key="install" class="hide">
  <h1>Install</h1>
  <p class="mut" id="instSub">One click: the coin box gets its software over USB, then the router is set up and paired with it. About 10 minutes. Keep the USB cable plugged in (it powers the box) and the network cable too.</p>
  <div class="card"><h2>Settings</h2><div id="review"></div></div>
@@ -4317,7 +4907,7 @@ a{color:var(--acc)}.hide{display:none!important}
  <p><button class="primary" id="btnStart">Start the installation</button></p>
  <details open><summary class="mut small">Details</summary><pre id="instLog"></pre></details>
 </section>
-<section id="s4" class="hide">
+<section id="s4" data-key="phones" class="hide">
  <h1>Set up the rental phones</h1>
  <p class="mut">Each phone is set up once with a QR code: Android installs PisoPhone, locks the phone as a kiosk and connects it to its coin box slot. Open the setup page on a phone or laptop that has internet, and scan its code with the rental phone.</p>
  <div class="card"><h2>For each phone</h2><ul class="steps"><li>Factory reset the phone. On its first welcome screen tap the same spot 6 times: a QR reader opens.</li><li>Open the setup page below, tap <b>Show the setup code</b>, and scan it with the rental phone.</li><li>Accept the screens until PisoPhone shows <b>One last step</b>: on most phones switch on <i>Allow display over other apps</i>. An Android Go phone asks for USB: plug it into a computer and use <b>Finish over USB</b> on the setup page (Chrome or Edge).</li><li>Pair the slot on the coin box's page. The kiosk is running.</li></ul>
@@ -4326,7 +4916,7 @@ a{color:var(--acc)}.hide{display:none!important}
  <div class="card"><h2>Coin box</h2><p id="boxUp" class="mut">Checking...</p></div>
  <div class="card"><h2>Your passwords</h2><div id="pwList"></div></div>
 </section>
-<section id="s5" class="hide">
+<section id="s5" data-key="finish" class="hide">
  <div class="hero"><img src="@@MASCOT@@" alt=""><h1>Check that it all works</h1></div>
  <div class="card"><h2>1. Test a coin</h2><p class="mut">Tap the button, then insert one coin when the box beeps (within 30 seconds).</p><button class="primary" id="btnCoin">Test a coin</button><div id="coinBox"></div></div>
  <div class="card"><h2>2. Try it as a customer</h2><p class="mut" id="custText"></p></div>
@@ -4335,6 +4925,51 @@ a{color:var(--acc)}.hide{display:none!important}
  <div class="card"><h2>Saved on this computer</h2><div id="savedList"></div><p class="mut small" id="savedDir"></p></div>
  <div class="card"><h2>Time cards</h2><p class="mut">Print QR time cards for this unit's coin box now, or any day later (the same page, any number of batches).</p><button id="btnToCards">Open Owner tools</button></div>
  <div class="card"><h2>Another unit?</h2><p class="mut">Starts over for the next router and coin box: the shop and Wi-Fi names are asked again and new passwords are made. This unit's summary stays saved.</p><button class="primary" id="btnNext">Set up the next unit</button></div>
+</section>
+<section id="sp1" data-key="p_settings" class="hide">
+ <h1>Your shop's Wi-Fi</h1>
+ <p class="mut">The coin box and all the rental phones use this one network (your normal router: nothing is installed on it). The coin box joins it by itself after the installation.</p>
+ <div class="card">
+  <label for="pm_WIFI_NAME">Wi-Fi name <span class="hint">the 2.4 GHz network of your shop, as it shows in a Wi-Fi list</span></label><input id="pm_WIFI_NAME" data-pk="1" autocomplete="off" autocapitalize="off"><div class="err" data-pe="WIFI_NAME"></div>
+  <label for="pm_WIFI_PASSWORD">Wi-Fi password</label><input id="pm_WIFI_PASSWORD" data-pk="1" type="password" autocomplete="off"><div class="err" data-pe="WIFI_PASSWORD"></div>
+  <label style="font-weight:400;display:flex;gap:10px;align-items:center"><input type="checkbox" id="pm_showPw" style="width:auto;min-height:0"> Show the password</label>
+ </div>
+ <div class="card"><h2>Admin password <span class="hint">made for you</span></h2>
+  <p class="mut small" style="margin-top:0">It signs you in to the coin box's admin page (user <b>admin</b>) and is also the phones' admin PIN. It is saved on this computer and shown at the end. Nothing to type here.</p>
+  <details id="pm_pwOwn"><summary class="mut small">Advanced: type my own admin password</summary>
+  <label for="pm_ADMIN_PASSWORD">Coin box admin password <span class="hint">8 or more letters, digits or punctuation</span></label><input id="pm_ADMIN_PASSWORD" data-pk="1" autocomplete="off"><div class="err" data-pe="ADMIN_PASSWORD"></div>
+  </details></div>
+</section>
+<section id="sp2" data-key="p_install" class="hide">
+ <h1>Install</h1>
+ <p class="mut">One click: the coin box gets its software over USB, then your Wi-Fi and the new admin password, and joins your Wi-Fi. About 5 minutes. Keep the USB cable plugged in (it powers the board). Nothing is done on the router.</p>
+ <div class="card"><h2>Settings</h2><div id="pm_review"></div></div>
+ <div class="card"><div class="row"><h2 class="grow" style="margin:0">Coin box (USB)</h2><button class="small" id="pm_btnUsb">Look again</button></div><p id="pm_usbText" class="mut"></p>
+  <label style="font-weight:400;display:flex;gap:10px;align-items:center;margin-top:8px"><input type="checkbox" id="pm_skipFlash" style="width:auto;min-height:0"> Do not write it: the coin box already has the PisoPhone software (3.11.0 or newer) and was not set up yet</label>
+  <div id="pm_eraseRow" class="note warn hide"><label style="font-weight:400;display:flex;gap:10px;align-items:center;margin:0"><input type="checkbox" id="pm_eraseOk" style="width:auto;min-height:0"> This board already runs a set-up coin box. Erase it: its settings, sales totals and slot license keys are lost.</label></div></div>
+ <div class="card"><h2>Progress</h2><div id="pm_stages"></div><p id="pm_activity" class="mut small"></p></div>
+ <div id="pm_instBanner"></div>
+ <p><button class="primary" id="pm_btnStart">Start the installation</button></p>
+ <details open><summary class="mut small">Details</summary><pre id="pm_instLog"></pre></details>
+</section>
+<section id="sp3" data-key="p_phones" class="hide">
+ <h1>Set up the rental phones</h1>
+ <p class="mut">The coin box's admin page installs PisoPhone on each rental phone. Open it on a phone or computer that is on your shop's Wi-Fi.</p>
+ <div class="card"><h2>The coin box</h2><p id="pm_boxUp" class="mut">Checking...</p>
+  <div class="kv"><span>Admin page</span><span id="pm_boxUrl"></span></div>
+  <div class="kv"><span>Sign in</span><span>user <b>admin</b>, password below</span></div>
+  <div id="pm_boxQr" style="max-width:240px;margin:10px 0;background:#fff;padding:4px;border-radius:8px"></div></div>
+ <div class="card"><h2>For each phone</h2><ul class="steps"><li>Open the admin page and sign in.</li><li>In <b>Phone slots</b>, tap <b>Set up a phone</b>. Factory reset the phone, tap the same spot 6 times on its first welcome screen, and scan the code the page shows.</li><li>Accept the screens until PisoPhone shows <b>One last step</b>: switch on <i>Allow display over other apps</i>.</li><li>Pair the slot on the admin page. The kiosk is running.</li></ul>
+  <p class="mut small">Two phone slots are free. Each more slot needs a license key (P500): you get it from your vendor with the <b>box code</b> below.</p></div>
+ <div class="card"><h2>Your details</h2><div id="pm_pwList"></div></div>
+</section>
+<section id="sp4" data-key="p_finish" class="hide">
+ <div class="hero"><img src="@@MASCOT@@" alt=""><h1>Check that it all works</h1></div>
+ <div class="card"><h2>1. Test a coin</h2><p class="mut">On the admin page, arm a slot, insert one coin and watch the counter. The coin box records every coin before anything else.</p></div>
+ <div class="card"><h2>2. Try a phone</h2><p class="mut">Pair a phone with slot 1, insert a coin: the phone unlocks for the minutes the coin buys and locks again when the time is over.</p></div>
+ <div class="card"><h2>Saved on this computer</h2><div id="pm_savedList"></div><p class="mut small">Keep the summary private: it holds the admin password.</p></div>
+ <div class="card"><h2>Time cards</h2><p class="mut">Print QR time cards for this coin box now, or any day later (the same page, any number of batches).</p><button id="pm_btnToCards">Open Owner tools</button></div>
+ <div class="card"><h2>Another coin box?</h2><p class="mut">Starts over for the next board: the Wi-Fi name and password are asked again and a new admin password is made.</p><button class="primary" id="pm_btnNext">Set up the next coin box</button></div>
 </section>
 </main>
 <footer><div class="in"><button id="btnBack">Back</button><button class="primary" id="btnNextStep">Next</button></div></footer>
@@ -4356,16 +4991,18 @@ function paint(){
  if(!S)return;
  const tv=view==='tools';$('#toolsMain').classList.toggle('hide',!tv);$$('main:not(#toolsMain)').forEach(m=>m.classList.toggle('hide',tv));$('#nav').classList.toggle('hide',tv);document.querySelector('footer').classList.toggle('hide',tv);$('#btnTools').textContent=tv?'Back to setup':'Owner tools';
  if(tv){paintTools();return}
- $('#unit').textContent='Unit '+S.unit;$('#sysname').textContent=S.system.name;
- if(S.unit!==shownUnit){shownUnit=S.unit;shown=-1;fillSettingsOnce()}
+ $('#unit').textContent='Unit '+S.unit+(S.mode==='phone'?' (PisoPhone only)':S.mode==='full'?' (full system)':'');$('#sysname').textContent=S.system.name;
+ if(S.unit!==shownUnit){shownUnit=S.unit;shown=-1;fillSettingsOnce();pFillOnce()}
  const nav=$('#nav');if(nav.children.length!==S.steps.length){clear(nav);S.steps.forEach(n=>nav.append(h('div',{},n)))}
  [...nav.children].forEach((d,i)=>d.className=i===S.step?'on':i<S.step?'done':'');
- if(shown!==S.step){shown=S.step;$$('main>section').forEach((s,i)=>s.classList.toggle('hide',i!==S.step));window.scrollTo(0,0)}
+ if(shown!==S.step){shown=S.step;$$('main>section').forEach(s=>s.classList.toggle('hide',s.dataset.key!==S.keys[S.step]));window.scrollTo(0,0)}
  $('#btnBack').classList.toggle('hide',S.step===0||S.install.running);
- const last=S.step===S.steps.length-1;$('#btnNextStep').classList.toggle('hide',last);$('#btnNextStep').disabled=!S.can_next&&!(S.step===1&&S.router.state==='password'&&S.router.has_password);
- [paint0,paint1,paint2,paint3,paint4,paint5][S.step]();
+ const last=S.step===S.steps.length-1;$('#btnNextStep').classList.toggle('hide',last);$('#btnNextStep').disabled=!S.can_next&&!(S.keys[S.step]==='router'&&S.router.state==='password'&&S.router.has_password);
+ ({welcome:paint0,router:paint1,settings:paint2,install:paint3,phones:paint4,finish:paint5,p_settings:ppaint1,p_install:ppaint2,p_phones:ppaint3,p_finish:ppaint4})[S.keys[S.step]]();
 }
 function paint0(){
+ $$('input[name=mode]').forEach(r=>r.checked=r.value===S.mode);$('#needFull').classList.toggle('hide',S.mode==='phone');$('#needPhone').classList.toggle('hide',S.mode!=='phone');
+ $('#introText').textContent=S.mode==='phone'?'The coin box gets its software over USB, then your shop\'s Wi-Fi and a new admin password. About 5 minutes. After that you set up the rental phones from the coin box\'s own admin page. Nothing is installed on your router.':'One unit at a time: the coin box gets its software over USB, the router is set up and paired with it, then the rental phones. About 15 minutes. Nothing on the router is changed until you start the installation.';
  $('#sysline').textContent=S.system.name+' ('+S.system.arch+')'+(S.system.root?', running as administrator':'');
  const c=$('#checks');clear(c);let miss=false;
  if(!S.checks)c.append(h('p',{class:'mut'},'Checking...'));
@@ -4487,6 +5124,48 @@ $('#btnKeyCreate').onclick=()=>{if(confirm('Make a NEW '+$('#kKind').selectedOpt
 $('#btnCoin').onclick=()=>act('coin_test');$('#btnTg').onclick=()=>act('telegram',{token:$('#tgToken').value});$('#btnNext').onclick=()=>act('next_unit');
 $('#btnBack').onclick=()=>act('back');$('#btnNextStep').onclick=()=>act('next');
 $('#btnDeps').onclick=()=>act('install_deps');$('#btnRecheck').onclick=()=>act('recheck');$('#btnSearch').onclick=()=>act('search');
+$$('input[name=mode]').forEach(r=>r.onchange=()=>act('set_mode',{mode:r.value}));
+function ppaint1(){
+ const st=S.p.settings;
+ $$('.err[data-pe]').forEach(e=>{const k=e.dataset.pe,p=st.problems[k];const input=document.getElementById('pm_'+k);const typed=input&&input.value;e.textContent=p&&typed?p[0].toUpperCase()+p.slice(1):'';if(input)input.classList.toggle('bad',!!(p&&typed));if(p&&typed&&input&&input.closest('#pm_pwOwn'))$('#pm_pwOwn').open=true});
+}
+function pFillOnce(){const v=S.p.settings.values;$$('input[data-pk]').forEach(i=>i.value=v[i.id.slice(3)]||'')}
+$$('input[data-pk]').forEach(i=>i.addEventListener('input',()=>{clearTimeout(pwTimer);const values={};$$('input[data-pk]').forEach(x=>values[x.id.slice(3)]=x.value);pwTimer=setTimeout(()=>act('pset',{values}),250)}));
+$('#pm_showPw').onchange=e=>{$('#pm_WIFI_PASSWORD').type=e.target.checked?'text':'password'};
+function ppaint2(){
+ const rv=S.p.review,i=S.p.install,u=S.usb,box=$('#pm_review');clear(box);
+ [['Shop Wi-Fi',rv.wifi],['Wi-Fi password','as typed'],['Admin password','made for you (shown at the end)']].forEach(([k,v])=>box.append(h('div',{class:'kv'},h('span',{},k),h('span',{},v))));
+ let t,cls='mut';
+ if(S.p.flashed){t='The coin box software is written.';cls='ok'}else if(u.skip){t='Not written: the board is used as it is.'}else if(u.boards===null)t='Looking for the board...';
+ else if(!u.boards.length){t='No board found. Plug the coin box board into this computer with a USB data cable (a charge-only cable does not work), then tap Look again.';cls='warn'}
+ else if(u.boards.length>1){t='Several USB boards are connected ('+u.boards.map(b=>b[0]).join(', ')+'). Unplug all but the coin box.';cls='warn'}
+ else{t='Found: '+u.boards[0][1]+' on '+u.boards[0][0]+'. It is erased and gets the PisoPhone software.';cls='ok'}
+ const ut=$('#pm_usbText');ut.textContent=t;ut.style.color=cls==='mut'?'':'var(--'+cls+')';
+ $('#pm_skipFlash').checked=u.skip;$('#pm_skipFlash').disabled=i.running;$('#pm_btnUsb').disabled=i.running;
+ $('#pm_eraseRow').classList.toggle('hide',!S.p.erase_needed);$('#pm_eraseOk').checked=S.p.erase_ok;$('#pm_eraseOk').disabled=i.running;
+ const st=$('#pm_stages');clear(st);S.p.stages.forEach((n,k)=>{const done=i.ok||k<i.stage,on=k===i.stage&&i.running;st.append(h('div',{style:'margin:4px 0'},h('span',{class:'dot '+(done?'ok':on?'on':'')}),h('span',{style:on?'font-weight:600':''},n)))});
+ $('#pm_activity').textContent=i.activity;
+ const bn=$('#pm_instBanner');clear(bn);
+ if(i.ok)bn.append(note('ok','The coin box is online. Your details are saved. Tap Next for the phones.'));
+ else if(i.error)bn.append(note('bad',i.error[0].toUpperCase()+i.error.slice(1)));
+ else if(i.banner)bn.append(note(i.banner[0],i.banner[1]));
+ const sb=$('#pm_btnStart');sb.classList.toggle('hide',i.ok);sb.disabled=i.running;sb.textContent=i.running?'Installing...':(i.error||i.total)?'Try again':'Start the installation';
+ setPre($('#pm_instLog'),i.lines);
+}
+$('#pm_btnUsb').onclick=()=>act('refresh_usb');$('#pm_skipFlash').onchange=e=>act('skip_flash',{value:e.target.checked});$('#pm_eraseOk').onchange=e=>act('perase_ok',{value:e.target.checked});$('#pm_btnStart').onclick=()=>act('pstart_install');
+function ppaint3(){
+ const p=S.p.phones,f=S.p.final;
+ const bu=$('#pm_boxUp');bu.textContent=p.box_up===null?'Checking...':p.box_up?'Online at '+f.ip+': this computer reaches its admin page.':'Joined your Wi-Fi at '+f.ip+', but this computer does not reach it (is this computer on the same Wi-Fi?). Open the address on a phone that is.';bu.style.color=p.box_up===null?'':p.box_up?'var(--ok)':'var(--warn)';
+ const bl=$('#pm_boxUrl');clear(bl);if(p.url)bl.append(h('a',{href:p.url,target:'_blank',rel:'noopener'},p.url));
+ const q=$('#pm_boxQr');if(q.dataset.sig!==p.url){q.dataset.sig=p.url;q.innerHTML=p.qr||''}
+ const list=$('#pm_pwList');clear(list);
+ [[f.admin,'Coin box admin password (user admin)'],[f.mac,'Box code (give it to your vendor to buy slot licenses)'],[f.wifi,'Wi-Fi the coin box and the phones use'],[f.fw,'Coin box software version']].forEach(([v,l])=>{list.append(h('div',{style:'margin:8px 0'},h('div',{class:'mut small'},l),h('div',{class:'row'},h('span',{class:'pw grow'},v||'-'),v?h('button',{class:'small',onclick:ev=>copyText(v,ev.target)},'Copy'):null)))});
+}
+function ppaint4(){
+ const sl=$('#pm_savedList');clear(sl);S.saved.forEach(([l,n],i)=>sl.append(h('p',{},h('a',{href:'/api/saved?i='+i,target:'_blank'},l.split(' (')[0]),' ',h('span',{class:'mut small'},n))));
+ if(!S.saved.length)sl.append(h('p',{class:'mut'},'Nothing saved yet.'));
+}
+$('#pm_btnToCards').onclick=()=>{view='tools';paint()};$('#pm_btnNext').onclick=()=>act('next_unit');
 poll();
 </script></body></html>
 """
@@ -4524,6 +5203,17 @@ def main(argv=None):
                                               "the setup page uses Documents/PisoPhone)")
     p.add_argument("--no-browser", action="store_true", help="do not open the setup sheet when done (terminal)")
     p.add_argument("--no-flash", action="store_true", help="do not write the coin box software over USB (terminal; it has it already)")
+    p.add_argument("--phone-only", action="store_true", help="terminal: set up a PisoPhone-only coin box (the shop's normal router, no router software, no SSH)")
+    p.add_argument("--check-box", action="store_true", help="look at the coin box on USB (set up? online? its address) and stop")
+    p.add_argument("--serial", help="PisoPhone-only terminal mode: the board's serial port, e.g. COM3 or /dev/ttyACM0 (default: found by itself)")
+    p.add_argument("--image", help="PisoPhone-only terminal mode: write this merged image instead of the published one (a build of your own)")
+    p.add_argument("--wifi-name", help="PisoPhone-only terminal mode: the shop's Wi-Fi name (default: asked)")
+    p.add_argument("--wifi-password", help="PisoPhone-only terminal mode: the shop's Wi-Fi password (default: asked)")
+    p.add_argument("--admin-password", help="PisoPhone-only terminal mode: the coin box admin password (default: a new strong one is made)")
+    p.add_argument("--box", help="make slot license keys for this box code (AA:BB:CC:DD:EE:FF) and stop")
+    p.add_argument("--count", default="1", help="with --box: how many keys")
+    p.add_argument("--note", default="", help="with --box: a note for your records")
+    p.add_argument("--reissue", action="store_true", help="with --box: print the keys already made for the box again")
     args = p.parse_args(argv)
     if not re.fullmatch(r"[A-Za-z0-9._/-]+", args.branch):
         p.error(f"not a branch name: {args.branch}")
@@ -4537,9 +5227,23 @@ def main(argv=None):
     try:
         if args.install_service:
             return install_service(args)
+        if args.box:
+            if not ensure_cryptography(say, detect_system()):
+                raise SetupError("the 'cryptography' package could not be installed.")
+            for text in (reissue_slot_licenses(args.box) if args.reissue else make_slot_licenses(args.box, args.count, args.note)["keys"]):
+                say(text)
+            return 0
+        if args.check_box or args.phone_only:
+            if not args.no_install:
+                ensure_dependencies(say, detect_system())
+            if args.check_box:
+                run_box_check(args)
+            else:
+                run_phone_setup(args)
+            return 0
         if not (args.cli or args.update or args.yes or args.router):
             return run_web(args)
-    except SetupError as e:
+    except (SetupError, ToolError) as e:
         say(f"ERROR: {e}")
         return 1
     use_private_libs()

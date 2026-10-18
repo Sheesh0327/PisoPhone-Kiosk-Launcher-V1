@@ -264,11 +264,12 @@ class FakeCore:
         return "setup", f"https://pisophone.pages.dev/#mac=AA&secret=S&slot={slot}", ""
 
 
-def start(core=None, pin="123456", **kw):
+def start(core=None, pin="123456", mode="full", **kw):   # (mode: the choice made at the start; None leaves it to the test)
     core = core or FakeCore(**kw)
     out = os.path.join(tempfile.mkdtemp(dir=tmp), "out")
     system = {"kind": "linux", "family": "debian", "name": "Armbian 24.5 bookworm", "arch": "aarch64", "root": True, "sudo": False}
     session = ps.Session(core, "main", out, system, install_deps=lambda emit: emit("installing"))
+    session.mode = mode
     server = ps.make_server(session, pin, "127.0.0.1", 0)
     threading.Thread(target=server.serve_forever, daemon=True).start()
     return core, session, server
@@ -316,7 +317,7 @@ class Client:
         return self.state()
 
 
-core, session, server = start()
+core, session, server = start(mode=None)
 c = Client(server)
 status, body, r = c.call("GET", "/", login=False)
 check(status == 200 and b"PisoHub Setup" in body and "frame" not in str(r.getheader("Content-Security-Policy")).replace("frame-", ""), "the page is served without a login")
@@ -344,7 +345,12 @@ check(status == 403 and "wait a minute" in body["error"], "five wrong PINs lock 
 s = c.wait(lambda s: s["checks"] is not None, "the checks of this computer")
 check(s["step"] == 0 and s["keys"][0] == "welcome" and [n for n in s["steps"]] == ["Start", "Router", "Settings", "Install", "Phones", "Finish"],
       "starts at the first step; there is no coin box page")
-check(s["system"]["name"] == "Armbian 24.5 bookworm" and len(s["checks"]) == 3 and s["can_next"], "it knows the system and has the checks")
+check(s["mode"] is None and not s["can_next"], "the first step waits for the choice: full system or PisoPhone only")
+s = c.do("set_mode", mode="nonsense")
+check(s["mode"] is None, "an unknown mode is ignored")
+s = c.do("set_mode", mode="full")
+s = c.wait(lambda s: s["checks"] is not None, "the checks of this computer, again")
+check(s["mode"] == "full" and s["system"]["name"] == "Armbian 24.5 bookworm" and len(s["checks"]) == 3 and s["can_next"], "it knows the system and has the checks")
 s = c.do("install_deps")
 s = c.wait(lambda s: not s["deps"]["running"] and s["checks"] is not None and s["deps"]["lines"], "the dependencies are installed")
 check(s["deps"]["lines"] == ["installing"], "the installation of what is missing is shown")
@@ -543,7 +549,7 @@ except ImportError:
 if sync_playwright:
     import glob
     chrome = os.environ.get("CHROME") or next(iter(glob.glob("/opt/pw-browsers/chromium-*/chrome-linux/chrome")), None)
-    core, session, server = start()
+    core, session, server = start(mode=None)
     base = f"http://127.0.0.1:{server.server_address[1]}"
 
     def until(cond, what, timeout=15.0):
@@ -584,6 +590,9 @@ if sync_playwright:
         check("Armbian" in page.inner_text("#sysline") and page.is_visible("#s0"), "the first step shows what this computer is")
         check(not page.is_visible("#btnDeps"), "nothing missing: no install button")
         shot(page, "1-start")
+        check(page.is_disabled("#btnNextStep"), "Next waits for the choice of system")
+        page.check("input[name=mode][value=full]")
+        until(lambda: not page.is_disabled("#btnNextStep"), "Next opens once the full system is chosen")
         page.click("#btnNextStep")
         page.wait_for_selector("#s1", state="visible")
         until(lambda: "192.168.1.1" in page.inner_text("#routerBox"), "the router is found")
