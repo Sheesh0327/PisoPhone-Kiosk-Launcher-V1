@@ -1,5 +1,8 @@
 #include "Diagnostics.h"
+#include "Product.h"
+#if PISO_HAS_PHONES
 #include "AccountStorage.h"
+#endif
 #include "DiagRing.h"
 #include "FirmwareVersion.h"
 #include "Config.h"
@@ -150,6 +153,7 @@ String diagBuildJson() {
     heap["min_free"] = ESP.getMinFreeHeap();
     heap["largest_block"] = ESP.getMaxAllocHeap();
 
+#if PISO_HAS_PHONES
     AccountStorageHealth accts = accountsHealth();
     JsonObject acct = doc.createNestedObject("accounts");
     acct["ready"] = accts.ready;
@@ -159,6 +163,7 @@ String diagBuildJson() {
     acct["save_failures"] = accts.saveFailures;
     acct["failing_now"] = accts.consecutiveFailures > 0;
     acct["saves_ok"] = accts.savesOk;
+#endif
 
     JsonObject wifi = doc.createNestedObject("wifi");
     bool connected = WiFi.status() == WL_CONNECTED;
@@ -184,6 +189,7 @@ String diagBuildJson() {
     coin["pending_payments"] = getPendingPaymentCount();
     coin["unpersisted_payments"] = hasUnpersistedPayments();
 
+#if PISO_HAS_PHONES
     JsonArray slots = doc.createNestedArray("slots");
     for (int i = 0; i < MAX_SUPPORTED_SLOTS; i++) {
         JsonObject s = slots.createNestedObject();
@@ -192,6 +198,7 @@ String diagBuildJson() {
         s["paired"] = phoneSlots[i].deviceId.length() > 0;
         s["ip"] = phoneSlots[i].ip;
     }
+#endif
 
     JsonObject orphansObj = doc.createNestedObject("orphaned_payments");
     orphansObj["unhandled"] = orphansUnhandledCount();

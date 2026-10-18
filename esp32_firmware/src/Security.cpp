@@ -5,8 +5,10 @@
 #include "ProtocolCrypto.h"
 #include <esp_random.h>
 #include "mbedtls/md.h"
+#if PISO_HAS_PHONES
 #include "mbedtls/sha1.h"
 #include "mbedtls/base64.h"
+#endif
 #include "mbedtls/aes.h"
 
 String calculateHMAC(String challenge, String secret) {
@@ -19,6 +21,7 @@ String aes_encrypt(String plaintext, String secret) {
     return String(protocol::encryptHex(plaintext.c_str(), secret.c_str(), iv).c_str());
 }
 
+#if PISO_HAS_PHONES
 String computeSecWebSocketAccept(String key) {
     key.trim();
     String concat = key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
@@ -31,6 +34,7 @@ String computeSecWebSocketAccept(String key) {
     base64Result[outLen] = 0;
     return String((char*)base64Result);
 }
+#endif
 
 bool signatureMatches(const String& got, const String& expected) {
     if (got.length() != expected.length() || expected.length() == 0) return false;

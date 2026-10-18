@@ -39,13 +39,17 @@ static void applySetup(const String& rest) {
     }
     wifiSsid = req.wifiName.c_str();
     wifiPass = req.wifiPassword.c_str();
+#if PISO_HAS_PHONES
     kioskWifiSsid = wifiSsid;
     kioskWifiPass = wifiPass;
+#endif
     webPassword = req.adminPassword.c_str();
     prefs.begin(NVS_NAMESPACE, false);
     bool saved = prefs.putString(NVS_KEY_WIFI_SSID, wifiSsid) > 0 && prefs.putString(NVS_KEY_WIFI_PASS, wifiPass) > 0 &&
+#if PISO_HAS_PHONES
                  prefs.putString(NVS_KEY_KIOSK_WIFI_SSID, kioskWifiSsid) > 0 &&
                  prefs.putString(NVS_KEY_KIOSK_WIFI_PASS, kioskWifiPass) > 0 &&
+#endif
                  prefs.putString(NVS_KEY_ADMIN_PW, webPassword) > 0;
     if (saved) {
         adminPwChanged = true;
@@ -84,6 +88,7 @@ void processSerialCli() {
     if (line.equalsIgnoreCase("help")) Serial.println("\nNo serial commands in this build.");
     return;
 #else
+#if PISO_HAS_PHONES
     if (line.startsWith("add ") || line.startsWith("add")) {
         int firstSpace = line.indexOf(' ');
         if (firstSpace != -1) {
@@ -93,5 +98,8 @@ void processSerialCli() {
     } else if (line.equalsIgnoreCase("help")) {
         Serial.println("\nCommands: add <minutes> | help");
     }
+#else
+    if (line.equalsIgnoreCase("help")) Serial.println("\nCommands: help");
+#endif
 #endif
 }

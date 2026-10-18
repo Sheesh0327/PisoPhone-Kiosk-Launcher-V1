@@ -2,19 +2,24 @@
 // pushes it over WebSocket and HTTP, and re-sends queued payments on request.
 
 #include "DeviceNetwork.h"
+#if PISO_HAS_PHONES
 #include "PhoneProfileStore.h"
 #include "PaymentQueueManager.h"
 #include "CoinSlotManager.h"
 #include "DeviceManager.h"
 #include "HardwareManager.h"
 #include "Security.h"
+#endif
 #include "Money.h"
+#if PISO_HAS_PHONES
 #include "WebServerModule.h"
 #include "WebServerApi.h"
 #include "WebServerCoinslot.h"
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
+#endif
 
+#if PISO_HAS_PHONES
 void sendAddTime(int minutes, String targetIp, String txId) {
     if (androidIps.length() == 0 && targetIp == "ALL") return;
     bool sent = false;
@@ -48,6 +53,7 @@ void sendAddTime(int minutes, String targetIp, String txId) {
         sendAuthenticated(targetIp, targetPort, "/add_time", "/challenge", params, 1000);
     }
 }
+#endif
 
 void recordCoinRevenue(int pulses) {
     if (pulses <= 0) return;
@@ -61,6 +67,7 @@ void recordCoinRevenue(int pulses) {
     lastCoinChangeTime = millis();
 }
 
+#if PISO_HAS_PHONES
 void triggerUniversalCoinEvent(int pulses, const String& targetDeviceId) {
     if (pulses <= 0) return;
     Serial.printf("[⚡ UNIVERSAL COIN] %d total pulses accumulated on GPIO %d (₱%d PHP)\n", pulses, universalCoinPin,
@@ -137,11 +144,13 @@ int getDeviceTimeRemainingSeconds(String targetIp, String* errOut) {
     }
     return rem;
 }
+#endif
 
 void sendCloudSnapshot() {
     // Retiring outbound telemetry to Cloudflare Worker. Strictly Pages-only now.
 }
 
+#if PISO_HAS_PHONES
 bool retryPhonePayment(const String& targetDeviceId, int pulses, int creditSeconds, const String& txId) {
     if (targetDeviceId.length() == 0) return false;
 
@@ -177,6 +186,8 @@ bool sendAuthenticated(String ip, int port, String actionPath, String challengeP
     }
     return true;
 }
+
+#endif
 
 String urlEncode(const String& str) {
     String encoded = "";

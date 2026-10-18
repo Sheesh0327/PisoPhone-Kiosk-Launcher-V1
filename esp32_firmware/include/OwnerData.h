@@ -10,20 +10,26 @@
 
 #include <stdint.h>
 #include <string>
+#include "Product.h"
 
 namespace ownerdata {
 
 static const char* const K_TOTAL_COINS = "total_coins";
 static const char* const K_TOTAL_CENTAVOS = "earn_c";
 static const char* const K_VENDOR_SPLIT = "vendor_split";
+#if PISO_HAS_PHONES
 static const char* const K_LICENSES = "lic_ids";
 static const char* const K_LIC_FLOOR = "lic_floor";
+#endif
 
 struct Snapshot {
-    bool hasCoins = false, hasCentavos = false, hasSplit = false, hasLicenses = false, hasFloor = false;
+    bool hasCoins = false, hasCentavos = false, hasSplit = false;
     int32_t split = 0;
+#if PISO_HAS_PHONES
+    bool hasLicenses = false, hasFloor = false;
     std::string licenses;
     int32_t floor = 0;
+#endif
     uint32_t coins = 0, centavos = 0;
 };
 
@@ -32,8 +38,10 @@ template <class Store> Snapshot capture(Store& s) {
     if ((o.hasCoins = s.isKey(K_TOTAL_COINS))) o.coins = s.getUInt(K_TOTAL_COINS, 0);
     if ((o.hasCentavos = s.isKey(K_TOTAL_CENTAVOS))) o.centavos = s.getUInt(K_TOTAL_CENTAVOS, 0);
     if ((o.hasSplit = s.isKey(K_VENDOR_SPLIT))) o.split = s.getInt(K_VENDOR_SPLIT, 0);
+#if PISO_HAS_PHONES
     if ((o.hasLicenses = s.isKey(K_LICENSES))) o.licenses = s.getString(K_LICENSES, "");
     if ((o.hasFloor = s.isKey(K_LIC_FLOOR))) o.floor = s.getInt(K_LIC_FLOOR, 0);
+#endif
     return o;
 }
 
@@ -41,8 +49,10 @@ template <class Store> void restore(Store& s, const Snapshot& o) {
     if (o.hasCoins) s.putUInt(K_TOTAL_COINS, o.coins);
     if (o.hasCentavos) s.putUInt(K_TOTAL_CENTAVOS, o.centavos);
     if (o.hasSplit) s.putInt(K_VENDOR_SPLIT, o.split);
+#if PISO_HAS_PHONES
     if (o.hasLicenses) s.putString(K_LICENSES, o.licenses);
     if (o.hasFloor) s.putInt(K_LIC_FLOOR, o.floor);
+#endif
 }
 
 } // namespace ownerdata
