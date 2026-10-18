@@ -1,10 +1,10 @@
 {
-  "versionCode": 482,
-  "versionName": "4.8.2",
+  "versionCode": 484,
+  "versionName": "4.8.4",
   "channel": "stable",
   
   "signatureChecksum": "Un0usqLMwnmeaowrY2g21EgRVWe4bTRDLUi2RH12WbE",
-  "sha256": "ba25d3ab73281d12fbb022d9921e7647db1e57fe9efdc8590072d7f2cfe1b0bf",
+  "sha256": "c49028521690123bde8fae3447ed03150a9cde56a4831fc2e0c6f5302a16955b",
   "size": 3540990,
   "releaseDate": "2026-10-18"
 }
