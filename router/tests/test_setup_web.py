@@ -348,6 +348,9 @@ check(s["step"] == 0 and s["keys"][0] == "welcome" and [n for n in s["steps"]] =
 check(s["mode"] is None and not s["can_next"], "the first step waits for the choice: full system or PisoPhone only")
 s = c.do("set_mode", mode="nonsense")
 check(s["mode"] is None, "an unknown mode is ignored")
+s = c.do("set_mode", mode="wifi")
+check(s["mode"] == "wifi" and s["steps"] == ["Start", "Router", "Settings", "Install", "Finish"] and s["keys"][-1] == "finish",
+      "PisoWiFi only: the router and coin box steps, without the Phones step")
 s = c.do("set_mode", mode="full")
 s = c.wait(lambda s: s["checks"] is not None, "the checks of this computer, again")
 check(s["mode"] == "full" and s["system"]["name"] == "Armbian 24.5 bookworm" and len(s["checks"]) == 3 and s["can_next"], "it knows the system and has the checks")

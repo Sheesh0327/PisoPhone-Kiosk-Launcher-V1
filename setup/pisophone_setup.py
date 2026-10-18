@@ -3647,6 +3647,7 @@ INSTALL_STAGES = ["Write the coin box software (USB)", "Prepare the router", f"M
                   "Check everything"]
 STAGE_ACTIVITY = ["Writing the coin box software", "Downloading the setup to the router", f"Waiting for the router at {TARGET_IP}",
                   "Installing on the router", "Checking"]
+WIFI_STEPS = [step for step in STEPS if step[0] != "phones"]   # PisoWiFi only: the same router and coin box, no rental phones
 PHONE_STEPS = [("welcome", "Start"), ("p_settings", "Settings"), ("p_install", "Install"), ("p_phones", "Phones"), ("p_finish", "Finish")]
 PHONE_STAGES = ["Write the coin box software (USB)", "Give it your Wi-Fi and a new admin password", "Wait until it joins your Wi-Fi"]
 PHONE_ACTIVITY = ["Writing the coin box software", "Giving the board your Wi-Fi and the admin password", "Waiting for the board to join your Wi-Fi"]
@@ -3745,7 +3746,7 @@ class Session:
         self.install_deps = install_deps or (lambda emit: ensure_dependencies(emit, self.system))
         self.lock = threading.RLock()
         self.unit = 0
-        self.mode = None           # None until the owner chooses at the start: "full" (the router) or "phone" (PisoPhone only)
+        self.mode = None           # None until the owner chooses at the start: "full" (the router, customer Wi-Fi and phones), "wifi" (PisoWiFi only) or "phone" (PisoPhone only)
         self.checks = None
         self.deps = {"running": False, "lines": []}
         self.country = "PH"
@@ -3757,7 +3758,7 @@ class Session:
         self.run_checks()
 
     def steps(self):
-        return PHONE_STEPS if self.mode == "phone" else STEPS
+        return PHONE_STEPS if self.mode == "phone" else WIFI_STEPS if self.mode == "wifi" else STEPS
 
     def key(self):
         return self.steps()[self.step][0]
@@ -3847,7 +3848,7 @@ class Session:
     # -- the mode: the full system (router) or PisoPhone only -----------------------------------------------------------------------
     def do_set_mode(self, a):
         with self.lock:
-            if a.get("mode") in ("full", "phone") and self.step == 0 and self.mode != a.get("mode"):
+            if a.get("mode") in ("full", "wifi", "phone") and self.step == 0 and self.mode != a.get("mode"):
                 self.mode = a.get("mode")
                 self.checks = None
         self.run_checks()
@@ -4862,9 +4863,10 @@ a{color:var(--acc)}.hide{display:none!important}
  <div class="hero"><img src="@@MASCOT@@" alt=""><h1>Set up your PisoHub system</h1></div>
  <div class="card"><h2>What are you setting up?</h2>
   <label class="choice"><input type="radio" name="mode" value="full"><span><b>The full TechNet PisoHub</b><br><span class="mut small">PisoWiFi customer Wi-Fi and PisoPhone rental phones with an OpenWrt router. The router is set up over a network cable (SSH), and the coin box over USB.</span></span></label>
+  <label class="choice"><input type="radio" name="mode" value="wifi"><span><b>PisoWiFi only</b><br><span class="mut small">Customer Wi-Fi sold by the coin, with the OpenWrt router and the coin box. No rental phones: the phone steps are left out.</span></span></label>
   <label class="choice"><input type="radio" name="mode" value="phone"><span><b>PisoPhone only</b><br><span class="mut small">Rental phones with the coin box on your shop's normal Wi-Fi router. Nothing is installed on the router and there is no SSH: only the ESP32 coin box is set up, over USB.</span></span></label></div>
  <p class="mut" id="introText">One unit at a time: the coin box gets its software over USB, the router is set up and paired with it, then the rental phones. About 15 minutes. Nothing on the router is changed until you start the installation.</p>
- <div class="card" id="needFull"><h2>What you need</h2><ul class="steps"><li>The ESP32 coin box board and a USB <b>data</b> cable, plugged into this computer</li><li>An OpenWrt router (for example a 360T6M), factory reset</li><li>The modem in the router's WAN port, and a network cable from this computer to a LAN port</li><li>The rental phones, factory reset</li></ul></div>
+ <div class="card" id="needFull"><h2>What you need</h2><ul class="steps"><li>The ESP32 coin box board and a USB <b>data</b> cable, plugged into this computer</li><li>An OpenWrt router (for example a 360T6M), factory reset</li><li>The modem in the router's WAN port, and a network cable from this computer to a LAN port</li><li class="fullOnly">The rental phones, factory reset</li></ul></div>
  <div class="card hide" id="needPhone"><h2>What you need</h2><ul class="steps"><li>The ESP32 coin box board and a USB <b>data</b> cable, plugged into this computer</li><li>Your shop's Wi-Fi name and password: the <b>2.4 GHz</b> network (the ESP32-C3 cannot use 5 GHz)</li><li>The rental phones, factory reset (they are set up afterwards)</li></ul></div>
  <details class="card"><summary><b>My phone can't open this page</b></summary><p class="mut">The page runs on this computer, so the phone must be on a network that reaches it. A factory-reset router has no Wi-Fi yet, so the phone cannot use that one. Give this computer a second connection (its Wi-Fi or another network cable) to your own network and put the phone on that network; keep the cable to the router plugged in. Or use this computer's own browser at <b>http://127.0.0.1:8765</b>. A firewall may block the port (<b>--port</b> changes it).</p></details>
  <div class="card"><h2>This computer</h2><p class="mut small" id="sysline"></p><div id="checks"><p class="mut">Checking...</p></div>
@@ -4991,7 +4993,7 @@ function paint(){
  if(!S)return;
  const tv=view==='tools';$('#toolsMain').classList.toggle('hide',!tv);$$('main:not(#toolsMain)').forEach(m=>m.classList.toggle('hide',tv));$('#nav').classList.toggle('hide',tv);document.querySelector('footer').classList.toggle('hide',tv);$('#btnTools').textContent=tv?'Back to setup':'Owner tools';
  if(tv){paintTools();return}
- $('#unit').textContent='Unit '+S.unit+(S.mode==='phone'?' (PisoPhone only)':S.mode==='full'?' (full system)':'');$('#sysname').textContent=S.system.name;
+ $('#unit').textContent='Unit '+S.unit+(S.mode==='phone'?' (PisoPhone only)':S.mode==='wifi'?' (PisoWiFi only)':S.mode==='full'?' (full system)':'');$('#sysname').textContent=S.system.name;
  if(S.unit!==shownUnit){shownUnit=S.unit;shown=-1;fillSettingsOnce();pFillOnce()}
  const nav=$('#nav');if(nav.children.length!==S.steps.length){clear(nav);S.steps.forEach(n=>nav.append(h('div',{},n)))}
  [...nav.children].forEach((d,i)=>d.className=i===S.step?'on':i<S.step?'done':'');
@@ -5001,8 +5003,8 @@ function paint(){
  ({welcome:paint0,router:paint1,settings:paint2,install:paint3,phones:paint4,finish:paint5,p_settings:ppaint1,p_install:ppaint2,p_phones:ppaint3,p_finish:ppaint4})[S.keys[S.step]]();
 }
 function paint0(){
- $$('input[name=mode]').forEach(r=>r.checked=r.value===S.mode);$('#needFull').classList.toggle('hide',S.mode==='phone');$('#needPhone').classList.toggle('hide',S.mode!=='phone');
- $('#introText').textContent=S.mode==='phone'?'The coin box gets its software over USB, then your shop\'s Wi-Fi and a new admin password. About 5 minutes. After that you set up the rental phones from the coin box\'s own admin page. Nothing is installed on your router.':'One unit at a time: the coin box gets its software over USB, the router is set up and paired with it, then the rental phones. About 15 minutes. Nothing on the router is changed until you start the installation.';
+ $$('input[name=mode]').forEach(r=>r.checked=r.value===S.mode);$('#needFull').classList.toggle('hide',S.mode==='phone');$('#needPhone').classList.toggle('hide',S.mode!=='phone');$$('.fullOnly').forEach(e=>e.classList.toggle('hide',S.mode==='wifi'));
+ $('#introText').textContent=S.mode==='wifi'?'One unit at a time: the coin box gets its software over USB, then the router is set up and paired with it. About 12 minutes. Nothing on the router is changed until you start the installation.':S.mode==='phone'?'The coin box gets its software over USB, then your shop\'s Wi-Fi and a new admin password. About 5 minutes. After that you set up the rental phones from the coin box\'s own admin page. Nothing is installed on your router.':'One unit at a time: the coin box gets its software over USB, the router is set up and paired with it, then the rental phones. About 15 minutes. Nothing on the router is changed until you start the installation.';
  $('#sysline').textContent=S.system.name+' ('+S.system.arch+')'+(S.system.root?', running as administrator':'');
  const c=$('#checks');clear(c);let miss=false;
  if(!S.checks)c.append(h('p',{class:'mut'},'Checking...'));
@@ -5146,7 +5148,7 @@ function ppaint2(){
  const st=$('#pm_stages');clear(st);S.p.stages.forEach((n,k)=>{const done=i.ok||k<i.stage,on=k===i.stage&&i.running;st.append(h('div',{style:'margin:4px 0'},h('span',{class:'dot '+(done?'ok':on?'on':'')}),h('span',{style:on?'font-weight:600':''},n)))});
  $('#pm_activity').textContent=i.activity;
  const bn=$('#pm_instBanner');clear(bn);
- if(i.ok)bn.append(note('ok','The coin box is online. Your details are saved. Tap Next for the phones.'));
+ if(i.ok)bn.append(note('ok','The coin box is online. Your details are saved. Tap Next for '+(S.mode==='wifi'?'the final check':'the phones')+'.'));
  else if(i.error)bn.append(note('bad',i.error[0].toUpperCase()+i.error.slice(1)));
  else if(i.banner)bn.append(note(i.banner[0],i.banner[1]));
  const sb=$('#pm_btnStart');sb.classList.toggle('hide',i.ok);sb.disabled=i.running;sb.textContent=i.running?'Installing...':(i.error||i.total)?'Try again':'Start the installation';
