@@ -21,8 +21,9 @@ key; and the money is always right. Two rules decide every trade-off:
 
 Real customers use the live release. Prefer a smaller, tested change over a clever one, and say plainly what you did not test.
 
-## 2. Where the repository is now (2026-10-17)
-- **Live (published, 100%):** router **1.5.6** (`setup/RELEASE`), coin box firmware **3.6.1** (`PISO_FW_VERSION`), the phone app
+## 2. Where the repository is now (2026-10-18)
+- **Live (published, 100%):** router **1.5.8** (`setup/RELEASE`; it includes 1.5.7, the guest block on the modem, which has not been tried on a router),
+  coin box firmware **3.7.0** (`PISO_FW_VERSION`; phone profiles, not yet tried on a box), the phone app
   from CI (dev builds from `beta`, stable builds from `main`; the number is the CI run number).
 - **Branches:** `main` is production, `beta` is where work happens. After CI rebuilds on each branch their generated router
   files differ byte for byte, so merges to `main` keep `main`'s generated files (section 5).
@@ -30,8 +31,9 @@ Real customers use the live release. Prefer a smaller, tested change over a clev
   1.5.5 went to 100% before the owner's hardware checks were done, so those checks are still owed. After 1.5.5 paying phones were
   reported online with no internet; the fix in 1.5.6 (the portal lets on a paid customer openNDS forgot; the 1.5.5 guest
   private-network rules removed) was tried by the owner on a router and works. Phone app: paid time starts at
-  Done (coins are held while the lock screen waits; `PaymentRepository.startHeldClock`), and the power menu is available only
-  inside an admin maintenance window (`KioskPolicyManager.applyPowerMenu`); neither has run on a real phone.
+  Done (coins are held while the lock screen waits; `PaymentRepository.startHeldClock`), the power menu is available only
+  inside an admin maintenance window (`KioskPolicyManager.applyPowerMenu`), and the floating pill has a Force close app button
+  (`AppCloser`); none of these has run on a real phone.
 - **Recent work:** each router has its own Wi-Fi names (`PisoKiosk-xxxx`, `PisoCoinBox-xxxx`, 1.5.0); coin page: vouchers, pause
   (from 10 pesos, once, 1 kbit/s and 2 MB), mini-game, "send a file to the owner" (relayed to the print server's inbox);
   quicker "you are online" after Done; the setup program (`setup/pisophone_setup.py`) does the whole install and has Owner tools
