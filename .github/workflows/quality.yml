@@ -237,6 +237,7 @@ jobs:
           pip install -q playwright==1.63.0 && playwright install --with-deps chromium
           python3 scripts/tests/test_portal_orphans_ui.py
           python3 scripts/tests/test_portal_session_ui.py
+          python3 scripts/tests/test_portal_theme_ui.py
       - name: Run host tests
         run: sh esp32_firmware/host_tests/run.sh
       - name: Test the sold-unit checker
@@ -326,6 +327,7 @@ jobs:
           CHROME=$(ls ~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome | head -1) python3 tests/test_browser.py
           CHROME=$(ls ~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome | head -1) python3 tests/test_console_loader.py
           CHROME=$(ls ~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome | head -1) python3 tests/test_console_prices.py
+          CHROME=$(ls ~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome | head -1) python3 tests/test_console_frame.py
           CHROME=$(ls ~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome | head -1) python3 tests/test_game_browser.py
           CHROME=$(ls ~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome | head -1) python3 tests/test_send.py
       - name: Shell scripts (shellcheck)

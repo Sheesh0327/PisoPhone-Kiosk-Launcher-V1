@@ -11,6 +11,7 @@
 //!   pisoportal update-verify <router.json> <router-setup.sh>                 is the downloaded file the signed one?
 //!   pisoportal selftest       checks that this build works on this machine
 mod boxlink;
+mod boxview;
 mod config;
 mod console;
 mod core;

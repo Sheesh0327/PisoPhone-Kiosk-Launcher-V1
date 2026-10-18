@@ -30,6 +30,7 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                 <button type="button" class="tab" onclick="switchTab('tab-superadmin')"><svg class="ic"><use href="#i-shield"/></svg>Vendor</button>
             </nav>
             <div class="topbar-end">
+                <button type="button" class="themebtn" onclick="toggleTheme()" title="Light or dark" aria-label="Light or dark"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
                 <span id="conn_pill" class="pill ok">Online</span>
                 <a href="/logout" onclick="return confirm('Sign out?');" class="linkbtn"><svg class="ic"><use href="#i-logout"/></svg>Sign out</a>
             </div>

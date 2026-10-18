@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The owner's console: sign-in with the router password, lock-out, the overview, the customer list with speeds, the rental phones, kicking a device."""
+"""The owner's console: sign-in with the router password, lock-out, the overview, the customer list with speeds, the rental phones (and the coin box's own page passed through one port up), kicking a device."""
 import http.server, json, os, threading, time, urllib.error, urllib.request
 from harness import *
 
@@ -17,9 +17,18 @@ open(f"{tmp}/dev", "w").write(" face |bytes packets errs drop fifo frame compres
 open(f"{tmp}/setup.conf", "w").write("BOX_ADMIN_PASS='box-pass-123'\n")
 
 
-class Stub(http.server.BaseHTTPRequestHandler):   # the coin box: a nonce for the gateway, and the dashboard's status with a password
+seen = {}   # what the coin box last received from the router
+
+
+class Stub(http.server.BaseHTTPRequestHandler):   # the coin box: a nonce for the gateway, the dashboard's status with a password, a page
     def log_message(self, *a):
         pass
+
+    def do_POST(self):
+        n = int(self.headers.get("Content-Length") or 0)
+        seen.update(path=self.path, auth=self.headers.get("Authorization"), origin=self.headers.get("Origin"), cookie=self.headers.get("Cookie"), body=self.rfile.read(n), host=self.headers.get("Host"))
+        body = b"saved"
+        self.send_response(200); self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
 
     def do_GET(self):
         if self.path.startswith("/api/gateway/challenge"):
@@ -30,15 +39,19 @@ class Stub(http.server.BaseHTTPRequestHandler):   # the coin box: a nonce for th
                 self.send_response(401); self.end_headers(); return
             body = json.dumps({"devices": [{"slotNum": 1, "isBound": True, "online": True, "name": "Terminal 1", "ip": "10.0.0.51", "time": 600, "battery": 80, "charging": False},
                                            {"slotNum": 2, "isBound": False}]}).encode()
+        elif self.path.startswith("/?") or self.path == "/":
+            seen.update(path=self.path, auth=self.headers.get("Authorization"), origin=self.headers.get("Origin"), cookie=self.headers.get("Cookie"), host=self.headers.get("Host"))
+            body = b"<html><title>Coin box</title></html>"
+            self.send_response(200); self.send_header("Content-Length", str(len(body))); self.send_header("X-Frame-Options", "DENY"); self.send_header("Content-Security-Policy", "default-src 'none'"); self.send_header("Set-Cookie", "box_session=1; Path=/"); self.end_headers(); self.wfile.write(body); return
         else:
             body = b"{}"
         self.send_response(200); self.send_header("Content-Length", str(len(body))); self.end_headers(); self.wfile.write(body)
 
 
-stub = http.server.ThreadingHTTPServer(("127.0.0.1", CP + 1), Stub)
+stub = http.server.ThreadingHTTPServer(("127.0.0.1", CP + 10), Stub)
 threading.Thread(target=stub.serve_forever, daemon=True).start()
 env.extra.update(CONSOLE_PORT=CP, CONSOLE_BIND="127.0.0.1", UBUS=f"{tmp}/ubus", DHCP_LEASES=f"{tmp}/leases", ROUTE_FILE=f"{tmp}/route", NETDEV_FILE=f"{tmp}/dev",
-                 PISO_SETUP_CONF=f"{tmp}/setup.conf", GW_BOX=f"127.0.0.1:{CP + 1}")
+                 PISO_SETUP_CONF=f"{tmp}/setup.conf", GW_BOX=f"127.0.0.1:{CP + 10}")
 
 
 def call(path, body=None, cookie=None, headers=None):
@@ -108,6 +121,42 @@ try:
           f"clients: a paused device is marked paused, with its time on hold: {pz}")
     code, body, _h = call("/api/phones", cookie=cookie)
     check(json.loads(body)["devices"][0]["time"] == 600, "phones: the coin box's slot list, fetched with its stored password: " + body.decode()[:100])
+    # ---- the coin box's own page, passed through one port above the console (the Rental phones tab shows it) ----------------------------------------
+    PP = CP + 1
+    def via(path, method="GET", body=None, cookie=None, headers=None):
+        req = urllib.request.Request(f"http://127.0.0.1:{PP}{path}", data=body, method=method)
+        if cookie:
+            req.add_header("Cookie", cookie)
+        for k, v in (headers or {}).items():
+            req.add_header(k, v)
+        try:
+            with urllib.request.urlopen(req, timeout=10) as r:
+                return r.status, r.read(), r.headers
+        except urllib.error.HTTPError as e:
+            return e.code, e.read(), e.headers
+    check(via("/")[0] == 401 and via("/save", "POST", b"a=1")[0] == 401 and via("/", cookie="piso_console=nope")[0] == 401, "box page: nobody without a console session gets it")
+    code, page, h = call("/")
+    check(f"frame-src http://127.0.0.1:{PP}" in h.get("Content-Security-Policy", "") and "frame-ancestors 'none'" in h.get("Content-Security-Policy", ""), "the console page may show the box page's address in a frame, nothing else: " + h.get("Content-Security-Policy", ""))
+    check(b'id="boxf"' in page and b"/api/phones" not in page, "the Rental phones tab is the box's page in a frame")
+    seen.clear()
+    code, page, h = via("/?embed=1&theme=dark", cookie=cookie + "; box_other=7")
+    check(code == 200 and b"Coin box" in page and seen.get("path") == "/?embed=1&theme=dark", f"box page: the page and its query come through: {code} {seen}")
+    import base64
+    check(seen.get("auth") == "Basic " + base64.b64encode(b"admin:box-pass-123").decode(), "box page: the router adds the box's admin login from its stored password")
+    check(seen.get("cookie") == "box_other=7" and "piso_console" not in str(seen), "box page: the console's session cookie is not given to the box: " + str(seen.get("cookie")))
+    check(h.get("X-Frame-Options") is None and f"frame-ancestors http://127.0.0.1:{CP}" in h.get("Content-Security-Policy", "") and "default-src" not in h.get("Content-Security-Policy", ""),
+          "box page: the box's framing refusal is replaced by 'only the console may frame it': " + str(dict(h)))
+    check("box_session=1" in (h.get("Set-Cookie") or ""), "box page: the box's own cookie goes on to the browser")
+    seen.clear()
+    code, out, _h = via("/save", "POST", b"a=1&b=2", cookie=cookie, headers={"Content-Type": "application/x-www-form-urlencoded", "Origin": f"http://127.0.0.1:{PP}"})
+    check(code == 200 and out == b"saved" and seen.get("body") == b"a=1&b=2" and seen.get("origin") == f"http://127.0.0.1:{CP + 10}" and seen.get("host") == f"127.0.0.1:{CP + 10}",
+          f"box page: a form post goes through with the box's own address as origin: {code} {seen}")
+    seen.clear()
+    code, out, _h = via("/save", "POST", b"a=1", cookie=cookie, headers={"Origin": "http://evil.test"})
+    check(code == 403 and not seen, "box page: a post from another page is refused and never reaches the box")
+    open(f"{tmp}/setup.conf", "w").write("")
+    check(via("/", cookie=cookie)[0] == 503, "box page: without the stored box password it says so (503)")
+    open(f"{tmp}/setup.conf", "w").write("BOX_ADMIN_PASS='box-pass-123'\n")
     open(f"{tmp}/setup.conf", "w").write("BOX_ADMIN_PASS='changed'\n")
     check(json.loads(call("/api/phones", cookie=cookie)[1]).get("error") == "PASSWORD", "phones: a password the box no longer accepts is named")
     check(call("/api/kick", {"mac": "not-a-mac"}, cookie=cookie)[0] == 400, "kick: a bad address is refused")
