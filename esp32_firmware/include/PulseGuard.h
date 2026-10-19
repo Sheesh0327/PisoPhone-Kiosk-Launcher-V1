@@ -61,8 +61,10 @@ PULSE_GUARD_INLINE void pulseStatsAdd(PulseStats& s, uint32_t widthUs, uint32_t 
     if (widthUs > s.maxUs) s.maxUs = widthUs;
     s.n++;
     s.sumUs += widthUs;
-    if (widthUs < minRealUs) s.shortN++;
-    else if (widthUs > PULSE_MAX_US) s.longN++;
+    if (widthUs < minRealUs)
+        s.shortN++;
+    else if (widthUs > PULSE_MAX_US)
+        s.longN++;
     s.bucket[pulseWidthBucket(widthUs)]++;
 }
 

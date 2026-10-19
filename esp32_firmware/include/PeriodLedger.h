@@ -24,28 +24,28 @@
 namespace periodledger {
 
 static const size_t RING_DAYS = 62;
-static const uint32_t PERIOD_MAGIC = 0x31444550UL; // "PED1"
+static const uint32_t PERIOD_MAGIC = 0x31444550UL;        // "PED1"
 static const uint32_t MIN_VALID_EPOCH_SEC = 1700000000UL; // ~Nov 2023 baseline
 
 #pragma pack(push, 1)
 struct DayBucket {
-    uint32_t epochDay;    // Local day number: (unix_sec + tz_offset_sec) / 86400 (0 = unused)
-    uint32_t wifiPesos;   // PisoWiFi (gateway) coins accepted on this day
-    uint32_t phonePesos;  // Rental phone (kiosk) coins accepted on this day
-    uint16_t txCount;     // Number of coin train transactions on this day
+    uint32_t epochDay;   // Local day number: (unix_sec + tz_offset_sec) / 86400 (0 = unused)
+    uint32_t wifiPesos;  // PisoWiFi (gateway) coins accepted on this day
+    uint32_t phonePesos; // Rental phone (kiosk) coins accepted on this day
+    uint16_t txCount;    // Number of coin train transactions on this day
     uint16_t reserved;
 };
 
 struct State {
     uint32_t magic;
-    int32_t tzOffsetSec;          // Local timezone offset in seconds (default +28800 = UTC+8 PST)
-    uint32_t lastCountedSeq;      // Highest coin transaction seq counted into period/lifetime
-    uint32_t unsyncedWifiPesos;   // Coins accepted before valid wall-clock time
+    int32_t tzOffsetSec;        // Local timezone offset in seconds (default +28800 = UTC+8 PST)
+    uint32_t lastCountedSeq;    // Highest coin transaction seq counted into period/lifetime
+    uint32_t unsyncedWifiPesos; // Coins accepted before valid wall-clock time
     uint32_t unsyncedPhonePesos;
     uint16_t unsyncedTxCount;
     uint16_t reserved;
     DayBucket days[RING_DAYS];
-    uint32_t checksum;            // FNV-1a checksum over all preceding bytes
+    uint32_t checksum; // FNV-1a checksum over all preceding bytes
 };
 #pragma pack(pop)
 
@@ -184,7 +184,8 @@ inline void recordCoin(State& st, uint32_t unixSec, uint32_t pesos, bool isPhone
 }
 
 // Query Today's coins (including unsynced coins if wall clock has not yet synced).
-inline uint32_t todayCoins(const State& st, uint32_t unixSec, uint32_t* outWifi = nullptr, uint32_t* outPhone = nullptr, uint16_t* outTx = nullptr) {
+inline uint32_t todayCoins(const State& st, uint32_t unixSec, uint32_t* outWifi = nullptr, uint32_t* outPhone = nullptr,
+                           uint16_t* outTx = nullptr) {
     uint32_t w = st.unsyncedWifiPesos;
     uint32_t p = st.unsyncedPhonePesos;
     uint16_t tx = st.unsyncedTxCount;
@@ -205,7 +206,8 @@ inline uint32_t todayCoins(const State& st, uint32_t unixSec, uint32_t* outWifi 
 }
 
 // Query Yesterday's coins.
-inline uint32_t yesterdayCoins(const State& st, uint32_t unixSec, uint32_t* outWifi = nullptr, uint32_t* outPhone = nullptr) {
+inline uint32_t yesterdayCoins(const State& st, uint32_t unixSec, uint32_t* outWifi = nullptr,
+                               uint32_t* outPhone = nullptr) {
     if (unixSec < MIN_VALID_EPOCH_SEC) return 0;
     uint32_t today = unixToLocalEpochDay(unixSec, st.tzOffsetSec);
     if (today == 0) return 0;
@@ -222,7 +224,8 @@ inline uint32_t yesterdayCoins(const State& st, uint32_t unixSec, uint32_t* outW
 inline uint32_t last7DaysCoins(const State& st, uint32_t unixSec, uint32_t outDaily7[7] = nullptr) {
     uint32_t sum = 0;
     if (outDaily7) {
-        for (int i = 0; i < 7; i++) outDaily7[i] = 0;
+        for (int i = 0; i < 7; i++)
+            outDaily7[i] = 0;
     }
 
     if (unixSec < MIN_VALID_EPOCH_SEC) {
@@ -321,16 +324,14 @@ inline bool decode(const uint8_t* in, size_t len, State& st) {
     return true;
 }
 
-template <class Store>
-inline bool load(Store& store, const char* key, State& st) {
+template <class Store> inline bool load(Store& store, const char* key, State& st) {
     if (store.getBytesLength(key) != STATE_BYTES) return false;
     uint8_t buf[STATE_BYTES];
     if (store.getBytes(key, buf, STATE_BYTES) != STATE_BYTES) return false;
     return decode(buf, STATE_BYTES, st);
 }
 
-template <class Store>
-inline bool save(Store& store, const char* key, State& st) {
+template <class Store> inline bool save(Store& store, const char* key, State& st) {
     uint8_t buf[STATE_BYTES];
     if (encode(st, buf, STATE_BYTES) != STATE_BYTES) return false;
     return store.putBytes(key, buf, STATE_BYTES) == STATE_BYTES;

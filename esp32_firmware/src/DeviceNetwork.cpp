@@ -53,6 +53,8 @@ void sendAddTime(int minutes, String targetIp, String txId) {
         sendAuthenticated(targetIp, targetPort, "/add_time", "/challenge", params, 1000);
     }
 }
+#endif
+
 #include "RevenueVault.h"
 
 void recordCoinRevenue(int pulses, CoinSlotOwnerType owner) {

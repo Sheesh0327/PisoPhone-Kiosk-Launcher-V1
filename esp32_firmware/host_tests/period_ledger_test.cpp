@@ -57,7 +57,7 @@ int main() {
     CHECK(y == 2026 && m == 10 && d == 19);
 
     // 3. Pre-sync coin recording (box booted without NTP / network)
-    periodledger::recordCoin(st, 0, 5, false, 1); // 5 wifi coins pre-sync
+    periodledger::recordCoin(st, 0, 5, false, 1);   // 5 wifi coins pre-sync
     periodledger::recordCoin(st, 100, 10, true, 2); // 10 phone coins pre-sync
     CHECK(st.unsyncedWifiPesos == 5);
     CHECK(st.unsyncedPhonePesos == 10);
@@ -99,7 +99,7 @@ int main() {
     // 7. Rolling 7-day query
     uint32_t daily7[7] = {0};
     uint32_t sum7 = periodledger::last7DaysCoins(st, nextDaySec, daily7);
-    CHECK(sum7 == 85); // 35 on Oct 19 + 50 on Oct 20
+    CHECK(sum7 == 85);      // 35 on Oct 19 + 50 on Oct 20
     CHECK(daily7[5] == 35); // yesterday
     CHECK(daily7[6] == 50); // today
 
