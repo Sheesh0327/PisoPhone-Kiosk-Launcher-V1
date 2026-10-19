@@ -58,7 +58,20 @@ def main():
     a = ap.parse_args()
 
     if a.github_secret:
-        key, pem = make_key()
+        if os.path.exists(a.path):
+            key = owner_key.load_private(a.path)
+            pem = key.private_bytes(
+                owner_key._crypto()[1].Encoding.PEM,
+                owner_key._crypto()[1].PrivateFormat.PKCS8,
+                owner_key._crypto()[1].NoEncryption(),
+            )
+            print(f"Using existing private key from {a.path}")
+        else:
+            key, pem = make_key()
+            fd = os.open(a.path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, stat.S_IRUSR | stat.S_IWUSR)
+            with os.fdopen(fd, "wb") as f:
+                f.write(pem)
+            print(f"Private key saved to {a.path}")
         owner_key.write_pubkey_header(key.public_key(), a.header)
         self_test(key)
         b64 = base64.b64encode(pem).decode()
@@ -71,8 +84,8 @@ name  OWNER_SIGNING_KEY_B64   value (the whole line):
 
 {b64}
 
-Also save that line in a password manager NOW: GitHub secrets cannot be read back and nothing was saved on this
-computer. Then clear your terminal scrollback.
+Also save that line in a password manager NOW: GitHub secrets cannot be read back.
+Then clear your terminal scrollback.
 Next: git add esp32_firmware/include/LicensePubKey.h tools/pisoportal/owner_key.b64 && git commit -m "Install owner public key", then rebuild and flash the boxes.""")
         return
 

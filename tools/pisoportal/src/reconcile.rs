@@ -69,7 +69,9 @@ pub fn run(cfg: &Config, rebase: bool) -> (Outcome, Option<&'static str>) {
         Err(line) => return (Outcome::BadLedger(line), None),
     };
     let st = BoxLink::new(&cfg.gw_box, &cfg.gw_key).call(&"f".repeat(32), "status", "").unwrap_or_default();
-    let Some(counted) = jget_u64(&st, "lifetime_pulses") else { return (Outcome::NoBox(ledger), None) };
+    let Some(counted) = jget_u64(&st, "lifetime_wifi_pulses").or_else(|| jget_u64(&st, "lifetime_pulses")) else {
+        return (Outcome::NoBox(ledger), None);
+    };
     let path = state_path(cfg);
     let (base, note) = if rebase {
         (Base { box_base: counted, ledger_base: ledger, last_box: counted }, Some("compared from now on (rebase)"))

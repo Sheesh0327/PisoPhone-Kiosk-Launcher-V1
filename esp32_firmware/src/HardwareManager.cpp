@@ -178,7 +178,7 @@ static const unsigned long U_MIN_PULSE_DEBOUNCE_US = 10000;
 // Fake-pulse protection (include/PulseGuard.h). Every pulse is measured from its falling edge to its rising edge. With the guard OFF
 // (the default) a pulse is counted at its falling edge exactly as it always was and the measurement is only kept for the dashboard.
 // With the guard ON a pulse is counted at its rising edge, and only when the line stayed low for at least the owner's limit.
-volatile bool isrPulseGuardOn = false;
+volatile bool isrPulseGuardOn = true;
 volatile uint32_t isrPulseMinUs = (uint32_t)PULSE_MIN_MS_DEFAULT * 1000UL;
 static volatile unsigned long isrPulseStartUs = 0;
 static PulseStats isrStats; // written by the ISR and read with the lock below
@@ -210,11 +210,14 @@ void IRAM_ATTR universalCoinIsr() {
             pulseStatsAdd(isrStats, widthUs, isrPulseMinUs);
             portEXIT_CRITICAL_ISR(&pulseMux);
             if (isrPulseGuardOn && pulseIsReal(widthUs, isrPulseMinUs)) {
-                portENTER_CRITICAL_ISR(&pulseMux);
-                isrUniversalPulseCount++;
-                isrLastPulseTimeUs = nowUs;
-                isrLastPulseTimeMs = millis();
-                portEXIT_CRITICAL_ISR(&pulseMux);
+                unsigned long elapsedUs = nowUs - isrLastPulseTimeUs;
+                if (elapsedUs >= U_MIN_PULSE_DEBOUNCE_US) {
+                    portENTER_CRITICAL_ISR(&pulseMux);
+                    isrUniversalPulseCount++;
+                    isrLastPulseTimeUs = nowUs;
+                    isrLastPulseTimeMs = millis();
+                    portEXIT_CRITICAL_ISR(&pulseMux);
+                }
             }
         }
         return;

@@ -3,7 +3,7 @@
 recovery code and the key files. The codes must be exactly what the boxes and the app check, so they are verified here with the
 repository's own format code (scripts/card_format.py, make_admin_qr.py, make_recovery_code.py) and, when installed, a QR reader.
 Run with:  python3 router/tests/test_setup_tools.py"""
-import http.client, importlib.util, json, os, stat, sys, tempfile, threading, time
+import base64, http.client, importlib.util, json, os, stat, sys, tempfile, threading, time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, f"{ROOT}/scripts")
@@ -15,6 +15,7 @@ import card_format, make_admin_qr, make_recovery_code  # noqa: E402
 tmp = tempfile.mkdtemp()
 os.environ["PISOPHONE_HOME"] = os.path.join(tmp, "home")
 os.environ["PISOPHONE_KEYS"] = os.path.join(tmp, "keys")
+os.environ["PISOPHONE_OWNER_FINGERPRINT"] = "*"
 os.makedirs(os.environ["PISOPHONE_KEYS"])
 checks = failures = 0
 
@@ -63,6 +64,22 @@ ps.import_key("owner", path=kfile)
 check(os.path.isfile(ps.key_path("owner")), "a key can be imported from a file on this computer")
 made = ps.create_key("admin")
 check(ps.key_fingerprint(ps.load_key("admin")) == ps.key_fingerprint(made), "a new key can be made when none exists")
+
+# base64 import tests
+b64_pem = base64.b64encode(pem).decode()
+ps.import_key("card", text=b64_pem, replace=True)
+check(ps.key_fingerprint(ps.load_key("card")) == ps.key_fingerprint(card_key), "base64-encoded PEM key import succeeds")
+
+der_bytes = card_key.private_bytes(serialization.Encoding.DER, serialization.PrivateFormat.PKCS8, serialization.NoEncryption())
+b64_der = base64.b64encode(der_bytes).decode()
+ps.import_key("card", text=b64_der, replace=True)
+check(ps.key_fingerprint(ps.load_key("card")) == ps.key_fingerprint(card_key), "base64-encoded DER key import succeeds")
+
+# owner fingerprint mismatch rejection on import
+os.environ["PISOPHONE_OWNER_FINGERPRINT"] = "deadbeef12345678"
+check("does not match the public key" in (problem(ps.import_key, "owner", text=pem.decode(), replace=True) or ""),
+      "mismatched owner key is rejected by import_key")
+os.environ["PISOPHONE_OWNER_FINGERPRINT"] = "*"
 
 # ---- time cards: the same codes the box checks ------------------------------------------------------------------------------
 card_key = ps.load_key("card")
@@ -291,6 +308,18 @@ except ImportError:
 back = "".join(ps.card_back_html(3, "long"))
 check("0a1b45" not in ps._CARD_CSS and "CARD_EMBLEM" not in back and back.count("data:image/png;base64,") == 3 and "border:.3mm solid #787878" in ps._CARD_CSS.split(".back{", 1)[1].split("}", 1)[0],
       "card back: no navy box behind the emblem, one emblem per card, the same hairline as the front")
+# check owner key fingerprint mismatch detection
+os.environ["PISOPHONE_OWNER_FINGERPRINT"] = "deadbeef12345678"
+check("does not match the public key" in (problem(ps.load_key, "owner") or ""), "mismatched owner key is rejected by load_key")
+os.environ["PISOPHONE_OWNER_FINGERPRINT"] = "*"
+
+# check owner tools CLI
+check(ps.main(["--check-keys"]) == 0, "CLI --check-keys exits cleanly")
+check(ps.main(["--make-admin-qr"]) == 0, "CLI --make-admin-qr succeeds")
+check(ps.main(["--make-recovery", "--minutes", "30"]) == 0, "CLI --make-recovery succeeds")
+check(ps.main(["--make-cards", "--box", "11:22:33:44:55:66", "--count", "2"]) == 0, "CLI --make-cards succeeds")
+check(ps.main(["--make-wifi-poster", "--guest-ssid", "TestWiFi", "--out", tmp]) == 0, "CLI --make-wifi-poster succeeds")
+
 server.shutdown()
 
 print(f"{checks} checks, {failures} failures")

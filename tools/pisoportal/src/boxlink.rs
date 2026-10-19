@@ -91,9 +91,10 @@ impl BoxLink {
     pub fn call(&self, sid: &str, action: &str, extra: &str) -> Result<String, String> {
         let nonce = self.challenge().ok_or_else(|| "NO_NONCE".to_string())?;
         let sig = hmac_hex(self.key.as_bytes(), format!("gw1:{}:{}:{}", action, sid, nonce).as_bytes());
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
         let body = http_get(
             &self.addr,
-            &format!("/api/gateway/{}?session={}&nonce={}&sig={}{}", action, sid, nonce, sig, extra),
+            &format!("/api/gateway/{}?session={}&nonce={}&sig={}&ts={}{}", action, sid, nonce, sig, now, extra),
             Duration::from_secs(4),
         )?;
         self.check_answer(action, sid, &nonce, &body)?;

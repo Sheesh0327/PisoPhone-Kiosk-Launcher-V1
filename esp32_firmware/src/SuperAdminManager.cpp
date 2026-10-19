@@ -86,6 +86,11 @@ void handleSuperAdminAuth() {
     json += "\"remaining_seconds\":" + String(remainingSec) + ",";
     json += "\"total_coins\":" + String(vaultCoins()) + ","; // in the vault: counted since the last collection
     json += "\"lifetime_coins\":" + String(totalCoinsLifetime) + ",";
+    json += "\"lifetime_wifi_coins\":" + String(totalWifiCoinsLifetime) + ",";
+    json += "\"lifetime_phone_coins\":" + String(totalPhoneCoinsLifetime) + ",";
+    json += "\"today_coins\":" + String(vaultTodayCoins()) + ",";
+    json += "\"week_coins\":" + String(vaultLast7DaysCoins()) + ",";
+    json += "\"month_coins\":" + String(vaultLast30DaysCoins()) + ",";
     json += "\"collections\":" + String(vaultCollections()) + ",";
     json += "\"session_coins\":" + String(totalCoinsSession);
     json += "}";
@@ -123,6 +128,11 @@ void handleSuperAdminUnmask() {
     money::formatPesos(totalCentavosLifetime, lifetimeEarnings, sizeof(lifetimeEarnings));
     json += "\"total_earnings\":" + String(earnings) + ",";
     json += "\"lifetime_coins\":" + String(totalCoinsLifetime) + ",";
+    json += "\"lifetime_wifi_coins\":" + String(totalWifiCoinsLifetime) + ",";
+    json += "\"lifetime_phone_coins\":" + String(totalPhoneCoinsLifetime) + ",";
+    json += "\"today_coins\":" + String(vaultTodayCoins()) + ",";
+    json += "\"week_coins\":" + String(vaultLast7DaysCoins()) + ",";
+    json += "\"month_coins\":" + String(vaultLast30DaysCoins()) + ",";
     json += "\"lifetime_earnings\":" + String(lifetimeEarnings) + ",";
     json += "\"collections\":" + String(vaultCollections()) + ",";
     json += "\"vendor_split\":" + String(vendorRevenueSplitPercent);
@@ -162,8 +172,14 @@ void handleSuperAdminCollections() {
     money::formatPesos(totalCentavosLifetime, lifetimeEarnings, sizeof(lifetimeEarnings));
     money::formatPesos(vaultCentavos(), vaultEarnings, sizeof(vaultEarnings));
     String json = "{\"status\":\"ok\",\"lifetime_coins\":" + String(totalCoinsLifetime) +
+                  ",\"lifetime_wifi_coins\":" + String(totalWifiCoinsLifetime) +
+                  ",\"lifetime_phone_coins\":" + String(totalPhoneCoinsLifetime) +
+                  ",\"today_coins\":" + String(vaultTodayCoins()) +
+                  ",\"week_coins\":" + String(vaultLast7DaysCoins()) +
+                  ",\"month_coins\":" + String(vaultLast30DaysCoins()) +
                   ",\"lifetime_earnings\":" + lifetimeEarnings + ",\"vault_coins\":" + String(vaultCoins()) +
                   ",\"vault_earnings\":" + vaultEarnings + ",\"collections\":" + String(vaultCollections()) +
+                  ",\"days\":" + vaultPeriodDaysJson(30) +
                   ",\"history\":" + vaultHistoryJson(revenue::RING_SIZE) + "}";
     webServer.send(200, "application/json", json);
 }

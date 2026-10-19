@@ -222,6 +222,7 @@ String diagBuildJson() {
         pulse["min_real_ms"] = pulseMinMsClamp(coinPulseMinMs);
         pulse["measured"] = ps.n;
         pulse["too_short"] = ps.shortN;
+        pulse["too_long"] = ps.longN;
         pulse["shortest_us"] = ps.n == 0 ? 0 : ps.minUs;
         pulse["longest_us"] = ps.maxUs;
         pulse["average_us"] = pulseStatsAvgUs(ps);

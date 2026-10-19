@@ -1463,15 +1463,18 @@ impl Core {
         let expected = g.0 + g.1.elapsed().as_secs();
         if wall > expected + 120 {
             let delta = wall - expected;
-            let moved = {
+            let (moved_sessions, moved_ledger) = {
                 let _f = self.files.lock().unwrap();
-                roll::shift(&self.cfg.roll_path(), g.2, delta)
+                let s = roll::shift(&self.cfg.roll_path(), g.2, delta);
+                let l = ledger::shift(&self.cfg.revenue_path(), g.2, delta);
+                (s, l)
             };
             g.2 = wall; // what is paid from now on is timed with the right clock
             log!(
-                "the clock jumped forward {} s (it was set after a stale start): {} session(s) paid since then moved with it",
+                "the clock jumped forward {} s (it was set after a stale start): {} session(s), {} revenue row(s) moved with it",
                 delta,
-                moved
+                moved_sessions,
+                moved_ledger
             );
         } else if expected > wall + 120 {
             log!("the clock went back {} s", expected - wall);

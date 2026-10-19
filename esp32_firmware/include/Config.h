@@ -67,6 +67,8 @@ extern const char* const NVS_KEY_P2;
 extern const char* const NVS_KEY_MATCH;
 #endif
 extern const char* const NVS_KEY_TOTAL_COINS;
+extern const char* const NVS_KEY_TOTAL_WIFI_COINS;
+extern const char* const NVS_KEY_TOTAL_PHONE_COINS;
 extern const char* const NVS_KEY_TOTAL_CENTAVOS;
 
 // ============================================================================
@@ -176,10 +178,14 @@ extern String quickTimeStatusMsg;
 
 // Revenue & Audit
 extern uint32_t totalCoinsLifetime;
+extern uint32_t totalWifiCoinsLifetime;
+extern uint32_t totalPhoneCoinsLifetime;
 extern uint32_t totalCoinsSession;
 extern uint32_t totalCentavosLifetime;
 extern uint32_t totalCentavosSession;
 extern uint32_t lastSavedTotalCoins;
+extern uint32_t lastSavedTotalWifiCoins;
+extern uint32_t lastSavedTotalPhoneCoins;
 extern uint32_t lastSavedTotalCentavos;
 extern bool revenueDirty;
 extern unsigned long lastCoinChangeTime;

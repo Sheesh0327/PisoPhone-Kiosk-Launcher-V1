@@ -137,8 +137,7 @@ bool handleControllerWebSocketHandshake(WiFiClient& client, const String& reques
             String txId = generateTxId("tx-");
 
             bool retained = enqueuePendingPayment(txId, sessId, pulses, CoinSlotOwnerType::CONTROLLER);
-            recordCoinRevenue(
-                pulses); // the cash is in the box whatever happens to the delivery (as for phones and the router)
+            recordCoinRevenue(pulses, CoinSlotOwnerType::CONTROLLER); // the cash is in the box whatever happens to the delivery (as for phones and the router)
             if (!retained) {
                 Serial.printf("[CONTROLLER WS] CRITICAL: Could not retain tx_id='%s'.\n", txId.c_str());
             }

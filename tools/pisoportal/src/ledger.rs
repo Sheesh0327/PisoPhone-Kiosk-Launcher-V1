@@ -59,6 +59,45 @@ pub fn verify(path: &str) -> Result<(usize, u64), usize> {
     Ok((n, sum))
 }
 
+/// Move timestamps of entries recorded since `since` forward by `delta` seconds when the router clock jumps forward (NTP sync).
+/// Recomputes the hash chain from the modified entries forward and saves atomically.
+pub fn shift(path: &str, since: u64, delta: u64) -> usize {
+    let Ok(text) = fs::read_to_string(path) else { return 0 };
+    if text.is_empty() {
+        return 0;
+    }
+    let mut lines: Vec<String> = Vec::new();
+    let mut prev = "0".to_string();
+    let mut moved = 0;
+    for l in text.lines() {
+        let f: Vec<&str> = l.split(',').collect();
+        if f.len() < 6 {
+            lines.push(l.to_string());
+            continue;
+        }
+        let mut ts = f[0].parse::<u64>().unwrap_or(0);
+        if ts >= since {
+            ts += delta;
+            moved += 1;
+        }
+        let rl = format!("{},{},{},{},{}", ts, f[1], f[2], f[3], f[4]);
+        let h = chain(&prev, &rl);
+        prev = h.clone();
+        lines.push(format!("{},{}", rl, h));
+    }
+    if moved > 0 {
+        let tmp = format!("{}.tmp", path);
+        if let Ok(mut f) = fs::File::create(&tmp) {
+            for line in &lines {
+                let _ = writeln!(f, "{}", line);
+            }
+            let _ = f.sync_all();
+            let _ = fs::rename(&tmp, path);
+        }
+    }
+    moved
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -92,5 +131,31 @@ mod tests {
         append(&p, 200, "endurance", 20, 1440, "voucher").unwrap(); // a slip of an older release: not counted by the box
         append(&p, 300, "hyper", 3, 18, "topup").unwrap();
         assert_eq!(verify(&p), Ok((4, 18)));
+    }
+
+    #[test]
+    fn shift_updates_stale_timestamps_and_preserves_valid_chain() {
+        let d = std::env::temp_dir().join(format!("pisoportal-ledger-shift-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        let p = d.join("revenue.csv").to_string_lossy().into_owned();
+        append(&p, 100, "hyper", 5, 30, "new").unwrap();
+        append(&p, 200, "endurance", 10, 60, "topup").unwrap();
+        append(&p, 250, "hyper", 1, 6, "new").unwrap();
+
+        assert_eq!(verify(&p), Ok((3, 16)));
+
+        // Shift entries since 180 forward by 1000 seconds
+        let moved = shift(&p, 180, 1000);
+        assert_eq!(moved, 2);
+
+        // Verification must still pass on the re-chained ledger
+        assert_eq!(verify(&p), Ok((3, 16)));
+
+        // Verify timestamps
+        let content = fs::read_to_string(&p).unwrap();
+        let rows: Vec<&str> = content.lines().collect();
+        assert!(rows[0].starts_with("100,hyper,5,30,new"));
+        assert!(rows[1].starts_with("1200,endurance,10,60,topup"));
+        assert!(rows[2].starts_with("1250,hyper,1,6,new"));
     }
 }

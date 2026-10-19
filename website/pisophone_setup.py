@@ -1720,7 +1720,8 @@ class Ssh:
         self.workdir = workdir
         self.hidden = hidden
         self.env = None
-        self.command = shlex.split(os.environ.get("PISO_SSH", "")) or ["ssh"]
+        raw_cmd = os.environ.get("PISO_SSH", "")
+        self.command = [a.strip("'\"") for a in shlex.split(raw_cmd, posix=(os.name != "nt"))] if raw_cmd else ["ssh"]
         known = os.path.join(workdir, "known_hosts").replace(os.sep, "/")
         self.options = [
             "-o", f'UserKnownHostsFile="{known}"', "-o", "StrictHostKeyChecking=accept-new",
@@ -2843,11 +2844,21 @@ def ensure_cryptography(emit, system, run=run_command):
         return False
 
 
+# Fingerprints (first 16 hex chars of SHA-256 over SubjectPublicKeyInfo DER) of the public keys
+# compiled into the coin box firmware (LicensePubKey.h, CardPubKey.h, SuperAdminPubKey.h)
+# and router (owner_key.b64) and phone app (RecoveryCode.kt).
+EXPECTED_FINGERPRINTS = {
+    "owner": os.environ.get("PISOPHONE_OWNER_FINGERPRINT") or "b95cb2b953650047",
+    "card": os.environ.get("PISOPHONE_CARD_FINGERPRINT") or "721fe54f8ef52b2e",
+    "admin": os.environ.get("PISOPHONE_ADMIN_FINGERPRINT") or "1c87e0e2e0790cdb",
+}
+
+
 def b64u(data):
     return base64.urlsafe_b64encode(data).decode().rstrip("=")
 
 
-def load_key(kind, path=None):
+def load_key(kind, path=None, check_match=True):
     """The private key in the owner's key file (a ToolError when there is none or it is not a P-256 key)."""
     _hashes, serialization, ec = tool_crypto()
     path = path or key_path(kind)
@@ -2860,6 +2871,18 @@ def load_key(kind, path=None):
         raise ToolError(f"The key file {path} could not be read (it must be an unprotected PEM key).")
     if not isinstance(key, ec.EllipticCurvePrivateKey) or key.curve.name != "secp256r1":
         raise ToolError(f"The key file {path} is not a P-256 key.")
+    if check_match:
+        expected_fp = os.environ.get(f"PISOPHONE_{kind.upper()}_FINGERPRINT")
+        if expected_fp is None and kind == "owner":
+            expected_fp = EXPECTED_FINGERPRINTS.get("owner")
+        if expected_fp and expected_fp != "*":
+            fp = key_fingerprint(key)
+            if fp != expected_fp:
+                label = KEY_FILES[kind][1].lower()
+                raise ToolError(
+                    f"The {label} key ({fp}) does not match the public key built into the boxes and routers ({expected_fp}). "
+                    "Codes signed with this key will be refused by the boxes. Import your true key (or secret backup) in 'Your keys' below."
+                )
     return key
 
 
@@ -2884,7 +2907,7 @@ def write_private_key(kind, pem, replace=False):
 
 
 def import_key(kind, text=None, path=None, replace=False):
-    """Saves a key the owner already has (its PEM text, or the path of its file on this computer) after checking it."""
+    """Saves a key the owner already has (its PEM text, base64 text, or the path of its file on this computer) after checking it."""
     _hashes, serialization, ec = tool_crypto()
     if path:
         path = os.path.expanduser(path.strip())
@@ -2895,14 +2918,53 @@ def import_key(kind, text=None, path=None, replace=False):
     else:
         raw = (text or "").strip().encode()
     if not raw:
-        raise ToolError("Paste the key (the text between -----BEGIN and -----END) or type the path of its file.")
+        raise ToolError("Paste the key (the text between -----BEGIN and -----END, or base64) or type the path of its file.")
+    key = None
+    pem_bytes = None
+    # 1. Try directly as PEM
     try:
         key = serialization.load_pem_private_key(raw, password=None)
+        pem_bytes = raw if raw.endswith(b"\n") else raw + b"\n"
     except Exception:
-        raise ToolError("That is not a usable key: it must be an unprotected PEM private key.")
+        pass
+
+    # 2. If not raw PEM, try base64 decode (e.g. GitHub secret OWNER_SIGNING_KEY_B64 or DER base64)
+    if key is None:
+        try:
+            cleaned = re.sub(rb"\s+", b"", raw)
+            decoded = base64.b64decode(cleaned, validate=True)
+            try:
+                key = serialization.load_pem_private_key(decoded, password=None)
+                pem_bytes = decoded if decoded.endswith(b"\n") else decoded + b"\n"
+            except Exception:
+                key = serialization.load_der_private_key(decoded, password=None)
+                pem_bytes = key.private_bytes(
+                    serialization.Encoding.PEM,
+                    serialization.PrivateFormat.PKCS8,
+                    serialization.NoEncryption(),
+                )
+        except Exception:
+            pass
+
+    if key is None:
+        raise ToolError("That is not a usable key: it must be an unprotected PEM private key or base64-encoded key.")
+
     if not isinstance(key, ec.EllipticCurvePrivateKey) or key.curve.name != "secp256r1":
         raise ToolError("That is not a P-256 key.")
-    write_private_key(kind, raw if raw.endswith(b"\n") else raw + b"\n", replace)
+
+    if kind == "owner":
+        expected_fp = os.environ.get("PISOPHONE_OWNER_FINGERPRINT")
+        if expected_fp is None:
+            expected_fp = EXPECTED_FINGERPRINTS.get("owner")
+        if expected_fp and expected_fp != "*":
+            fp = key_fingerprint(key)
+            if fp != expected_fp:
+                raise ToolError(
+                    f"The imported owner key ({fp}) does not match the public key built into the boxes and routers ({expected_fp}). "
+                    "Codes signed with this key will be refused by the boxes. Please paste the secret key from GitHub (OWNER_SIGNING_KEY_B64) or your secret backup."
+                )
+
+    write_private_key(kind, pem_bytes, replace)
     return key
 
 
@@ -3230,6 +3292,168 @@ def reissue_slot_licenses(box, key=None, ledger=None):
         raise ToolError("No keys were made for that box on this computer.")
     key = key or load_key("owner")
     return [slot_license_text(key, box, r["key"]) for r in rows]
+
+
+# -- CLI helpers for owner tools -----------------------------------------------------------------------------------------------
+
+def make_wifi_poster_page(ssid, portal_url="http://10.0.30.1:2080/", shop_name=""):
+    """Printable A4 HTML poster with 2 QR codes (Wi-Fi connect & portal). Works in any browser without external dependencies."""
+    esc = re.sub(r'([\\;,:"])', r"\\\1", ssid)
+    if re.fullmatch(r"[0-9A-Fa-f]+", ssid):
+        esc = f'"{esc}"'
+    wifi_data = f"WIFI:T:nopass;S:{esc};;"
+    wifi_svg = qr_svg(wifi_data, 6, 4)
+    portal_svg = qr_svg(portal_url, 6, 4)
+    shop_line = f"<p style='color:#eef3ff;font-size:16px;margin:4px 0 0'>{html_escape(shop_name)}</p>" if shop_name else ""
+    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><title>TechNet PisoWiFi Poster</title>
+<style>
+@page {{ size: A4 portrait; margin: 0; }}
+* {{ box-sizing: border-box; }}
+body {{ margin: 0; background: #fff; font-family: system-ui, -apple-system, sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; text-align: center; color: #0b1530; }}
+.sheet {{ max-width: 794px; min-height: 1123px; margin: 0 auto; background: #fff; }}
+.band {{ background: #0a1b45; color: #fff; padding: 24px 20px; }}
+.band h1 {{ margin: 0; font-size: 32px; font-weight: 700; }}
+.band h1 span {{ color: #97a6c7; font-weight: 400; }}
+.tagline {{ font-size: 26px; font-weight: 800; margin: 30px 0 10px; }}
+.sub {{ color: #4a5878; font-size: 16px; margin: 0 0 25px; }}
+.cards {{ display: flex; justify-content: center; gap: 20px; padding: 0 24px; }}
+.card {{ border: 2px solid #d5ddec; border-radius: 14px; padding: 18px; width: 44%; text-align: center; background: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }}
+.badge {{ display: inline-block; background: #1d63d6; color: #fff; font-weight: 700; font-size: 14px; padding: 4px 14px; border-radius: 20px; margin-bottom: 8px; }}
+.card h2 {{ font-size: 18px; margin: 6px 0 14px; color: #0b1530; }}
+.qr-wrap {{ width: 220px; height: 220px; margin: 0 auto 12px; }}
+.qr-wrap svg {{ width: 100%; height: 100%; }}
+.card p {{ font-size: 13px; color: #4a5878; margin: 6px 0; line-height: 1.35; }}
+.footer {{ margin-top: 30px; font-size: 14px; color: #4a5878; }}
+@media screen {{ body {{ background: #eaedf2; padding: 20px; }} .sheet {{ box-shadow: 0 2px 12px rgba(0,0,0,0.15); }} }}
+</style></head><body>
+<div class="sheet">
+<div class="band"><h1>TechNet <span>PisoWiFi</span></h1>{shop_line}</div>
+<div class="tagline">Get online with a coin</div>
+<div class="sub">Insert a coin at the coin box and you are online</div>
+<div class="cards">
+<div class="card"><div class="badge">Step 1</div><h2>Join the Wi-Fi</h2><div class="qr-wrap">{wifi_svg}</div>
+<p>Scan to join <b>{html_escape(ssid)}</b>.<br>No password needed.<br>Portal opens automatically.</p></div>
+<div class="card"><div class="badge">Step 2</div><h2>Already connected?</h2><div class="qr-wrap">{portal_svg}</div>
+<p>Check time left or add a voucher.<br>Or visit:<br><b>{html_escape(portal_url)}</b></p></div>
+</div>
+<div class="footer"><p>Pay with coins, or get a voucher code to use later.<br>A voucher works once and is good for 30 days.</p></div>
+</div></body></html>"""
+
+
+def run_check_keys(say=print):
+    if not ensure_cryptography(say, detect_system()):
+        raise SetupError("the 'cryptography' package could not be installed.")
+    say("PisoPhone Key Status:")
+    say("---------------------")
+    all_ok = True
+    for kind, (_name, label) in KEY_FILES.items():
+        path = key_path(kind)
+        found = os.path.isfile(path)
+        expected_fp = os.environ.get(f"PISOPHONE_{kind.upper()}_FINGERPRINT") or EXPECTED_FINGERPRINTS.get(kind)
+        if not found:
+            say(f"[-] {label:12}: MISSING ({path})")
+            if kind == "owner":
+                all_ok = False
+            continue
+        try:
+            k = load_key(kind, path, check_match=False)
+            fp = key_fingerprint(k)
+            if expected_fp and expected_fp != "*" and fp != expected_fp:
+                say(f"[!] {label:12}: MISMATCH ({path})")
+                say(f"    Current fingerprint : {fp}")
+                say(f"    Firmware expected   : {expected_fp}")
+                if kind == "owner":
+                    all_ok = False
+            else:
+                say(f"[+] {label:12}: OK (fingerprint {fp})")
+        except Exception as e:
+            say(f"[!] {label:12}: ERROR reading key: {e}")
+            all_ok = False
+    return 0 if all_ok else 1
+
+
+def run_import_key(args, say=print):
+    if not ensure_cryptography(say, detect_system()):
+        raise SetupError("the 'cryptography' package could not be installed.")
+    kind = (args.key_kind or "owner").lower()
+    if kind not in KEY_FILES:
+        raise ToolError(f"Unknown key kind '{kind}'. Must be one of: {', '.join(KEY_FILES.keys())}")
+    key = import_key(kind, text=args.key_text, path=args.key_file, replace=args.replace)
+    fp = key_fingerprint(key)
+    path = key_path(kind)
+    say(f"Successfully imported {KEY_FILES[kind][1]} key.")
+    say(f"Location   : {path}")
+    say(f"Fingerprint: {fp}")
+    return 0
+
+
+def run_make_cards_cli(args, say=print):
+    if not ensure_cryptography(say, detect_system()):
+        raise SetupError("the 'cryptography' package could not be installed.")
+    if not args.box:
+        raise ToolError("Specify --box AA:BB:CC:DD:EE:FF for the time cards.")
+    count = int(args.count) if args.count else 12
+    hours = float(args.hours) if getattr(args, "hours", None) else 1.0
+    flip = getattr(args, "flip", "long") or "long"
+    res = make_cards(args.box, count, hours, note=args.note, flip=flip, out=args.out if args.out != "." else None)
+    say(f"Created {count} cards for box {res['box']} ({res['hours']})")
+    say(f"Folder: {res['folder']}")
+    for title, p in res["files"]:
+        say(f"  - {title}: {p}")
+    return 0
+
+
+def run_make_admin_qr_cli(args, say=print):
+    if not ensure_cryptography(say, detect_system()):
+        raise SetupError("the 'cryptography' package could not be installed.")
+    res = make_admin_qr()
+    say("Admin QR code generated successfully.")
+    say(f"HTML page   : {res['path']}")
+    say(f"Fingerprint : {res['fingerprint']}")
+    return 0
+
+
+def run_make_recovery_cli(args, say=print):
+    if not ensure_cryptography(say, detect_system()):
+        raise SetupError("the 'cryptography' package could not be installed.")
+    mins = int(args.minutes) if getattr(args, "minutes", None) else 60
+    res = make_recovery_qr(mins)
+    say(f"Phone recovery code generated (valid for {mins} minutes until {res['until']}).")
+    say(f"HTML page: {res['path']}")
+    return 0
+
+
+def run_make_wifi_poster_cli(args, say=print):
+    ssid = args.guest_ssid or args.wifi_name or "PisoWiFi"
+    portal_url = getattr(args, "portal_url", None) or "http://10.0.30.1:2080/"
+    shop_name = args.site_name or ""
+    out_dir = default_out_dir() if args.out == "." else args.out
+    os.makedirs(out_dir, exist_ok=True)
+
+    html = make_wifi_poster_page(ssid, portal_url, shop_name)
+    html_path = os.path.join(out_dir, "pisowifi_poster.html")
+    with open(html_path, "w", encoding="utf-8") as f:
+        f.write(html)
+    say(f"Printable HTML poster created: {html_path}")
+
+    # Also attempt PNG/PDF via scripts/make_wifi_poster.py if Pillow & qrcode are available
+    try:
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        scripts_dir = os.path.join(repo_root, "scripts")
+        if os.path.isdir(scripts_dir):
+            sys.path.insert(0, scripts_dir)
+            import make_wifi_poster
+            logo = os.path.join(repo_root, "tools", "pisoportal", "src", "brand.png")
+            logo_path = logo if os.path.isfile(logo) else None
+            img = make_wifi_poster.build_poster(ssid, portal_url, shop_name, logo_path)
+            png, pdf = os.path.join(out_dir, "pisowifi_poster.png"), os.path.join(out_dir, "pisowifi_poster.pdf")
+            img.save(png, dpi=(make_wifi_poster.DPI, make_wifi_poster.DPI))
+            img.save(pdf, resolution=make_wifi_poster.DPI)
+            say(f"PNG poster: {png}")
+            say(f"PDF poster: {pdf}")
+    except Exception:
+        pass
+    return 0
 
 
 # ---- PisoPhone only: the coin box on the shop's normal router, set up over USB (no router software, no SSH) ---------------------
@@ -4369,7 +4593,7 @@ class Session:
                 raise ValueError("unknown mode")
             with self.lock:
                 self.tools["message"] = f"The {KEY_FILES[kind][1].lower()} key is {what} (fingerprint {key_fingerprint(key)}), in {key_path(kind)}."
-                if mode == "create" and kind != "owner":
+                if mode == "create":
                     self.tools["message"] += " Boxes accept it only after their firmware is built with its public half (a developer step)."
         self._tool(work)
 
@@ -4422,9 +4646,25 @@ class Session:
 
     def tools_snapshot(self):
         keys = []
+        expected_owner = os.environ.get("PISOPHONE_OWNER_FINGERPRINT") or EXPECTED_OWNER_FINGERPRINT
         for kind, (_name, label) in KEY_FILES.items():
             path = key_path(kind)
-            keys.append({"kind": kind, "label": label, "path": path, "found": os.path.isfile(path)})
+            found = os.path.isfile(path)
+            status = "found" if found else "missing"
+            note = ""
+            if found:
+                try:
+                    k = load_key(kind, path, check_owner=False)
+                    fp = key_fingerprint(k)
+                    if kind == "owner" and expected_owner != "*" and fp != expected_owner:
+                        status = "mismatch"
+                        note = f"Fingerprint {fp} does not match firmware ({expected_owner})"
+                    else:
+                        note = f"Fingerprint {fp}"
+                except Exception as e:
+                    status = "bad"
+                    note = str(e)
+            keys.append({"kind": kind, "label": label, "path": path, "found": found, "status": status, "note": note})
         try:
             import cryptography  # noqa: F401
             have = True
@@ -5097,7 +5337,7 @@ function paintTools(){
  $('#tPrep').classList.toggle('hide',t.crypto&&!t.prep.running&&!t.prep.lines.length);$('#btnPrep').disabled=t.prep.running||t.crypto;
  const pl=$('#tPrepLog');pl.classList.toggle('hide',!t.prep.lines.length);if(t.prep.lines.length)setPre(pl,t.prep.lines);
  const dl=$('#cBoxes');if(dl.children.length!==t.boxes.length){clear(dl);t.boxes.forEach(x=>dl.append(h('option',{value:x.box.replace(/(..)(?=.)/g,'$1:').toUpperCase()})))}
- const kl=$('#kList');clear(kl);t.keys.forEach(k=>kl.append(h('div',{class:'kv'},h('span',{style:'color:var(--'+(k.found?'ok':'warn')+')'},k.found?'Found':'Missing'),h('span',{style:'color:var(--ink)'},k.label+' '),h('span',{class:'mut small'},k.path))));
+ const kl=$('#kList');clear(kl);t.keys.forEach(k=>{const col=k.status==='mismatch'||k.status==='bad'?'bad':k.found?'ok':'warn';const stTxt=k.status==='mismatch'?'Mismatch':k.status==='bad'?'Invalid':k.found?'Found':'Missing';kl.append(h('div',{class:'kv'},h('span',{style:'color:var(--'+col+')'},stTxt),h('span',{style:'color:var(--ink)'},k.label+' '),h('span',{class:'mut small'},k.path+(k.note?' ('+k.note+')':''))))});
  const ks=$('#kKind');if(!ks.children.length)t.keys.forEach(k=>ks.append(h('option',{value:k.kind},k.label)));
  const lr=$('#lResult');clear(lr);
  if(t.licenses){const x=t.licenses;lr.append(note('ok',(x.reissued?'The ':'Made ')+x.keys.length+' key'+(x.keys.length>1?'s':'')+' for box '+x.box.replace(/(..)(?=.)/g,'$1:').toUpperCase()+(x.reissued?' (already sold)':'. This box now has '+x.total+' key'+(x.total>1?'s':'')+' on record, '+(2+x.total)+' slots')+'. Give the customer one line per slot, after they pay.'));
@@ -5212,10 +5452,24 @@ def main(argv=None):
     p.add_argument("--wifi-name", help="PisoPhone-only terminal mode: the shop's Wi-Fi name (default: asked)")
     p.add_argument("--wifi-password", help="PisoPhone-only terminal mode: the shop's Wi-Fi password (default: asked)")
     p.add_argument("--admin-password", help="PisoPhone-only terminal mode: the coin box admin password (default: a new strong one is made)")
-    p.add_argument("--box", help="make slot license keys for this box code (AA:BB:CC:DD:EE:FF) and stop")
-    p.add_argument("--count", default="1", help="with --box: how many keys")
+    p.add_argument("--box", help="make slot license keys or time cards for this box code (AA:BB:CC:DD:EE:FF)")
+    p.add_argument("--count", default="1", help="with --box: how many keys/cards")
     p.add_argument("--note", default="", help="with --box: a note for your records")
     p.add_argument("--reissue", action="store_true", help="with --box: print the keys already made for the box again")
+    p.add_argument("--check-keys", action="store_true", help="verify status and fingerprints of owner, card, and admin keys")
+    p.add_argument("--import-key", action="store_true", help="import a key (PEM or base64) to your keys folder")
+    p.add_argument("--key-kind", choices=["owner", "card", "admin"], default="owner", help="with --import-key: which key (default owner)")
+    p.add_argument("--key-text", help="with --import-key: key string (PEM or base64)")
+    p.add_argument("--key-file", help="with --import-key: path to key file")
+    p.add_argument("--replace", action="store_true", help="with --import-key: overwrite existing key file (kept as .old)")
+    p.add_argument("--make-cards", action="store_true", help="make QR time cards for --box")
+    p.add_argument("--hours", default="1", help="with --make-cards: play duration in hours (default 1)")
+    p.add_argument("--flip", choices=["long", "short"], default="long", help="with --make-cards: paper flip edge (default long)")
+    p.add_argument("--make-admin-qr", action="store_true", help="generate super admin QR code HTML page")
+    p.add_argument("--make-recovery", action="store_true", help="generate phone recovery QR code HTML page")
+    p.add_argument("--minutes", default="60", help="with --make-recovery: how many minutes code stays valid (default 60)")
+    p.add_argument("--make-wifi-poster", action="store_true", help="generate the PisoWiFi wall poster")
+    p.add_argument("--portal-url", default="http://10.0.30.1:2080/", help="with --make-wifi-poster: portal URL (default http://10.0.30.1:2080/)")
     args = p.parse_args(argv)
     if not re.fullmatch(r"[A-Za-z0-9._/-]+", args.branch):
         p.error(f"not a branch name: {args.branch}")
@@ -5229,6 +5483,18 @@ def main(argv=None):
     try:
         if args.install_service:
             return install_service(args)
+        if args.check_keys:
+            return run_check_keys(say)
+        if args.import_key:
+            return run_import_key(args, say)
+        if args.make_cards:
+            return run_make_cards_cli(args, say)
+        if args.make_admin_qr:
+            return run_make_admin_qr_cli(args, say)
+        if args.make_recovery:
+            return run_make_recovery_cli(args, say)
+        if args.make_wifi_poster:
+            return run_make_wifi_poster_cli(args, say)
         if args.box:
             if not ensure_cryptography(say, detect_system()):
                 raise SetupError("the 'cryptography' package could not be installed.")
