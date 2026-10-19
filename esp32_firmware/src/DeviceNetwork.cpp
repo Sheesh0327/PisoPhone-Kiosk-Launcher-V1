@@ -59,7 +59,11 @@ void sendAddTime(int minutes, String targetIp, String txId) {
 
 void recordCoinRevenue(int pulses, CoinSlotOwnerType owner) {
     if (pulses <= 0) return;
+#if PISO_HAS_PHONES
     bool isPhone = (owner == CoinSlotOwnerType::PHONE || owner == CoinSlotOwnerType::CONTROLLER);
+#else
+    bool isPhone = false;
+#endif
     totalCoinsLifetime += pulses;
     totalCoinsSession += pulses;
     if (isPhone) {
