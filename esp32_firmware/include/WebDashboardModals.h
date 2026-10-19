@@ -5,8 +5,9 @@
 
 #include "Product.h"
 
+const char PORTAL_MODALS_HTML[] PROGMEM =
 #if PISO_HAS_PHONES
-#define MODAL_PHONE_SLOT R"HTML(<!-- Phone slot -->
+R"HTML(<!-- Phone slot -->
 <div id="slot_activation_modal" class="modal-overlay">
     <div class="modal">
         <div class="modal-head">
@@ -35,34 +36,8 @@
 </div>
 
 )HTML"
-#else
-#define MODAL_PHONE_SLOT ""
 #endif
-
-#if PISO_HAS_PHONES
-#define MODAL_PHONE_PAIR R"HTML(<!-- Pair a connecting phone -->
-<div id="unassigned_pair_modal" class="modal-overlay">
-    <div class="modal">
-        <div class="modal-head">
-            <h3 id="unassigned_modal_title">Pair a phone</h3>
-            <button type="button" class="modal-x" onclick="closeUnassignedPairModal()" aria-label="Close"><svg class="ic"><use href="#i-x"/></svg></button>
-        </div>
-        <div id="unassigned_modal_body" class="modal-body"></div>
-        <div class="modal-foot">
-            <button type="button" class="btn" onclick="openInstallerForActiveSlot()"><svg class="ic"><use href="#i-download"/></svg>Open setup page</button>
-            <button type="button" class="btn" onclick="closeUnassignedPairModal()">Close</button>
-        </div>
-    </div>
-</div>
-)HTML"
-#else
-#define MODAL_PHONE_PAIR ""
-#endif
-
-const char PORTAL_MODALS_HTML[] PROGMEM = R"HTML(
-)HTML"
-    MODAL_PHONE_SLOT
-    R"HTML(<!-- Payments the box could not deliver -->
+R"HTML(<!-- Payments the box could not deliver -->
 <div id="orphans_modal" class="modal-overlay">
     <div class="modal">
         <div class="modal-head">
@@ -78,7 +53,23 @@ const char PORTAL_MODALS_HTML[] PROGMEM = R"HTML(
 </div>
 
 )HTML"
-    MODAL_PHONE_PAIR
-    R"HTML()HTML";
+#if PISO_HAS_PHONES
+R"HTML(<!-- Pair a connecting phone -->
+<div id="unassigned_pair_modal" class="modal-overlay">
+    <div class="modal">
+        <div class="modal-head">
+            <h3 id="unassigned_modal_title">Pair a phone</h3>
+            <button type="button" class="modal-x" onclick="closeUnassignedPairModal()" aria-label="Close"><svg class="ic"><use href="#i-x"/></svg></button>
+        </div>
+        <div id="unassigned_modal_body" class="modal-body"></div>
+        <div class="modal-foot">
+            <button type="button" class="btn" onclick="openInstallerForActiveSlot()"><svg class="ic"><use href="#i-download"/></svg>Open setup page</button>
+            <button type="button" class="btn" onclick="closeUnassignedPairModal()">Close</button>
+        </div>
+    </div>
+</div>
+)HTML"
+#endif
+;
 
 #endif // WEB_DASHBOARD_MODALS_H

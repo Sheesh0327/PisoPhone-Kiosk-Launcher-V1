@@ -7,15 +7,13 @@
 #include "Product.h"
 
 #if PISO_HAS_PHONES
-#define ICON_PHONE R"HTML(<symbol id="i-phone" viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/></symbol>
-)HTML"
+#define ICON_PHONE R"HTML(<symbol id="i-phone" viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M11 18.5h2"/></symbol>)HTML"
 #else
 #define ICON_PHONE ""
 #endif
 
 #if PISO_HAS_PHONES
-#define ICON_BATTERY R"HTML(<symbol id="i-battery" viewBox="0 0 24 24"><rect x="2.5" y="8" width="16" height="8" rx="2"/><path d="M21 11v2"/></symbol>
-)HTML"
+#define ICON_BATTERY R"HTML(<symbol id="i-battery" viewBox="0 0 24 24"><rect x="2.5" y="8" width="16" height="8" rx="2"/><path d="M21 11v2"/></symbol>)HTML"
 #else
 #define ICON_BATTERY ""
 #endif

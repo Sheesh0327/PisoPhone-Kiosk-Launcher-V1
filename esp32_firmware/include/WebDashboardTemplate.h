@@ -5,19 +5,71 @@
 
 #include "Product.h"
 
+const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
+    <title>{PRODUCT_NAME} Coin Box</title>
+    <link rel="stylesheet" href="/assets/portal.css?v={ASSET_V_PORTAL_CSS}">
+    <script src="/assets/portal-core.js?v={ASSET_V_PORTAL_CORE}"></script>
+</head>
+<body>
+{PORTAL_ICONS}
+    <header class="topbar">
+        <div class="topbar-in">
+            <div class="brand">
+                <span class="brand-mark"><img src="/assets/brand.png" alt="" width="34" height="34"></span>
+                <span class="brand-name">{PRODUCT_NAME}</span>
+                <span class="brand-sub">Coin box</span>
+            </div>
+            <nav class="tabs">
+                <button type="button" class="tab active" onclick="switchTab('tab-dashboard')"><svg class="ic"><use href="#i-overview"/></svg>Overview</button>
+                <button type="button" class="tab" onclick="switchTab('tab-settings')"><svg class="ic"><use href="#i-settings"/></svg>Settings</button>
+                <button type="button" class="tab" onclick="switchTab('tab-tools')"><svg class="ic"><use href="#i-tools"/></svg>Tools</button>
+                <button type="button" class="tab" onclick="switchTab('tab-superadmin')"><svg class="ic"><use href="#i-shield"/></svg>Vendor</button>
+            </nav>
+            <div class="topbar-end">
+                <button type="button" class="themebtn" onclick="toggleTheme()" title="Light or dark" aria-label="Light or dark"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+                <span id="conn_pill" class="pill ok">Online</span>
+                <a href="/logout" onclick="return confirm('Sign out?');" class="linkbtn"><svg class="ic"><use href="#i-logout"/></svg>Sign out</a>
+            </div>
+        </div>
+    </header>
+
+    <main class="shell">
+        <div id="banners" class="stack"></div>
+
+        <!-- OVERVIEW -->
+        <section id="tab-dashboard" class="tab-content active">
+            <div class="stats">
+                <div class="stat">
+                    <span class="stat-label">Revenue</span>
+                    <span class="stat-value">₱{TOTAL_COINS}</span>
+                    <span class="stat-sub">₱{SESSION_COINS} this session</span>
+                </div>
+)HTML"
 #if PISO_HAS_PHONES
-#define TPL_STAT_PHONES R"HTML(                <div class="stat">
+R"HTML(                <div class="stat">
                     <span class="stat-label">Phones</span>
                     <span class="stat-value"><span id="stat_phones">–</span> <small>of {MAX_SLOTS}</small></span>
                     <span id="stat_phones_sub" class="stat-sub">Checking…</span>
                 </div>
 )HTML"
-#else
-#define TPL_STAT_PHONES ""
 #endif
+R"HTML(                <div id="wifi_stat" class="stat">
+                    <span class="stat-label">Wi-Fi signal</span>
+                    <span id="wifi_quality_pct" class="stat-value">{WIFI_QUALITY}%</span>
+                    <span class="stat-sub"><span id="wifi_rssi_display">{WIFI_RSSI} dBm</span> · <span id="wifi_ssid_display">{WIFI_SSID}</span></span>
+                    <div class="meter"><i id="wifi_meter_fill" style="width: {WIFI_QUALITY}%"></i></div>
+                </div>
+            </div>
 
+)HTML"
 #if PISO_HAS_PHONES
-#define TPL_OVERVIEW_PHONES R"HTML(            <div class="panel">
+R"HTML(            <div class="panel">
                 <div class="panel-head">
                     <h2>Phones
                         <span id="pending_requests_badge" class="tag warn hidden"></span>
@@ -71,173 +123,8 @@
                 </div>
             </div>
 )HTML"
-#else
-#define TPL_OVERVIEW_PHONES ""
 #endif
-
-#if PISO_HAS_PHONES
-#define TPL_PHONE_PORT R"HTML(                            <div class="field">
-                                <label for="port">Phone app port</label>
-                                <input id="port" type="number" min="1" max="65535" name="target_port" value="{PORT}">
-                                <span class="hint">Default is 8080.</span>
-                            </div>
-)HTML"
-#else
-#define TPL_PHONE_PORT ""
-#endif
-
-#if PISO_HAS_PHONES
-#define TPL_ADMIN_LABEL R"HTML(                                <label for="admin_pw">Password for this page and the phones' admin screen</label>
-)HTML"
-#else
-#define TPL_ADMIN_LABEL R"HTML(                                <label for="admin_pw">Password for this page</label>
-)HTML"
-#endif
-
-#if PISO_HAS_PHONES
-#define TPL_ADMIN_HINT R"HTML(                                <span class="hint">Changing it also changes the admin password on every paired phone. They pick it up automatically.</span>
-)HTML"
-#else
-#define TPL_ADMIN_HINT ""
-#endif
-
-#if PISO_HAS_PHONES
-#define TPL_RATE_HINT R"HTML(                                <span class="hint">This is the Standard rate. Larger coins multiply it (₱5 = 5×, ₱10 = 10×, ₱20 = 20×). A phone with a profile (below) uses the profile's rate instead. Phones get the new rate right away.</span>
-)HTML"
-#else
-#define TPL_RATE_HINT R"HTML(                                <span class="hint">This is the Standard rate. Larger coins multiply it (₱5 = 5×, ₱10 = 10×, ₱20 = 20×).</span>
-)HTML"
-#endif
-
-#if PISO_HAS_PHONES
-#define TPL_SAVE_HINT R"HTML(                    <span class="hint">Changes are saved on the box and sent to the phones right away.</span>
-)HTML"
-#else
-#define TPL_SAVE_HINT R"HTML(                    <span class="hint">Changes are saved on the box.</span>
-)HTML"
-#endif
-
-#if PISO_HAS_PHONES
-#define TPL_PROFILES R"HTML(            <div class="panel" id="profiles_panel">
-                <div class="panel-head"><h2><svg class="ic"><use href="#i-coin"/></svg>Phone profiles</h2></div>
-                <div class="panel-body">
-                    <span class="hint">A profile is a kind of rental device (a basic phone, a gaming phone, a tablet) with its own minutes per ₱1. Phones without a profile use the Coin rate above (Standard).</span>
-                    <div id="profiles_list"></div>
-                    <div class="actions">
-                        <button type="button" class="btn sm" id="profile_add" onclick="addProfileRow()">Add a profile</button>
-                        <button type="button" class="btn primary sm" id="profile_save" onclick="saveProfiles()">Save profiles</button>
-                    </div>
-                    <h3 class="muted" style="margin-top:16px">Profile of each phone slot</h3>
-                    <div id="profile_slots"></div>
-                </div>
-            </div>
-)HTML"
-#else
-#define TPL_PROFILES ""
-#endif
-
-#if PISO_HAS_PHONES
-#define TPL_TOOLS_PHONES R"HTML(            {DEVICE_SLOTS_MANAGER}
-
-            <div class="panel grid-full {MATCH_CARD_CLASS}" id="match_card_box">
-                <div class="panel-head">
-                    <h2><svg class="ic"><use href="#i-users"/></svg>1v1 match mode {MATCH_STATUS_BADGE}</h2>
-                    {MATCH_HEADER_ACTION}
-                </div>
-                <div id="match_collapsible_content" class="panel-body {MATCH_CONTENT_CLASS}">
-                    {MATCH_ALERT}
-                    <form action="/one_vs_one" method="POST" class="stack">
-                        <div class="field" style="max-width: 200px;">
-                            <label for="match_mins_input">Stake (minutes)</label>
-                            <input type="number" id="match_mins_input" name="match_minutes" value="{MATCH_MINUTES}" min="1">
-                        </div>
-                        <div class="duel">
-                            <div>
-                                <label class="lbl" for="p1_select">Player 1</label>
-                                <select id="p1_select" name="p1_ip">{P1_OPTIONS}</select>
-                                <button type="submit" name="winner" value="p1" class="btn block"><svg class="ic"><use href="#i-trophy"/></svg>Player 1 wins</button>
-                            </div>
-                            <div>
-                                <label class="lbl" for="p2_select">Player 2</label>
-                                <select id="p2_select" name="p2_ip">{P2_OPTIONS}</select>
-                                <button type="submit" name="winner" value="p2" class="btn block"><svg class="ic"><use href="#i-trophy"/></svg>Player 2 wins</button>
-                            </div>
-                        </div>
-                        {MATCH_CONTROLS}
-                    </form>
-                    <div id="match_qual_result" class="note hidden"></div>
-                </div>
-            </div>
-)HTML"
-#else
-#define TPL_TOOLS_PHONES ""
-#endif
-
-#if PISO_HAS_PHONES
-#define TPL_PHONE_CFG R"HTML(    <script>window.PISO_CFG = { mac: "{MAC_ADDRESS}", secret: "{SHARED_SECRET}" };</script>
-)HTML"
-#else
-#define TPL_PHONE_CFG ""
-#endif
-
-const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="color-scheme" content="light dark">
-    <title>{PRODUCT_NAME} Coin Box</title>
-    <link rel="stylesheet" href="/assets/portal.css?v={ASSET_V_PORTAL_CSS}">
-    <script src="/assets/portal-core.js?v={ASSET_V_PORTAL_CORE}"></script>
-</head>
-<body>
-{PORTAL_ICONS}
-    <header class="topbar">
-        <div class="topbar-in">
-            <div class="brand">
-                <span class="brand-mark"><img src="/assets/brand.png" alt="" width="34" height="34"></span>
-                <span class="brand-name">{PRODUCT_NAME}</span>
-                <span class="brand-sub">Coin box</span>
-            </div>
-            <nav class="tabs">
-                <button type="button" class="tab active" onclick="switchTab('tab-dashboard')"><svg class="ic"><use href="#i-overview"/></svg>Overview</button>
-                <button type="button" class="tab" onclick="switchTab('tab-settings')"><svg class="ic"><use href="#i-settings"/></svg>Settings</button>
-                <button type="button" class="tab" onclick="switchTab('tab-tools')"><svg class="ic"><use href="#i-tools"/></svg>Tools</button>
-                <button type="button" class="tab" onclick="switchTab('tab-superadmin')"><svg class="ic"><use href="#i-shield"/></svg>Vendor</button>
-            </nav>
-            <div class="topbar-end">
-                <button type="button" class="themebtn" onclick="toggleTheme()" title="Light or dark" aria-label="Light or dark"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
-                <span id="conn_pill" class="pill ok">Online</span>
-                <a href="/logout" onclick="return confirm('Sign out?');" class="linkbtn"><svg class="ic"><use href="#i-logout"/></svg>Sign out</a>
-            </div>
-        </div>
-    </header>
-
-    <main class="shell">
-        <div id="banners" class="stack"></div>
-
-        <!-- OVERVIEW -->
-        <section id="tab-dashboard" class="tab-content active">
-            <div class="stats">
-                <div class="stat">
-                    <span class="stat-label">Revenue</span>
-                    <span class="stat-value">₱{TOTAL_COINS}</span>
-                    <span class="stat-sub">₱{SESSION_COINS} this session</span>
-                </div>
-)HTML"
-    TPL_STAT_PHONES
-    R"HTML(                <div id="wifi_stat" class="stat">
-                    <span class="stat-label">Wi-Fi signal</span>
-                    <span id="wifi_quality_pct" class="stat-value">{WIFI_QUALITY}%</span>
-                    <span class="stat-sub"><span id="wifi_rssi_display">{WIFI_RSSI} dBm</span> · <span id="wifi_ssid_display">{WIFI_SSID}</span></span>
-                    <div class="meter"><i id="wifi_meter_fill" style="width: {WIFI_QUALITY}%"></i></div>
-                </div>
-            </div>
-
-)HTML"
-    TPL_OVERVIEW_PHONES
-    R"HTML(        </section>
+R"HTML(        </section>
 
         <!-- SETTINGS -->
         <section id="tab-settings" class="tab-content">
@@ -255,8 +142,15 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                                 <input id="wifi_pass" type="password" name="wifi_pass" value="{WIFI_PASS}" autocomplete="off">
                             </div>
 )HTML"
-    TPL_PHONE_PORT
-    R"HTML(                            <div class="kv"><span class="muted">Box address</span><span id="wifi_ip_display" class="mono">{IP_ADDRESS}</span></div>
+#if PISO_HAS_PHONES
+R"HTML(                            <div class="field">
+                                <label for="port">Phone app port</label>
+                                <input id="port" type="number" min="1" max="65535" name="target_port" value="{PORT}">
+                                <span class="hint">Default is 8080.</span>
+                            </div>
+)HTML"
+#endif
+R"HTML(                            <div class="kv"><span class="muted">Box address</span><span id="wifi_ip_display" class="mono">{IP_ADDRESS}</span></div>
                         </div>
                     </div>
 
@@ -265,11 +159,20 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                         <div class="panel-body">
                             <div class="field">
 )HTML"
-    TPL_ADMIN_LABEL
-    R"HTML(                                <input id="admin_pw" type="password" name="admin_pw" value="{ADMIN_PASSWORD}" autocomplete="new-password">
+#if PISO_HAS_PHONES
+R"HTML(                                <label for="admin_pw">Password for this page and the phones' admin screen</label>
 )HTML"
-    TPL_ADMIN_HINT
-    R"HTML(                            </div>
+#else
+R"HTML(                                <label for="admin_pw">Password for this page</label>
+)HTML"
+#endif
+R"HTML(                                <input id="admin_pw" type="password" name="admin_pw" value="{ADMIN_PASSWORD}" autocomplete="new-password">
+)HTML"
+#if PISO_HAS_PHONES
+R"HTML(                                <span class="hint">Changing it also changes the admin password on every paired phone. They pick it up automatically.</span>
+)HTML"
+#endif
+R"HTML(                            </div>
                         </div>
                     </div>
 
@@ -280,8 +183,14 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                                 <label for="minutes_per_coin">Minutes per ₱1</label>
                                 <input id="minutes_per_coin" type="number" name="minutes_per_coin" value="{MINUTES_PER_COIN}" min="1" max="1440">
 )HTML"
-    TPL_RATE_HINT
-    R"HTML(                            </div>
+#if PISO_HAS_PHONES
+R"HTML(                                <span class="hint">This is the Standard rate. Larger coins multiply it (₱5 = 5×, ₱10 = 10×, ₱20 = 20×). A phone with a profile (below) uses the profile's rate instead. Phones get the new rate right away.</span>
+)HTML"
+#else
+R"HTML(                                <span class="hint">This is the Standard rate. Larger coins multiply it (₱5 = 5×, ₱10 = 10×, ₱20 = 20×).</span>
+)HTML"
+#endif
+R"HTML(                            </div>
                         </div>
                     </div>
 
@@ -336,19 +245,74 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                 <div class="actions">
                     <button type="submit" class="btn primary"><svg class="ic"><use href="#i-save"/></svg>Save changes</button>
 )HTML"
-    TPL_SAVE_HINT
-    R"HTML(                </div>
+#if PISO_HAS_PHONES
+R"HTML(                    <span class="hint">Changes are saved on the box and sent to the phones right away.</span>
+)HTML"
+#else
+R"HTML(                    <span class="hint">Changes are saved on the box.</span>
+)HTML"
+#endif
+R"HTML(                </div>
             </form>
 
 )HTML"
-    TPL_PROFILES
-    R"HTML(        </section>
+#if PISO_HAS_PHONES
+R"HTML(            <div class="panel" id="profiles_panel">
+                <div class="panel-head"><h2><svg class="ic"><use href="#i-coin"/></svg>Phone profiles</h2></div>
+                <div class="panel-body">
+                    <span class="hint">A profile is a kind of rental device (a basic phone, a gaming phone, a tablet) with its own minutes per ₱1. Phones without a profile use the Coin rate above (Standard).</span>
+                    <div id="profiles_list"></div>
+                    <div class="actions">
+                        <button type="button" class="btn sm" id="profile_add" onclick="addProfileRow()">Add a profile</button>
+                        <button type="button" class="btn primary sm" id="profile_save" onclick="saveProfiles()">Save profiles</button>
+                    </div>
+                    <h3 class="muted" style="margin-top:16px">Profile of each phone slot</h3>
+                    <div id="profile_slots"></div>
+                </div>
+            </div>
+)HTML"
+#endif
+R"HTML(        </section>
 
         <!-- TOOLS -->
         <section id="tab-tools" class="tab-content">
 )HTML"
-    TPL_TOOLS_PHONES
-    R"HTML(
+#if PISO_HAS_PHONES
+R"HTML(            {DEVICE_SLOTS_MANAGER}
+
+            <div class="panel grid-full {MATCH_CARD_CLASS}" id="match_card_box">
+                <div class="panel-head">
+                    <h2><svg class="ic"><use href="#i-users"/></svg>1v1 match mode {MATCH_STATUS_BADGE}</h2>
+                    {MATCH_HEADER_ACTION}
+                </div>
+                <div id="match_collapsible_content" class="panel-body {MATCH_CONTENT_CLASS}">
+                    {MATCH_ALERT}
+                    <form action="/one_vs_one" method="POST" class="stack">
+                        <div class="field" style="max-width: 200px;">
+                            <label for="match_mins_input">Stake (minutes)</label>
+                            <input type="number" id="match_mins_input" name="match_minutes" value="{MATCH_MINUTES}" min="1">
+                        </div>
+                        <div class="duel">
+                            <div>
+                                <label class="lbl" for="p1_select">Player 1</label>
+                                <select id="p1_select" name="p1_ip">{P1_OPTIONS}</select>
+                                <button type="submit" name="winner" value="p1" class="btn block"><svg class="ic"><use href="#i-trophy"/></svg>Player 1 wins</button>
+                            </div>
+                            <div>
+                                <label class="lbl" for="p2_select">Player 2</label>
+                                <select id="p2_select" name="p2_ip">{P2_OPTIONS}</select>
+                                <button type="submit" name="winner" value="p2" class="btn block"><svg class="ic"><use href="#i-trophy"/></svg>Player 2 wins</button>
+                            </div>
+                        </div>
+                        {MATCH_CONTROLS}
+                    </form>
+                    <div id="match_qual_result" class="note hidden"></div>
+                </div>
+            </div>
+
+)HTML"
+#endif
+R"HTML(
             <div class="grid">
                 <div class="panel">
                     <div class="panel-head"><h2><svg class="ic"><use href="#i-cloud"/></svg>Firmware update</h2></div>
@@ -385,8 +349,11 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
 {PORTAL_MODALS}
 
 )HTML"
-    TPL_PHONE_CFG
-    R"HTML(    <script src="/assets/portal-modals.js?v={ASSET_V_PORTAL_MODALS}"></script>
+#if PISO_HAS_PHONES
+R"HTML(    <script>window.PISO_CFG = { mac: "{MAC_ADDRESS}", secret: "{SHARED_SECRET}" };</script>
+)HTML"
+#endif
+R"HTML(    <script src="/assets/portal-modals.js?v={ASSET_V_PORTAL_MODALS}"></script>
     <script defer src="/assets/jsqr.js?v={ASSET_V_JSQR}"></script>
     <script defer src="/assets/adminqr.js?v={ASSET_V_ADMINQR}"></script>
     <script src="/assets/superadmin.js?v={ASSET_V_SUPERADMIN}"></script>
