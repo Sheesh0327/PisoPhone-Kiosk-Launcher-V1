@@ -493,7 +493,11 @@ mod tests {
         assert_eq!((b.created, b.expires), (1_000_050 + delta, 1_000_050 + delta + 30 * 86_400));
         let kept = load_batches(&d);
         let get = |id: &str| kept.iter().find(|b| b.id == id).unwrap().clone();
-        assert_eq!((get(&before.batch.id).created, get(&before.batch.id).expires), (500_000, before.batch.expires), "a voucher from before the cut keeps its times");
+        assert_eq!(
+            (get(&before.batch.id).created, get(&before.batch.id).expires),
+            (500_000, before.batch.expires),
+            "a voucher from before the cut keeps its times"
+        );
         assert_eq!(get(&after.batch.id).created, after.batch.created, "a voucher bought after the jump is not moved");
         assert_eq!(get(&after.batch.id).expires, after.batch.expires);
         // the redeemed one: when it was used moves with the clock too

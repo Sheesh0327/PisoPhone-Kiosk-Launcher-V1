@@ -1479,7 +1479,13 @@ impl Core {
                 let l = ledger::shift(&self.cfg.revenue_path(), since, until, delta);
                 let v = crate::voucher::shift(&self.cfg.data_dir, since, until, delta);
                 // a record for the owner (and for tests); nothing reads it to decide credit
-                let rec = format!("v=1\ndetected_at={}\nsince={}\njump_at_mono={}\ndelta={}\n", wall, since, self.started.elapsed().as_secs(), delta);
+                let rec = format!(
+                    "v=1\ndetected_at={}\nsince={}\njump_at_mono={}\ndelta={}\n",
+                    wall,
+                    since,
+                    self.started.elapsed().as_secs(),
+                    delta
+                );
                 if let Err(e) = crate::util::write_atomic(&format!("{}/clockjump", self.cfg.data_dir), rec.as_bytes()) {
                     log!("could not write the clock jump record: {}", e);
                 }
@@ -1643,7 +1649,7 @@ mod tests {
     fn rt01_rt02_the_fair_use_tick_applies_the_clock_jump_before_it_looks_at_any_session() {
         let now = now_secs();
         let s0 = now - 7200; // the stale time the router started with
-        // the clock was last looked at 100 s after the stale start; now it reads 7200 s later: the jump is about 7100 s
+                             // the clock was last looked at 100 s after the stale start; now it reads 7200 s later: the jump is about 7100 s
         let core = core_with_stale_clock("tick", s0 + 100, s0);
         let roll_path = core.cfg.roll_path();
         let stale = entry("c1", MAC_A, 60, s0 + 50); // paid during the stale period, 60 minutes
@@ -1655,12 +1661,21 @@ mod tests {
 
         let got = roll::load(&roll_path);
         assert_eq!(got.len(), 3, "RT-01: nothing is deleted");
-        assert!(got[0].fp + 5 >= now - 60 && got[0].fp <= now, "RT-01: the stale session moved with the clock: {} (now {})", got[0].fp, now);
+        assert!(
+            got[0].fp + 5 >= now - 60 && got[0].fp <= now,
+            "RT-01: the stale session moved with the clock: {} (now {})",
+            got[0].fp,
+            now
+        );
         assert!(got[0].left(now_secs()) > 3400, "and the customer still has their hour: {} s", got[0].left(now_secs()));
         assert_eq!(got[1].fp, after.fp, "RT-02: a payment made after the jump is not moved (free time)");
         assert_eq!(got[2].fp, old.fp, "a session from before the cut keeps its times");
         let rec = fs::read_to_string(format!("{}/clockjump", core.cfg.data_dir)).expect("the jump is recorded for the owner");
-        assert!(rec.starts_with("v=1\n") && rec.contains("\ndetected_at=") && rec.contains("\nsince=") && rec.contains("\njump_at_mono="), "{}", rec);
+        assert!(
+            rec.starts_with("v=1\n") && rec.contains("\ndetected_at=") && rec.contains("\nsince=") && rec.contains("\njump_at_mono="),
+            "{}",
+            rec
+        );
         assert!(rec.contains(&format!("\nsince={}\n", s0)) && rec.contains("\ndelta=71"), "{}", rec);
     }
 
@@ -1687,7 +1702,11 @@ mod tests {
         let dir = core.cfg.data_dir.clone();
         let v = crate::voucher::issue(&dir, s0 + 50, MAC_A, "w1", "hyper", 60, 10).unwrap();
         ledger::append(&core.cfg.revenue_path(), s0 + 50, "hyper", 10, 60, "vbuy").unwrap();
-        assert_eq!(crate::voucher::lookup(&dir, now, &v.code), Err(crate::voucher::RedeemError::Expired), "before the shift it reads as expired");
+        assert_eq!(
+            crate::voucher::lookup(&dir, now, &v.code),
+            Err(crate::voucher::RedeemError::Expired),
+            "before the shift it reads as expired"
+        );
 
         core.check_clock();
 

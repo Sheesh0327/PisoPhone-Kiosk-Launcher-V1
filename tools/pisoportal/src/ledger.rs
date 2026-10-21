@@ -218,7 +218,7 @@ mod tests {
     fn rt02_a_payment_after_the_jump_is_not_moved() {
         let p = ledger_with_two_rows("window"); // rows at 100 and 200
         append(&p, 5000, "hyper", 1, 6, "new").unwrap(); // paid after the clock was set right
-        // the clock jumped at stale time 250 by 4000 s: only rows in [100, 250) were timed with the stale clock
+                                                         // the clock jumped at stale time 250 by 4000 s: only rows in [100, 250) were timed with the stale clock
         assert_eq!(shift(&p, 100, 250, 4000), 2);
         let t = fs::read_to_string(&p).unwrap();
         let rows: Vec<&str> = t.lines().collect();

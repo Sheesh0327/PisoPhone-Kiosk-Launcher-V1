@@ -268,7 +268,10 @@ mod tests {
             let code = text.split("#[cfg(test)]").next().unwrap();
             assert!(!code.contains("fs::rename"), "{} renames a file itself: use util::write_atomic", name);
         }
-        assert!(!include_str!("core.rs").split("#[cfg(test)]").next().unwrap().contains("fs::write(format!(\"{}.rec\""), "RT-05: the voucher marker is written with write_synced");
+        assert!(
+            !include_str!("core.rs").split("#[cfg(test)]").next().unwrap().contains("fs::write(format!(\"{}.rec\""),
+            "RT-05: the voucher marker is written with write_synced"
+        );
     }
 
     #[test]

@@ -453,7 +453,11 @@ mod tests {
         mint(&p, 100, mac, "w", Plan::Hyper, 5, 30, 0, 0, false).unwrap();
         assert!(session(&p, 100 + 30 * 60 + 1, mac).is_none());
         assert!(session_active(&p, 100 + 30 * 60 + 1, mac).is_none());
-        assert_eq!(load(&p).len(), 1, "a read that finds no time left must not delete: a clock that is not yet right would end a paid session");
+        assert_eq!(
+            load(&p).len(),
+            1,
+            "a read that finds no time left must not delete: a clock that is not yet right would end a paid session"
+        );
         purge(&p, 100 + 30 * 60 + 172_800 + 1);
         assert!(load(&p).is_empty());
     }
