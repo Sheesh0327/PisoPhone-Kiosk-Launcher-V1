@@ -2066,14 +2066,15 @@
   "severity": "high",
   "money_or_signing": true,
   "confidence": "uncertain",
-  "status": "open",
+  "status": "fixed",
   "fix": "after time is granted, touch must work inside games on tablets: hypothesis, the hidden lock overlay is hidden by view alpha only so Android 12+ treats its window as obscuring and blocks touches to other apps; diagnose with adb first",
   "test": {
    "kind": "unit",
-   "where": "app/src/test (lock overlay window parameters when hidden and shown)",
+   "where": "app/src/test/.../overlay/LockWindowSpecUnitTest.kt",
    "fails_before": true
   },
   "release": "app",
-  "feature": "003-tablet-game-touch"
+  "feature": "003-tablet-game-touch",
+  "implemented_in": "feat/003-tablet-game-touch (unit level only; tablet try-out pending)"
  }
 ]

@@ -1,6 +1,6 @@
 # Feature 003: touch works inside games on tablets after time is granted
 
-Status: **draft** (waiting for the owner)   Branch: `feat/003-tablet-game-touch`   Area: app
+Status: **implemented on the branch, waiting for the tablet try-out** (approved 2026-10-21)   Branch: `feat/003-tablet-game-touch`   Area: app
 Backlog rows: APP-27 (new, `specs/spec_01_findings.json`)   Release: app (next build number)
 
 ## Intent
@@ -56,3 +56,7 @@ adb shell settings get global block_untrusted_touches                           
 adb shell getprop ro.build.version.release
 ```
 Paste the output (trim device ids). For comparison run the same once on a phone where games work.
+
+## Spec edit during implementation (2026-10-21, constitution rule 8)
+The owner approved the feature and asked to proceed **without waiting for the diagnosis output**. Task group 1 (diagnosis first) is therefore turned from a blocker into a **check of the fix on the tablet**: the fix is small, safe if the hypothesis is wrong (the hidden window was already not touchable and not focusable; it now also has window alpha 0), and the `adb` commands move to the try-out (group 6). If the tablet still has dead touch after the fix, the capture decides the next spec edit. The hypothesis stays unproven until then.
+Decision 1 is answered: fix first, evidence at the try-out. Decision 2 (tablet model and Android version) is still wanted.
