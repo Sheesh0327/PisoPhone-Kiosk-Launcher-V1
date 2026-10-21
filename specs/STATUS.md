@@ -6,7 +6,7 @@ Updated: 2026-10-21. `beta` was recreated from `main` (`49ebad4`) with only the 
 
 | # | Feature | State | Notes |
 |---|---|---|---|
-| 001 | Router money and time (RT-01 to 07, 14) | **implemented on `feat/001-router-money-time`, waiting for owner review** | `specs/features/001-router-money-time/`. Router 1.5.13. cargo 87, test_flow 202, router setup tests all 0 failures. No lines of `4b6312d` were needed. Not tried on a router; CI not run yet. |
+| 001 | Router money and time (RT-01 to 07, 14) | **on `beta` (`5dce780`), Code quality run 576 in progress** | `specs/features/001-router-money-time/`. Router 1.5.13. cargo 87, test_flow 202, router setup tests all 0 failures. No lines of `4b6312d` were needed. Not tried on a router; CI not run yet. |
 
 ## Backlog: Spec 01 (`specs/spec_01_findings.json`, 106 rows, all `open` or `owner-decision`)
 
@@ -26,9 +26,12 @@ Earlier work exists on branch `claude/sleepy-gauss-rn31gl` (tip `748add9`) with 
 3. R1 app: APP-01 to 10 (needs a machine with the Android SDK).
 4. R2 signing and CI fixes.
 
+## Old-beta work not in the backlog (owner decision)
+On `claude/sleepy-gauss-rn31gl` only: firmware 3.11.0 (a separate image per product, USB Wi-Fi setup), setup choices "PisoPhone only" and "PisoWiFi only", coin-counter hardening `4b6312d`, CI loopback exemption. Keep, drop or respec each one.
+
 ## Owner decisions open
 
 ST-2 (signed flash manifest), SC-4 (`scripts/apk_production_cert.txt` empty), ST-8 (card and slot limits), DEAD-1 (root `package.json`), APP-04 (refuse coins until restore), roadmap 0.1 (any boxes in legacy mode?).
 
 ## Next step
-Owner reviews `specs/features/001-router-money-time/validation.md`; then merge to `beta` (owner's call), watch Code quality, then `/sdd-replan`.
+Wait for Code quality on `beta`; do not push to `beta` meanwhile. Then feature 002 (firmware money). Replan note: `specs/replans/2026-10-21.md`.
