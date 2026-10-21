@@ -224,6 +224,10 @@ void handleSave() {
     // Immediately flush any dirty revenue to NVS flash on manual save
     flushRevenueToFlash();
 
+    const int oldCoinPin = universalCoinPin;
+    const bool oldPulseGuard = coinPulseGuard;
+    const int oldPulseMinMs = coinPulseMinMs;
+
     prefs.begin(NVS_NAMESPACE, false);
     if (webServer.hasArg(NVS_KEY_WIFI_SSID)) {
         wifiSsid = webServer.arg(NVS_KEY_WIFI_SSID);
@@ -352,8 +356,9 @@ void handleSave() {
 #endif
     prefs.end();
 
-    // Dynamic Hardware Pin and Coin Slot reconfiguration
-    applyCoinSlotHardwareConfig();
+    // Coin hardware reconfiguration: only what changed, and not while a coin may be arriving (FW-02)
+    requestCoinSlotHardwareConfig(universalCoinPin != oldCoinPin, coinPulseGuard != oldPulseGuard,
+                                  coinPulseMinMs != oldPulseMinMs);
     setLedHardware(currentLedState == LED_STATE_CONNECTED);
     processRelayState();
 

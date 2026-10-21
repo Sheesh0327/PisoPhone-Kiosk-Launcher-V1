@@ -301,6 +301,9 @@ void releaseCoinSlot(const String& sessionId, CoinSlotOwnerType ownerType, bool 
 void processCoinSlotSession() {
     unsigned long now = millis();
 
+    // A coin pin / pulse guard / pulse width saved while the slot was in use is applied once it is idle (FW-02)
+    serviceCoinSlotHardwareConfig();
+
     // Periodically retry unacknowledged payment dispatches
     processPendingPaymentRetries();
 
