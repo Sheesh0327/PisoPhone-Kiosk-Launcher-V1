@@ -6,6 +6,7 @@ Updated: 2026-10-21 (replan `specs/replans/2026-10-21.md`). `beta` is at `b76f90
 
 | # | Feature | State | Notes |
 |---|---|---|---|
+| 005 | Spinning wheel on the PisoWiFi portal (replaces the free mini-game) | **spec and plan drafted, waiting for owner** | `specs/features/005-spinning-wheel/`. Stakes paid minutes: owner decisions 1 (legal check before use), 2 (children), 3 (old mini-game), 4 (default table), 5 (win cap). Hidden or adaptive odds were asked for and are **not** specified (see "Not built"). |
 | 004 | Firmware money rows FW-01, 02, 03, 05, 06 (firmware 3.11.1) | **implemented on `feat/004-firmware-money`; host tests green; CI not run yet** | `specs/features/004-firmware-money/`. Not compiled with PlatformIO (CI does it), not tried on a box: RS28 to RS31. |
 | 003 | Tablet game touch (APP-27) | **merged to `beta`** (PR #96) | Unit tests, lint, APK build green on the PR. Cause is a hypothesis: **owner runs RS33 on the tablet**; if touch is still dead the adb output decides the next spec edit. |
 | 002 | Restore firmware 3.11.0 (product images, USB Wi-Fi setup, coin-counter hardening) + ST-1 | **merged to `beta`** (`60c8eaf`) | Code quality green after one re-run (flake). Not tried on a box. |

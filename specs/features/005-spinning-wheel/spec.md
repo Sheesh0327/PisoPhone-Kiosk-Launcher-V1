@@ -1,0 +1,53 @@
+# Feature 005: spinning wheel on the PisoWiFi portal (replaces the free mini-game)
+
+Status: **draft** (waiting for the owner)   Branch: `feat/005-spinning-wheel`   Area: router (portal program, console, setup defaults)
+Backlog rows: none (side feature, owner request 2026-10-21)   Release: router (raise `setup/RELEASE`)
+
+## Intent
+A paying Wi-Fi customer can bet some of their **paid minutes** on a spinning wheel: a win multiplies the bet (2x, 3x, 5x), a loss costs it. The wheel replaces the free mini-game (a daily play allowance that never touched paid time) once the owner turns it on. The shop keeps a small long-run edge from the published odds.
+Serves the owner's wish for a livelier portal. **It also puts paid time at risk**, so it is built around project rule 1 (money and time are never wrong): every spin changes a customer's time exactly once, by exactly what the screen said, and can be audited.
+
+## What the owner chose (2026-10-21)
+- Stake: **paid internet minutes**. Small **house edge**. Safeguards required: max bet per spin, a minimum of time always kept, spins per day and a wait between spins, **result decided by the router** and only drawn by the page.
+- Limits to start with: bet 1 to 10 minutes and never more than half of the time left; a loss never leaves less than **5 minutes**; **10 spins a day** per device with a **10-second wait**; all editable in the console.
+- Wheel segments: the owner asked for an algorithm that "creates an illusion of winning" and "adjusts the odds so the house wins in the long run". **Not specified, on purpose** (see "Not built" below). The house edge comes from the published table.
+- Rollout: **a router that updates keeps the free mini-game and has the wheel off until the owner turns it on**; a new install has it on by default.
+- Accounting: each spin is a separate ledger row; coins stay the only revenue.
+
+## Not built, and why
+- No hidden or changing odds: the outcome of a spin never depends on the customer's earlier wins or losses, their balance, the time of day or how much they just won. One fixed table, the same for everyone, shown on the page.
+- No near-miss or "almost won" effects and no wheel that draws a different picture from the result. The animation is free to be lively, but it ends exactly on the segment the router chose.
+- No auto-spin, no "double or nothing" chain, no spin when the customer has paused or has under the floor.
+Reason: a customer staking paid minutes must be able to rely on the odds they are shown; anything else is misleading them about what they risk. It also puts the shop owner at legal risk. A house edge is fine and is built in openly.
+
+## Invariants touched
+- **Money and time (rule 1) - heavily.** A spin is one change to one session's time under the router's file lock (`files`), through one function; the router journals the spin before changing the time (write, flush, rename, flush folder: `util::write_atomic`), so a power cut leaves either the old time or the new time, never both or neither; a repeated request with the same spin id returns the same result and never charges twice. The ledger of coins (`revenue.csv`, the chain the box is reconciled against) is not touched; spins go in their own log.
+- Only owner-signed software: not touched (router update is signed as usual).
+
+## Constraints
+1. Result from the router's own random source (`/dev/urandom` via `util::random_hex`), drawn before the page animates; the page cannot choose or change it.
+2. Odds table: default **20 equal slots: 13 lose, 5 x2, 1 x3, 1 x5** = win chance 35%, average return **90%** of the bet (house edge 10%). The router refuses to load any table whose average return is **above 100%** (a customer-favoured wheel); the console warns below 80%.
+3. Win means the bet comes back multiplied: net gain = (multiplier - 1) x bet minutes; loss = the bet. Session time never goes above the existing cap.
+4. Safeguards as chosen above, enforced on the router, not in the page. No spin while the session is paused, expired, or in a plan that cannot take it.
+5. The page shows, before the spin, every segment with its chance and payout and the average return, and after the spin the exact result in words ("You bet 5 min and lost 5 min. Time left: 42 min").
+6. The wheel works without the internet (served by the router, as the mini-game is) and before payment shows no wheel.
+7. Router program keeps using only `sha2`, `hmac`, `p256`; no new library. No change to the coin box, the phone app, or the box protocol.
+
+## Success criteria
+1. Pure logic tests (fail first): the table's average return is computed exactly; a table above 100% is refused; bet rules (1..10, <= half of left, floor 5 left after a loss) accept and refuse the right bets; the draw over a large run with a seeded source lands within a tight range of the table's chances.
+2. Time tests: a spin changes the session by exactly the stated amount; a repeated spin id returns the same result and changes nothing; a simulated power cut after the journal and before the time change (and after) ends with consistent time; paused and expired sessions refuse.
+3. Limit tests: 10 spins a day then refused; the 10-second wait; limits reset at the router's local midnight.
+4. End to end (`test_flow.py` and a browser test like `test_game_browser.py`): a paying customer opens the wheel, sees the odds panel, spins, and the page's time left matches the router's.
+5. Old routers keep the mini-game and have the wheel off after update; a new install has it on; the console switch turns it on and off at once.
+6. Revenue ledger and box reconciliation unchanged (existing tests untouched and green).
+7. `cargo fmt --check`, `clippy`, `cargo test`, `test_flow.py`, router setup tests, `check_security_rules.sh`, `build_piso_setup.py --check` pass; `setup/RELEASE` raised once; hardware check added (not run).
+
+## Out of scope
+Phone app, coin box, other games, tournaments or leaderboards, selling spins for coins, any prize other than minutes.
+
+## Owner decisions (please answer before approval)
+1. **Legal check before customers use it.** Staking paid time on a chance game may fall under gambling rules where the shop operates (roadmap 8.3 is still open and is reviewed outside this repo). Recommended: the code can be merged and released with the wheel **off** for existing shops, and you confirm the local rules before anyone switches it on or ships it as default-on for new installs. Do you accept that?
+2. **Children.** Kids use these shops. Recommended: the wheel is hidden unless the owner turns it on, the odds panel is always shown, and the console says the owner decides who may play. Is a minimum-age note on the page wanted?
+3. **The old mini-game.** Recommended: keep it on updated routers while the wheel is off, and show only the wheel once the owner turns it on; remove the mini-game code in a later change. OK?
+4. **The default table** (13 lose, 5 x2, 1 x3, 1 x5 of 20; 35% win; 90% return). OK, or different numbers?
+5. **A cap on one win** (for example a session may not gain more than 60 minutes a day from the wheel). Wanted?
