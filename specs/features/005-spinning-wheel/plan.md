@@ -21,9 +21,10 @@ Unresolved ledger entries: none. Playwright and Chromium are needed for the brow
 - [ ] 3. **Limits**: spins per device per day, the wait between spins, reset at local midnight (reuse `game.rs` day logic).
 - [ ] 4. **Routes**: `/wheel/state` (odds, limits, time left, spins left) and `/wheel/spin` (POST with a spin id). Refuse paused, expired, unpaid.
 - [ ] 5. **Portal page**: `wheel.html` replacing `game.html` when the wheel is on; odds panel always visible; animation ends on the router's segment; result in words; no auto-spin. Browser test.
-- [ ] 6. **Console and defaults**: switch, limits, table (with the refusal and the warning); new install on, updated router off and keeping the mini-game; wheel-spin log file separate from `revenue.csv`; owner sees net minutes given away.
-- [ ] 7. **Docs and release**: raise `setup/RELEASE`, `build_piso_setup.py`, `CHANGELOG.md` in owner terms, hardware check (not run), `validation.md`.
-- [ ] 8. **Pull request into `beta`** (when the owner asks), read Code quality. Merge and rollout are the owner's.
+- [ ] 6. **Responsibility gate (router side), test first**: the confirmation record (file written only by the turn-on request), exact phrase and warning-version check, refusal messages, off by hand-edited setting without a record, record cleared on turn off and on a new warning version, log rows. Tests in `cargo test` and `test_flow.py`.
+- [ ] 7. **Console and defaults**: the blocking warning dialog (the switch stays disabled until the exact phrase is typed; browser test), limits, table (with the refusal and the warning); every router, new or updated, starts with the wheel off; updated routers keep the mini-game; wheel-spin log file separate from `revenue.csv`; owner sees net minutes given away and "Wheel on since ..., responsibility confirmed".
+- [ ] 8. **Docs and release**: raise `setup/RELEASE`, `build_piso_setup.py`, `CHANGELOG.md` in owner terms, hardware check (not run), `validation.md`.
+- [ ] 9. **Pull request into `beta`** (when the owner asks), read Code quality. Merge and rollout are the owner's.
 
 ## Release
-Router only (`setup/RELEASE` next number after 1.5.13). Updated routers: wheel **off**. Nothing reaches shops' customers until the owner switches it on.
+Router only (`setup/RELEASE` next number after 1.5.13). Every router (new or updated): wheel **off**. Nothing reaches shops' customers until the owner has read the responsibility warning, typed the confirmation and switched it on.
