@@ -1,6 +1,6 @@
 # Feature 004: firmware money rows (a coin is never lost, double counted or mis-credited)
 
-Status: **draft, waiting for owner approval**   Branch: `feat/004-firmware-money`   Area: firmware
+Status: **approved 2026-10-21 (reset pin waits up to 30 s, then resets, confirmed by the owner)**   Branch: `feat/004-firmware-money`   Area: firmware
 Backlog rows: FW-01, FW-02, FW-03, FW-05, FW-06 (`specs/spec_01_findings.json`)   Release: firmware (`PISO_FW_VERSION` 3.11.1)
 
 ## Intent
@@ -44,4 +44,4 @@ The fixes already exist, written test first, on branch `claude/sleepy-gauss-rn31
 - Releasing to `main` or rolling the firmware out to live boxes.
 
 ## Owner decisions
-- None blocking the start. One to confirm: the reset pin resets after 30 s even if a slot is still busy (as in the old commit). If you would rather it never reset while a coin is pending, say so before approval.
+- Reset pin waits up to 30 s for a safe moment, then resets anyway: confirmed by the owner 2026-10-21.

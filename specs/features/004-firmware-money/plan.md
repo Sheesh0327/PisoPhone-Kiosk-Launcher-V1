@@ -16,8 +16,8 @@ Context manifest (constitution rule 1): `file | purpose | lines | est_tokens`. U
 ## Task groups
 Test first: in each group, add the test, run it on the unfixed code and see it fail (log it in `ledger/` and `validation.md`), then add the fix, see it pass. One commit per group. Port with `git diff <commit>^ <commit> -- . ':!ledger' | git apply --index --3way`.
 
-- [ ] 1. Read the feature 002 diff for coin-counter changes (`git log -p 60c8eaf^..60c8eaf -- esp32_firmware/src/CoinSlotManager.cpp esp32_firmware/src/HardwareManager.cpp` line ranges only) and confirm FW-02, FW-05, FW-06 do not duplicate it. Stop and amend the spec if they do. (no code)
-- [ ] 2. FW-03 order: `coin_record_order_test.cpp` + `CoinRecordOrder.h` + `DeviceNetwork.cpp`. Red result logged: no
+- [x] 1. Read the feature 002 diff for coin-counter changes (`git log -p 60c8eaf^..60c8eaf -- esp32_firmware/src/CoinSlotManager.cpp esp32_firmware/src/HardwareManager.cpp` line ranges only) and confirm FW-02, FW-05, FW-06 do not duplicate it. Stop and amend the spec if they do. (no code). Result: feature 002 did not touch the queue/revenue order, the minutes-per-coin limit, the idle-coin path or the re-apply on save; no overlap.
+- [x] 2. FW-03 order: `coin_record_order_test.cpp` + `CoinRecordOrder.h` + `DeviceNetwork.cpp`. Red result logged: yes (compile failure: helper missing)
 - [ ] 3. FW-02 apply only on change and when idle: `coin_hw_apply_test.cpp` + `CoinHwApply.h` + `HardwareManager`, `WebServerConfig`, `CoinSlotManager`. Red result logged: no
 - [ ] 4. FW-01 restart guard: `restart_guard_test.cpp` + `RestartGuard.h` + `PaymentQueueManager`, `HardwareManager`, `WebServerConfig`. Red result logged: no
 - [ ] 5. FW-05 clamp and 64-bit credit: `coin_credit_test.cpp` + `CoinCredit.h` + `Config`, `DeviceNetwork`, `WebServerConfig`. Red result logged: no
