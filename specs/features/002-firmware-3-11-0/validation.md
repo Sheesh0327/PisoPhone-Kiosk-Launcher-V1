@@ -19,3 +19,8 @@ Nothing has run on a real box. The ESP32 compile has not been done here (CI does
 
 ## Money and time
 The coin-counter hardening changes how revenue totals are kept (`PeriodLedger.h`, NVS keys). Checked by the firmware host tests (period ledger tests among the 22 suites). Credit to phones is not changed by this feature.
+
+## Review findings fixed (PR 94, Codex)
+- P2 `PeriodLedger.h`: the civil-date conversion used wrong divisors, so 2,257 of 47,500 days came out as the wrong date. Test first (host test against a day-by-day count: red), then the standard divisors (green). Saved totals are stored by day number, so no stored data changes; only the dates shown and the month totals.
+- P1 flash list: the setup program took the first image for the chip, so the PisoPhone-only and PisoWiFi-only flows flashed the full image. `choose_build` now takes the product; the page passes the owner's choice, the PisoPhone-only terminal flow passes `phone`. Tests first (red: TypeError, products `['full']`), then green. A list entry without a product counts as the full image; another product's image is never taken instead.
+- The PisoWiFi-only terminal route does not exist (`--phone-only` only); the web page covers it.

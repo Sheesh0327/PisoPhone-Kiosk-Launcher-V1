@@ -46,8 +46,9 @@ class FakeCore:
         return [{"name": "Board on USB", "state": "ok", "text": "USB Serial Device on COM5.", "fix": ""},
                 {"name": "Admin page", "state": "warn", "text": "does not answer.", "fix": "Is this computer on the same Wi-Fi?"}]
 
-    def flash_box(self, port, emit):
+    def flash_box(self, port, emit, product="full"):
         self.calls.append(("flash", port))
+        self.products = getattr(self, "products", []) + [product]
         emit("== Looking at the board on " + port)
         emit("ESP32-C3 found. Software version 1.0.0 (1.33 MB).")
         if self.fail_flash:
@@ -161,6 +162,7 @@ core.calls.clear()
 act("pstart_install")
 s = wait(lambda s: s["p"]["install"]["ok"], "the installation")
 check([c[0] for c in core.calls] == ["flash", "provision"] and core.calls[1][2:] == ("Dela Cruz 5G", "p@ss w0rd!", "Shop-Admin-2026"), "the software is written, then the Wi-Fi and the admin password are given")
+check(core.products and set(core.products) == {"phone"}, "the page writes the PisoPhone-only image every time: " + str(core.products))
 check(s["p"]["install"]["stage"] == len(s["p"]["stages"]) and s["can_next"] and s["p"]["final"]["ip"] == "192.168.1.77" and s["p"]["final"]["admin"] == "Shop-Admin-2026", "done: the address, the box code and the password are known")
 summary = os.path.join(out, "pisophone-box-aabbcc001122.txt")
 text = open(summary).read()

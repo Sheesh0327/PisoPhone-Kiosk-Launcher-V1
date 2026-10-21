@@ -57,7 +57,7 @@ inline void epochDayToDate(uint32_t epochDay, int& year, int& month, int& day) {
     int64_t z = (int64_t)epochDay + 719468;
     int64_t era = (z >= 0 ? z : z - 146096) / 146097;
     unsigned doe = static_cast<unsigned>(z - era * 146097);
-    unsigned yoe = (doe - doe / 1024 + doe / 1461 - doe / 142401) / 365;
+    unsigned yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
     int y = static_cast<int>(yoe) + (int)(era * 400);
     unsigned doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
     unsigned mp = (5 * doy + 2) / 153;

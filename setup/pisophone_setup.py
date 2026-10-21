@@ -2342,10 +2342,12 @@ def flash_manifest(branch, cache_dir, opener=urllib.request.urlopen, emit=say):
     return manifest
 
 
-def choose_build(manifest, chip):
-    """The image for a chip ("ESP32-C3", "ESP32"), or None."""
+def choose_build(manifest, chip, product="full"):
+    """The image of a product ("full", "phone" or "wifi") for a chip ("ESP32-C3", "ESP32"), or None. A list entry without a
+    product is the full one; the image of another product is never taken instead."""
     name = (chip or "").upper()
-    return next((b for b in manifest["builds"] if str(b.get("chip", "")).upper() == name), None)
+    return next((b for b in manifest["builds"]
+                 if str(b.get("chip", "")).upper() == name and (b.get("product") or "full") == product), None)
 
 
 def fetch_image(branch, build, cache_dir, opener=urllib.request.urlopen):
@@ -2376,7 +2378,7 @@ def fetch_image(branch, build, cache_dir, opener=urllib.request.urlopen):
     return path
 
 
-def flash_box(branch, port, emit, cache_dir, opener=urllib.request.urlopen, tool=None, image=None):
+def flash_box(branch, port, emit, cache_dir, opener=urllib.request.urlopen, tool=None, image=None, product="full"):
     """Writes the PisoPhone software to the board on `port`: detects the chip, takes the image for it (checked), erases the
     whole flash (a used box then forgets its old Wi-Fi), writes and verifies it, restarts the board. Returns (chip, version)."""
     tool = tool or esptool_module()
@@ -2402,10 +2404,10 @@ def flash_box(branch, port, emit, cache_dir, opener=urllib.request.urlopen, tool
         emit(f"{chip} found. Writing {image}.")
     else:
         manifest = flash_manifest(branch, cache_dir, opener, emit)
-        build = choose_build(manifest, chip)
+        build = choose_build(manifest, chip, product)
         if not build:
-            raise SetupError(f"this board is an {chip}; PisoPhone software exists for "
-                             f"{' and '.join(b['chip'] for b in manifest['builds'])}.")
+            chips = list(dict.fromkeys(b["chip"] for b in manifest["builds"] if (b.get("product") or "full") == product))
+            raise SetupError(f"this board is an {chip}; PisoPhone software exists for {' and '.join(chips) or 'no board'}.")
         emit(f"{chip} found. Software version {manifest.get('version', '?')} ({build['size'] / 1048576:.2f} MB).")
         image = fetch_image(branch, build, cache_dir, opener)
     emit("== Writing the coin box software (erasing the board first; about a minute)")
@@ -3748,7 +3750,7 @@ def run_phone_setup(args, read=input, read_secret=getpass.getpass, emit=say, fin
         raise SetupError("the admin password: " + problem + ".")
 
     # 3. the software, then the Wi-Fi and the admin password, then online
-    flasher(args.branch, port, emit, flash_cache_dir(), image=args.image)
+    flasher(args.branch, port, emit, flash_cache_dir(), image=args.image, product="phone")
     status = provision_new_box(lambda: current_device(finder, port), wifi_name, wifi_password, admin_password, emit, opener, waiter, sleep)
     folder = out_dir or default_out_dir()
     mac = status.get("mac", "box").replace(":", "")
@@ -3908,11 +3910,11 @@ class Core:
     def usb_boards(self):
         return usb_boards()
 
-    def flash_box(self, port, emit):
+    def flash_box(self, port, emit, product="full"):
         system = detect_system()
         if not serial_access_fix(port, system, emit):
             raise SetupError("this account may not use the USB port (see above).")
-        return flash_box(self.branch, port, emit, flash_cache_dir())
+        return flash_box(self.branch, port, emit, flash_cache_dir(), product=product)
 
     def install(self, host, answers, out_dir, emit, stage, notify):
         return install(self.ssh, host, answers, self.branch, out_dir, emit,
@@ -4145,7 +4147,7 @@ class Session:
                                      "'Do not write it' so the software is written first.")
                 if write_box:
                     stage(0)
-                    self.core.flash_box(port, self.plog)
+                    self.core.flash_box(port, self.plog, product=self.mode if self.mode in ("phone", "wifi") else "full")
                     with self.lock:
                         self.p["flashed"] = True
                 try:

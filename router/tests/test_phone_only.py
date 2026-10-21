@@ -152,8 +152,9 @@ class Args:
 def setup_world(existing=None):
     state = {"flashed": 0, "box": existing or FakeBox(), "said": []}
 
-    def flasher(branch, port, emit, cache, image=None):
+    def flasher(branch, port, emit, cache, image=None, product="full"):
         state["flashed"] += 1
+        state["products"] = state.get("products", []) + [product]
         state["box"] = FakeBox()   # (writing the software erases everything: a new box)
         return "ESP32-C3", "1.0.0"
 
@@ -176,6 +177,7 @@ path = ps.run_phone_setup(Args, read=lambda p: "", read_secret=lambda p: "", emi
 text = open(path).read()
 admin = state["box"].admin
 check(state["flashed"] == 1 and state["box"].wifi == ("Dela Cruz 5G", "p@ss w0rd!"), "the setup writes the software, then the Wi-Fi")
+check(state.get("products") == ["phone"], "the PisoPhone-only setup writes the PisoPhone-only image: " + str(state.get("products")))
 check(len(admin) == 12 and admin in text and "http://192.168.1.77/" in text and "aa:bb:cc:00:11:22" in text and "Dela Cruz 5G" in text,
       "the saved sheet has the address, the box code and the new admin password")
 check(stat.S_IMODE(os.stat(path).st_mode) == 0o600 or os.name == "nt", "and is readable only by the owner")
@@ -236,6 +238,17 @@ def fake_open(images):
 cache = os.path.join(TMP, "cache")
 check(ps.flash_manifest("main", cache, fake_open(image), lambda t: None)["version"] == "1.0.0", "the software list is read")
 build = ps.choose_build(manifest, "ESP32-C3")
+# the flash list names a product for each image; the setup program takes the one the owner chose (an entry without a product is the full one)
+three = {"version": "1.0.0", "builds": [
+    {"env": "esp32-c3-dev", "product": "full", "chip": "ESP32-C3", "file": "f.bin", "offset": 0, "size": 1, "sha256": "a" * 64},
+    {"env": "esp32-c3-dev-phone", "product": "phone", "chip": "ESP32-C3", "file": "p.bin", "offset": 0, "size": 1, "sha256": "b" * 64},
+    {"env": "esp32-c3-dev-wifi", "product": "wifi", "chip": "ESP32-C3", "file": "w.bin", "offset": 0, "size": 1, "sha256": "c" * 64}]}
+check(ps.choose_build(three, "ESP32-C3", "phone")["file"] == "p.bin" and ps.choose_build(three, "ESP32-C3", "wifi")["file"] == "w.bin"
+      and ps.choose_build(three, "ESP32-C3", "full")["file"] == "f.bin" and ps.choose_build(three, "ESP32-C3")["file"] == "f.bin",
+      "each product gets its own image from the flash list (the full one by default)")
+check(ps.choose_build(three, "ESP32", "phone") is None and ps.choose_build(manifest, "ESP32-C3", "wifi") is None,
+      "no image of the chosen product for the chip: none (never another product's)")
+check(ps.choose_build(manifest, "ESP32-C3", "full") == build, "an entry without a product is the full one")
 p1 = ps.fetch_image("main", build, cache, fake_open(image))
 check(open(p1, "rb").read() == image, "the image is downloaded and checked")
 check(ps.fetch_image("main", build, cache, fake_open(b"")) == p1, "and kept for next time")

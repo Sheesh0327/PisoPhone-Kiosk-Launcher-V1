@@ -131,6 +131,31 @@ int main() {
     store.blobs["period_v1"][10] ^= 0xFF;
     CHECK(!periodledger::load(store, "period_v1", loaded));
 
+    // Every day from 1970 to about 2100 turns into the right calendar date (checked against a day-by-day count).
+    {
+        int ry = 1970, rm = 1, rd = 1, bad = 0, firstBad = -1;
+        for (uint32_t day = 0; day < 47500; day++) {
+            int y, m, d;
+            periodledger::epochDayToDate(day, y, m, d);
+            if (y != ry || m != rm || d != rd) {
+                if (firstBad < 0) firstBad = (int)day;
+                bad++;
+            }
+            bool leap = (ry % 4 == 0 && ry % 100 != 0) || ry % 400 == 0;
+            static const int dim[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+            int len = dim[rm - 1] + (rm == 2 && leap ? 1 : 0);
+            if (++rd > len) {
+                rd = 1;
+                if (++rm > 12) {
+                    rm = 1;
+                    ry++;
+                }
+            }
+        }
+        if (bad) printf("epochDayToDate: %d wrong days, the first is day %d\n", bad, firstBad);
+        CHECK(bad == 0);
+    }
+
     printf("period_ledger_test: %d checks, %d failures\n", checks, failures);
     return failures == 0 ? 0 : 1;
 }

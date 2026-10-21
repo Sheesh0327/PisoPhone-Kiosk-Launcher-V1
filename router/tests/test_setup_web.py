@@ -218,8 +218,9 @@ class FakeCore:
         self.calls.append(("login", password))
         return password == "Rpass2345678"
 
-    def flash_box(self, port, emit):
+    def flash_box(self, port, emit, product="full"):
         self.calls.append(("flash", port))
+        self.products = getattr(self, "products", []) + [product]
         emit("== Looking at the board on " + port)
         emit("ESP32-C3 found. Software version 3.3.3 (1.36 MB).")
         if self.fail_flash:
@@ -387,6 +388,7 @@ check(sent["GUEST_SSID"] == "Tindahan WiFi" and sent["ROOT_PASSWORD"] == "Rpass2
       "the answers were sent as typed: " + str(sent))
 check([x[0] for x in core.calls if x[0] in ("flash", "install")] == ["flash", "install"] and s["usb"]["flashed"],
       "the coin box is written first, over USB, then the router")
+check(core.products == ["full"], "the full system writes the full image: " + str(core.products))
 log = "\n".join(s["install"]["lines"])
 check("ESP32-C3 found" in log and "== Pairing the coin box" in log and s["install"]["stage"] == len(s["stages"]), "the log shows the progress")
 check(s["final"]["BOX_NEW_ADMIN_PASSWORD"] == "Bpass23456789" and s["final"]["KIOSK_PASSWORD"] == "Kpass234567", "the passwords come from the router's summary")
