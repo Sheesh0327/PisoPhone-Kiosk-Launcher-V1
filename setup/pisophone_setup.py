@@ -4646,7 +4646,7 @@ class Session:
 
     def tools_snapshot(self):
         keys = []
-        expected_owner = os.environ.get("PISOPHONE_OWNER_FINGERPRINT") or EXPECTED_OWNER_FINGERPRINT
+        expected_owner = os.environ.get("PISOPHONE_OWNER_FINGERPRINT") or EXPECTED_FINGERPRINTS["owner"]
         for kind, (_name, label) in KEY_FILES.items():
             path = key_path(kind)
             found = os.path.isfile(path)
@@ -4654,7 +4654,7 @@ class Session:
             note = ""
             if found:
                 try:
-                    k = load_key(kind, path, check_owner=False)
+                    k = load_key(kind, path, check_match=False)
                     fp = key_fingerprint(k)
                     if kind == "owner" and expected_owner != "*" and fp != expected_owner:
                         status = "mismatch"

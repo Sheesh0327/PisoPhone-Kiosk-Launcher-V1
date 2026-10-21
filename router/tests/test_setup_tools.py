@@ -313,6 +313,21 @@ os.environ["PISOPHONE_OWNER_FINGERPRINT"] = "deadbeef12345678"
 check("does not match the public key" in (problem(ps.load_key, "owner") or ""), "mismatched owner key is rejected by load_key")
 os.environ["PISOPHONE_OWNER_FINGERPRINT"] = "*"
 
+# ST-1: with no override set, the Owner tools page works (it used to fail with NameError) and a key that matches is "found"
+own_fp = ps.key_fingerprint(ps.load_key("owner"))
+del os.environ["PISOPHONE_OWNER_FINGERPRINT"]
+real_fp = ps.EXPECTED_FINGERPRINTS["owner"]
+ps.EXPECTED_FINGERPRINTS["owner"] = own_fp
+try:
+    owner_status = {k["kind"]: k["status"] for k in session.snapshot()["tools"]["keys"]}
+    check(owner_status.get("owner") == "found", f"ST-1: snapshot with PISOPHONE_OWNER_FINGERPRINT unset: owner key status found: {owner_status}")
+    ps.EXPECTED_FINGERPRINTS["owner"] = "0000000000000000"
+    owner_status = {k["kind"]: k["status"] for k in session.snapshot()["tools"]["keys"]}
+    check(owner_status.get("owner") == "mismatch", "ST-1: and a different key is reported as a mismatch")
+finally:
+    ps.EXPECTED_FINGERPRINTS["owner"] = real_fp
+    os.environ["PISOPHONE_OWNER_FINGERPRINT"] = "*"
+
 # check owner tools CLI
 check(ps.main(["--check-keys"]) == 0, "CLI --check-keys exits cleanly")
 check(ps.main(["--make-admin-qr"]) == 0, "CLI --make-admin-qr succeeds")

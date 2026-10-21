@@ -1,6 +1,6 @@
 # Feature 002: restore firmware 3.11.0 (products, USB Wi-Fi setup, coin-counter hardening)
 
-Status: **in progress, blocked on one owner decision** (approved 2026-10-21: one feature, setup choices in scope)   Branch: `feat/002-firmware-3-11-0`   Area: firmware (with setup program, scripts and CI that belong to it)
+Status: **implemented, waiting for CI and owner review** (approved 2026-10-21: one feature, setup choices in scope)   Branch: `feat/002-firmware-3-11-0`   Area: firmware (with setup program, scripts and CI that belong to it)
 Backlog rows: none (owner features from the old `beta`, found at the 2026-10-21 replan)   Release: firmware (3.11.0), router (`setup/RELEASE`)
 
 ## Intent
@@ -53,3 +53,6 @@ New success criterion 9: `python3 scripts/embed_web.py --check` and `python3 scr
 ## Owner decision needed (new)
 3. **The PisoWiFi-only image counts coins with "phone" names.** The coin-counter hardening (`4b6312d`) and the product images (`6c6e008`) were built separately; together, `check_product_strip.py` finds 69 uses of "phone" in what the PisoWiFi-only image compiles. They are revenue counters by coin source, not phone code. Options: (a) **allow-list** those names in `check_product_strip.py` for the revenue code (small change; the NVS key `tot_phone_coins` stays, so the saved totals of boxes already in shops keep working; the image then does contain the word "phone"); (b) **rename** them to a neutral name (for example "source B coins"), which touches NVS keys and so needs a migration for boxes that already saved totals; (c) split the ledger by product so the PisoWiFi-only build has no phone counter (largest). Recommended: (a), with a note in `techstack`/README that revenue counters may say "phone".
 4. **ST-1 (setup program crashes on the Owner tools page: `EXPECTED_OWNER_FINGERPRINT` is not defined).** Two setup web tests fail because of it. It is a backlog row (R2, confirmed bug) with a tested fix on the old branch. Recommended: fix it inside this feature (a small change in `setup/pisophone_setup.py` plus its test), so the branch is green; otherwise leave two tests red until feature R2.
+
+## Owner answers (2026-10-21)
+Decision 3: option (a), allow-list. Decision 4 (ST-1): fix inside this feature. Both done. `check_product_strip.py` is now run by Code quality (firmware job).

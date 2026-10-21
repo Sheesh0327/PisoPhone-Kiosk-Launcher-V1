@@ -36,7 +36,9 @@ PRODUCTS = {
         "words": r"phone|kiosk|rental|licen[cs]e|slotlic|profile|account|\bpair|android|\bapp\b|trackeddevice|deviceslot|deviceconfig|devicetelemetry|devicecap|websocket|discovery|slotnum|slotactiv|slotcloud",
         # (kiosk_cfg is only the name of the saved-settings area on the chip: boxes of the full product use it too, so the update path and a
         # factory reset keep working the same way; it is not shown anywhere and does not do anything phone related)
-        "allow": [r'"kiosk_cfg"', r'pisophone\.pages\.dev', r'\b(TPL|MODAL|ICON)_[A-Z_]+', r'LicensePubKey\.h', r'LICENSE_PUBKEY_\w+', r'LICENSE_PUB_KEY_H', r'pisophone-(admin|fw)-v1'],
+        # (revenue counters by coin source: the PisoWiFi-only box keeps the same totals as the full box, so its saved totals and its
+        # owner data keep the "phone" counter names (NVS key tot_phone_coins and so on). They count coins; there is no phone code behind them.)
+        "allow": [r'\b(totalPhoneCoinsLifetime|lastSavedTotalPhoneCoins|NVS_KEY_TOTAL_PHONE_COINS|unsyncedPhonePesos|phonePesos|outPhone|isPhone|hasPhoneCoins|phoneCoins|K_PHONE_COINS|lifetime_phone_coins|lifetime_phone_pulses|tot_phone_coins)\b', r'\\"phone\\":', r'"kiosk_cfg"', r'pisophone\.pages\.dev', r'\b(TPL|MODAL|ICON)_[A-Z_]+', r'LicensePubKey\.h', r'LICENSE_PUBKEY_\w+', r'LICENSE_PUB_KEY_H', r'pisophone-(admin|fw)-v1'],
         # (the owner's public key file keeps its name, and the signed texts of the owner's tools keep their tags: both are shared by
         # every product, the same signing tools make them)
     },
