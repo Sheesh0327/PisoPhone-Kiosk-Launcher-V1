@@ -700,6 +700,58 @@ try:
     finally:
         e4.close()
 
+    # ---- RT-07: a second late round of the same window is credited, not taken for the first one again --------------------------------------
+    # The window was recorded (marker "recorded 0"); the box then counts 3 pesos the router never saw, and the acknowledgement keeps failing.
+    # Round one credits 3; later the box holds 5 in all: the 2 new pesos are a second late round and must be credited too.
+    e5 = Env(offset=15, EMPTY_COOLDOWN="1")
+    try:
+        sid5 = "0123456789abcdef0123456789abcdef"
+        os.makedirs(f"{e5.data}/open")
+        open(f"{e5.data}/open/{sid5}", "w").write(f"{MAC_C} hyper widlate 0 0\n")
+        open(f"{e5.data}/open/{sid5}.rec", "w").write("recorded 0\n")
+        e5.box_call("arm", sid5)
+        e5.box_call("release", sid5)
+        e5.set_box(busy=False, ack_fail=True, extra=3)
+        e5.nds_client(MAC_C)
+        e5.start()
+        check(wait_until(lambda: MAC_C in e5.roll() and e5.roll()[MAC_C][13] == "3", 10), "RT-07: round one: the 3 late pesos are credited: " + str(e5.roll()))
+        e5.set_box(busy=False, ack_fail=True, extra=5)
+        check(wait_until(lambda: MAC_C in e5.roll() and e5.roll()[MAC_C][13] == "5", 10),
+              "RT-07: round two: the 2 pesos counted later are credited too (not dropped as a duplicate of round one): " + str(e5.roll()))
+        time.sleep(2.5)
+        check(e5.roll()[MAC_C][13] == "5" and e5.revenue().count("\n") == 2, "RT-07: and nothing is credited twice while the acknowledgement keeps failing: " + e5.revenue())
+        e5.set_box(busy=False, extra=5)   # the box takes the acknowledgement at last
+        check(wait_until(lambda: os.listdir(f"{e5.data}/open") == [], 10), "RT-07: the window is acknowledged and cleared in the end")
+        check(e5.roll()[MAC_C][13] == "5" and e5.revenue().count("\n") == 2, "RT-07: with the books unchanged by the acknowledgement")
+    finally:
+        e5.close()
+
+    # ---- RT-04: a ledger row cut short by a power failure is a torn tail, not "LEDGER WAS CHANGED"; the next row starts on its own line -----------
+    e6 = Env(offset=55, EMPTY_COOLDOWN="1")
+    try:
+        rl = "1700000000,hyper,5,30,new"
+        h1 = hashlib.sha256(f"0|{rl}".encode()).hexdigest()[:12]
+        open(f"{e6.data}/revenue.csv", "w").write(f"{rl},{h1}\n" + "1700000100,hyper,3,18,new,ab")   # the second row was cut inside its hash
+        rc, out = e6.cli("verify")
+        check(rc == 0 and out.startswith("OK 1 5") and "torn_tail=true" in out, "RT-04: a torn last row is skipped and reported, not BAD: " + out)
+        rc, out = e6.cli("reconcile")
+        check("BADLEDGER" not in out, "RT-04: and the reconcile does not raise a false alert: " + out)
+        e6.start()
+        e6.nds_client(MAC_C)
+        e6.set_box(busy=False, coins_at=[0.3, 0.6])
+        c = Cust("127.0.0.3", port=e6.PP, reset=True)
+        c.wait_state("idle", 5)
+        c.send({"t": "start", "plan": "hyper"})
+        fin = c.wait_state("final", 25)
+        check(fin is not None and fin["online"] is True, f"RT-04: a payment after the torn tail still works: {fin}")
+        c.close()
+        rows = e6.revenue().split("\n")
+        check(rows[1] == "1700000100,hyper,3,18,new,ab" and rows[2].count(",") == 5 and ",hyper,2,12,new," in rows[2],
+              "RT-04: the new row is on a line of its own, after the fragment: " + repr(e6.revenue()))
+        rc, out = e6.cli("verify")
+        check(rc == 0 and out.startswith("OK 3 7") and "torn_tail" not in out, "RT-04: the chain holds and the tail is whole again: " + out)
+    finally:
+        e6.close()
     # ---- fair use: HyperSpeed is slowed after the limit, released later; Endurance is never touched -----------------------------------------
     env.reset_device(MAC_D)
     env.set_box(busy=False, coins_at=[0.3, 0.5, 0.7, 0.9, 1.1])

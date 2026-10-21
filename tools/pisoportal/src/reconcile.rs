@@ -43,10 +43,7 @@ pub fn load(path: &str) -> Option<Base> {
 }
 
 fn save(path: &str, b: &Base) {
-    let tmp = format!("{}.tmp", path);
-    if fs::write(&tmp, format!("{} {} {}\n", b.box_base, b.ledger_base, b.last_box)).is_ok() {
-        let _ = fs::rename(&tmp, path);
-    }
+    let _ = crate::util::write_atomic(path, format!("{} {} {}\n", b.box_base, b.ledger_base, b.last_box).as_bytes());
 }
 
 /// The base after the box was seen at `counted` with the ledger at `ledger` (pure, so it is unit-tested), and why it
