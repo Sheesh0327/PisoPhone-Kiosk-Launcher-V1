@@ -182,6 +182,7 @@ jobs:
       - name: Install ktlint
         run: |
           curl -sSL -o ktlint https://github.com/pinterest/ktlint/releases/download/1.5.0/ktlint
+          echo "a16be01dcc480aab2f55f444b620142152f66e31564b3b9376506d624c28a2ad  ktlint" | sha256sum -c -
           chmod +x ktlint
       - name: Check Kotlin style
         run: ./ktlint --relative "app/src/**/*.kt" "*.kts" "app/*.kts"

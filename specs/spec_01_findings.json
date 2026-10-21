@@ -571,11 +571,11 @@
   "severity": "low",
   "money_or_signing": true,
   "confidence": "reported",
-  "status": "open",
-  "fix": "see spec_01 section 6, R2",
+  "status": "fixed",
+  "fix": "path check runs before --github-secret (make_owner_keys.py)",
   "test": {
    "kind": "unit",
-   "where": "not written"
+   "where": "scripts/tests/test_signing_keys.py"
   },
   "release": "none"
  },
@@ -607,11 +607,11 @@
   "severity": "med",
   "money_or_signing": true,
   "confidence": "reported",
-  "status": "open",
-  "fix": "see spec_01 section 6, R2",
+  "status": "fixed",
+  "fix": "time-stamped .old backup, never overwritten",
   "test": {
    "kind": "unit",
-   "where": "not written"
+   "where": "router/tests/test_setup_tools.py (ST-3 block)"
   },
   "release": "none"
  },
@@ -625,11 +625,11 @@
   "severity": "med",
   "money_or_signing": true,
   "confidence": "reported",
-  "status": "open",
-  "fix": "see spec_01 section 6, R2",
+  "status": "fixed",
+  "fix": "fingerprint checked for every key kind",
   "test": {
    "kind": "unit",
-   "where": "not written"
+   "where": "router/tests/test_setup_tools.py (ST-4 block)"
   },
   "release": "none"
  },
@@ -643,11 +643,11 @@
   "severity": "low",
   "money_or_signing": true,
   "confidence": "reported",
-  "status": "open",
-  "fix": "see spec_01 section 6, R2",
+  "status": "fixed",
+  "fix": "verify_release.py checks ui.json expiry (30 days)",
   "test": {
    "kind": "unit",
-   "where": "not written"
+   "where": "scripts/tests/test_verify_release_ui.py"
   },
   "release": "none"
  },
@@ -661,11 +661,11 @@
   "severity": "low",
   "money_or_signing": true,
   "confidence": "reported",
-  "status": "open",
-  "fix": "see spec_01 section 6, R2",
+  "status": "fixed",
+  "fix": "same version with new bytes fails on main (publish_firmware_ota.py)",
   "test": {
    "kind": "unit",
-   "where": "not written"
+   "where": "scripts/tests/test_publish_firmware.py"
   },
   "release": "none"
  },
@@ -698,10 +698,10 @@
   "money_or_signing": true,
   "confidence": "reported",
   "status": "open",
-  "fix": "see spec_01 section 6, R2",
+  "fix": "ktlint download checked against a sha256 (quality.yml); other CI-8 items (image digests) not done",
   "test": {
    "kind": "unit",
-   "where": "not written"
+   "where": "workflow check only: Code quality run on this commit"
   },
   "release": "none"
  },
