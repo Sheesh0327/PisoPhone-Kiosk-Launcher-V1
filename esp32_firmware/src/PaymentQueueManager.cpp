@@ -11,6 +11,9 @@
 #include "DeviceNetwork.h"
 #include "Config.h"
 #include "Diagnostics.h"
+#include "CoinSlotManager.h"
+#include "HardwareManager.h"
+#include "RestartGuard.h"
 #include "OrphanLedger.h"
 #include "OrphanPayments.h"
 
@@ -204,8 +207,14 @@ int getPendingPaymentCount() {
 }
 
 bool canPerformRebootOrOta() {
-    if (hasUnpersistedPayments()) {
-        Serial.println("[PAY QUEUE] Reboot/OTA blocked: unpersisted transactions remain in RAM.");
+    // FW-01: also not while a coin may be in flight (slot in use, or a pulse counted but not yet turned into a payment)
+    if (!mayRestart(hasUnpersistedPayments(), getCoinSlotState() == CoinSlotState::IDLE, coinPulsesPeek())) {
+        static unsigned long lastLogMs = 0; // the reset pin asks on every loop pass while it is held
+        if (lastLogMs == 0 || millis() - lastLogMs > 2000) {
+            lastLogMs = millis();
+            Serial.println(
+                "[PAY QUEUE] Reboot/OTA blocked: unpersisted transactions in RAM, or a coin may be in flight.");
+        }
         return false;
     }
     return true;

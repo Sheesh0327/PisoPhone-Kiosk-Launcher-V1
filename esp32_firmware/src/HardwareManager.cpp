@@ -10,6 +10,8 @@
 #endif
 #include "PulseGuard.h"
 #include "CoinHwApply.h"
+#include "PaymentQueueManager.h"
+#include "RestartGuard.h"
 #include <WiFi.h>
 #include "hal/gpio_ll.h"
 
@@ -324,7 +326,9 @@ void processHardwareResetPin() {
         if (resetPinLowStart == 0) {
             resetPinLowStart = millis();
             Serial.printf("[⚠️] GPIO %d connected to GND. Hold for 5 seconds to factory reset...\n", HARDWARE_RESET_PIN);
-        } else if (millis() - resetPinLowStart >= 5000) {
+        } else if (millis() - resetPinLowStart >= 5000 &&
+                   resetPinMayRestart(canPerformRebootOrOta(), millis() - resetPinLowStart)) {
+            // after the 5 s hold, wait (up to 30 s more) for a safe moment so a coin in flight is drained first (FW-01)
             Serial.printf("\n[⚠️ RESET] GPIO %d held to GND for > 5 seconds! Triggering Factory Reset...\n",
                           HARDWARE_RESET_PIN);
             factoryResetDefaults();
