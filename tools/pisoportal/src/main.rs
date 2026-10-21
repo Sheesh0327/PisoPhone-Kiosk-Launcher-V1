@@ -30,6 +30,7 @@ mod voucher;
 mod wheel;
 mod wheel_gate;
 mod wheel_limits;
+mod wheel_run;
 mod wheel_spin;
 
 use std::process::Command;

@@ -26,6 +26,8 @@ pub enum View {
     Idle {
         /// seconds of mini-game left today for this device (-1: the game is off)
         gm: i64,
+        /// the wheel is on and this device has time to bet (the Spin the wheel button)
+        wh: bool,
         /// guests may send a file to the owner (the Send a file button)
         sd: bool,
         /// pesos the session still has to pay before it may pause (0: it may, or pausing is off)
@@ -102,8 +104,8 @@ fn vflag(voucher: bool) -> &'static str {
 impl View {
     pub fn to_json(&self) -> String {
         match self {
-            View::Idle { gm, sd, pn, left, plan, online, busy, cooldown, used_mb, slow, pm, pl, pw, vc, vs } => format!(
-                "{{\"t\":\"state\",\"s\":\"idle\",\"left\":{},\"plan\":\"{}\",\"online\":{},\"busy\":{},\"cooldown\":{},\"used_mb\":{},\"slow\":{},\"pm\":{},\"pl\":{},\"pw\":{},\"vc\":{},\"gm\":{},\"sd\":{},\"pn\":{},\"vs\":[{}]}}",
+            View::Idle { gm, wh, sd, pn, left, plan, online, busy, cooldown, used_mb, slow, pm, pl, pw, vc, vs } => format!(
+                "{{\"t\":\"state\",\"s\":\"idle\",\"left\":{},\"plan\":\"{}\",\"online\":{},\"busy\":{},\"cooldown\":{},\"used_mb\":{},\"slow\":{},\"pm\":{},\"pl\":{},\"pw\":{},\"vc\":{},\"gm\":{},\"wh\":{},\"sd\":{},\"pn\":{},\"vs\":[{}]}}",
                 left,
                 plan.map(|p| p.as_str()).unwrap_or(""),
                 online,
@@ -116,6 +118,7 @@ impl View {
                 pw,
                 vc,
                 gm,
+                wh,
                 sd,
                 pn,
                 vs.iter()
@@ -241,6 +244,8 @@ pub struct Core {
     pricing_stamp: AtomicU32,
     /// the mini-game's daily play time per device
     pub games: Games,
+    /// the spinning wheel (off until the owner has confirmed the responsibility warning in the console)
+    pub wheel: crate::wheel_run::Wheel,
     /// guests' files for the owner (the print server's inbox)
     pub send: crate::send::Send,
     /// the coin page offers the choice "Use now" / "Get a voucher code" (VOUCHER_CHOICE, changed live from the console)
@@ -271,6 +276,7 @@ impl Core {
             .unwrap_or(cfg.game_minutes)
             .min(crate::game::MAX_MINUTES);
         let games = Games::new(&cfg.data_dir, cfg.game_seconds.unwrap_or(game_minutes * 60));
+        let wheel = crate::wheel_run::Wheel::new(&cfg.data_dir, &cfg.roll_path(), cfg.wheel);
         let send_on = crate::config::parse_switch(&crate::config::override_get(&cfg.data_dir, "SEND_ENABLED"), cfg.send_enabled);
         let send = crate::send::Send::new(&cfg.send_host, cfg.send_port, &cfg.data_dir, cfg.send_max_mb, cfg.send_per_hour, send_on);
         Arc::new(Core {
@@ -297,6 +303,7 @@ impl Core {
             pricing,
             pricing_stamp: AtomicU32::new(1),
             games,
+            wheel,
             send,
         })
     }
@@ -338,6 +345,12 @@ impl Core {
             self.bump(&mut st);
         }
         ok
+    }
+
+    /// The wheel changed a session or the owner switched it: open pages are told at once.
+    pub fn wheel_changed(&self) {
+        let mut st = self.st.lock().unwrap();
+        self.bump(&mut st);
     }
 
     /// The prices in force now (a payment keeps the ones it started with).
@@ -432,7 +445,9 @@ impl Core {
         // (the vouchers this device paid for are listed here: a page that was closed before the code was written down loses nothing)
         let vs = crate::voucher::for_device(&self.cfg.data_dir, now, mac);
         View::Idle {
-            gm: self.games.left(mac, now),
+            // (with the wheel on, it replaces the free mini-game)
+            gm: if self.wheel.enabled() { -1 } else { self.games.left(mac, now) },
+            wh: self.wheel.enabled() && left > 0,
             sd: self.send.enabled(),
             pn,
             left,
@@ -1513,6 +1528,8 @@ impl Core {
         {
             let _g = self.files.lock().unwrap();
             roll::purge(&self.cfg.roll_path(), now_secs());
+            // a spin a power cut left half done is finished or voided, never applied twice
+            crate::wheel_spin::recover(&self.cfg.roll_path(), &self.cfg.data_dir);
             crate::voucher::prune(&self.cfg.data_dir, now_secs());
         }
         let now = now_secs();

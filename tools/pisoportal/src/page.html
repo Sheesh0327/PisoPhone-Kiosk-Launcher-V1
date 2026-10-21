@@ -79,6 +79,7 @@ details .btn{margin:8px 0 12px}
 <p class="mut" id="vm" role="status"></p></details>
 <a class="btn alt" id="gm" href="/game" style="display:none">Play a mini-game</a>
 <p class="sub" id="gms"></p>
+<a class="btn alt" id="wh" href="/wheel" style="display:none">Spin the wheel</a>
 <a class="btn alt" id="snd" href="/send" style="display:none">Send a file to the owner</a>
 </div>
 <div id="v-live" class="v card">
@@ -225,7 +226,7 @@ if(s==="idle"||s==="paused"){
  el("vchoice").style.display=vch?"block":"none";
  el("snd").style.display=s==="idle"&&j.sd?"block":"none";
  var gl=s==="idle"&&j.gm!==undefined?j.gm:-1;el("gm").style.display=gl>0?"block":"none";put("gms",gl>0?"Mini-game: "+Math.ceil(gl/60)+" min left today":gl===0?"Mini-game time is used up today. Back tomorrow.":"");
- el("hd").style.display=tm?"none":"flex";el("vd").style.display=ps?"none":"block";
+ el("wh").style.display=s==="idle"&&j.wh?"block":"none";el("hd").style.display=tm?"none":"flex";el("vd").style.display=ps?"none":"block";
  if(tm){on.style.display="block";put("tplan",pn(j.plan));el("tused").style.display=j.plan==="hyper"&&!ps?"inline":"none";put("tused",j.used_mb+" MB used");el("tslow").style.display=j.slow>0&&!ps?"block":"none";
   el("pz").style.display=!ps&&j.pm>0&&!(j.pn>0)?"block":"none";el("rs").style.display=ps?"block":"none";el("rs").disabled=false;el("rs").textContent="Resume time";el("pz").removeAttribute("aria-disabled");
   var cap=ps?"":j.pn>0&&j.pm>0?"Pay \u20b1"+j.pn+" more to unlock a pause":j.pl<1?"No pauses left":j.left<120?"Pause needs 2 min left":j.pw>0?"You can pause again in "+j.pw+" s":j.pl+(j.pl>1?" pauses":" pause")+" left";

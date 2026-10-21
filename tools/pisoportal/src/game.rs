@@ -75,7 +75,7 @@ impl Games {
     }
 
     /// Today's day number here (the time zone file is read at most every five minutes).
-    fn today(&self, now_secs: u64) -> u64 {
+    pub fn today(&self, now_secs: u64) -> u64 {
         let mut g = self.tz.lock().unwrap();
         if g.0 == 0 || now_secs.saturating_sub(g.0) > 300 {
             *g = (now_secs.max(1), crate::console::tz_offset_secs(&fs::read_to_string("/etc/TZ").unwrap_or_default()));
