@@ -110,7 +110,7 @@ try:
 except Exception:
     check(True, "another key does not verify it")
 check(node_run("parse", text) == "ok", "the page accepts a good payload")
-check("misread" in node_run("parse", mixed) and "not a PisoPhone" in node_run("parse", "hello"), "the page refuses a damaged payload and other QR codes")
+check("misread" in node_run("parse", mixed) and "not an admin code" in node_run("parse", "hello"), "the page refuses a damaged payload and other QR codes")
 
 # ---- the page in a browser: a photo of the QR code signs in --------------------------------------------------------------------
 try:
@@ -242,10 +242,10 @@ if sync_playwright:
         qrcode.make("https://example.com/something").save(other)
         attempt(other)
         for _ in range(100):
-            if "not a PisoPhone" in page.inner_text("#msg"):
+            if "not an admin code" in page.inner_text("#msg"):
                 break
             page.wait_for_timeout(100)
-        check("not a PisoPhone" in page.inner_text("#msg"), "another kind of QR code says so: " + page.inner_text("#msg"))
+        check("not an admin code" in page.inner_text("#msg"), "another kind of QR code says so: " + page.inner_text("#msg"))
         # a next address that leaves the box is ignored
         attempt(card_png(key, "good3.png"), "//evil.example/x")
         for _ in range(150):
