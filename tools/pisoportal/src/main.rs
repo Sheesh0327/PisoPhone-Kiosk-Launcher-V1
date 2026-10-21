@@ -27,6 +27,7 @@ mod send;
 mod update;
 mod util;
 mod voucher;
+mod wheel;
 
 use std::process::Command;
 

@@ -1,6 +1,6 @@
 # Feature 005: spinning wheel on the PisoWiFi portal (replaces the free mini-game)
 
-Status: **draft** (waiting for the owner)   Branch: `feat/005-spinning-wheel`   Area: router (portal program, console, setup defaults)
+Status: **approved** (owner, 2026-10-21, with the recommended answers to decisions 1 to 7)   Branch: `feat/005-spinning-wheel`   Area: router (portal program, console, setup defaults)
 Backlog rows: none (side feature, owner request 2026-10-21)   Release: router (raise `setup/RELEASE`)
 
 ## Intent
@@ -74,3 +74,6 @@ Phone app, coin box, other games, tournaments or leaderboards, selling spins for
 5. **A cap on one win** (for example a session may not gain more than 60 minutes a day from the wheel). Wanted?
 6. **New installs and "on by default".** You first chose on by default for new installs. With the responsibility gate the wheel cannot be on before the owner confirms in the console, so a new install starts with it off and the setup program's last screen tells the owner where to find it. OK? (The only way to keep "on at install" would be to put the same warning and typed phrase into the setup program; recommended against, because the owner is busy with Wi-Fi and router steps there.)
 7. **The warning text** above (version 1). Anything to add or change, for example the name of the authority to check with in your country? A lawyer should read it before release (roadmap 8.3).
+
+## Owner answers (2026-10-21: "Approve", taken as the recommended option of each)
+1. Legal: the wheel ships **off** everywhere; the owner confirms local rules before turning it on; a lawyer reads the warning before release. 2. Children: hidden unless the owner turns it on; the odds panel is always shown; no age note on the page for now. 3. Old mini-game: kept while the wheel is off; code removed in a later change. 4. Default table 13 lose, 5 x2, 1 x3, 1 x5 of 20. 5. Win cap: 60 minutes a day per device from the wheel (editable). 6. New installs start with the wheel off. 7. Warning text version 1 as written.
