@@ -4,6 +4,7 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: the CI build number, shown as hundreds.tens.ones, build 466 is 4.6.6; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Phone app, **touch should work inside games on tablets after time is granted (feature 003, not tried on the tablet yet).** The lock screen hid itself but its window still counted as a full opaque cover, so a tablet running Android 12 or later could ignore touches in a game while the home screen and the pill worked. The hidden lock window now has no opacity of its own; the lock screen still blocks every touch when it is shown. Hardware check in `docs/REAL_WORLD_TESTING.md`.
 - **Router 1.5.13: money and time kept right across power cuts and a wrong clock (feature 001).** Not tried on a real router; hardware check RS32 in `docs/REAL_WORLD_TESTING.md`.
   - A router that starts with a wrong clock no longer deletes a customer's paid session before the clock is corrected, and a customer who pays after the correction gets no free time. Revenue rows and vouchers made while the clock was wrong move with it.
   - A ledger line cut short by a power failure is skipped and reported instead of raising a false "LEDGER WAS CHANGED"; the next payment starts a new line.

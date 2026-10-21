@@ -7,6 +7,7 @@ Updated: 2026-10-21. `beta` was recreated from `main` (`49ebad4`) with only the 
 | # | Feature | State | Notes |
 |---|---|---|---|
 | 002 | Restore firmware 3.11.0 (product images, USB Wi-Fi setup, coin-counter hardening) + ST-1 | **implemented on `feat/002-firmware-3-11-0`; local checks green; CI not run yet** | Missing `embed_web.py` generator written; revenue-counter names allow-listed in the product-strip check (now in Code quality); ST-1 fixed. Not tried on a box. |
+| 003 | Touch works inside games on tablets (APP-27) | **implemented on `feat/003-tablet-game-touch`; waiting for the tablet try-out** | Hidden lock window now has window alpha 0 (hypothesis: Android 12+ obscured-touch rule). Unit test red then green on a plain JVM; ktlint clean; app not compiled here (no SDK); not tried on the tablet. |
 | 001 | Router money and time (RT-01 to 07, 14) | **implemented on `feat/001-router-money-time`, waiting for owner review** | `specs/features/001-router-money-time/`. Router 1.5.13. cargo 87, test_flow 202, router setup tests all 0 failures. No lines of `4b6312d` were needed. Not tried on a router; CI cannot run until there is a PR into `beta` (Code quality does not trigger on `feat/*` pushes). |
 
 ## Backlog: Spec 01 (`specs/spec_01_findings.json`, 106 rows, all `open` or `owner-decision`)
