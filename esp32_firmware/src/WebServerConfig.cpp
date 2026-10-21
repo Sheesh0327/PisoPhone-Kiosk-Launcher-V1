@@ -1,6 +1,7 @@
 // Admin portal page and settings endpoints: render the dashboard, save configuration, reboot,
 // factory reset, vault reset and the firmware update form.
 
+#include "Product.h"
 #include "InputSafety.h"
 #include "WebServerConfig.h"
 #include "Diagnostics.h"
