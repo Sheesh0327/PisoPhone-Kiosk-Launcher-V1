@@ -20,6 +20,9 @@ void relayManualTest(bool on);
 void IRAM_ATTR universalCoinIsr();
 void resetCoinDetectorStates();
 void applyCoinSlotHardwareConfig();
+// a Settings save: applies the coin pin / pulse guard / pulse width only if one changed and the slot is IDLE, else later
+void requestCoinSlotHardwareConfig(bool pinChanged, bool guardChanged, bool minMsChanged);
+void serviceCoinSlotHardwareConfig(); // main loop: applies a change that was waiting for the slot
 extern volatile int isrUniversalPulseCount;
 extern volatile unsigned long isrLastPulseTimeMs;
 extern volatile unsigned long isrLastPulseTimeUs;

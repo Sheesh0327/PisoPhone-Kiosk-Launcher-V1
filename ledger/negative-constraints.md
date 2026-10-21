@@ -28,3 +28,14 @@ collect2: error: ld returned 1 exit status
 
 Cause: `libmbedtls-dev` is not installed in the WSL distro (run.sh header says it is required). `set -e` stops the whole
 suite at the first test that links it. Not caused by the FW-03 change.
+
+## 2026-10-21: FW-02 `coin_hw_apply_test` (expected red test, before the fix)
+
+Command (WSL): `g++ -std=c++17 -include limits.h -include sys/param.h -Wall -Wextra -Werror -fsanitize=address,undefined -o /tmp/chw coin_hw_apply_test.cpp`
+
+```
+coin_hw_apply_test.cpp:5:10: fatal error: ../include/CoinHwApply.h: No such file or directory
+compilation terminated.
+```
+
+Cause: the header does not exist yet. Test written first on purpose.
