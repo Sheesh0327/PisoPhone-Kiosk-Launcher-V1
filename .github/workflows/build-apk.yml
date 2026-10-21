@@ -30,8 +30,9 @@ on:
       - '.github/workflows/build-apk.yml'
   workflow_dispatch:
 
+# The test jobs only read the repository. The two jobs that commit (commit-generated and publish) ask for write access themselves.
 permissions:
-  contents: write # Required to push the APK to the website directory
+  contents: read
 
 # One run per branch at a time (each deploy commits back to its branch); a newer push to a dev
 # branch supersedes an older unfinished run, but a production deploy is never cancelled midway.
@@ -91,23 +92,17 @@ jobs:
             echo "::warning::New goldens not committed (not a push to a branch); commit them from a regular build."
             exit 0
           fi
-          mkdir -p "$RUNNER_TEMP/goldens"
-          cp -r app/src/test/screenshots/. "$RUNNER_TEMP/goldens/"
-          git config --global user.name 'github-actions[bot]'
-          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          for attempt in 1 2 3 4 5; do
-            git fetch -q origin "$BRANCH"
-            git reset -q --hard "origin/$BRANCH"
-            mkdir -p app/src/test/screenshots
-            cp -rn "$RUNNER_TEMP/goldens/." app/src/test/screenshots/
-            git add -- app/src/test/screenshots
-            if git diff --staged --quiet; then exit 0; fi
-            git commit -q -m "chore: screenshot goldens"
-            if git push origin "HEAD:refs/heads/$BRANCH"; then exit 0; fi
-            sleep $((attempt * 3))
-          done
-          echo "::error::Could not commit the screenshot goldens."
-          exit 1
+          # (this job only reads the repository: the small commit-generated job below commits what is handed over here)
+          mkdir -p "$RUNNER_TEMP/generated/goldens"
+          cp -r app/src/test/screenshots/. "$RUNNER_TEMP/generated/goldens/"
+
+      - name: Hand the new goldens to the commit job
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: generated-goldens
+          path: ${{ runner.temp }}/generated/goldens
+          retention-days: 1
+          if-no-files-found: ignore
 
       # Line coverage per package against app/coverage-minimums.txt (the minimums only go up).
       - name: Coverage of the unit tests
@@ -138,24 +133,16 @@ jobs:
             echo "::warning::New schema snapshot not committed (not a push to a branch); commit it from a regular build."
             exit 0
           fi
-          mkdir -p "$RUNNER_TEMP/schemas"
-          cp -r app/schemas/. "$RUNNER_TEMP/schemas/"
-          git config --global user.name 'github-actions[bot]'
-          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          for attempt in 1 2 3 4 5; do
-            git fetch -q origin "$BRANCH"
-            git reset -q --hard "origin/$BRANCH"
-            mkdir -p app/schemas
-            cp -rn "$RUNNER_TEMP/schemas/." app/schemas/
-            git add -- app/schemas
-            if git diff --staged --quiet; then exit 0; fi
-            git commit -q -m "chore: database schema snapshot"
-            if git push origin "HEAD:refs/heads/$BRANCH"; then exit 0; fi
-            echo "::warning::Push rejected (attempt $attempt); trying again on the newest branch tip."
-            sleep $((attempt * 3))
-          done
-          echo "::error::Could not commit the database schema snapshot."
-          exit 1
+          mkdir -p "$RUNNER_TEMP/generated/schemas"
+          cp -r app/schemas/. "$RUNNER_TEMP/generated/schemas/"
+
+      - name: Hand the new schema snapshot to the commit job
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: generated-schemas
+          path: ${{ runner.temp }}/generated/schemas
+          retention-days: 1
+          if-no-files-found: ignore
 
       - name: Upload test reports on failure
         if: failure()
@@ -200,21 +187,17 @@ jobs:
             echo "::error::app/lint-baseline.xml is missing on main; make it on a branch first."
             exit 1
           fi
-          cp app/lint-baseline.xml "$RUNNER_TEMP/lint-baseline.xml"
-          git config --global user.name 'github-actions[bot]'
-          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          for attempt in 1 2 3 4 5; do
-            git fetch -q origin "$BRANCH"
-            git reset -q --hard "origin/$BRANCH"
-            cp "$RUNNER_TEMP/lint-baseline.xml" app/lint-baseline.xml
-            git add -- app/lint-baseline.xml
-            if git diff --staged --quiet; then exit 0; fi
-            git commit -q -m "chore: lint baseline"
-            if git push origin "HEAD:refs/heads/$BRANCH"; then exit 0; fi
-            sleep $((attempt * 3))
-          done
-          echo "::error::Could not commit the lint baseline."
-          exit 1
+          # (this job only reads the repository: the small commit-generated job commits the baseline handed over here)
+          mkdir -p "$RUNNER_TEMP/generated/lint"
+          cp app/lint-baseline.xml "$RUNNER_TEMP/generated/lint/lint-baseline.xml"
+
+      - name: Hand the new lint baseline to the commit job
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: generated-lint
+          path: ${{ runner.temp }}/generated/lint
+          retention-days: 1
+          if-no-files-found: ignore
 
       - name: Upload the lint report
         if: always()
@@ -223,6 +206,59 @@ jobs:
           name: lint-report
           path: app/build/reports/lint-results-debug.html
           if-no-files-found: ignore
+
+  # The only place the test results are committed back to the branch (new screenshot goldens, a new database schema snapshot, a new
+  # lint baseline). It runs no Gradle and no project code: it copies the files the test jobs uploaded and commits them.
+  commit-generated:
+    name: Commit new test files
+    needs: [unit-tests, lint]
+    if: github.event_name == 'push' && github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: generated-*
+          path: ${{ runner.temp }}/handover
+
+      - name: Commit what the test jobs made
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -eu
+          H="$RUNNER_TEMP/handover"
+          if [ ! -d "$H" ] || [ -z "$(ls -A "$H")" ]; then echo "Nothing new to commit."; exit 0; fi
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          for attempt in 1 2 3 4 5; do
+            git fetch -q origin "$BRANCH"
+            git reset -q --hard "origin/$BRANCH"
+            if [ -d "$H/generated-goldens" ]; then
+              mkdir -p app/src/test/screenshots
+              cp -rn "$H/generated-goldens/." app/src/test/screenshots/
+              git add -- app/src/test/screenshots
+            fi
+            if [ -d "$H/generated-schemas" ]; then
+              mkdir -p app/schemas
+              cp -rn "$H/generated-schemas/." app/schemas/
+              git add -- app/schemas
+            fi
+            if [ -f "$H/generated-lint/lint-baseline.xml" ] && [ ! -f app/lint-baseline.xml ]; then
+              cp "$H/generated-lint/lint-baseline.xml" app/lint-baseline.xml
+              git add -- app/lint-baseline.xml
+            fi
+            if git diff --staged --quiet; then echo "Nothing new to commit."; exit 0; fi
+            git commit -q -m "chore: new test files (screenshot goldens, schema snapshot, lint baseline)"
+            if git push origin "HEAD:refs/heads/$BRANCH"; then exit 0; fi
+            echo "::warning::Push rejected (attempt $attempt); trying again on the newest branch tip."
+            sleep $((attempt * 3))
+          done
+          echo "::error::Could not commit the new test files."
+          exit 1
 
   build:
     name: Build the unsigned APK
@@ -390,6 +426,11 @@ jobs:
           # An unsigned or badly signed APK cannot update installed phones; refuse to publish one.
           APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)
           SIG_CHECKSUM=""
+          # a missing apksigner is fatal: nothing may be published without its signature being checked
+          if [ -z "$APKSIGNER" ]; then
+            echo "::error::apksigner not found under \$ANDROID_HOME/build-tools: the APK's signature cannot be verified, so it is not published."
+            exit 1
+          fi
           if [ -n "$APKSIGNER" ]; then
             "$APKSIGNER" verify --print-certs "$APK" | tee /tmp/certs.txt
             # QR-code setup: Android only installs an app whose signing certificate has this SHA-256 (URL-safe base64,
@@ -402,8 +443,6 @@ jobs:
             else
               echo "::warning::no signing certificate SHA-256 in apksigner's output: this build cannot be set up by QR code"
             fi
-          else
-            echo "::warning::apksigner not found; skipping signature verification (and no QR setup checksum)."
           fi
           mkdir -p website/update
 
