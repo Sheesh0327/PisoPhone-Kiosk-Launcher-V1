@@ -4,11 +4,17 @@
 // the queue is nearly full, so a coin is never accepted that cannot be recorded.
 
 #include "PaymentQueueManager.h"
+#if PISO_HAS_PHONES
 #include "WebServerAccounts.h"
 #include "ControllerWebSocket.h"
+#endif
 #include "DeviceNetwork.h"
 #include "Config.h"
 #include "Diagnostics.h"
+#include "CoinSlotManager.h"
+#include "HardwareManager.h"
+#include "RestartGuard.h"
+#include "IdleCoin.h"
 #include "OrphanLedger.h"
 #include "OrphanPayments.h"
 
@@ -41,9 +47,40 @@ static String recordKey(int index) {
     return String(key);
 }
 
+// The code the queue keeps for an owner type: 1 = PHONE, 2 = CONTROLLER, 3 = GATEWAY.
+static uint8_t ownerCodeOf(CoinSlotOwnerType ownerType) {
+#if PISO_HAS_PHONES
+    if (ownerType == CoinSlotOwnerType::CONTROLLER) return 2;
+#endif
+#if PISO_HAS_GATEWAY
+    if (ownerType == CoinSlotOwnerType::GATEWAY) return 3;
+#endif
+    return 1;
+}
+
+static bool knownOwnerType(CoinSlotOwnerType ownerType) {
+#if PISO_HAS_PHONES
+    if (ownerType == CoinSlotOwnerType::PHONE || ownerType == CoinSlotOwnerType::CONTROLLER) return true;
+#endif
+#if PISO_HAS_GATEWAY
+    if (ownerType == CoinSlotOwnerType::GATEWAY) return true;
+#endif
+    return false;
+}
+
+static bool knownOwnerCode(uint8_t code) {
+#if PISO_HAS_PHONES
+    if (code == 1 || code == 2) return true;
+#endif
+#if PISO_HAS_GATEWAY
+    if (code == 3) return true;
+#endif
+    return false;
+}
+
 static bool validRecord(const PaymentRecord& rec) {
     return rec.magic == PAYMENT_RECORD_MAGIC && rec.txId[0] != '\0' && rec.targetId[0] != '\0' && rec.pulses > 0 &&
-           (rec.ownerType == 1 || rec.ownerType == 2 || rec.ownerType == 3);
+           knownOwnerCode(rec.ownerType);
 }
 
 static bool persistRecord(int index, const PaymentRecord& rec) {
@@ -170,9 +207,30 @@ int getPendingPaymentCount() {
     return count;
 }
 
+void recordIdleCoin(int pulses) {
+    if (pulses <= 0) return;
+    // A stray pulse train at an idle slot writes flash, so at most one record every 5 s (IdleCoin.h); the rest are only counted
+    // in the log.
+    static unsigned long lastMs = 0;
+    if (!mayRecordIdleCoin(lastMs, millis())) {
+        Serial.printf("[PAY QUEUE] %d pulse(s) at an idle slot, not recorded again within 5 s.\n", pulses);
+        return;
+    }
+    lastMs = millis();
+    // The coin may be real money that nothing is waiting for: write it down where the operator will see it (FW-06).
+    orphanRecord(generateTxId("idle-").c_str(), "", ownerCodeOf(CoinSlotOwnerType::ANY), (uint32_t)pulses, 0, 0,
+                 orphans::NOT_QUEUED);
+}
+
 bool canPerformRebootOrOta() {
-    if (hasUnpersistedPayments()) {
-        Serial.println("[PAY QUEUE] Reboot/OTA blocked: unpersisted transactions remain in RAM.");
+    // FW-01: also not while a coin may be in flight (slot in use, or a pulse counted but not yet turned into a payment)
+    if (!mayRestart(hasUnpersistedPayments(), getCoinSlotState() == CoinSlotState::IDLE, coinPulsesPeek())) {
+        static unsigned long lastLogMs = 0; // the reset pin asks on every loop pass while it is held
+        if (lastLogMs == 0 || millis() - lastLogMs > 2000) {
+            lastLogMs = millis();
+            Serial.println(
+                "[PAY QUEUE] Reboot/OTA blocked: unpersisted transactions in RAM, or a coin may be in flight.");
+        }
         return false;
     }
     return true;
@@ -181,9 +239,7 @@ bool canPerformRebootOrOta() {
 bool enqueuePendingPayment(const String& txId, const String& targetId, int pulses, CoinSlotOwnerType ownerType,
                            int creditSeconds) {
     if (txId.length() == 0 || txId.length() >= sizeof(((PaymentRecord*)0)->txId) || targetId.length() == 0 ||
-        targetId.length() >= sizeof(((PaymentRecord*)0)->targetId) || pulses <= 0 ||
-        (ownerType != CoinSlotOwnerType::PHONE && ownerType != CoinSlotOwnerType::CONTROLLER &&
-         ownerType != CoinSlotOwnerType::GATEWAY)) {
+        targetId.length() >= sizeof(((PaymentRecord*)0)->targetId) || pulses <= 0 || !knownOwnerType(ownerType)) {
         Serial.println("[PAY QUEUE] Rejected invalid payment record.");
         return false;
     }
@@ -196,6 +252,7 @@ bool enqueuePendingPayment(const String& txId, const String& targetId, int pulse
         }
     }
 
+#if PISO_HAS_GATEWAY
     // A gateway (router) window keeps ONE record, its running total: the router collects and acknowledges the whole
     // window at its end, so a record per coin filled the queue and refused (lost) every coin after about the 20th for a
     // customer paying with many small coins. Phones and controllers acknowledge each coin, so they keep one per coin.
@@ -224,6 +281,7 @@ bool enqueuePendingPayment(const String& txId, const String& targetId, int pulse
             return true;
         }
     }
+#endif
 
     int freeIndex = -1;
     for (int i = 0; i < MAX_PAYMENT_QUEUE_SIZE; i++) {
@@ -236,8 +294,7 @@ bool enqueuePendingPayment(const String& txId, const String& targetId, int pulse
         unlockQueue();
         Serial.println("[PAY QUEUE] Cannot record payment: queue is full.");
         // The coin is in the box and cannot be remembered by the queue: write it down where the operator will see it.
-        uint8_t ownerCode =
-            ownerType == CoinSlotOwnerType::CONTROLLER ? 2 : (ownerType == CoinSlotOwnerType::GATEWAY ? 3 : 1);
+        uint8_t ownerCode = ownerCodeOf(ownerType);
         orphanRecord(txId.c_str(), targetId.c_str(), ownerCode, (uint32_t)pulses, (uint32_t)creditSeconds, 0,
                      orphans::NOT_QUEUED);
         return false;
@@ -250,7 +307,7 @@ bool enqueuePendingPayment(const String& txId, const String& targetId, int pulse
     strncpy(rec.targetId, targetId.c_str(), sizeof(rec.targetId) - 1);
     rec.pulses = pulses;
     rec.creditSeconds = creditSeconds;
-    rec.ownerType = ownerType == CoinSlotOwnerType::CONTROLLER ? 2 : (ownerType == CoinSlotOwnerType::GATEWAY ? 3 : 1);
+    rec.ownerType = ownerCodeOf(ownerType);
     rec.timestamp = getCurrentMasterTimeMs();
 
     // Retain in RAM under all conditions (never lose in-flight transactions or change tx_id)
@@ -285,6 +342,7 @@ bool enqueuePendingPayment(const String& txId, const String& targetId, int pulse
     return true;
 }
 
+#if PISO_HAS_PHONES
 static bool acknowledgeMatchingPayment(const String& txId, const String* sessionId, uint8_t requiredOwnerType) {
     if (txId.length() == 0) return false;
 
@@ -314,7 +372,9 @@ static bool acknowledgeMatchingPayment(const String& txId, const String* session
     diagLog("[PAY QUEUE] Acknowledged tx_id='%s'.\n", txId.c_str());
     return true;
 }
+#endif
 
+#if PISO_HAS_PHONES
 // The seconds a queued phone payment is worth, or 0 when there is no such payment (already acknowledged, or not this
 // phone's). Only reads: nothing is erased.
 static int peekPhonePaymentCredit(const String& deviceId, const String& txId) {
@@ -385,7 +445,9 @@ void dispatchPendingControllerPayments(const String& sessionId) {
         }
     }
 }
+#endif
 
+#if PISO_HAS_GATEWAY
 int getPendingGatewayPulses(const String& targetId) {
     if (targetId.length() == 0) return 0;
     lockQueue();
@@ -415,6 +477,7 @@ int acknowledgeGatewayPayments(const String& targetId) {
     unlockQueue();
     return pulses;
 }
+#endif
 
 int clearPaymentQueue(bool recordOrphans) {
     lockQueue();
@@ -584,10 +647,12 @@ void processPendingPaymentRetries() {
         unlockQueue();
 
         if (!shouldDispatch) continue;
+#if PISO_HAS_PHONES
         if (rec.ownerType == 2) {
             sendControllerPaymentEvent(String(rec.targetId), String(rec.txId), rec.pulses);
         } else if (rec.ownerType == 1) {
             retryPhonePayment(String(rec.targetId), rec.pulses, rec.creditSeconds, String(rec.txId));
         }
+#endif
     }
 }

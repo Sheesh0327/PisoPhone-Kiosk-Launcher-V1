@@ -19,6 +19,8 @@
 constexpr int PULSE_MIN_MS_DEFAULT = 12;
 constexpr int PULSE_MIN_MS_LOWEST = 5;
 constexpr int PULSE_MIN_MS_HIGHEST = 40;
+constexpr int PULSE_MAX_MS = 180;
+constexpr uint32_t PULSE_MAX_US = (uint32_t)PULSE_MAX_MS * 1000UL;
 constexpr int PULSE_BUCKETS = 6;
 
 // the shortest real pulse in milliseconds, kept within sane limits
@@ -29,8 +31,9 @@ PULSE_GUARD_INLINE int pulseMinMsClamp(int ms) {
 }
 
 // Is a pulse that held the line low for widthUs a real one?
+// Must be at least minUs and no longer than PULSE_MAX_US (rejects stuck line / brownout)
 PULSE_GUARD_INLINE bool pulseIsReal(uint32_t widthUs, uint32_t minUs) {
-    return widthUs >= minUs;
+    return widthUs >= minUs && widthUs <= PULSE_MAX_US;
 }
 
 // The histogram: <2 ms, 2-8 ms, 8-15 ms, 15-30 ms, 30-80 ms, 80 ms and longer. Real coins fall in one bucket; noise falls in the first three.
@@ -46,6 +49,7 @@ PULSE_GUARD_INLINE int pulseWidthBucket(uint32_t widthUs) {
 struct PulseStats {
     uint32_t n;      // pulses measured
     uint32_t shortN; // of those, shorter than the owner's limit
+    uint32_t longN;  // of those, longer than PULSE_MAX_MS (stuck line / brownout)
     uint32_t minUs;
     uint32_t maxUs;
     uint64_t sumUs;
@@ -57,7 +61,10 @@ PULSE_GUARD_INLINE void pulseStatsAdd(PulseStats& s, uint32_t widthUs, uint32_t 
     if (widthUs > s.maxUs) s.maxUs = widthUs;
     s.n++;
     s.sumUs += widthUs;
-    if (!pulseIsReal(widthUs, minRealUs)) s.shortN++;
+    if (widthUs < minRealUs)
+        s.shortN++;
+    else if (widthUs > PULSE_MAX_US)
+        s.longN++;
     s.bucket[pulseWidthBucket(widthUs)]++;
 }
 

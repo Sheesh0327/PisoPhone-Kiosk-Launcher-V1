@@ -105,9 +105,7 @@ pub fn override_set(data_dir: &str, key: &str, value: &str) -> bool {
     let mut text: String =
         old.lines().filter(|l| l.split_once('=').map(|(k, _)| k.trim() != key).unwrap_or(false)).map(|l| format!("{}\n", l)).collect();
     text.push_str(&format!("{}={}\n", key, value));
-    let tmp = format!("{}.tmp", path);
-    let _ = fs::create_dir_all(data_dir);
-    fs::write(&tmp, text).and_then(|_| fs::rename(&tmp, &path)).is_ok()
+    crate::util::write_atomic(&path, text.as_bytes()).is_ok()
 }
 
 /// Forget one console setting (the other lines stay).
@@ -116,8 +114,7 @@ pub fn override_clear(data_dir: &str, key: &str) -> bool {
     let Ok(old) = fs::read_to_string(&path) else { return true };
     let text: String =
         old.lines().filter(|l| l.split_once('=').map(|(k, _)| k.trim() != key).unwrap_or(false)).map(|l| format!("{}\n", l)).collect();
-    let tmp = format!("{}.tmp", path);
-    fs::write(&tmp, text).and_then(|_| fs::rename(&tmp, &path)).is_ok()
+    crate::util::write_atomic(&path, text.as_bytes()).is_ok()
 }
 
 fn read_file_settings(path: &str) -> HashMap<String, String> {

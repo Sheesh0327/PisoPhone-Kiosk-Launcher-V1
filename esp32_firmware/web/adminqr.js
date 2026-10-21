@@ -132,7 +132,7 @@
     /** "PISOADMIN1.<d>.<x>.<y>" -> {d, x, y} (BigInt), checking that the public point belongs to the private number. */
     function parsePayload(text) {
         const parts = String(text || '').trim().split('.');
-        if (parts.length !== 4 || parts[0] !== 'PISOADMIN1') throw new Error('That is not a PisoPhone admin code.');
+        if (parts.length !== 4 || parts[0] !== 'PISOADMIN1') throw new Error('That is not an admin code.');
         let d, x, y;
         try {
             [d, x, y] = parts.slice(1).map((p) => toBig(unb64u(p)));

@@ -3,8 +3,11 @@
 
 #include <Arduino.h>
 
-const char PORTAL_MODALS_HTML[] PROGMEM = R"HTML(
-<!-- Phone slot -->
+#include "Product.h"
+
+const char PORTAL_MODALS_HTML[] PROGMEM =
+#if PISO_HAS_PHONES
+R"HTML(<!-- Phone slot -->
 <div id="slot_activation_modal" class="modal-overlay">
     <div class="modal">
         <div class="modal-head">
@@ -32,7 +35,9 @@ const char PORTAL_MODALS_HTML[] PROGMEM = R"HTML(
     </div>
 </div>
 
-<!-- Payments the box could not deliver -->
+)HTML"
+#endif
+R"HTML(<!-- Payments the box could not deliver -->
 <div id="orphans_modal" class="modal-overlay">
     <div class="modal">
         <div class="modal-head">
@@ -47,7 +52,9 @@ const char PORTAL_MODALS_HTML[] PROGMEM = R"HTML(
     </div>
 </div>
 
-<!-- Pair a connecting phone -->
+)HTML"
+#if PISO_HAS_PHONES
+R"HTML(<!-- Pair a connecting phone -->
 <div id="unassigned_pair_modal" class="modal-overlay">
     <div class="modal">
         <div class="modal-head">
@@ -61,6 +68,8 @@ const char PORTAL_MODALS_HTML[] PROGMEM = R"HTML(
         </div>
     </div>
 </div>
-)HTML";
+)HTML"
+#endif
+;
 
 #endif // WEB_DASHBOARD_MODALS_H

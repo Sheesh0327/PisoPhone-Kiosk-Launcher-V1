@@ -249,6 +249,8 @@ pub struct Core {
     /// the last jump): a forward jump of the wall clock (the router synced it after starting with a stale one) moves the sessions
     /// paid in between (see roll::shift)
     clock: Mutex<(u64, Instant, u64)>,
+    /// when this program started (the monotonic time in the clock jump record)
+    started: Instant,
 }
 
 /// More pesos than one coin window can physically take (about two minutes of coins): an answer above this is not trusted.
@@ -291,6 +293,7 @@ impl Core {
             recovering: Mutex::new(()),
             vchoice,
             clock: Mutex::new((now_secs(), Instant::now(), now_secs())),
+            started: Instant::now(),
             pricing,
             pricing_stamp: AtomicU32::new(1),
             games,
@@ -505,6 +508,8 @@ impl Core {
     /// A device that is not online but has paid time on the roll (after a power cut or a router restart openNDS forgot
     /// its sessions) is put back online. Returns true when it is online afterwards.
     pub fn reconnect(&self, mac: &str) -> bool {
+        // a clock that was just set right must move the stale sessions first, or a paid one looks expired (RT-01)
+        self.check_clock();
         let now = now_secs();
         let _g = self.files.lock().unwrap();
         // (a paused device is left as it is, slowed or off: only its own Resume puts it back at full speed)
@@ -1247,7 +1252,9 @@ impl Core {
                         log!("could not write the revenue ledger: {}", e);
                     }
                 }
-                let _ = fs::write(format!("{}.rec", self.open_file(sid)), "recorded\n");
+                if let Err(e) = write_synced(&format!("{}.rec", self.open_file(sid)), "recorded\n") {
+                    log!("window {} made its voucher, but its marker could not be written: {}", &sid[..8], e);
+                }
                 Ok((v.code, v.batch.expires))
             }
             Err(e) => {
@@ -1421,7 +1428,7 @@ impl Core {
                 match (f.first(), f.get(1).and_then(|p| Plan::parse(p)), f.get(2), f.get(4) == Some(&"1")) {
                     (Some(mac), Some(plan), Some(wid), false) => {
                         let minutes = minutes_for(&self.pricing(), plan, late);
-                        let late_wid = format!("{}L", wid);
+                        let late_wid = late_wid(wid, boxed);
                         match self.record(sid, mac, plan, &late_wid, false, late, minutes, now_secs()) {
                             Ok(()) => {
                                 // the marker now says every coin is credited: a failed acknowledgement below must not credit them twice
@@ -1463,15 +1470,34 @@ impl Core {
         let expected = g.0 + g.1.elapsed().as_secs();
         if wall > expected + 120 {
             let delta = wall - expected;
-            let moved = {
+            // only what was timed with the stale clock moves: from the start of the stale period (g.2) up to the stale time at
+            // which the clock was set (`expected`). A payment after that was timed with the right clock and must not move again.
+            let (since, until) = (g.2, expected);
+            let (moved_sessions, moved_ledger, moved_vouchers) = {
                 let _f = self.files.lock().unwrap();
-                roll::shift(&self.cfg.roll_path(), g.2, delta)
+                let s = roll::shift(&self.cfg.roll_path(), since, until, delta);
+                let l = ledger::shift(&self.cfg.revenue_path(), since, until, delta);
+                let v = crate::voucher::shift(&self.cfg.data_dir, since, until, delta);
+                // a record for the owner (and for tests); nothing reads it to decide credit
+                let rec = format!(
+                    "v=1\ndetected_at={}\nsince={}\njump_at_mono={}\ndelta={}\n",
+                    wall,
+                    since,
+                    self.started.elapsed().as_secs(),
+                    delta
+                );
+                if let Err(e) = crate::util::write_atomic(&format!("{}/clockjump", self.cfg.data_dir), rec.as_bytes()) {
+                    log!("could not write the clock jump record: {}", e);
+                }
+                (s, l, v)
             };
             g.2 = wall; // what is paid from now on is timed with the right clock
             log!(
-                "the clock jumped forward {} s (it was set after a stale start): {} session(s) paid since then moved with it",
+                "the clock jumped forward {} s (it was set after a stale start): {} session(s), {} revenue row(s), {} voucher(s) moved with it",
                 delta,
-                moved
+                moved_sessions,
+                moved_ledger,
+                moved_vouchers
             );
         } else if expected > wall + 120 {
             log!("the clock went back {} s", expected - wall);
@@ -1572,6 +1598,12 @@ pub fn run_event_listener(core: Arc<Core>) {
     }
 }
 
+/// The id under which coins the box counted after the router stopped looking are credited. It carries the box's total, so a second
+/// late round of the same window (more coins, a different total) is a new payment and not taken for the first one again (RT-07).
+fn late_wid(wid: &str, boxed: u32) -> String {
+    format!("{}L{}", wid, boxed)
+}
+
 /// Write a small record and make sure it is on the flash (the file, then its folder) before saying so.
 fn write_synced(path: &str, text: &str) -> std::io::Result<()> {
     use std::io::Write;
@@ -1584,4 +1616,110 @@ fn write_synced(path: &str, text: &str) -> std::io::Result<()> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::roll::Entry;
+
+    /// A core on a temporary data folder, with no openNDS (every ndsctl call fails) and a clock that last looked at `last_seen`
+    /// (a stale time the router started with) at start `since`.
+    fn core_with_stale_clock(name: &str, last_seen: u64, since: u64) -> Arc<Core> {
+        let d = std::env::temp_dir().join(format!("pisoportal-core-{}-{}", name, std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        let mut cfg = Config::from_map(std::collections::HashMap::new());
+        cfg.data_dir = d.to_string_lossy().into_owned();
+        cfg.ndsctl = "/nonexistent/ndsctl".into();
+        let core = Core::new(cfg);
+        *core.clock.lock().unwrap() = (last_seen, Instant::now(), since);
+        core
+    }
+
+    fn entry(code: &str, mac: &str, tl: u64, fp: u64) -> Entry {
+        Entry::parse(&format!("{},0,0,0,0,{},{},{},0,0,0,hyper,w{},10,{},0,1", code, tl, fp, mac, code, tl)).unwrap()
+    }
+
+    const MAC_A: &str = "aa:aa:aa:aa:aa:01";
+    const MAC_B: &str = "aa:aa:aa:aa:aa:02";
+    const MAC_C: &str = "aa:aa:aa:aa:aa:03";
+
+    #[test]
+    fn rt01_rt02_the_fair_use_tick_applies_the_clock_jump_before_it_looks_at_any_session() {
+        let now = now_secs();
+        let s0 = now - 7200; // the stale time the router started with
+                             // the clock was last looked at 100 s after the stale start; now it reads 7200 s later: the jump is about 7100 s
+        let core = core_with_stale_clock("tick", s0 + 100, s0);
+        let roll_path = core.cfg.roll_path();
+        let stale = entry("c1", MAC_A, 60, s0 + 50); // paid during the stale period, 60 minutes
+        let after = entry("c2", MAC_B, 60, now); // paid after the clock was right
+        let old = entry("c3", MAC_C, 1440, s0 - 1000); // paid before the power cut
+        roll::save(&roll_path, &[stale.clone(), after.clone(), old.clone()]).unwrap();
+
+        crate::fair::tick(&core);
+
+        let got = roll::load(&roll_path);
+        assert_eq!(got.len(), 3, "RT-01: nothing is deleted");
+        assert!(
+            got[0].fp + 5 >= now - 60 && got[0].fp <= now,
+            "RT-01: the stale session moved with the clock: {} (now {})",
+            got[0].fp,
+            now
+        );
+        assert!(got[0].left(now_secs()) > 3400, "and the customer still has their hour: {} s", got[0].left(now_secs()));
+        assert_eq!(got[1].fp, after.fp, "RT-02: a payment made after the jump is not moved (free time)");
+        assert_eq!(got[2].fp, old.fp, "a session from before the cut keeps its times");
+        let rec = fs::read_to_string(format!("{}/clockjump", core.cfg.data_dir)).expect("the jump is recorded for the owner");
+        assert!(
+            rec.starts_with("v=1\n") && rec.contains("\ndetected_at=") && rec.contains("\nsince=") && rec.contains("\njump_at_mono="),
+            "{}",
+            rec
+        );
+        assert!(rec.contains(&format!("\nsince={}\n", s0)) && rec.contains("\ndelta=71"), "{}", rec);
+    }
+
+    #[test]
+    fn rt01_reconnect_keeps_a_session_that_only_looks_expired_because_the_clock_has_not_been_shifted_yet() {
+        let now = now_secs();
+        let s0 = now - 7200;
+        let core = core_with_stale_clock("reconnect", s0 + 100, s0);
+        let roll_path = core.cfg.roll_path();
+        roll::save(&roll_path, &[entry("c1", MAC_A, 60, s0 + 50)]).unwrap(); // 60 minutes paid, but 7000 s "ago" by the new clock
+
+        let _ = core.reconnect(MAC_A);
+
+        let got = roll::load(&roll_path);
+        assert_eq!(got.len(), 1, "RT-01: the paid session was not deleted as expired before the shift ran");
+        assert!(got[0].left(now_secs()) > 3400, "RT-01: and it was shifted: {} s left", got[0].left(now_secs()));
+    }
+
+    #[test]
+    fn rt03_vouchers_and_ledger_rows_made_with_the_stale_clock_move_with_it() {
+        let now = now_secs();
+        let s0 = now - 40 * 86_400; // a router that was off for 40 days
+        let core = core_with_stale_clock("voucher", s0 + 100, s0);
+        let dir = core.cfg.data_dir.clone();
+        let v = crate::voucher::issue(&dir, s0 + 50, MAC_A, "w1", "hyper", 60, 10).unwrap();
+        ledger::append(&core.cfg.revenue_path(), s0 + 50, "hyper", 10, 60, "vbuy").unwrap();
+        assert_eq!(
+            crate::voucher::lookup(&dir, now, &v.code),
+            Err(crate::voucher::RedeemError::Expired),
+            "before the shift it reads as expired"
+        );
+
+        core.check_clock();
+
+        assert!(crate::voucher::lookup(&dir, now_secs(), &v.code).is_ok(), "RT-03: the voucher is good for its 30 days after the shift");
+        let row = fs::read_to_string(core.cfg.revenue_path()).unwrap();
+        let ts: u64 = row.split(',').next().unwrap().parse().unwrap();
+        assert!(ts + 5 >= now - 60 && ts <= now, "and its ledger row moved too: {}", row);
+        assert!(ledger::verify(&core.cfg.revenue_path()).is_ok());
+    }
+
+    #[test]
+    fn rt07_a_second_late_round_of_the_same_window_has_its_own_id() {
+        assert_eq!(late_wid("w9", 3), "w9L3");
+        assert_ne!(late_wid("w9", 3), late_wid("w9", 5), "two late rounds must not look like the same window");
+    }
 }

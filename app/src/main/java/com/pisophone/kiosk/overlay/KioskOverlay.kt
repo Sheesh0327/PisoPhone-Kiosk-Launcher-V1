@@ -175,28 +175,27 @@ class LockScreenOverlay(
         }
     }
 
-    private fun updateWindowFlagsAndDimensions(visible: Boolean) {
-        val currentView = overlayView?.view ?: return
-        if (!isViewAdded) return
-        val baseFlags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+    /** Sets the lock window's size, flags and its own alpha for the lock screen shown or hidden (see [LockWindowSpec]). */
+    private fun applyLockWindowSpec(spec: LockWindowSpec) {
+        layoutParams.width = WindowManager.LayoutParams.MATCH_PARENT
+        layoutParams.height = WindowManager.LayoutParams.MATCH_PARENT
+        var flags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
             WindowManager.LayoutParams.FLAG_FULLSCREEN or
             WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS or
             WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
             WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
+        if (!spec.touchable) flags = flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        if (!spec.focusable) flags = flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        layoutParams.flags = flags
+        layoutParams.alpha = spec.windowAlpha
+    }
 
-        layoutParams.width = WindowManager.LayoutParams.MATCH_PARENT
-        layoutParams.height = WindowManager.LayoutParams.MATCH_PARENT
-
-        if (visible) {
-            layoutParams.flags = baseFlags
-            currentView.alpha = 1f
-        } else {
-            layoutParams.flags = baseFlags or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-            currentView.alpha = 0f
-        }
+    private fun updateWindowFlagsAndDimensions(visible: Boolean) {
+        val currentView = overlayView?.view ?: return
+        if (!isViewAdded) return
+        applyLockWindowSpec(lockWindowSpec(visible))
+        currentView.alpha = if (visible) 1f else 0f
         try {
             windowManager.updateViewLayout(currentView, layoutParams)
         } catch (e: Exception) {
@@ -225,24 +224,8 @@ class LockScreenOverlay(
         overlayView = newOverlay
 
         val initialVisible = SessionRules.isLockScreenShown(appStateFlow.value)
-        val baseFlags = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-            WindowManager.LayoutParams.FLAG_FULLSCREEN or
-            WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS or
-            WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-            WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
-
-        layoutParams.width = WindowManager.LayoutParams.MATCH_PARENT
-        layoutParams.height = WindowManager.LayoutParams.MATCH_PARENT
-        if (initialVisible) {
-            layoutParams.flags = baseFlags
-            newOverlay.view.alpha = 1f
-        } else {
-            layoutParams.flags = baseFlags or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-            newOverlay.view.alpha = 0f
-        }
+        applyLockWindowSpec(lockWindowSpec(initialVisible))
+        newOverlay.view.alpha = if (initialVisible) 1f else 0f
 
         newOverlay.setContent {
             val appState by appStateFlow.collectAsState()

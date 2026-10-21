@@ -42,9 +42,10 @@ fn cmd_box(cfg: &config::Config) -> i32 {
 }
 
 fn cmd_verify(cfg: &config::Config) -> i32 {
-    match ledger::verify(&cfg.revenue_path()) {
-        Ok((n, sum)) => {
-            println!("OK {} {}", n, sum);
+    match ledger::verify_torn(&cfg.revenue_path()) {
+        Ok((n, sum, torn)) => {
+            // a last row cut short by a power failure is not a changed ledger (RT-04)
+            println!("OK {} {}{}", n, sum, if torn { " torn_tail=true" } else { "" });
             0
         }
         Err(l) => {

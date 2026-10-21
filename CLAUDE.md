@@ -1,7 +1,9 @@
 # CLAUDE.md: what this project is and how to work on it
 
-Read this first. It is short on purpose: the details are in the documents it points to. Section 2 says where the repository stands
-today; update it whenever a release goes out.
+Spec-driven work: read `constitution.md`, then `specs/README.md` (the loop: plan, implement, validate; skills in `.claude/skills/sdd-*`). No code without an approved feature spec.
+
+Read this first. It is short on purpose: the details are in the documents it points to. Section 2 points to where the repository stands
+today (`specs/RELEASE_STATE.md`); update that file whenever a release goes out.
 
 ## 1. What this project is, and the goal
 **TechNet PisoHub** sells time with a coin slot, for real shops that run it every day. One ESP32 coin box serves two products:
@@ -21,43 +23,17 @@ key; and the money is always right. Two rules decide every trade-off:
 
 Real customers use the live release. Prefer a smaller, tested change over a clever one, and say plainly what you did not test.
 
-## 2. Where the repository is now (2026-10-18)
-- **Live (all at 100%):** router **1.5.12**; coin box firmware **3.9.0** (`PISO_FW_VERSION`; boxes update from their dashboards); the phone app from CI (dev builds from `beta`,
-  stable builds from `main`; the number is the CI run number). **Routers 1.5.7-1.5.12 have never run on a real router** (modem block; guests apart and
-  rental phones reaching only the router and the coin box: bridge rules in `router/piso_isolation.sh`, they need `kmod-nft-bridge`; the router login pages
-  and the console closed on Wi-Fi, `piso-setup wifi-admin`; one admin page: `http://admin.hub`, the router's own DNS name, the console as the front page on
-  port 80 with LuCI on 8080, and the coin box's page inside its Rental phones tab through `boxview.rs`, port 81/8082). Firmware 3.7.0-3.9.0 (phone profiles; the
-  box page's light/dark button and embedded view; no mDNS any more) and the phone app without the `kioskmanager.local` fallback have not been tried on a box
-  or a phone. The hardware checks are in `docs/REAL_WORLD_TESTING.md` (RS22 and later).
-- **Branches:** `main` is production, `beta` is where work happens. After CI rebuilds on each branch their generated router
-  files differ byte for byte, so merges to `main` keep `main`'s generated files (section 5).
-- **Production hardening pass** (`docs/maintainers/HARDENING_PLAN.md`: what was fixed, what is open, the hardware checks): router
-  1.5.5 went to 100% before the owner's hardware checks were done, so those checks are still owed. After 1.5.5 paying phones were
-  reported online with no internet; the fix in 1.5.6 (the portal lets on a paid customer openNDS forgot; the 1.5.5 guest
-  private-network rules removed) was tried by the owner on a router and works. Phone app: paid time starts at
-  Done (coins are held while the lock screen waits; `PaymentRepository.startHeldClock`), the power menu is available only
-  inside an admin maintenance window (`KioskPolicyManager.applyPowerMenu`), and the floating pill has a Force close app button
-  (`AppCloser`); none of these has run on a real phone.
-- **Recent work:** each router has its own Wi-Fi names (`PisoKiosk-xxxx`, `PisoCoinBox-xxxx`, 1.5.0); coin page: vouchers, pause
-  (from 10 pesos, once, 1 kbit/s and 2 MB), mini-game, "send a file to the owner" (relayed to the print server's inbox);
-  quicker "you are online" after Done; the setup program (`setup/pisophone_setup.py`) does the whole install and has Owner tools
-  (time cards, admin QR, recovery code) and a read-only Check-up; "Start here" pages (`website/start/`); codebase cleanup of the
-  setup program, tests, scripts and the phone app.
-- **Setup simplification plan** (nobody opening a shop should handle a key): Start pages, README front door and the Check-up are
-  done. **Print server pairing** (a code instead of copying `send.key`) is only specified (`docs/api/print-pairing.md`): it needs
-  `/api/inbox/pair` on the print server, which is a separate project, not in this repo. Until then the key is copied by hand.
-- **Known and open:**
-  - cleanup skipped on purpose: firmware dead code (needs a firmware release); Android: `MainActivity` `isLockTaskActive`, unused
-    constructor parameters, stale lint-baseline entries, `device_admin.xml`, legacy launcher icons, `ACTION_FACTORY_RESET`,
-    a duplicate `getLocalIpAddress`.
-- **Not in this repo:** the print server (its own project; this repo only specifies how the router talks to it).
-- The hardware test checklist and issue log is `docs/REAL_WORLD_TESTING.md`; what changed for owners is `CHANGELOG.md`.
+## 2. Where the repository is now
+Release state (what is live, what has never run on real hardware, open cleanups) is in `specs/RELEASE_STATE.md`; the board of
+features and owner decisions is `specs/STATUS.md`. Both change often, so they are not kept here: this file stays the same between
+releases. Update `specs/RELEASE_STATE.md` whenever a release goes out. Other pointers: the hardware test checklist and issue log is
+`docs/REAL_WORLD_TESTING.md`; what changed for owners is `CHANGELOG.md`.
 
 ## 3. Checks to run before you push
 Run every check for the area you touched; the commands are in the table in `CONTRIBUTING.md`, "Before you open a pull request".
 Always run `bash scripts/check_security_rules.sh`. For the router add-on also run `cargo test` and `python3 tests/test_flow.py`
 in `tools/pisoportal`, and `python3 router/tests/test_setup.py`, `test_pisophone_setup.py`, `test_setup_web.py`,
-`test_setup_tools.py`. CI (`.github/workflows/quality.yml`) runs the same for the parts a change touches. Code style: ktlint
+`test_setup_tools.py`; for the setup program also `test_setup_phone_web.py` and `test_phone_only.py`. CI (`.github/workflows/quality.yml`) runs the same for the parts a change touches. Code style: ktlint
 (Kotlin), clang-format (`esp32_firmware/.clang-format`).
 
 ## 4. Generated and published files: never edit by hand

@@ -7,6 +7,8 @@ use crate::util::now_secs;
 use std::sync::Arc;
 
 pub fn tick(core: &Arc<Core>) {
+    // before any session is read: a clock that was just set right moves the sessions timed with the stale one first (RT-01)
+    core.check_clock();
     let cfg = &core.cfg;
     let now = now_secs();
     for (mac, state, kb) in core.nds.clients() {

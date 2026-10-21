@@ -43,10 +43,7 @@ pub fn load(path: &str) -> Option<Base> {
 }
 
 fn save(path: &str, b: &Base) {
-    let tmp = format!("{}.tmp", path);
-    if fs::write(&tmp, format!("{} {} {}\n", b.box_base, b.ledger_base, b.last_box)).is_ok() {
-        let _ = fs::rename(&tmp, path);
-    }
+    let _ = crate::util::write_atomic(path, format!("{} {} {}\n", b.box_base, b.ledger_base, b.last_box).as_bytes());
 }
 
 /// The base after the box was seen at `counted` with the ledger at `ledger` (pure, so it is unit-tested), and why it
@@ -69,7 +66,9 @@ pub fn run(cfg: &Config, rebase: bool) -> (Outcome, Option<&'static str>) {
         Err(line) => return (Outcome::BadLedger(line), None),
     };
     let st = BoxLink::new(&cfg.gw_box, &cfg.gw_key).call(&"f".repeat(32), "status", "").unwrap_or_default();
-    let Some(counted) = jget_u64(&st, "lifetime_pulses") else { return (Outcome::NoBox(ledger), None) };
+    let Some(counted) = jget_u64(&st, "lifetime_wifi_pulses").or_else(|| jget_u64(&st, "lifetime_pulses")) else {
+        return (Outcome::NoBox(ledger), None);
+    };
     let path = state_path(cfg);
     let (base, note) = if rebase {
         (Base { box_base: counted, ledger_base: ledger, last_box: counted }, Some("compared from now on (rebase)"))

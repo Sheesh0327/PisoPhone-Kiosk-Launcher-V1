@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <functional>
+#include "Product.h"
 
 // ============================================================================
 // CALLBACK SIGNATURES & ENUMS
@@ -10,7 +11,15 @@
 typedef std::function<void(const String& sessionId, int pulses)> CoinPaymentCallback;
 typedef std::function<void(const String& sessionId, const char* reason)> CoinSessionEndCallback;
 
+#if PISO_HAS_PHONES
+#if PISO_HAS_GATEWAY
 enum class CoinSlotOwnerType { ANY, PHONE, CONTROLLER, GATEWAY };
+#else
+enum class CoinSlotOwnerType { ANY, PHONE, CONTROLLER };
+#endif
+#else
+enum class CoinSlotOwnerType { ANY, GATEWAY };
+#endif
 
 enum class CoinSlotState {
     IDLE,    // No session, relay OFF, acceptor disabled

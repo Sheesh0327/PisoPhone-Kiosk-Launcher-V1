@@ -2,11 +2,16 @@
 // slots and revenue counters, plus the locked accessor for the shared secret.
 
 #include "Config.h"
+#if PISO_HAS_PHONES
 #include "PhoneProfileStore.h"
+#endif
 #include "PulseGuard.h"
+#include "CoinCredit.h"
 #include "PinRules.h"
 #include "OwnerData.h"
+#if PISO_HAS_PHONES
 #include "DeviceManager.h"
+#endif
 #include "HardwareManager.h"
 #include "SuperAdminManager.h"
 #include "PaymentQueueManager.h"
@@ -28,7 +33,11 @@
 // ============================================================================
 // DEPRECATED shared key of firmware before per-box secrets. Only used while a box is in legacy mode and
 // to refuse it as a new box secret. Remove with the legacy path once every phone is re-provisioned.
+#if PISO_HAS_PHONES
 static const char* LEGACY_CRYPTO_SECRET = "PISOPHONE_HMAC_MASTER_KEY";
+#else
+static const char* LEGACY_CRYPTO_SECRET = ""; // (no old shared key to refuse: this image never had one)
+#endif
 
 // Pin defaults are per board and come from -D flags in envs/*.ini (PISO_PIN_*). A wrong default
 // on a classic ESP32 (GPIO 6-11 are the flash bus) crashes at boot, so there is no fallback:
@@ -42,7 +51,9 @@ const bool DEFAULT_LED_ACTIVE_LOW = false;
 const int DEFAULT_RELAY_PIN = PISO_PIN_RELAY;
 const int DEFAULT_PORT = 8080;
 const int HARDWARE_RESET_PIN = PISO_PIN_RESET;
+#if PISO_HAS_PHONES
 const int UDP_DISCOVERY_PORT = 8888;
+#endif
 const int DEFAULT_MINUTES_PER_COIN = 6;
 
 // ============================================================================
@@ -55,14 +66,16 @@ int ledPin = DEFAULT_LED_PIN;
 bool ledActiveLow = DEFAULT_LED_ACTIVE_LOW;
 int relayPin = DEFAULT_RELAY_PIN;
 bool relayActiveLow = false;
-bool coinPulseGuard = false;
+bool coinPulseGuard = true;
 int coinPulseMinMs = PULSE_MIN_MS_DEFAULT;
 
 String wifiSsid = setupgate::DEFAULT_WIFI_SSID; // the hidden network the router setup script creates for the box
 String wifiPass = setupgate::DEFAULT_WIFI_PASSWORD;
+#if PISO_HAS_PHONES
 String kioskWifiPass = "";
 String kioskWifiSsid = ""; // this router's own name for it (empty: the phones use the shared name PisoKiosk)
 String androidIps = "";
+#endif
 String webPassword = "";
 bool adminPwChanged = false;
 // The auth worker task reads the secret while the main loop can change it (settings save, factory
@@ -110,20 +123,26 @@ int minutesPerCoin = DEFAULT_MINUTES_PER_COIN;
 const unsigned long ARM_TTL = 20000;
 const unsigned long MAX_SESSION_DURATION = 120000;
 
+#if PISO_HAS_PHONES
 String p1Ip = "";
 String p2Ip = "";
 int matchMinutes = 15;
 bool matchActive = false;
 String matchStatusMsg = "";
 String quickTimeStatusMsg = "";
+#endif
 
 // Credit Vault
 // Revenue & Audit
 uint32_t totalCoinsLifetime = 0;
+uint32_t totalWifiCoinsLifetime = 0;
+uint32_t totalPhoneCoinsLifetime = 0;
 uint32_t totalCoinsSession = 0;
 uint32_t totalCentavosLifetime = 0;
 uint32_t totalCentavosSession = 0;
 uint32_t lastSavedTotalCoins = 0;
+uint32_t lastSavedTotalWifiCoins = 0;
+uint32_t lastSavedTotalPhoneCoins = 0;
 uint32_t lastSavedTotalCentavos = 0;
 bool revenueDirty = false;
 unsigned long lastCoinChangeTime = 0;
@@ -133,10 +152,12 @@ const unsigned long REVENUE_SAVE_DELAY_MS = 5000;
 const unsigned long REVENUE_SAVE_MAX_DEFER_MS = 20000;
 unsigned long revenueDirtySinceMs = 0;
 
+#if PISO_HAS_PHONES
 // Device & Slot Arrays
 PhoneSlot phoneSlots[MAX_SUPPORTED_SLOTS];
 DeviceTelemetry trackedDevices[MAX_TRACKED_DEVICES];
 int trackedDeviceCount = 0;
+#endif
 
 // Monotonic Master Clock derived from synchronized Android telemetry timestamps
 static uint64_t lastMasterTimestamp = 0;
@@ -221,6 +242,7 @@ void updateMasterTime(uint64_t ts, const String& sourceId) {
     outlierSource = sourceId;
 }
 
+#if PISO_HAS_PHONES
 bool parseDeviceEntry(const String& rawEntry, DeviceConfig& out) {
     String entry = rawEntry;
     entry.trim();
@@ -307,15 +329,20 @@ void forEachConfiguredDevice(std::function<bool(const DeviceConfig&)> callback) 
         startIdx = comma + 1;
     }
 }
+#endif
 
 const char* const NVS_NAMESPACE = "kiosk_cfg";
+#if PISO_HAS_PHONES
 const char* const NVS_KEY_SLOTS_DATA = "slots_data";
 const char* const NVS_KEY_IPS = "ips";
+#endif
 
 const char* const NVS_KEY_WIFI_SSID = "wifi_ssid";
 const char* const NVS_KEY_WIFI_PASS = "wifi_pass";
+#if PISO_HAS_PHONES
 const char* const NVS_KEY_KIOSK_WIFI_PASS = "kiosk_wifi";
 const char* const NVS_KEY_KIOSK_WIFI_SSID = "kiosk_ssid";
+#endif
 const char* const NVS_KEY_U_COIN_PIN = "u_coin_pin";
 const char* const NVS_KEY_LED_PIN = "led_pin";
 const char* const NVS_KEY_LED_ACTIVE_LOW = "led_act_low";
@@ -330,14 +357,19 @@ const char* const NVS_KEY_ADMIN_PW_CHANGED = cfgmig::K_ADMIN_PW_CHANGED;
 const char* const NVS_KEY_SETUP_AP_PASS = cfgmig::K_SETUP_AP_PASS;
 const char* const NVS_KEY_SHARED_SECRET = cfgmig::K_SHARED_SECRET;
 const char* const NVS_KEY_LEGACY_KEY = cfgmig::K_LEGACY_KEY;
+#if PISO_HAS_PHONES
 const char* const NVS_KEY_LICENSES = "lic_ids";    // ownerdata::K_LICENSES: survives an operator's factory reset
 const char* const NVS_KEY_LIC_FLOOR = "lic_floor"; // ownerdata::K_LIC_FLOOR: the phones paired when licensing arrived
 const char* const NVS_KEY_P1 = "p1_ip";
 const char* const NVS_KEY_P2 = "p2_ip";
 const char* const NVS_KEY_MATCH = "match_minutes";
+#endif
 const char* const NVS_KEY_TOTAL_COINS = "total_coins";
+const char* const NVS_KEY_TOTAL_WIFI_COINS = "tot_wifi_coins";
+const char* const NVS_KEY_TOTAL_PHONE_COINS = "tot_phone_coins";
 const char* const NVS_KEY_TOTAL_CENTAVOS = cfgmig::K_TOTAL_CENTAVOS;
 
+#if PISO_HAS_PHONES
 void syncAndroidIpsFromSlots() {
     String newIps = "";
     newIps.reserve(MAX_SUPPORTED_SLOTS * 48); // Pre-allocate to prevent heap fragmentation
@@ -410,6 +442,7 @@ void loadSlots() {
     prefs.end();
     syncAndroidIpsFromSlots();
 }
+#endif
 
 // Secrets and passwords are made before Wi-Fi starts, when esp_fill_random is only pseudo-random (Espressif's documentation):
 // switch the chip's own entropy source on while they are made.
@@ -468,6 +501,7 @@ void loadSecretMode() {
     }
 }
 
+#if PISO_HAS_PHONES
 static String licenseIds = ""; // the numbers of the license keys used on this box (SlotLicense.h), "id,id,..."
 static int licenseFloor =
     0; // the phones this box had paired when licensing arrived: it never offers fewer slots than that
@@ -537,6 +571,7 @@ bool addLicenseKey(const String& id) {
     diagLog("[LICENSE] License key %s used: this box may now pair up to %d phones.\n", idNorm.c_str(), getDeviceCap());
     return true;
 }
+#endif
 
 void switchToOwnKey() {
     prefs.begin(NVS_NAMESPACE, false);
@@ -545,7 +580,11 @@ void switchToOwnKey() {
     xSemaphoreTake(sharedSecretMutex, portMAX_DELAY);
     legacyKeyMode = false;
     xSemaphoreGive(sharedSecretMutex);
+#if PISO_HAS_PHONES
     diagLog("[🔐 KEY] Switched to this box's own key. Re-provision each phone with the new secret.");
+#else
+    diagLog("[🔐 KEY] Switched to this box's own key.");
+#endif
 }
 
 // Reads the admin and setup-AP passwords. Every box has its own, made by the migrations the first time it starts
@@ -569,10 +608,14 @@ void loadAllConfig() {
     // 1. Load phone slots and terminal allocations safely
     runConfigMigrations(); // first: brings stored settings to this firmware's format
     loadSecretMode();
+#if PISO_HAS_PHONES
     loadLicenses();
+#endif
     initTxIdBootCounter();
+#if PISO_HAS_PHONES
     loadSlots();
     settleLicenseFloor(); // (needs the phone slots: it records how many phones are paired when licensing starts)
+#endif
     loadSuperAdminConfig();
     loadCredentials();
 
@@ -580,8 +623,10 @@ void loadAllConfig() {
     prefs.begin(NVS_NAMESPACE, false);
     wifiSsid = prefs.getString(NVS_KEY_WIFI_SSID, wifiSsid);
     wifiPass = prefs.getString(NVS_KEY_WIFI_PASS, wifiPass);
+#if PISO_HAS_PHONES
     kioskWifiPass = prefs.getString(NVS_KEY_KIOSK_WIFI_PASS, "");
     kioskWifiSsid = prefs.getString(NVS_KEY_KIOSK_WIFI_SSID, "");
+#endif
     universalCoinPin = prefs.getInt(NVS_KEY_U_COIN_PIN, universalCoinPin);
     ledPin = prefs.getInt(NVS_KEY_LED_PIN, ledPin);
     ledActiveLow = prefs.getBool(NVS_KEY_LED_ACTIVE_LOW, DEFAULT_LED_ACTIVE_LOW);
@@ -598,22 +643,41 @@ void loadAllConfig() {
     targetPort = prefs.getInt(NVS_KEY_PORT, targetPort);
     if (targetPort <= 0 || targetPort > 65535) targetPort = DEFAULT_PORT;
     minutesPerCoin = prefs.getInt(NVS_KEY_MINS_PER_COIN, DEFAULT_MINUTES_PER_COIN);
-    if (minutesPerCoin < 1) minutesPerCoin = 1;
+    minutesPerCoin = clampMinutesPerCoin(minutesPerCoin); // 1..1440, also for a value saved by an older version
+#if PISO_HAS_PHONES
     loadPhoneProfilesFromPrefs();
+#endif
 
     webPassword = prefs.getString(NVS_KEY_ADMIN_PW, webPassword);
     relayActiveLow = prefs.getBool(NVS_KEY_RELAY_ACTIVE_LOW, false);
-    coinPulseGuard = prefs.getBool(NVS_KEY_PULSE_GUARD, false);
+    coinPulseGuard = prefs.getBool(NVS_KEY_PULSE_GUARD, true);
     coinPulseMinMs = pulseMinMsClamp(prefs.getInt(NVS_KEY_PULSE_MIN_MS, PULSE_MIN_MS_DEFAULT));
+#if PISO_HAS_PHONES
     p1Ip = prefs.getString(NVS_KEY_P1, p1Ip);
     p2Ip = prefs.getString(NVS_KEY_P2, p2Ip);
     matchMinutes = prefs.getInt(NVS_KEY_MATCH, matchMinutes);
+#endif
 
     // Lifetime vault revenue counters
     totalCoinsLifetime = prefs.getULong(NVS_KEY_TOTAL_COINS, 0);
+    totalWifiCoinsLifetime = prefs.getULong(NVS_KEY_TOTAL_WIFI_COINS, 0);
+    totalPhoneCoinsLifetime = prefs.getULong(NVS_KEY_TOTAL_PHONE_COINS, 0);
     totalCentavosLifetime = prefs.getULong(NVS_KEY_TOTAL_CENTAVOS, 0);
 
+    // If upgrading from older firmware where totalCoinsLifetime was stored without the split:
+    if (totalCoinsLifetime > 0 && totalWifiCoinsLifetime == 0 && totalPhoneCoinsLifetime == 0) {
+#if !PISO_HAS_PHONES
+        totalWifiCoinsLifetime = totalCoinsLifetime;
+#elif !PISO_HAS_GATEWAY
+        totalPhoneCoinsLifetime = totalCoinsLifetime;
+#else
+        totalWifiCoinsLifetime = totalCoinsLifetime;
+#endif
+    }
+
     lastSavedTotalCoins = totalCoinsLifetime;
+    lastSavedTotalWifiCoins = totalWifiCoinsLifetime;
+    lastSavedTotalPhoneCoins = totalPhoneCoinsLifetime;
     lastSavedTotalCentavos = totalCentavosLifetime;
     totalCoinsSession = 0;
     totalCentavosSession = 0;
@@ -621,6 +685,7 @@ void loadAllConfig() {
 
     prefs.end();
 
+#if PISO_HAS_PHONES
     // Sanitize and purge any corrupted legacy entries
     String bootCleanIps = "";
     bootCleanIps.reserve(androidIps.length());
@@ -630,6 +695,7 @@ void loadAllConfig() {
         return true;
     });
     androidIps = bootCleanIps;
+#endif
 
     char earnings[24];
     money::formatPesos(totalCentavosLifetime, earnings, sizeof(earnings));
@@ -638,14 +704,20 @@ void loadAllConfig() {
 }
 
 void flushRevenueNow() {
-    if (!revenueDirty && totalCoinsLifetime == lastSavedTotalCoins && totalCentavosLifetime == lastSavedTotalCentavos) {
+    if (!revenueDirty && totalCoinsLifetime == lastSavedTotalCoins &&
+        totalWifiCoinsLifetime == lastSavedTotalWifiCoins && totalPhoneCoinsLifetime == lastSavedTotalPhoneCoins &&
+        totalCentavosLifetime == lastSavedTotalCentavos) {
         return;
     }
     prefs.begin(NVS_NAMESPACE, false);
     prefs.putULong(NVS_KEY_TOTAL_COINS, totalCoinsLifetime);
+    prefs.putULong(NVS_KEY_TOTAL_WIFI_COINS, totalWifiCoinsLifetime);
+    prefs.putULong(NVS_KEY_TOTAL_PHONE_COINS, totalPhoneCoinsLifetime);
     prefs.putULong(NVS_KEY_TOTAL_CENTAVOS, totalCentavosLifetime);
     prefs.end();
     lastSavedTotalCoins = totalCoinsLifetime;
+    lastSavedTotalWifiCoins = totalWifiCoinsLifetime;
+    lastSavedTotalPhoneCoins = totalPhoneCoinsLifetime;
     lastSavedTotalCentavos = totalCentavosLifetime;
     revenueDirty = false;
     Serial.println("[💰 VAULT] Revenue counters flushed to NVS flash.");
@@ -679,25 +751,34 @@ void factoryResetDefaults(bool ownerWipe) {
     }
     runConfigMigrations(); // a cleared box gets a fresh secret and new passwords (printed on the serial console)
     loadSecretMode();
+#if PISO_HAS_PHONES
     loadLicenses(); // (an operator's reset keeps the keys and the floor, OwnerData.h; an owner wipe starts again with the 2 free slots)
+#endif
     loadCredentials();
 
     wifiSsid = setupgate::DEFAULT_WIFI_SSID;
     wifiPass = setupgate::DEFAULT_WIFI_PASSWORD;
+#if PISO_HAS_PHONES
     kioskWifiPass = "";
     kioskWifiSsid = "";
+#endif
     universalCoinPin = DEFAULT_UNIVERSAL_COIN_PIN;
     ledPin = DEFAULT_LED_PIN;
     ledActiveLow = DEFAULT_LED_ACTIVE_LOW;
     relayPin = DEFAULT_RELAY_PIN;
+#if PISO_HAS_PHONES
     androidIps = "";
+#endif
     targetPort = DEFAULT_PORT;
     minutesPerCoin = DEFAULT_MINUTES_PER_COIN;
+#if PISO_HAS_PHONES
     resetPhoneProfiles();
     p1Ip = "";
     p2Ip = "";
     matchMinutes = 15;
+#endif
     const bool keepOwner = !ownerWipe;
+#if PISO_HAS_PHONES
     for (int i = 0; i < MAX_SUPPORTED_SLOTS; i++) {
         phoneSlots[i].slotNum = i + 1;
         phoneSlots[i].deviceId = "";
@@ -706,12 +787,17 @@ void factoryResetDefaults(bool ownerWipe) {
         phoneSlots[i].active = true;
     }
     saveSlots();
+#endif
 
     totalCoinsLifetime = (keepOwner && owner.hasCoins) ? owner.coins : 0;
+    totalWifiCoinsLifetime = (keepOwner && owner.hasWifiCoins) ? owner.wifiCoins : 0;
+    totalPhoneCoinsLifetime = (keepOwner && owner.hasPhoneCoins) ? owner.phoneCoins : 0;
     totalCoinsSession = 0;
     totalCentavosLifetime = (keepOwner && owner.hasCentavos) ? owner.centavos : 0;
     totalCentavosSession = 0;
     lastSavedTotalCoins = totalCoinsLifetime;
+    lastSavedTotalWifiCoins = totalWifiCoinsLifetime;
+    lastSavedTotalPhoneCoins = totalPhoneCoinsLifetime;
     lastSavedTotalCentavos = totalCentavosLifetime;
     if (ownerWipe) vendorRevenueSplitPercent = DEFAULT_VENDOR_SPLIT_PERCENT;
 

@@ -2,19 +2,26 @@
 // pushes it over WebSocket and HTTP, and re-sends queued payments on request.
 
 #include "DeviceNetwork.h"
+#if PISO_HAS_PHONES
 #include "PhoneProfileStore.h"
 #include "PaymentQueueManager.h"
 #include "CoinSlotManager.h"
 #include "DeviceManager.h"
 #include "HardwareManager.h"
 #include "Security.h"
+#endif
 #include "Money.h"
+#include "CoinRecordOrder.h"
+#include "CoinCredit.h"
+#if PISO_HAS_PHONES
 #include "WebServerModule.h"
 #include "WebServerApi.h"
 #include "WebServerCoinslot.h"
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
+#endif
 
+#if PISO_HAS_PHONES
 void sendAddTime(int minutes, String targetIp, String txId) {
     if (androidIps.length() == 0 && targetIp == "ALL") return;
     bool sent = false;
@@ -48,19 +55,32 @@ void sendAddTime(int minutes, String targetIp, String txId) {
         sendAuthenticated(targetIp, targetPort, "/add_time", "/challenge", params, 1000);
     }
 }
+#endif
 
-void recordCoinRevenue(int pulses) {
+#include "RevenueVault.h"
+
+void recordCoinRevenue(int pulses, CoinSlotOwnerType owner) {
     if (pulses <= 0) return;
+#if PISO_HAS_PHONES
+    bool isPhone = (owner == CoinSlotOwnerType::PHONE || owner == CoinSlotOwnerType::CONTROLLER);
+#else
+    bool isPhone = false;
+#endif
     totalCoinsLifetime += pulses;
     totalCoinsSession += pulses;
+    if (isPhone) {
+        totalPhoneCoinsLifetime += pulses;
+    } else {
+        totalWifiCoinsLifetime += pulses;
+    }
     totalCentavosLifetime = money::saturatingAdd(totalCentavosLifetime, money::centavosFromPulses(pulses));
     totalCentavosSession = money::saturatingAdd(totalCentavosSession, money::centavosFromPulses(pulses));
 
-    if (!revenueDirty) revenueDirtySinceMs = millis();
-    revenueDirty = true;
-    lastCoinChangeTime = millis();
+    vaultRecordCoin(pulses, isPhone);
+    flushRevenueNow();
 }
 
+#if PISO_HAS_PHONES
 void triggerUniversalCoinEvent(int pulses, const String& targetDeviceId) {
     if (pulses <= 0) return;
     Serial.printf("[⚡ UNIVERSAL COIN] %d total pulses accumulated on GPIO %d (₱%d PHP)\n", pulses, universalCoinPin,
@@ -78,18 +98,16 @@ void triggerUniversalCoinEvent(int pulses, const String& targetDeviceId) {
 
     // The rate of the phone that gets the coin: its profile's (PhoneProfiles.h), the standard rate when it has none.
     int rate = minutesPerCoinForDevice(targetDev, targetIp);
-    if (rate < 1) rate = 1;
-    int addedMinutes = pulses * rate;
-    int addedSeconds = addedMinutes * 60;
-
-    recordCoinRevenue(pulses);
-
-    triggerLedBlink(pulses > 1 ? 4 : 2);
+    int addedSeconds = coinCreditSeconds(pulses, rate); // 64-bit, clamped (FW-05)
+    int addedMinutes = addedSeconds / 60;
 
     unsigned long long ts = (unsigned long long)getCurrentMasterTimeMs();
     String txId = generateTxId("tx-");
 
-    bool retained = enqueuePendingPayment(txId, targetDev, pulses, CoinSlotOwnerType::PHONE, addedSeconds);
+    // Queue the payment first, then revenue, then the LED (CoinRecordOrder.h).
+    bool retained = recordCoinInOrder(
+        [&] { return enqueuePendingPayment(txId, targetDev, pulses, CoinSlotOwnerType::PHONE, addedSeconds); },
+        [&] { recordCoinRevenue(pulses, CoinSlotOwnerType::PHONE); }, [&] { triggerLedBlink(pulses > 1 ? 4 : 2); });
     if (!retained) {
         Serial.printf("[UNIVERSAL COIN] CRITICAL: Could not retain tx_id='%s'.\n", txId.c_str());
     }
@@ -137,11 +155,13 @@ int getDeviceTimeRemainingSeconds(String targetIp, String* errOut) {
     }
     return rem;
 }
+#endif
 
 void sendCloudSnapshot() {
     // Retiring outbound telemetry to Cloudflare Worker. Strictly Pages-only now.
 }
 
+#if PISO_HAS_PHONES
 bool retryPhonePayment(const String& targetDeviceId, int pulses, int creditSeconds, const String& txId) {
     if (targetDeviceId.length() == 0) return false;
 
@@ -177,6 +197,8 @@ bool sendAuthenticated(String ip, int port, String actionPath, String challengeP
     }
     return true;
 }
+
+#endif
 
 String urlEncode(const String& str) {
     String encoded = "";

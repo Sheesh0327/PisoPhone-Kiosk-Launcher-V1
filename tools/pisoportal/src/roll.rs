@@ -5,7 +5,6 @@
 use crate::pricing::Plan;
 use crate::util::random_hex;
 use std::fs;
-use std::io::Write;
 
 /// How long a pause may last: time still unused after that is lost.
 pub const PAUSE_MAX_SECS: u64 = 86_400;
@@ -119,25 +118,9 @@ pub fn load(path: &str) -> Vec<Entry> {
 }
 
 pub fn save(path: &str, entries: &[Entry]) -> std::io::Result<()> {
-    if let Some(dir) = std::path::Path::new(path).parent() {
-        fs::create_dir_all(dir)?;
-    }
-    let tmp = format!("{}.tmp", path);
-    {
-        let mut f = fs::File::create(&tmp)?;
-        for e in entries {
-            writeln!(f, "{}", e.line())?;
-        }
-        f.sync_all().ok();
-    }
-    fs::rename(&tmp, path)?;
-    // the rename itself must reach the flash before a payment is reported as recorded
-    if let Some(dir) = std::path::Path::new(path).parent() {
-        if let Ok(d) = fs::File::open(dir) {
-            d.sync_all().ok();
-        }
-    }
-    Ok(())
+    // the file and its folder are synced before a payment is reported as recorded
+    let text: String = entries.iter().map(|e| format!("{}\n", e.line())).collect();
+    crate::util::write_atomic(path, text.as_bytes())
 }
 
 pub fn find<'a>(entries: &'a [Entry], mac: &str) -> Option<&'a Entry> {
@@ -263,7 +246,8 @@ pub fn mint(
 
 /// What a device may use right now. A paused session is RESUMED by this call (paying more coins resumes it; so does the
 /// explicit resume). Code that only wants to put a device back online uses `session_active`, which leaves a paused one alone.
-/// None when it has no time left; a line that ran out is deleted.
+/// None when it has no time left. A line that ran out is NOT deleted here (RT-01): a read must not end a paid session just
+/// because the clock is not right yet. Only `purge` (two days later) and the next payment (`mint`) remove it.
 #[derive(Debug, Clone)]
 pub struct Session {
     pub minutes: u64,
@@ -280,8 +264,6 @@ pub fn session(path: &str, now: u64, mac: &str) -> Option<Session> {
     let mut entries = load(path);
     let i = entries.iter().position(|e| e.mac == mac)?;
     if entries[i].left(now) == 0 {
-        entries.remove(i);
-        let _ = save(path, &entries);
         return None;
     }
     if entries[i].pa != 0 {
@@ -395,16 +377,17 @@ pub fn pause(path: &str, now: u64, mac: &str, rules: PauseRules) -> Result<u64, 
 /// time of its last file write) and then reached a time server. Sessions paid or paused since `since` were timed with the stale
 /// clock and would lose `delta` seconds at once (a customer who paid 60 minutes before the clock synced lost all of it): their
 /// start and pause times move forward with the clock. Returns how many entries moved.
-pub fn shift(path: &str, since: u64, delta: u64) -> usize {
+pub fn shift(path: &str, since: u64, until: u64, delta: u64) -> usize {
     let mut entries = load(path);
     let mut moved = 0;
+    // `until` is the stale time at which the clock jumped: what was paid or paused after it was timed with the right clock
     for e in entries.iter_mut() {
         let mut m = false;
-        if e.fp >= since {
+        if e.fp >= since && e.fp < until {
             e.fp += delta;
             m = true;
         }
-        if e.pa != 0 && e.pa >= since {
+        if e.pa != 0 && e.pa >= since && e.pa < until {
             e.pa += delta;
             m = true;
         }
@@ -440,12 +423,43 @@ mod tests {
         let new = Entry::parse("c2,0,0,0,0,60,1000100,aa:aa:aa:aa:aa:02,0,0,0,hyper,w2,10,60,0,1").unwrap(); // paid after the start
         save(&p, &[old.clone(), new.clone()]).unwrap();
         let jump = 7200; // the router was off for two hours
-        assert_eq!(shift(&p, boot, jump), 1);
+        assert_eq!(shift(&p, boot, u64::MAX, jump), 1);
         let got = load(&p);
         assert_eq!(got[0].fp, old.fp, "a session from before the cut keeps its times");
         assert_eq!(got[1].fp, new.fp + jump, "a session paid with the stale clock moves with it");
         // after the sync, the customer still has the hour they paid for
         assert_eq!(got[1].left(new.fp + jump + 60), 59 * 60);
+    }
+
+    #[test]
+    fn rt02_a_session_paid_after_the_jump_is_not_moved() {
+        let p = tmp("shift-window");
+        let (boot, jump_at, jump) = (1_000_000u64, 1_000_200u64, 7200u64); // stale start, stale time when the clock was set, seconds added
+        let stale = Entry::parse("c1,0,0,0,0,60,1000100,aa:aa:aa:aa:aa:01,0,0,0,hyper,w1,10,60,0,1").unwrap(); // paid with the stale clock
+        let after = Entry::parse("c2,0,0,0,0,60,1008000,aa:aa:aa:aa:aa:02,0,0,0,hyper,w2,10,60,0,1").unwrap(); // paid with the right clock
+        let paused_after = Entry::parse("c3,0,0,0,0,60,1008000,aa:aa:aa:aa:aa:03,1,1008100,1800,hyper,w3,10,60,0,1").unwrap();
+        save(&p, &[stale.clone(), after.clone(), paused_after.clone()]).unwrap();
+        assert_eq!(shift(&p, boot, jump_at, jump), 1, "only the session timed with the stale clock moves");
+        let got = load(&p);
+        assert_eq!(got[0].fp, stale.fp + jump);
+        assert_eq!(got[1].fp, after.fp, "free time: a payment after the jump must not move forward again");
+        assert_eq!((got[2].fp, got[2].pa), (paused_after.fp, paused_after.pa));
+    }
+
+    #[test]
+    fn rt01_session_never_deletes_a_line_only_purge_does() {
+        let p = tmp("no-delete");
+        let mac = "aa:bb:cc:00:00:07";
+        mint(&p, 100, mac, "w", Plan::Hyper, 5, 30, 0, 0, false).unwrap();
+        assert!(session(&p, 100 + 30 * 60 + 1, mac).is_none());
+        assert!(session_active(&p, 100 + 30 * 60 + 1, mac).is_none());
+        assert_eq!(
+            load(&p).len(),
+            1,
+            "a read that finds no time left must not delete: a clock that is not yet right would end a paid session"
+        );
+        purge(&p, 100 + 30 * 60 + 172_800 + 1);
+        assert!(load(&p).is_empty());
     }
 
     fn tmp(name: &str) -> String {
@@ -556,9 +570,8 @@ mod tests {
         mint(&p, 100, mac, "w", Plan::Hyper, 5, 30, 0, 0, false).unwrap();
         let s = session(&p, 160, mac).unwrap();
         assert_eq!((s.minutes, s.left_secs), (29, 30 * 60 - 60));
-        assert!(session(&p, 100 + 30 * 60 + 1, mac).is_none()); // ran out: deleted
-        assert!(load(&p).is_empty());
-        mint(&p, 100, mac, "w2", Plan::Hyper, 5, 30, 0, 0, false).unwrap();
+        assert!(session(&p, 100 + 30 * 60 + 1, mac).is_none()); // ran out (RT-01: the line stays until purge)
+        assert_eq!(load(&p).len(), 1);
         purge(&p, 100 + 30 * 60 + 172_800 + 1);
         assert!(load(&p).is_empty());
     }

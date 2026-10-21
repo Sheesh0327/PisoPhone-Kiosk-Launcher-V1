@@ -107,10 +107,17 @@ pub fn tz_offset_secs(tz: &str) -> i64 {
 }
 
 /// (pesos today, pesos ever, pesos of the last 7 days oldest first) from the revenue ledger text.
+#[allow(dead_code)]
 pub fn revenue_stats(text: &str, now: u64, tz: i64) -> (u64, u64, [u64; 7]) {
+    let (today, total, week, _, _) = revenue_period_stats(text, now, tz);
+    (today, total, week)
+}
+
+/// (pesos today, pesos ever, pesos of the last 7 days oldest first, week total, month total) from the revenue ledger text.
+pub fn revenue_period_stats(text: &str, now: u64, tz: i64) -> (u64, u64, [u64; 7], u64, u64) {
     let day0 = |t: u64| ((t as i64 + tz).div_euclid(86400)) * 86400 - tz;
     let today = day0(now);
-    let (mut total, mut week) = (0u64, [0u64; 7]);
+    let (mut total, mut week, mut month_total) = (0u64, [0u64; 7], 0u64);
     for l in text.lines() {
         let f: Vec<&str> = l.split(',').collect();
         if f.len() < 3 {
@@ -122,8 +129,12 @@ pub fn revenue_stats(text: &str, now: u64, tz: i64) -> (u64, u64, [u64; 7]) {
         if (0..7).contains(&back) {
             week[6 - back as usize] += p;
         }
+        if (0..30).contains(&back) {
+            month_total += p;
+        }
     }
-    (week[6], total, week)
+    let week_total: u64 = week.iter().sum();
+    (week[6], total, week, week_total, month_total)
 }
 
 /// One day of the sales report, in pesos by how the money came in: `coin` coins that bought time at once, `vcoin` coins that bought a
@@ -356,7 +367,7 @@ impl Console {
             )
         };
         let tz = tz_offset_secs(&read("/etc/TZ"));
-        let (today, total, week) = revenue_stats(&read(&cfg.revenue_path()), now, tz);
+        let (today, total, week, week_total, month_total) = revenue_period_stats(&read(&cfg.revenue_path()), now, tz);
         let link = BoxLink::new(&cfg.gw_box, &cfg.gw_key).remember_in(&format!("{}/box_signed", cfg.data_dir));
         let box_ok = link.challenge().is_some();
         let box_signed = link.signs_answers();
@@ -371,7 +382,7 @@ impl Console {
         let uptime = read("/proc/uptime").split_whitespace().next().unwrap_or("0").split('.').next().unwrap_or("0").to_string();
         format!(
             "{{\"version\":\"{}\",\"now\":{},\"online\":{},\"waiting\":{},\"wan_if\":\"{}\",\"rx_kbps\":{},\"tx_kbps\":{},\"rx_total\":{},\"tx_total\":{},\"history\":[{}],\
-             \"today\":{},\"total\":{},\"week\":[{}],\"box_ok\":{},\"box_signed\":{},\"ledger_ok\":{},\"ledger_lines\":{},\"mem_kb\":{},\"uptime\":{}}}",
+             \"today\":{},\"week_total\":{},\"month_total\":{},\"total\":{},\"week\":[{}],\"box_ok\":{},\"box_signed\":{},\"ledger_ok\":{},\"ledger_lines\":{},\"mem_kb\":{},\"uptime\":{}}}",
             env!("CARGO_PKG_VERSION"),
             now,
             online,
@@ -383,6 +394,8 @@ impl Console {
             tx_total,
             hist,
             today,
+            week_total,
+            month_total,
             total,
             week.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(","),
             box_ok,
@@ -807,5 +820,9 @@ mod tests {
         let (today, total, week) = revenue_stats(&text, now, tz);
         assert_eq!((today, total), (5, 26));
         assert_eq!(week, [0, 0, 0, 3, 0, 17, 5]);
+        let (today_p, total_p, week_p, week_total, month_total) = revenue_period_stats(&text, now, tz);
+        assert_eq!((today_p, total_p, week_p), (today, total, week));
+        assert_eq!(week_total, 25);
+        assert_eq!(month_total, 25);
     }
 }

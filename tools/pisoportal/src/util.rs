@@ -26,6 +26,51 @@ pub fn hmac_hex(key: &[u8], msg: &[u8]) -> String {
     hex(&mac.finalize().into_bytes())
 }
 
+/// The one way the program replaces a file that matters: write `path.tmp`, fsync it, rename it over `path`, fsync the folder.
+/// If a step before the rename fails, the error is returned and the old file is untouched. (The folder fsync comes after the
+/// rename, which cannot be undone, so it is best effort: some flash file systems refuse it.) The folder is made when missing.
+pub fn write_atomic(path: &str, bytes: &[u8]) -> std::io::Result<()> {
+    write_atomic_mode(path, bytes, None)
+}
+
+/// `write_atomic` for a secret: the file is made readable by its owner only (on Unix) before anything is written to it.
+pub fn write_atomic_private(path: &str, bytes: &[u8]) -> std::io::Result<()> {
+    write_atomic_mode(path, bytes, Some(0o600))
+}
+
+#[cfg_attr(not(unix), allow(unused_variables))]
+fn write_atomic_mode(path: &str, bytes: &[u8], mode: Option<u32>) -> std::io::Result<()> {
+    use std::io::Write;
+    let dir = std::path::Path::new(path).parent().filter(|d| !d.as_os_str().is_empty());
+    if let Some(d) = dir {
+        fs::create_dir_all(d)?;
+    }
+    let tmp = format!("{}.tmp", path);
+    let result = (|| {
+        let mut opts = fs::OpenOptions::new();
+        opts.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        if let Some(m) = mode {
+            std::os::unix::fs::OpenOptionsExt::mode(&mut opts, m);
+        }
+        let mut f = opts.open(&tmp)?;
+        f.write_all(bytes)?;
+        f.sync_all()?;
+        drop(f);
+        fs::rename(&tmp, path)
+    })();
+    if result.is_err() {
+        let _ = fs::remove_file(&tmp);
+        return result;
+    }
+    if let Some(d) = dir {
+        if let Ok(d) = fs::File::open(d) {
+            let _ = d.sync_all();
+        }
+    }
+    Ok(())
+}
+
 /// Random lowercase hex (from the kernel's random source).
 pub fn random_hex(n: usize) -> String {
     let mut buf = vec![0u8; n.div_ceil(2)];
@@ -174,6 +219,60 @@ pub fn civil(days: i64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn tdir(name: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!("pisoportal-util-{}-{}", name, std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn rt05_write_atomic_replaces_the_file_and_leaves_no_temporary() {
+        let d = tdir("wa");
+        let p = d.join("f.txt").to_string_lossy().into_owned();
+        write_atomic(&p, b"one\n").unwrap();
+        write_atomic(&p, b"two\n").unwrap();
+        assert_eq!(fs::read_to_string(&p).unwrap(), "two\n");
+        assert!(!std::path::Path::new(&format!("{}.tmp", p)).exists());
+    }
+
+    #[test]
+    fn rt05_write_atomic_failure_leaves_the_old_file_in_place() {
+        let d = tdir("wa-fail");
+        let p = d.join("f.txt").to_string_lossy().into_owned();
+        fs::write(&p, "old\n").unwrap();
+        // the temporary name is taken by a folder: the temporary file cannot be made, so the step fails
+        fs::create_dir(format!("{}.tmp", p)).unwrap();
+        assert!(write_atomic(&p, b"new\n").is_err(), "a failed step is reported, not swallowed");
+        assert_eq!(fs::read_to_string(&p).unwrap(), "old\n", "and the old file is still there");
+    }
+
+    #[test]
+    fn rt14_no_other_file_renames_a_file_itself() {
+        // every durable write goes through util::write_atomic (file fsync, rename, folder fsync)
+        let files: [(&str, &str); 10] = [
+            ("config.rs", include_str!("config.rs")),
+            ("game.rs", include_str!("game.rs")),
+            ("ledger.rs", include_str!("ledger.rs")),
+            ("reconcile.rs", include_str!("reconcile.rs")),
+            ("roll.rs", include_str!("roll.rs")),
+            ("voucher.rs", include_str!("voucher.rs")),
+            ("core.rs", include_str!("core.rs")),
+            ("send.rs", include_str!("send.rs")),
+            ("update.rs", include_str!("update.rs")),
+            ("boxlink.rs", include_str!("boxlink.rs")),
+        ];
+        for (name, text) in files {
+            // (the test sources themselves are cut off: only code before the tests module counts)
+            let code = text.split("#[cfg(test)]").next().unwrap();
+            assert!(!code.contains("fs::rename"), "{} renames a file itself: use util::write_atomic", name);
+        }
+        assert!(
+            !include_str!("core.rs").split("#[cfg(test)]").next().unwrap().contains("fs::write(format!(\"{}.rec\""),
+            "RT-05: the voucher marker is written with write_synced"
+        );
+    }
 
     #[test]
     fn json_reader_matches_the_shell_one() {

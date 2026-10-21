@@ -3,6 +3,7 @@
 #include "CoinSettle.h"
 #include "PaymentQueueManager.h"
 #include "HardwareManager.h"
+#include "IdleCoin.h"
 #include "Config.h"
 #include "Diagnostics.h"
 
@@ -301,6 +302,9 @@ void releaseCoinSlot(const String& sessionId, CoinSlotOwnerType ownerType, bool 
 void processCoinSlotSession() {
     unsigned long now = millis();
 
+    // A coin pin / pulse guard / pulse width saved while the slot was in use is applied once it is idle (FW-02)
+    serviceCoinSlotHardwareConfig();
+
     // Periodically retry unacknowledged payment dispatches
     processPendingPaymentRetries();
 
@@ -318,6 +322,7 @@ void processCoinSlotSession() {
     {
         static unsigned long lastShortCheckMs = 0;
         static uint32_t shortReported = 0;
+        static uint32_t longReported = 0;
         if (now - lastShortCheckMs >= 1000) {
             lastShortCheckMs = now;
             PulseStats ps = coinPulseStats();
@@ -327,6 +332,12 @@ void processCoinSlotSession() {
                         (unsigned)(ps.shortN - shortReported), (unsigned)ps.minUs,
                         coinPulseGuard ? "ignored." : "COUNTED, because the spark protection is off.");
                 shortReported = ps.shortN;
+            }
+            if (ps.longN < longReported) longReported = 0;
+            if (ps.longN > longReported) {
+                diagLog("[🪙 COIN SLOT] %u pulse(s) too long to be a coin (>180 ms, line stuck low): ignored.\n",
+                        (unsigned)(ps.longN - longReported));
+                longReported = ps.longN;
             }
         }
     }
@@ -349,9 +360,12 @@ void processCoinSlotSession() {
     // 3. Strict Isolation: If no active or draining session, discard any spurious pulses
     if (currentState == CoinSlotState::IDLE || activeSessionId.length() == 0) {
         if (newPulses > 0 || sessionAccumulatedPulses > 0) {
+            // Counted before the zeroing (the log used to print only newPulses).
+            int lost = idleCoinPulses(newPulses, sessionAccumulatedPulses);
             sessionAccumulatedPulses = 0;
-            Serial.printf("[🪙 COIN SLOT] Discarded %d spurious pulse(s) received while IDLE/unreserved.\n",
-                          newPulses + sessionAccumulatedPulses);
+            Serial.printf("[🪙 COIN SLOT] %d pulse(s) received while IDLE/unreserved; recorded for the operator.\n",
+                          lost);
+            recordIdleCoin(lost);
         }
         return;
     }

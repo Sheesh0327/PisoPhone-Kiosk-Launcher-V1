@@ -16,4 +16,16 @@ bool vaultCollect(uint32_t reason); // takes the vault's contents out (a revenue
 String vaultHistoryJson(int max);   // the newest collections, newest first, as a JSON array
 void vaultOnOwnerWipe();            // the owner's full wipe also starts a new log
 
+// Period Ledger Integration
+void vaultRecordCoin(int pulses, bool isPhone, uint32_t seq = 0);
+void vaultAnchorTime(uint32_t unixSec);
+uint32_t vaultTodayCoins(uint32_t* outWifi = nullptr, uint32_t* outPhone = nullptr, uint16_t* outTx = nullptr);
+uint32_t vaultYesterdayCoins(uint32_t* outWifi = nullptr, uint32_t* outPhone = nullptr);
+uint32_t vaultLast7DaysCoins(uint32_t outDaily7[7] = nullptr);
+uint32_t vaultCurrentWeekCoins();
+uint32_t vaultLast30DaysCoins();
+uint32_t vaultCurrentMonthCoins();
+uint32_t vaultLastCountedSeq();
+String vaultPeriodDaysJson(int maxDays = 30);
+
 #endif // REVENUE_VAULT_H

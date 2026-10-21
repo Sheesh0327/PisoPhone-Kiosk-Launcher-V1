@@ -228,6 +228,8 @@ jobs:
           git diff --exit-code protocol
       - name: Check generated web assets are up to date
         run: python3 scripts/embed_web.py --check
+      - name: Check that each product image holds no word of the other product
+        run: python3 scripts/check_product_strip.py
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.cache/ms-playwright
@@ -347,6 +349,8 @@ jobs:
         run: |
           CHROME=$(ls ~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome | head -1) python3 router/tests/test_setup_web.py
           CHROME=$(ls ~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome | head -1) python3 router/tests/test_setup_tools.py
+          CHROME=$(ls ~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome | head -1) python3 router/tests/test_setup_phone_web.py
+          python3 router/tests/test_phone_only.py
       - name: Check the Telegram monitor against a fake Telegram
         run: python3 router/tests/test_monitor.py
       - name: Check router updates from the website (signed releases only, staged rollout, undo of a release that does not run)

@@ -1,17 +1,23 @@
 // Admin portal page and settings endpoints: render the dashboard, save configuration, reboot,
 // factory reset, vault reset and the firmware update form.
 
+#include "Product.h"
 #include "InputSafety.h"
+#include "CoinCredit.h"
 #include "WebServerConfig.h"
 #include "Diagnostics.h"
+#if PISO_HAS_PHONES
 #include "SecretMode.h"
+#endif
 #include "WebAssetServer.h"
 #include "WebServerModule.h"
 #include "FirmwareVersion.h"
 #include "WebServerAuth.h"
 #include "PaymentQueueManager.h"
 #include "Config.h"
+#if PISO_HAS_PHONES
 #include "PhoneProfileStore.h"
+#endif
 #include "PulseGuard.h"
 #include "PinRules.h"
 #include "SetupGate.h"
@@ -19,7 +25,9 @@
 #include "RevenueLedger.h"
 #include "Security.h"
 #include "HardwareManager.h"
+#if PISO_HAS_PHONES
 #include "DeviceManager.h"
+#endif
 #include "SuperAdminManager.h"
 #include "WebDashboardHtml.h"
 #include "WebDashboardIcons.h"
@@ -44,6 +52,7 @@ void handlePortalRoot() {
         macAddressStr = String(macBuf);
     }
 
+#if PISO_HAS_PHONES
     // A phone's setup page sends the owner here (?action=pair&slot=&id=&name=) once it is installed. Opening a link must never
     // change anything by itself (another site could make the owner's browser open it): the page asks "Pair this phone?" and the
     // button does the pairing with a POST from this very page, which a cross-site page cannot make (WebServerAuth.cpp).
@@ -114,6 +123,7 @@ void handlePortalRoot() {
             return;
         }
     }
+#endif
 
     streamPortalHtml();
 }
@@ -165,6 +175,7 @@ static void refuseSave(const char* code, const char* message) {
                    String("{\"success\":false,\"error\":\"") + code + "\",\"message\":\"" + message + "\"}");
 }
 
+#if PISO_HAS_PHONES
 // A port typed in the form: 1-65535, or -1.
 static int parsePort(const String& text) {
     if (text.length() == 0 || text.length() > 5) return -1;
@@ -174,13 +185,18 @@ static int parsePort(const String& text) {
     long port = text.toInt();
     return (port >= 1 && port <= 65535) ? (int)port : -1;
 }
+#endif
 
 void handleSave() {
     if (!checkAdminAuth()) return;
 
     // Check everything that can be refused BEFORE anything is written, so a refused save changes nothing. A pin on the flash bus
     // used to be saved and applied at once, which crashed the box at this and every following start (only a USB flash fixed it).
+#if PISO_HAS_PHONES
     int newCoinPin = universalCoinPin, newRelayPin = relayPin, newLedPin = ledPin, newPort = targetPort;
+#else
+    int newCoinPin = universalCoinPin, newRelayPin = relayPin, newLedPin = ledPin;
+#endif
     if (webServer.hasArg(NVS_KEY_U_COIN_PIN))
         newCoinPin = pinrules::parsePin(webServer.arg(NVS_KEY_U_COIN_PIN).c_str());
     if (webServer.hasArg(NVS_KEY_RELAY_PIN)) newRelayPin = pinrules::parsePin(webServer.arg(NVS_KEY_RELAY_PIN).c_str());
@@ -191,11 +207,13 @@ void handleSave() {
         refuseSave("BAD_PIN", pinProblem);
         return;
     }
+#if PISO_HAS_PHONES
     if (webServer.hasArg(NVS_KEY_PORT)) newPort = parsePort(webServer.arg(NVS_KEY_PORT));
     if (newPort < 0) {
         refuseSave("BAD_PORT", "The phone app port must be a number from 1 to 65535.");
         return;
     }
+#endif
     if (webServer.hasArg(NVS_KEY_ADMIN_PW)) {
         String newPw = webServer.arg(NVS_KEY_ADMIN_PW);
         if (newPw != webPassword && !setupgate::passwordAcceptable(newPw.c_str())) {
@@ -207,6 +225,10 @@ void handleSave() {
     // Immediately flush any dirty revenue to NVS flash on manual save
     flushRevenueToFlash();
 
+    const int oldCoinPin = universalCoinPin;
+    const bool oldPulseGuard = coinPulseGuard;
+    const int oldPulseMinMs = coinPulseMinMs;
+
     prefs.begin(NVS_NAMESPACE, false);
     if (webServer.hasArg(NVS_KEY_WIFI_SSID)) {
         wifiSsid = webServer.arg(NVS_KEY_WIFI_SSID);
@@ -216,6 +238,7 @@ void handleSave() {
         wifiPass = webServer.arg(NVS_KEY_WIFI_PASS);
         prefs.putString(NVS_KEY_WIFI_PASS, wifiPass);
     }
+#if PISO_HAS_PHONES
     if (webServer.hasArg(NVS_KEY_KIOSK_WIFI_PASS)) {
         // the router's PisoKiosk password for the rental phones (empty clears it); an invalid one is ignored
         String kp = webServer.arg(NVS_KEY_KIOSK_WIFI_PASS);
@@ -232,6 +255,7 @@ void handleSave() {
             prefs.putString(NVS_KEY_KIOSK_WIFI_SSID, kioskWifiSsid);
         }
     }
+#endif
     if (webServer.hasArg(NVS_KEY_U_COIN_PIN)) {
         universalCoinPin = newCoinPin;
         prefs.putInt(NVS_KEY_U_COIN_PIN, universalCoinPin);
@@ -248,6 +272,7 @@ void handleSave() {
         relayPin = newRelayPin;
         prefs.putInt(NVS_KEY_RELAY_PIN, relayPin);
     }
+#if PISO_HAS_PHONES
     if (webServer.hasArg("ips")) {
         String rawIps = webServer.arg("ips");
         rawIps.trim();
@@ -290,6 +315,7 @@ void handleSave() {
         targetPort = newPort;
         prefs.putInt(NVS_KEY_PORT, targetPort);
     }
+#endif
     if (webServer.hasArg(NVS_KEY_ADMIN_PW)) {
         String newPw = webServer.arg(NVS_KEY_ADMIN_PW); // checked above
         if (newPw != webPassword) {
@@ -303,7 +329,7 @@ void handleSave() {
     if (webServer.hasArg("minutes_per_coin")) {
         int m = webServer.arg("minutes_per_coin").toInt();
         if (m >= 1) {
-            minutesPerCoin = m;
+            minutesPerCoin = clampMinutesPerCoin(m); // 1..1440 (FW-05)
             prefs.putInt(NVS_KEY_MINS_PER_COIN, minutesPerCoin);
         }
     }
@@ -320,6 +346,7 @@ void handleSave() {
         coinPulseMinMs = pulseMinMsClamp(webServer.arg(NVS_KEY_PULSE_MIN_MS).toInt());
         prefs.putInt(NVS_KEY_PULSE_MIN_MS, coinPulseMinMs);
     }
+#if PISO_HAS_PHONES
     if (webServer.hasArg(NVS_KEY_SHARED_SECRET)) {
         String newSecret = webServer.arg(NVS_KEY_SHARED_SECRET);
         if (secretmode::validSecret(newSecret.c_str()) && newSecret != getLegacySharedSecret()) {
@@ -327,13 +354,16 @@ void handleSave() {
             prefs.putString(NVS_KEY_SHARED_SECRET, newSecret);
         }
     }
+#endif
     prefs.end();
 
-    // Dynamic Hardware Pin and Coin Slot reconfiguration
-    applyCoinSlotHardwareConfig();
+    // Coin hardware reconfiguration: only what changed, and not while a coin may be arriving (FW-02)
+    requestCoinSlotHardwareConfig(universalCoinPin != oldCoinPin, coinPulseGuard != oldPulseGuard,
+                                  coinPulseMinMs != oldPulseMinMs);
     setLedHardware(currentLedState == LED_STATE_CONNECTED);
     processRelayState();
 
+#if PISO_HAS_PHONES
     Serial.println("\n[+] Config updated and saved. Pushing live config to registered Android terminals...");
 
     // True Push Configuration to all registered Android terminals
@@ -350,6 +380,9 @@ void handleSave() {
         }
         return true;
     });
+#else
+    Serial.println("\n[+] Config updated and saved.");
+#endif
 
     webServer.send(200, "text/plain", "OK");
 }
@@ -366,6 +399,7 @@ void handleOtaForm() {
         macAddressStr = String(macBuf);
     }
     html.replace("{MAC_ADDRESS}", macAddressStr);
+    html.replace("{PRODUCT_NAME}", PISO_PRODUCT_NAME);
     html.replace("{FW_VERSION}", PISO_FW_VERSION);
     html.replace("{ASSET_V_OTA}", webAssetVersion("ota.js"));
     html.replace("{ASSET_V_PORTAL_CSS}", webAssetVersion("portal.css"));

@@ -31,8 +31,13 @@ def check(ok, name):
 
 
 def read(name):
-    with open(os.path.join(WEB, name), encoding="utf-8") as f:
-        return f.read()
+    # (the box with phones serves the shared file and its phone part as one file: scripts/embed_web.py)
+    more = {"portal-core.js": ["portal-core-phones.js", "portal-core-end.js"], "portal-modals.js": ["portal-modals-phones.js"]}.get(name, [])
+    text = ""
+    for part in [name] + more:
+        with open(os.path.join(WEB, part), encoding="utf-8") as f:
+            text += f.read() + "\n"
+    return text
 
 
 state = {
