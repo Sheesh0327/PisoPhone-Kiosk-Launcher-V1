@@ -8,7 +8,7 @@ use crate::core::Core;
 use crate::http::{bind_retry, read_request, respond, respond_bytes, Incoming, Request, BRAND_LOGO, BRAND_MASCOT};
 use crate::nds::ClientInfo;
 use crate::pricing::{parse_tier_list, Plan, Pricing, MAX_KBPS, MAX_PRORATA_MIN};
-use crate::util::{b64_encode, jget, json_esc, now_secs, random_hex, valid_mac};
+use crate::util::{b64_encode, jget, json_esc, now_secs, random_hex, sha256_hex, valid_mac};
 use std::collections::{HashMap, VecDeque};
 use std::io::Read;
 use std::net::TcpStream;
@@ -625,6 +625,60 @@ fn handle(c: &Console, req: Request, mut conn: Incoming) {
                     )
                 }
                 ("GET", "/api/vouchers") => json(&mut conn, "200 OK", &c.core.vouchers_json(), ""),
+                ("GET", "/api/wheel") => json(&mut conn, "200 OK", &c.core.wheel.console_json(), ""),
+                ("POST", "/api/wheel") => {
+                    // the table and the limits are checked first; the switch comes last, and turning on needs the phrase and the warning version
+                    let w = &c.core.wheel;
+                    let bad = |conn: &mut Incoming, code: &str, name: &str, why: &str| {
+                        json(conn, code, &format!("{{\"error\":\"{}\",\"why\":\"{}\"}}", name, crate::util::json_esc(why)), "")
+                    };
+                    let has = |k: &str| body.contains(&format!("\"{}\"", k));
+                    if has("table") {
+                        if let Err(e) = w.set_table(&jget(&body, "table")) {
+                            return bad(&mut conn, "400 Bad Request", "BAD_TABLE", &e);
+                        }
+                    }
+                    if ["max_bet", "floor", "spins_per_day", "wait", "win_cap"].iter().any(|k| has(k)) {
+                        let mut l = w.limits();
+                        let set = |key: &str, to: &mut u64| -> Result<(), String> {
+                            if has(key) {
+                                *to = jget(&body, key).parse::<u64>().map_err(|_| format!("{} is not a number", key))?;
+                            }
+                            Ok(())
+                        };
+                        let (mut mb, mut fl, mut sp, mut wt, mut wc) =
+                            (l.max_bet as u64, l.floor as u64, l.spins_per_day as u64, l.wait_secs, l.win_cap_per_day as u64);
+                        let parsed = set("max_bet", &mut mb)
+                            .and_then(|_| set("floor", &mut fl))
+                            .and_then(|_| set("spins_per_day", &mut sp))
+                            .and_then(|_| set("wait", &mut wt))
+                            .and_then(|_| set("win_cap", &mut wc));
+                        if let Err(e) = parsed {
+                            return bad(&mut conn, "400 Bad Request", "BAD_LIMITS", &e);
+                        }
+                        let small = |v: u64| u32::try_from(v).unwrap_or(u32::MAX);
+                        (l.max_bet, l.floor, l.spins_per_day, l.wait_secs, l.win_cap_per_day) =
+                            (small(mb), small(fl), small(sp), wt, small(wc));
+                        if let Err(e) = w.set_limits(l) {
+                            return bad(&mut conn, "400 Bad Request", "BAD_LIMITS", &e);
+                        }
+                    }
+                    if jget(&body, "off") == "1" {
+                        if !w.turn_off(now_secs()) {
+                            return bad(&mut conn, "500 Internal Server Error", "IO", "The router could not save the setting.");
+                        }
+                    } else if jget(&body, "on") == "1" {
+                        let label: String = sha256_hex(req.header("cookie").unwrap_or("").as_bytes()).chars().take(8).collect();
+                        let version = jget(&body, "version").parse::<u32>().unwrap_or(0);
+                        if let Err(why) = w.turn_on(now_secs(), &jget(&body, "phrase"), version, &label) {
+                            return bad(&mut conn, "403 Forbidden", "CONFIRM", &why);
+                        }
+                    }
+                    c.core.wheel_changed();
+                    let mut out = w.console_json();
+                    out.insert_str(1, "\"ok\":true,");
+                    json(&mut conn, "200 OK", &out, "")
+                }
                 ("GET", "/api/settings") => json(&mut conn, "200 OK", &settings_json(&c.core), ""),
                 ("POST", "/api/settings") => {
                     // (only the settings named in the body change)

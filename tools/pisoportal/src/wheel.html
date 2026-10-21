@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Spin the wheel</title>
+<style>
+/* The spinning wheel: one small page the router serves itself. The router decides every result; this page only draws it. */
+html,body{margin:0;background:#050d22;color:#eef3ff;font:16px/22px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:420px;margin:0 auto;padding:max(14px,env(safe-area-inset-top)) 16px 28px}
+h1{margin:0 0 4px;font-size:22px;line-height:28px}
+p{margin:6px 0;color:#97a6c7}
+.card{background:#0c1a3a;border:1px solid #1f3361;border-radius:12px;padding:14px;margin-top:14px}
+#left{color:#ffb81c;font-weight:700}
+#stage{position:relative;width:260px;height:260px;margin:18px auto 6px}
+#wheel{width:260px;height:260px;border-radius:50%;border:4px solid #2b4378;box-sizing:border-box;transition:transform 4.2s cubic-bezier(.12,.6,.1,1)}
+#pin{position:absolute;left:50%;top:-8px;margin-left:-11px;width:0;height:0;border-left:11px solid transparent;border-right:11px solid transparent;border-top:24px solid #ffb81c}
+#bet{display:flex;align-items:center;justify-content:center;gap:16px;margin:8px 0}
+#bet button{width:48px;min-height:48px;padding:0;font-size:24px}
+#bet b{font-size:22px;min-width:96px;text-align:center}
+button,a.b{display:block;width:100%;min-height:52px;margin:12px 0 0;padding:12px;border:0;border-radius:10px;background:#1d63d6;color:#fff;font:inherit;font-weight:700;text-align:center;text-decoration:none;box-sizing:border-box;cursor:pointer}
+button:disabled{opacity:.45;cursor:default}
+a.b{min-height:48px;background:none;border:1px solid #5a70a3;color:#eef3ff;font-weight:600}
+button:focus-visible,a.b:focus-visible{outline:2px solid #5b9bff;outline-offset:2px}
+#bet button{margin:0}
+#res{font-size:18px;line-height:26px;color:#eef3ff;text-align:center;min-height:52px}
+#res.win{color:#7be08a}#res.lose{color:#ff9a9a}#res.err{color:#ffb81c}
+table{width:100%;border-collapse:collapse;font-size:15px}
+td,th{padding:5px 4px;text-align:left;border-bottom:1px solid #1f3361}
+th{color:#97a6c7;font-weight:600}
+i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+small{color:#97a6c7}
+@media (prefers-reduced-motion:reduce){#wheel{transition:none}}
+</style></head><body><main>
+<h1>Spin the wheel</h1>
+<p>Time left: <span id="left">-</span> min &middot; spins left today: <span id="spl">-</span></p>
+<div id="stage"><div id="pin"></div><div id="wheel" role="img" aria-label="The wheel"></div></div>
+<div id="bet"><button id="m" type="button" aria-label="Bet one minute less">&minus;</button><b id="bv">-</b><button id="p" type="button" aria-label="Bet one minute more">+</button></div>
+<p id="what" style="text-align:center"></p>
+<button id="go" type="button" disabled>Spin</button>
+<p id="res" role="status" aria-live="polite"></p>
+<div class="card"><b>The odds (the same for everyone, every spin)</b>
+<table id="odds"><tr><th>Slot</th><th>Pays</th><th>Chance</th></tr></table>
+<p id="avg"></p>
+<small>The router picks the result before the wheel moves; the picture only shows it. Your bet is taken from your paid minutes. There is no auto-spin.</small></div>
+<a class="b" href="/">Back to the Wi-Fi page</a>
+</main>
+<script>
+(function(){
+function $(i){return document.getElementById(i)}
+var S=null,bet=1,busy=false,pend=null,turn=0,wt=0,COL=["#3a4766","#1d63d6","#e0a21b","#d6456b","#2fa36b","#8a5bd6","#1fa6b8","#c9602a"];
+function hexid(){var a=new Uint8Array(8),s="",i;try{crypto.getRandomValues(a)}catch(e){for(i=0;i<8;i++)a[i]=Math.floor(Math.random()*256)}for(i=0;i<8;i++)s+=("0"+a[i].toString(16)).slice(-2);return s}
+function colour(m){return m===0?COL[0]:COL[Math.min(m,COL.length-1)]}
+function say(t,c){var r=$("res");r.textContent=t;r.className=c||""}
+function get(url,ok,bad){var x=new XMLHttpRequest();x.open("GET",url);x.onload=function(){var j=null;try{j=JSON.parse(x.responseText)}catch(e){}ok(x.status,j)};x.onerror=function(){bad()};x.timeout=8000;x.ontimeout=x.onerror;x.send()}
+function post(url,ok,bad){var x=new XMLHttpRequest();x.open("POST",url);x.setRequestHeader("X-Piso","1");x.onload=function(){var j=null;try{j=JSON.parse(x.responseText)}catch(e){}ok(x.status,j)};x.onerror=function(){bad()};x.timeout=10000;x.ontimeout=x.onerror;x.send()}
+function draw(){
+ var segs=S.segments,n=S.total,a=0,i,j,st=[],t="<tr><th>Slot</th><th>Pays</th><th>Chance</th></tr>";
+ for(i=0;i<segs.length;i++){var w=segs[i].weight,b=a/n*360,e=(a+w)/n*360;st.push(colour(segs[i].mult)+" "+b+"deg "+e+"deg");a+=w;
+  t+="<tr><td><i style=\"background:"+colour(segs[i].mult)+"\"></i>"+(segs[i].mult===0?"Lose":segs[i].mult+"x")+"</td><td>"+(segs[i].mult===0?"your bet is lost":"your bet x"+segs[i].mult)+"</td><td>"+w+" of "+n+" ("+Math.round(w/n*1000)/10+"%)</td></tr>"}
+ $("wheel").style.background="conic-gradient("+st.join(",")+")";$("odds").innerHTML=t;
+ $("avg").textContent="Chance to win: "+Math.round(S.win)/10+"%. On average you get back "+Math.round(S.rtp)/10+"% of what you bet.";
+}
+function fresh(j){
+ S=j;draw();$("left").textContent=S.left_min;$("spl").textContent=S.spins_left;
+ if(bet>S.max_bet)bet=S.max_bet;if(bet<1&&S.max_bet>0)bet=1;if(S.wait>0&&!wt)countdown(S.wait);showbet();
+}
+function showbet(){
+ var can=S&&S.max_bet>0&&S.spins_left>0&&!S.paused;
+ $("bv").textContent=can?bet+" min":"-";
+ $("m").disabled=!can||busy||bet<=1;$("p").disabled=!can||busy||bet>=S.max_bet;
+ $("go").disabled=!can||busy||wt>0;
+ $("what").textContent=can?"Win: up to +"+(bet*(maxm()-1))+" min. Lose: -"+bet+" min.":"";
+ if(S&&!busy){if(S.paused)say("Your time is paused. Resume it on the Wi-Fi page to spin.","err");else if(S.spins_left<1)say("No spins left today. Come back tomorrow.","err");else if(S.max_bet<1&&!$("res").textContent)say("You need a few more minutes of time before you can bet.","err")}
+}
+function maxm(){var m=0,i;for(i=0;i<S.segments.length;i++)if(S.segments[i].mult>m)m=S.segments[i].mult;return m}
+function load(){
+ get("/wheel/state",function(c,j){
+  if(c===404){document.body.innerHTML="<main><h1>The wheel is not open</h1><p>Come back to the Wi-Fi page.</p><a class=\"b\" href=\"/\">Back to the Wi-Fi page</a></main>";return}
+  if(c===403){say((j&&j.why)||"Buy Wi-Fi time first, then the wheel opens.","err");$("go").disabled=true;return}
+  if(j&&j.ok)fresh(j)
+ },function(){say("Cannot reach the router. Check your Wi-Fi.","err")})
+}
+function countdown(s){wt=s;$("go").disabled=true;var iv=setInterval(function(){wt--;if(wt<=0){clearInterval(iv);wt=0;$("go").textContent="Spin";showbet()}else $("go").textContent="Wait "+wt+" s"},1000);$("go").textContent="Wait "+wt+" s"}
+function land(j){
+ var segs=S.segments,i,off=0,slot;
+ for(i=0;i<j.segment;i++)off+=segs[i].weight;
+ slot=off+Math.random()*segs[j.segment].weight*.8+segs[j.segment].weight*.1;
+ turn+=360*5+(360-(slot/S.total*360))-(turn%360);
+ $("wheel").style.transform="rotate("+turn+"deg)";
+}
+function words(j){
+ var l=j.left_min;
+ if(j.delta>0)return"You bet "+j.bet+" min and won "+j.delta+" min"+(j.capped?" (today's win limit applies)":"")+". Time left: "+l+" min.";
+ if(j.delta===0&&j.mult>0)return"You bet "+j.bet+" min. Today's win limit is reached, so you won nothing more. Time left: "+l+" min.";
+ return"You bet "+j.bet+" min and lost "+j.bet+" min. Time left: "+l+" min."
+}
+function spin(){
+ if(busy)return;busy=true;if(!pend)pend={id:hexid(),bet:bet};say("Spinning...");showbet();
+ post("/wheel/spin?id="+pend.id+"&bet="+pend.bet,function(c,j){
+  if(c===200&&j&&j.ok){
+   pend=null;land(j);
+   setTimeout(function(){busy=false;say(words(j),j.delta>0?"win":j.delta<0?"lose":"");$("left").textContent=j.left_min;$("spl").textContent=j.spins_left;load()},matchMedia("(prefers-reduced-motion:reduce)").matches?50:4400)
+  }else{
+   busy=false;pend=null;
+   if(j&&j.error==="WAIT"){countdown(j.wait);say(j.why,"err")}else say((j&&j.why)||"The spin did not happen.","err");
+   load()
+  }
+ },function(){busy=false;say("No answer from the router. Press Spin again: if the first spin went through, it will not be charged twice.","err");showbet()})
+}
+$("m").onclick=function(){if(bet>1){bet--;pend=null;showbet()}};
+$("p").onclick=function(){if(S&&bet<S.max_bet){bet++;pend=null;showbet()}};
+$("go").onclick=spin;
+load();
+})();
+</script></body></html>

@@ -145,6 +145,11 @@ fn resolve(roll_path: &str, data_dir: &str, now: u64, id: &str, mut j: Journal) 
     j
 }
 
+/// Has a spin with this id been decided before (so a retry gets its first answer)?
+pub fn seen(data_dir: &str, id: &str) -> bool {
+    valid_id(id) && read_journal(data_dir, &id.to_lowercase()).is_some()
+}
+
 /// Apply a spin. `rand` is a random number from the router's random source, used only when this id is new. `win_room` is the net minutes
 /// this device may still win today.
 #[allow(clippy::too_many_arguments)]
