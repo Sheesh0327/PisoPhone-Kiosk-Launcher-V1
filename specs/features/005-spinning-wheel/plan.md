@@ -16,15 +16,20 @@ Context manifest (rule 1): read line ranges only.
 Unresolved ledger entries: none. Playwright and Chromium are needed for the browser test (installed in earlier sessions; CI has them).
 
 ## Task groups (test first; red result logged in `ledger/negative-constraints.md`)
-- [ ] 1. **Odds and rules (pure code, `wheel.rs`)**: the table, its exact average return, refusal above 100%, bet rules, the draw from a random source passed in (so tests can seed it). Tests first.
-- [ ] 2. **Time change and journal**: one function that applies a spin to a session under the lock; spin id idempotence; write-ahead journal; power-cut tests at both points. Tests first.
+- [x] 1. **Odds and rules (pure code, `wheel.rs`)**: the table, its exact average return, refusal above 100%, bet rules, the draw from a random source passed in (so tests can seed it). Tests first.
+- [x] 2. **Time change and journal**: one function that applies a spin to a session under the lock; spin id idempotence; write-ahead journal; power-cut tests at both points. Tests first.
 - [ ] 3. **Limits**: spins per device per day, the wait between spins, reset at local midnight (reuse `game.rs` day logic).
 - [ ] 4. **Routes**: `/wheel/state` (odds, limits, time left, spins left) and `/wheel/spin` (POST with a spin id). Refuse paused, expired, unpaid.
 - [ ] 5. **Portal page**: `wheel.html` replacing `game.html` when the wheel is on; odds panel always visible; animation ends on the router's segment; result in words; no auto-spin. Browser test.
-- [ ] 6. **Responsibility gate (router side), test first**: the confirmation record (file written only by the turn-on request), exact phrase and warning-version check, refusal messages, off by hand-edited setting without a record, record cleared on turn off and on a new warning version, log rows. Tests in `cargo test` and `test_flow.py`.
+- [x] 6. **Responsibility gate (router side), test first**: the confirmation record (file written only by the turn-on request), exact phrase and warning-version check, refusal messages, off by hand-edited setting without a record, record cleared on turn off and on a new warning version, log rows. Tests in `cargo test` and `test_flow.py`.
 - [ ] 7. **Console and defaults**: the blocking warning dialog (the switch stays disabled until the exact phrase is typed; browser test), limits, table (with the refusal and the warning); every router, new or updated, starts with the wheel off; updated routers keep the mini-game; wheel-spin log file separate from `revenue.csv`; owner sees net minutes given away and "Wheel on since ..., responsibility confirmed".
 - [ ] 8. **Docs and release**: raise `setup/RELEASE`, `build_piso_setup.py`, `CHANGELOG.md` in owner terms, hardware check (not run), `validation.md`.
 - [ ] 9. **Pull request into `beta`** (when the owner asks), read Code quality. Merge and rollout are the owner's.
 
 ## Release
 Router only (`setup/RELEASE` next number after 1.5.13). Every router (new or updated): wheel **off**. Nothing reaches shops' customers until the owner has read the responsibility warning, typed the confirmation and switched it on.
+
+## Progress (2026-10-21)
+Done and committed, all test first with the red result in the ledger: task 1 (`wheel.rs`: odds table, 9 tests), task 6 (`wheel_gate.rs`: responsibility gate record, exact phrase and version, 6 tests), task 2 (`wheel_spin.rs`: one spin applied once, journal, repeat by id, power cut at both points, void on a changed session, win cap, wheel log, 10 tests). `cargo test` 112 passed, clippy clean, `fmt --check` clean. The modules are not wired to anything: no route, page, setting or console switch exists, so **nothing changes for any router or customer yet**.
+Left: task 3 (spins per day per device, the wait, local midnight, `win_room` from the day's wins: reuse `game.rs` day logic), task 4 (routes `/wheel/state`, `/wheel/spin`; random number from `util::random_hex`; hold the `files` lock; call `wheel_spin::recover` at start and in maintenance; refuse unless `wheel_gate::enabled`), task 5 (portal page), task 7 (console: blocking warning dialog, switch, limits, table; defaults: every router off), task 8 (docs, hardware check, `setup/RELEASE`), task 9 (PR when the owner asks).
+Design note for task 4: the confirmation must be asked of the console through its own login (the console already has a session), not the customer portal; the `on` request carries `phrase` and `version`; the setting alone must never enable (`wheel_gate::enabled(data_dir, setting)`).
