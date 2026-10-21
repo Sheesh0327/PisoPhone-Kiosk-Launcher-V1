@@ -20,7 +20,7 @@ Test first: in each group, add the test, run it on the unfixed code and see it f
 - [x] 2. FW-03 order: `coin_record_order_test.cpp` + `CoinRecordOrder.h` + `DeviceNetwork.cpp`. Red result logged: yes (compile failure: helper missing)
 - [x] 3. FW-02 apply only on change and when idle: `coin_hw_apply_test.cpp` + `CoinHwApply.h` + `HardwareManager`, `WebServerConfig`, `CoinSlotManager`. Red result logged: yes (compile failure: helper missing)
 - [x] 4. FW-01 restart guard: `restart_guard_test.cpp` + `RestartGuard.h` + `PaymentQueueManager`, `HardwareManager`, `WebServerConfig`. Red result logged: yes (compile failure: helper missing)
-- [ ] 5. FW-05 clamp and 64-bit credit: `coin_credit_test.cpp` + `CoinCredit.h` + `Config`, `DeviceNetwork`, `WebServerConfig`. Red result logged: no
+- [x] 5. FW-05 clamp and 64-bit credit: `coin_credit_test.cpp` + `CoinCredit.h` + `Config`, `DeviceNetwork`, `WebServerConfig`. Red result logged: yes (compile failure: helper missing)
 - [ ] 6. FW-06 idle coin to the orphan list: find or write the host test first, then `CoinSlotManager`. Red result logged: no
 - [ ] 7. `FirmwareVersion.h` to 3.11.1; add RS28 to RS31 to `docs/REAL_WORLD_TESTING.md` (keep RS32, RS33); run all gates (below); fill `validation.md`; update `STATUS.md` and the five backlog rows to `fixed`.
 

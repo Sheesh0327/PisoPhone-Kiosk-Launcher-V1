@@ -3,6 +3,7 @@
 
 #include "Product.h"
 #include "InputSafety.h"
+#include "CoinCredit.h"
 #include "WebServerConfig.h"
 #include "Diagnostics.h"
 #if PISO_HAS_PHONES
@@ -328,7 +329,7 @@ void handleSave() {
     if (webServer.hasArg("minutes_per_coin")) {
         int m = webServer.arg("minutes_per_coin").toInt();
         if (m >= 1) {
-            minutesPerCoin = m;
+            minutesPerCoin = clampMinutesPerCoin(m); // 1..1440 (FW-05)
             prefs.putInt(NVS_KEY_MINS_PER_COIN, minutesPerCoin);
         }
     }
