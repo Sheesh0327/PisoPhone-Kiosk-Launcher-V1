@@ -44,3 +44,8 @@ The firmware money rows FW-01, 02, 03, 05, 06 (feature 003, version 3.11.1); re-
 ## Owner decisions
 1. **One feature or three?** Recommended: one, because the commits chain (the setup choices, the product images and the ledger share files). Alternative: split into (a) product images and setup choices, (b) coin-counter hardening, (c) fixes and CI.
 2. **PisoWiFi-only and PisoPhone-only setup in scope?** Recommended yes, since `c82b40f` is also what adds the USB Wi-Fi firmware behaviour.
+
+## Finding during implementation (2026-10-21, spec edit under constitution rule 8)
+The old work is incomplete: commit `6c6e008` committed the per-product asset headers (`WebAssetsBase.h`, `WebAssetsPhones.h`, and a `WebAssets.h` that picks one by `PISO_HAS_PHONES`) and `scripts/check_product_strip.py` (which calls `embed_web.assets_for()`), but **never committed the matching `scripts/embed_web.py`**. Later old-beta commits (`eff1256`, `6ab2234`) regenerated `WebAssets.h` with the old generator, which replaced the wrapper with the single full file. So on the old `beta` the PisoWiFi-only image still carried the phone dashboard, and `check_product_strip.py` could not run.
+Added to this feature: write the missing generator exactly as documented in `esp32_firmware/web/README.md` ("One set of files per product"): `shared + phones + end` for the phone products, `shared + end` for PisoWiFi-only, `/*@phones*/ ... /*@end*/` left out of the CSS for PisoWiFi-only, comments dropped; `assets_for(has_phones)`; three headers; `--check` for all three.
+New success criterion 9: `python3 scripts/embed_web.py --check` and `python3 scripts/check_product_strip.py` both pass.
