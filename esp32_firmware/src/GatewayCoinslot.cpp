@@ -150,7 +150,7 @@ GatewayArmResult gatewayArm(const String& session, int durationSec) {
             if (!enqueuePendingPayment(txId, id, pulses, CoinSlotOwnerType::GATEWAY)) {
                 diagLog("[GATEWAY] CRITICAL: could not retain %d pulse(s) for '%s'.\n", pulses, id.c_str());
             }
-            recordCoinRevenue(pulses);
+            recordCoinRevenue(pulses, CoinSlotOwnerType::GATEWAY);
             diagLog("[GATEWAY] %d pulse(s) recorded for '%s' (tx_id=%s).\n", pulses, id.c_str(), txId.c_str());
             notifyCoin(id); // the router learns about the coin now instead of at its next poll
         },

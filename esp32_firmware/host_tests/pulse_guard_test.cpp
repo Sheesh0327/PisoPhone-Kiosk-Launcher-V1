@@ -29,6 +29,9 @@ int main() {
     CHECK(pulseIsReal(12000, 12000), "exactly the limit is real");
     CHECK(pulseIsReal(20000, 12000), "a 20 ms pulse is real");
     CHECK(pulseIsReal(60000, 12000), "a 60 ms pulse is real");
+    CHECK(pulseIsReal(180000, 12000), "a 180 ms pulse is real");
+    CHECK(!pulseIsReal(180001, 12000), "181 ms stuck line is not real");
+    CHECK(!pulseIsReal(5000000, 12000), "5 second stuck line is not real");
 
     // the histogram edges
     CHECK(pulseWidthBucket(0) == 0 && pulseWidthBucket(1999) == 0, "under 2 ms");
@@ -46,13 +49,15 @@ int main() {
         pulseStatsAdd(s, 20000 + i * 500, 12000); // five coins of about 21 ms
     pulseStatsAdd(s, 80, 12000);                  // a spark
     pulseStatsAdd(s, 4000, 12000);                // a ringing spike
-    CHECK(s.n == 7, "seven pulses measured");
+    pulseStatsAdd(s, 250000, 12000);              // a stuck line / brownout (>180ms)
+    CHECK(s.n == 8, "eight pulses measured");
     CHECK(s.shortN == 2, "two of them are short");
+    CHECK(s.longN == 1, "one of them is stuck long");
     CHECK(s.minUs == 80, "the shortest is the spark");
-    CHECK(s.maxUs == 22000, "the longest is the last coin");
-    CHECK(s.bucket[0] == 1 && s.bucket[1] == 1 && s.bucket[3] == 5,
-          "the buckets say: one spark, one spike, five coins");
-    CHECK(pulseStatsAvgUs(s) == (uint32_t)((20000 + 20500 + 21000 + 21500 + 22000 + 80 + 4000) / 7), "the average");
+    CHECK(s.maxUs == 250000, "the longest is the stuck line");
+    CHECK(s.bucket[0] == 1 && s.bucket[1] == 1 && s.bucket[3] == 5 && s.bucket[5] == 1,
+          "the buckets say: one spark, one spike, five coins, one long");
+    CHECK(pulseStatsAvgUs(s) == (uint32_t)((20000 + 20500 + 21000 + 21500 + 22000 + 80 + 4000 + 250000) / 8), "the average");
 
     // the first pulse sets the minimum, whatever it is
     PulseStats t;

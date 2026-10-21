@@ -6,11 +6,13 @@
 #include "Diagnostics.h"
 #include "Money.h"
 #include "RevenueLedger.h"
+#include "PeriodLedger.h"
 
 #include <Preferences.h>
 
 static const char* const LEDGER_NAMESPACE = "rev_ledger";
 static revenue::Ledger ledger;
+static periodledger::State periodState;
 
 // Opens the log's namespace for the duration of one operation. (In an anonymous namespace: another source file has a
 // different class of the same name, and two such definitions with external linkage would be merged by the linker.)
@@ -74,6 +76,13 @@ void vaultBegin() {
     {
         LedgerStore store;
         ledger.load(store);
+        if (!periodledger::load(store, "period_v1", periodState)) {
+            periodledger::initState(periodState);
+        }
+    }
+    uint32_t nowSec = nowSeconds();
+    if (nowSec >= periodledger::MIN_VALID_EPOCH_SEC) {
+        periodledger::anchorTime(periodState, nowSec);
     }
     if (ledger.needsRebase(totalCoinsLifetime, totalCentavosLifetime)) {
         // The counters are lower than the last collection saw (lost or replaced flash): without this the next coins would
@@ -111,4 +120,82 @@ void vaultOnOwnerWipe() {
         p.end();
     }
     ledger.clear();
+    periodledger::initState(periodState);
+}
+
+void vaultRecordCoin(int pulses, bool isPhone, uint32_t seq) {
+    if (pulses <= 0) return;
+    periodledger::recordCoin(periodState, nowSeconds(), (uint32_t)pulses, isPhone, seq);
+    LedgerStore store;
+    periodledger::save(store, "period_v1", periodState);
+}
+
+void vaultAnchorTime(uint32_t unixSec) {
+    if (unixSec < periodledger::MIN_VALID_EPOCH_SEC) return;
+    periodledger::anchorTime(periodState, unixSec);
+    LedgerStore store;
+    periodledger::save(store, "period_v1", periodState);
+}
+
+uint32_t vaultTodayCoins(uint32_t* outWifi, uint32_t* outPhone, uint16_t* outTx) {
+    return periodledger::todayCoins(periodState, nowSeconds(), outWifi, outPhone, outTx);
+}
+
+uint32_t vaultYesterdayCoins(uint32_t* outWifi, uint32_t* outPhone) {
+    return periodledger::yesterdayCoins(periodState, nowSeconds(), outWifi, outPhone);
+}
+
+uint32_t vaultLast7DaysCoins(uint32_t outDaily7[7]) {
+    return periodledger::last7DaysCoins(periodState, nowSeconds(), outDaily7);
+}
+
+uint32_t vaultCurrentWeekCoins() {
+    return periodledger::currentWeekCoins(periodState, nowSeconds());
+}
+
+uint32_t vaultLast30DaysCoins() {
+    return periodledger::last30DaysCoins(periodState, nowSeconds());
+}
+
+uint32_t vaultCurrentMonthCoins() {
+    return periodledger::currentMonthCoins(periodState, nowSeconds());
+}
+
+uint32_t vaultLastCountedSeq() {
+    return periodState.lastCountedSeq;
+}
+
+String vaultPeriodDaysJson(int maxDays) {
+    if (maxDays <= 0 || maxDays > (int)periodledger::RING_DAYS) maxDays = (int)periodledger::RING_DAYS;
+    periodledger::DayBucket sorted[periodledger::RING_DAYS];
+    int count = 0;
+    for (size_t i = 0; i < periodledger::RING_DAYS; i++) {
+        if (periodState.days[i].epochDay > 0) {
+            sorted[count++] = periodState.days[i];
+        }
+    }
+    for (int i = 0; i < count - 1; i++) {
+        for (int j = i + 1; j < count; j++) {
+            if (sorted[j].epochDay > sorted[i].epochDay) {
+                periodledger::DayBucket tmp = sorted[i];
+                sorted[i] = sorted[j];
+                sorted[j] = tmp;
+            }
+        }
+    }
+    if (count > maxDays) count = maxDays;
+    String json = "[";
+    for (int i = 0; i < count; i++) {
+        int y = 0, m = 0, d = 0;
+        periodledger::epochDayToDate(sorted[i].epochDay, y, m, d);
+        char dateBuf[16];
+        snprintf(dateBuf, sizeof(dateBuf), "%04d-%02d-%02d", y, m, d);
+        if (i > 0) json += ",";
+        json += "{\"d\":\"" + String(dateBuf) + "\",\"wifi\":" + String(sorted[i].wifiPesos) +
+                ",\"phone\":" + String(sorted[i].phonePesos) +
+                ",\"total\":" + String(sorted[i].wifiPesos + sorted[i].phonePesos) +
+                ",\"tx\":" + String(sorted[i].txCount) + "}";
+    }
+    json += "]";
+    return json;
 }

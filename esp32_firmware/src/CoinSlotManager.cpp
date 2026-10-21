@@ -318,6 +318,7 @@ void processCoinSlotSession() {
     {
         static unsigned long lastShortCheckMs = 0;
         static uint32_t shortReported = 0;
+        static uint32_t longReported = 0;
         if (now - lastShortCheckMs >= 1000) {
             lastShortCheckMs = now;
             PulseStats ps = coinPulseStats();
@@ -327,6 +328,12 @@ void processCoinSlotSession() {
                         (unsigned)(ps.shortN - shortReported), (unsigned)ps.minUs,
                         coinPulseGuard ? "ignored." : "COUNTED, because the spark protection is off.");
                 shortReported = ps.shortN;
+            }
+            if (ps.longN < longReported) longReported = 0;
+            if (ps.longN > longReported) {
+                diagLog("[🪙 COIN SLOT] %u pulse(s) too long to be a coin (>180 ms, line stuck low): ignored.\n",
+                        (unsigned)(ps.longN - longReported));
+                longReported = ps.longN;
             }
         }
     }

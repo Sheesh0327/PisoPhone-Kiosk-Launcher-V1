@@ -65,7 +65,7 @@ int ledPin = DEFAULT_LED_PIN;
 bool ledActiveLow = DEFAULT_LED_ACTIVE_LOW;
 int relayPin = DEFAULT_RELAY_PIN;
 bool relayActiveLow = false;
-bool coinPulseGuard = false;
+bool coinPulseGuard = true;
 int coinPulseMinMs = PULSE_MIN_MS_DEFAULT;
 
 String wifiSsid = setupgate::DEFAULT_WIFI_SSID; // the hidden network the router setup script creates for the box
@@ -134,10 +134,14 @@ String quickTimeStatusMsg = "";
 // Credit Vault
 // Revenue & Audit
 uint32_t totalCoinsLifetime = 0;
+uint32_t totalWifiCoinsLifetime = 0;
+uint32_t totalPhoneCoinsLifetime = 0;
 uint32_t totalCoinsSession = 0;
 uint32_t totalCentavosLifetime = 0;
 uint32_t totalCentavosSession = 0;
 uint32_t lastSavedTotalCoins = 0;
+uint32_t lastSavedTotalWifiCoins = 0;
+uint32_t lastSavedTotalPhoneCoins = 0;
 uint32_t lastSavedTotalCentavos = 0;
 bool revenueDirty = false;
 unsigned long lastCoinChangeTime = 0;
@@ -360,6 +364,8 @@ const char* const NVS_KEY_P2 = "p2_ip";
 const char* const NVS_KEY_MATCH = "match_minutes";
 #endif
 const char* const NVS_KEY_TOTAL_COINS = "total_coins";
+const char* const NVS_KEY_TOTAL_WIFI_COINS = "tot_wifi_coins";
+const char* const NVS_KEY_TOTAL_PHONE_COINS = "tot_phone_coins";
 const char* const NVS_KEY_TOTAL_CENTAVOS = cfgmig::K_TOTAL_CENTAVOS;
 
 #if PISO_HAS_PHONES
@@ -643,7 +649,7 @@ void loadAllConfig() {
 
     webPassword = prefs.getString(NVS_KEY_ADMIN_PW, webPassword);
     relayActiveLow = prefs.getBool(NVS_KEY_RELAY_ACTIVE_LOW, false);
-    coinPulseGuard = prefs.getBool(NVS_KEY_PULSE_GUARD, false);
+    coinPulseGuard = prefs.getBool(NVS_KEY_PULSE_GUARD, true);
     coinPulseMinMs = pulseMinMsClamp(prefs.getInt(NVS_KEY_PULSE_MIN_MS, PULSE_MIN_MS_DEFAULT));
 #if PISO_HAS_PHONES
     p1Ip = prefs.getString(NVS_KEY_P1, p1Ip);
@@ -653,9 +659,24 @@ void loadAllConfig() {
 
     // Lifetime vault revenue counters
     totalCoinsLifetime = prefs.getULong(NVS_KEY_TOTAL_COINS, 0);
+    totalWifiCoinsLifetime = prefs.getULong(NVS_KEY_TOTAL_WIFI_COINS, 0);
+    totalPhoneCoinsLifetime = prefs.getULong(NVS_KEY_TOTAL_PHONE_COINS, 0);
     totalCentavosLifetime = prefs.getULong(NVS_KEY_TOTAL_CENTAVOS, 0);
 
+    // If upgrading from older firmware where totalCoinsLifetime was stored without the split:
+    if (totalCoinsLifetime > 0 && totalWifiCoinsLifetime == 0 && totalPhoneCoinsLifetime == 0) {
+#if !PISO_HAS_PHONES
+        totalWifiCoinsLifetime = totalCoinsLifetime;
+#elif !PISO_HAS_GATEWAY
+        totalPhoneCoinsLifetime = totalCoinsLifetime;
+#else
+        totalWifiCoinsLifetime = totalCoinsLifetime;
+#endif
+    }
+
     lastSavedTotalCoins = totalCoinsLifetime;
+    lastSavedTotalWifiCoins = totalWifiCoinsLifetime;
+    lastSavedTotalPhoneCoins = totalPhoneCoinsLifetime;
     lastSavedTotalCentavos = totalCentavosLifetime;
     totalCoinsSession = 0;
     totalCentavosSession = 0;
@@ -682,14 +703,21 @@ void loadAllConfig() {
 }
 
 void flushRevenueNow() {
-    if (!revenueDirty && totalCoinsLifetime == lastSavedTotalCoins && totalCentavosLifetime == lastSavedTotalCentavos) {
+    if (!revenueDirty && totalCoinsLifetime == lastSavedTotalCoins &&
+        totalWifiCoinsLifetime == lastSavedTotalWifiCoins &&
+        totalPhoneCoinsLifetime == lastSavedTotalPhoneCoins &&
+        totalCentavosLifetime == lastSavedTotalCentavos) {
         return;
     }
     prefs.begin(NVS_NAMESPACE, false);
     prefs.putULong(NVS_KEY_TOTAL_COINS, totalCoinsLifetime);
+    prefs.putULong(NVS_KEY_TOTAL_WIFI_COINS, totalWifiCoinsLifetime);
+    prefs.putULong(NVS_KEY_TOTAL_PHONE_COINS, totalPhoneCoinsLifetime);
     prefs.putULong(NVS_KEY_TOTAL_CENTAVOS, totalCentavosLifetime);
     prefs.end();
     lastSavedTotalCoins = totalCoinsLifetime;
+    lastSavedTotalWifiCoins = totalWifiCoinsLifetime;
+    lastSavedTotalPhoneCoins = totalPhoneCoinsLifetime;
     lastSavedTotalCentavos = totalCentavosLifetime;
     revenueDirty = false;
     Serial.println("[💰 VAULT] Revenue counters flushed to NVS flash.");
@@ -762,10 +790,14 @@ void factoryResetDefaults(bool ownerWipe) {
 #endif
 
     totalCoinsLifetime = (keepOwner && owner.hasCoins) ? owner.coins : 0;
+    totalWifiCoinsLifetime = (keepOwner && owner.hasWifiCoins) ? owner.wifiCoins : 0;
+    totalPhoneCoinsLifetime = (keepOwner && owner.hasPhoneCoins) ? owner.phoneCoins : 0;
     totalCoinsSession = 0;
     totalCentavosLifetime = (keepOwner && owner.hasCentavos) ? owner.centavos : 0;
     totalCentavosSession = 0;
     lastSavedTotalCoins = totalCoinsLifetime;
+    lastSavedTotalWifiCoins = totalWifiCoinsLifetime;
+    lastSavedTotalPhoneCoins = totalPhoneCoinsLifetime;
     lastSavedTotalCentavos = totalCentavosLifetime;
     if (ownerWipe) vendorRevenueSplitPercent = DEFAULT_VENDOR_SPLIT_PERCENT;
 

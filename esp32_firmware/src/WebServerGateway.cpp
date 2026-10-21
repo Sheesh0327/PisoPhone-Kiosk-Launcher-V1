@@ -18,6 +18,7 @@
 #include "InputSafety.h"
 #include "WebServerAuth.h"
 #include "WebServerModule.h"
+#include "RevenueVault.h"
 #include <WebServer.h>
 
 static gatewayauth::NonceStore nonceStore;
@@ -48,6 +49,13 @@ static String authorizedSession(const char* action) {
     if (!ok) {
         sendError(403, "AUTH_FAILED");
         return "";
+    }
+    if (webServer.hasArg("ts")) {
+        uint32_t ts = (uint32_t)webServer.arg("ts").toInt();
+        if (ts >= 1700000000UL) {
+            updateMasterTime((uint64_t)ts * 1000ULL, "GATEWAY_ROUTER");
+            vaultAnchorTime(ts);
+        }
     }
     return session;
 }
@@ -89,7 +97,9 @@ static String statusJson(const char* action, const String& session) {
     return String("{\"success\":true,\"session\":\"") + jsonEsc(session) + "\",\"state\":\"" + state +
            "\",\"armed_remaining\":" + armedRemaining + ",\"pulses\":" + pulses + ",\"minutes_per_coin\":" + perCoin +
            ",\"ready_in_ms\":" + readyIn + ",\"slot_free\":" + slotFree +
-           ",\"events\":true,\"lifetime_pulses\":" + lifetime + ",\"rsig\":\"" +
+           ",\"events\":true,\"lifetime_pulses\":" + lifetime +
+           ",\"lifetime_wifi_pulses\":" + String(totalWifiCoinsLifetime) +
+           ",\"lifetime_phone_pulses\":" + String(totalPhoneCoinsLifetime) + ",\"rsig\":\"" +
            responseSignature(action, session, facts) + "\"}";
 }
 

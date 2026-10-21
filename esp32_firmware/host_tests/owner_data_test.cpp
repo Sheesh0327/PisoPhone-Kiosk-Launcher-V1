@@ -45,6 +45,8 @@ struct TypedStore {
 int main() {
     TypedStore s;
     s.putUInt("total_coins", 12345);
+    s.putUInt("tot_wifi_coins", 8000);
+    s.putUInt("tot_phone_coins", 4345);
     s.putUInt("earn_c", 1234500);
     s.putInt("vendor_split", 35);
     s.putString("lic_ids", "0000000a,0000000b");
@@ -58,6 +60,8 @@ int main() {
     ownerdata::restore(s, snap);
 
     CHECK(s.getUInt("total_coins", 0) == 12345); // lifetime revenue survives
+    CHECK(s.getUInt("tot_wifi_coins", 0) == 8000);
+    CHECK(s.getUInt("tot_phone_coins", 0) == 4345);
     CHECK(s.getUInt("earn_c", 0) == 1234500);
     CHECK(s.getInt("vendor_split", 0) == 35);                 // the vendor split survives
     CHECK(s.getString("lic_ids", "") == "0000000a,0000000b"); // an operator's reset cannot change the used license keys

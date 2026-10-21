@@ -40,6 +40,8 @@ static String renderPulseStats() {
     if (st.shortN > 0)
         out += " " + String(st.shortN) + " were shorter than the limit" +
                String(coinPulseGuard ? " and were ignored." : " (counted, because the protection is off).");
+    if (st.longN > 0)
+        out += " " + String(st.longN) + " were longer than 180 ms (stuck line / brownout) and were ignored.";
     out += " Set the limit a little under the shortest pulse a real coin gives.";
     return out;
 }
@@ -71,6 +73,10 @@ static String getPlaceholderValue(const String& tag) {
 #endif
     if (tag == "TOTAL_COINS") return String(vaultCoins()); // since the last collection
     if (tag == "SESSION_COINS") return String(totalCoinsSession);
+    if (tag == "TODAY_COINS") return String(vaultTodayCoins());
+    if (tag == "WEEK_COINS") return String(vaultLast7DaysCoins());
+    if (tag == "MONTH_COINS") return String(vaultLast30DaysCoins());
+    if (tag == "LIFETIME_COINS") return String(totalCoinsLifetime);
 #if PISO_HAS_PHONES
     if (tag == "DEVICE_OPTIONS") return renderDeviceOptions("");
 #endif

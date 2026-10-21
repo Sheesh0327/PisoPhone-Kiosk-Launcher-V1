@@ -71,6 +71,7 @@ static void reportWifiEvents() {
     static uint32_t lastLoggedMs = 0;
     if (wifiEvGotIp) {
         wifiEvGotIp = false;
+        configTime(28800, 0, "pool.ntp.org", "time.google.com");
         diagLog("[WIFI] Connected to '%s': IP %s, signal %d dBm\n", wifiSsid.c_str(), WiFi.localIP().toString().c_str(),
                 (int)WiFi.RSSI());
     }
@@ -256,6 +257,15 @@ void loop() {
 
     // Memory and Uptime Health Maintenance Check
     processSystemHealthAndAutoMaintenance();
+
+    // 0. Anchor clock from SNTP when connected to Wi-Fi if time is still unanchored
+    if (getCurrentMasterTimeMs() == 0 && WiFi.status() == WL_CONNECTED) {
+        time_t sntpNow = time(nullptr);
+        if (sntpNow >= (time_t)1700000000UL) {
+            updateMasterTime((uint64_t)sntpNow * 1000ULL, "SNTP");
+            vaultAnchorTime((uint32_t)sntpNow);
+        }
+    }
 
     // 0. Process Debounced Hardware-Conservative NVS Revenue Persistence
     processRevenuePersistence();

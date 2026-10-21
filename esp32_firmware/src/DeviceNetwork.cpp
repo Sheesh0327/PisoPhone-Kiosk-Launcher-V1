@@ -53,18 +53,23 @@ void sendAddTime(int minutes, String targetIp, String txId) {
         sendAuthenticated(targetIp, targetPort, "/add_time", "/challenge", params, 1000);
     }
 }
-#endif
+#include "RevenueVault.h"
 
-void recordCoinRevenue(int pulses) {
+void recordCoinRevenue(int pulses, CoinSlotOwnerType owner) {
     if (pulses <= 0) return;
+    bool isPhone = (owner == CoinSlotOwnerType::PHONE || owner == CoinSlotOwnerType::CONTROLLER);
     totalCoinsLifetime += pulses;
     totalCoinsSession += pulses;
+    if (isPhone) {
+        totalPhoneCoinsLifetime += pulses;
+    } else {
+        totalWifiCoinsLifetime += pulses;
+    }
     totalCentavosLifetime = money::saturatingAdd(totalCentavosLifetime, money::centavosFromPulses(pulses));
     totalCentavosSession = money::saturatingAdd(totalCentavosSession, money::centavosFromPulses(pulses));
 
-    if (!revenueDirty) revenueDirtySinceMs = millis();
-    revenueDirty = true;
-    lastCoinChangeTime = millis();
+    vaultRecordCoin(pulses, isPhone);
+    flushRevenueNow();
 }
 
 #if PISO_HAS_PHONES
@@ -89,7 +94,7 @@ void triggerUniversalCoinEvent(int pulses, const String& targetDeviceId) {
     int addedMinutes = pulses * rate;
     int addedSeconds = addedMinutes * 60;
 
-    recordCoinRevenue(pulses);
+    recordCoinRevenue(pulses, CoinSlotOwnerType::PHONE);
 
     triggerLedBlink(pulses > 1 ? 4 : 2);
 

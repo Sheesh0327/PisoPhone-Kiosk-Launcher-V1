@@ -36,7 +36,7 @@ fi
 
 # 5. The box serves its coin-slot API (arm, unarm, ack, status) to signed calls only: an unsigned ack could clear a phone's
 #    paid coins. The transition switch must stay on in the source (a build for old phones may turn it off explicitly).
-if ! grep -q '^#define PISO_REQUIRE_SIGNED_COINSLOT 1$' esp32_firmware/src/WebServerCoinslot.cpp; then
+if ! grep -qE '^#define PISO_REQUIRE_SIGNED_COINSLOT 1[[:space:]]*$' esp32_firmware/src/WebServerCoinslot.cpp; then
     bad "the coin-slot API no longer requires signed calls by default (PISO_REQUIRE_SIGNED_COINSLOT)"
 fi
 

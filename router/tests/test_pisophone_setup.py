@@ -10,7 +10,14 @@ spec = importlib.util.spec_from_file_location("pisophone_setup", f"{ROOT}/setup/
 ps = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ps)
 
+if os.name == "nt" and not shutil.which("sh"):
+    for git_dir in [r"C:\Program Files\Git\bin", r"E:\Git\bin", r"C:\Program Files\Git\usr\bin", r"E:\Git\usr\bin"]:
+        if os.path.isdir(git_dir):
+            os.environ["PATH"] = git_dir + os.pathsep + os.environ["PATH"]
+            break
+
 tmp = tempfile.mkdtemp()
+os.environ["PISOPHONE_HOME"] = os.path.join(tmp, "home")
 checks = failures = 0
 
 
@@ -99,39 +106,43 @@ for shell in ["sh"] + ([f"{bb} sh"] if bb else []):
 
 # ---- end to end, with a fake ssh and a fake router -------------------------------------------------------------------------
 bindir, site, fake_root = f"{tmp}/bin", f"{tmp}/site", f"{tmp}/router"
+tmp_p = tmp.replace("\\", "/")
+fake_root_p = fake_root.replace("\\", "/")
+bindir_p = bindir.replace("\\", "/")
+site_p = site.replace("\\", "/")
 for d in (bindir, site, f"{fake_root}/root", f"{fake_root}/tmp", f"{fake_root}/etc"):
     os.makedirs(d)
 
 
 def script(name, body):
-    open(f"{bindir}/{name}", "w").write("#!/bin/sh\n" + body)
+    open(f"{bindir}/{name}", "w", newline="\n").write("#!/bin/sh\n" + body)
     os.chmod(f"{bindir}/{name}", 0o755)
 
 
 # wget -q -T 60 -O <file> <url>: the repository's raw files, from <site>/<branch>/...
 script("wget", f"""out=""; while [ $# -gt 1 ]; do [ "$1" = -O ] && out="$2"; shift; done; url="$1"
-echo "$url" >> {tmp}/wget.log
+echo "$url" >> {tmp_p}/wget.log
 u="${{url#*://}}"; host="${{u%%/*}}"; p="${{u#*/}}"
 case "$host" in pisophone.pages.dev) b=main ;; *.pisophone.pages.dev) b="${{host%.pisophone.pages.dev}}" ;; *) exit 8 ;; esac
-[ -f "{site}/$b/$p" ] || exit 8
-cat "{site}/$b/$p" > "$out"
+[ -f "{site_p}/$b/$p" ] || exit 8
+cat "{site_p}/$b/$p" > "$out"
 """)
-script("uci", f"""echo "$*" >> {tmp}/uci.log
+script("uci", f"""echo "$*" >> {tmp_p}/uci.log
 [ "$1" = -q ] && shift
-case "$1" in get) [ "$2" = network.lan.ipaddr ] && echo "$(cat {tmp}/lan)/24" ;; set) case "$2" in network.lan.ipaddr=*) echo "${{2#*=}}" > {tmp}/lan ;; esac ;; esac
+case "$1" in get) [ "$2" = network.lan.ipaddr ] && echo "$(cat {tmp_p}/lan)/24" ;; set) case "$2" in network.lan.ipaddr=*) echo "${{2#*=}}" > {tmp_p}/lan ;; esac ;; esac
 exit 0
 """)
 script("ubus", "echo '{}'\n")
 script("jsonfilter", 'echo "192.168.100.20"\n')
-script("netinit", f'echo "$1" >> {tmp}/network.log\n')
+script("netinit", f'echo "$1" >> {tmp_p}/network.log\n')
 
 # the stand-in setup file: shows what it was given, writes the summary, the sheet and the state file like the real one
 FAKE_SETUP = f"""#!/bin/sh
 PISO_RELEASE='9.9.9'
 echo "  TIP: fake advice"
 echo "SETUP-RAN args=[$*] root=[$ROOT_PASSWORD] kiosk=[$KIOSK_PASSWORD] box=[$BOX_NEW_ADMIN_PASSWORD] guest=[$GUEST_SSID] site=[$SITE_NAME]"
-R={fake_root}
-case "$(cat {tmp}/result 2>/dev/null)" in
+R={fake_root_p}
+case "$(cat {tmp_p}/result 2>/dev/null)" in
   fail) echo "ERROR: the coin box did not join"; echo "FAILED the coin box did not join the hidden PisoCoinBox network" > $R/tmp/piso-setup.state; exit 1 ;;
   checks) echo "DONE with 1 failed checks (see log)" > $R/tmp/piso-setup.state ;;
   drop) exit 0 ;;
@@ -147,8 +158,8 @@ for branch in ("main", "beta"):
     d = f"{site}/{branch}/setup"
     os.makedirs(d)
     shutil.copy(f"{ROOT}/setup/install.sh", f"{site}/{branch}/install.sh")
-    open(f"{d}/piso-setup.sh", "w").write(FAKE_SETUP)
-    open(f"{d}/piso-setup.sh.sha256", "w").write(hashlib.sha256(FAKE_SETUP.encode()).hexdigest() + "  piso-setup.sh\n")
+    open(f"{d}/piso-setup.sh", "w", newline="\n").write(FAKE_SETUP)
+    open(f"{d}/piso-setup.sh.sha256", "w", newline="\n").write(hashlib.sha256(FAKE_SETUP.encode()).hexdigest() + "  piso-setup.sh\n")
 
 # The fake ssh: logs its arguments and input, answers the login probe as told (FAKE_PROBE), runs everything else with sh as
 # the router would, with the router's fixed paths moved into the fake router's folder.
@@ -156,32 +167,32 @@ open(f"{tmp}/fake_ssh.py", "w").write(f"""import os, subprocess, sys
 argv = sys.argv[1:]
 host = next(a for a in argv if a.startswith("root@"))[5:]
 remote = argv[-1]
-with open("{tmp}/ssh.log", "a") as f:
+with open("{tmp_p}/ssh.log", "a") as f:
     f.write(repr(argv) + "\\n")
 if "BatchMode=yes" in argv:
-    probe = open("{tmp}/probe").read().strip()
+    probe = open("{tmp_p}/probe").read().strip()
     if probe == "denied":
         sys.stderr.write("root@" + host + ": Permission denied (publickey,password).\\n"); sys.exit(255)
     print("@@OPENWRT" if probe != "notopenwrt" else "hello")
     if probe == "configured": print("@@CONFIGURED")
     sys.exit(0)
-lan = open("{tmp}/lan").read().strip()
+lan = open("{tmp_p}/lan").read().strip()
 if host != lan:
     sys.stderr.write("ssh: connect to host " + host + " port 22: Connection timed out\\n"); sys.exit(255)
-need = "{tmp}/needpw"   # a router with a password: a login without it is refused
+need = "{tmp_p}/needpw"   # a router with a password: a login without it is refused
 if os.path.exists(need) and os.environ.get("PISO_ASKPASS_PW") != open(need).read().strip():
     sys.stderr.write("root@" + host + ": Permission denied (publickey,password).\\n"); sys.exit(255)
-remote = remote.replace("/tmp/piso", "{fake_root}/tmp/piso").replace("/root/piso", "{fake_root}/root/piso")
+remote = remote.replace("/tmp/piso", "{fake_root_p}/tmp/piso").replace("/root/piso", "{fake_root_p}/root/piso")
 if remote == "piso-setup telegram":   # a conversation: the input is passed through as it comes, like real ssh
-    env = dict(os.environ, PATH="{bindir}:" + os.environ["PATH"])
+    env = dict(os.environ, PATH="{bindir_p}" + os.pathsep + os.environ["PATH"])
     sys.exit(subprocess.run(["sh", "-c", remote], env=env).returncode)
 data = sys.stdin.buffer.read() if not sys.stdin.isatty() else b""
-open("{tmp}/ssh-input.log", "ab").write(data)
-env = dict(os.environ, PATH="{bindir}:" + os.environ["PATH"], PISO_INSTALL_DIR="{fake_root}/root", PISO_TEST_NONROOT="1",
-           PISO_NETWORK_INIT="{bindir}/netinit", PISO_TTY="/dev/null", PISO_SELF_PATH="{fake_root}/no-such-piso-setup")
+open("{tmp_p}/ssh-input.log", "ab").write(data)
+env = dict(os.environ, PATH="{bindir_p}" + os.pathsep + os.environ["PATH"], PISO_INSTALL_DIR="{fake_root_p}/root", PISO_TEST_NONROOT="1",
+           PISO_NETWORK_INIT="{bindir_p}/netinit", PISO_TTY="/dev/null", PISO_SELF_PATH="{fake_root_p}/no-such-piso-setup")
 sys.exit(subprocess.run(["sh", "-c", remote], input=data, env=env).returncode)
 """)
-os.environ["PISO_SSH"] = f"{sys.executable} {tmp}/fake_ssh.py"
+os.environ["PISO_SSH"] = f'"{sys.executable}" "{tmp_p}/fake_ssh.py"'
 
 
 def e2e(answers=(), secrets_=(), lan="192.168.1.1", probe="factory", result="ok", up=lambda h: True, moved=True, needpw=None,
@@ -323,7 +334,7 @@ check(r.input == "\n\n\n\n\nJP\n", "a configured router: only the country is sen
 # Telegram: the router waits for a message to the bot, the owner confirms the chat
 script("piso-setup", f"""[ "$1" = telegram ] || exit 9
 read -r tok; read -r site
-echo "token=[$tok] site=[$site]" >> {tmp}/tg.log
+echo "token=[$tok] site=[$site]" >> {tmp_p}/tg.log
 echo "Open your bot in Telegram and send it any message (for example /start). Waiting up to 2 minutes..."
 echo "Got a message from chat 4242 (Evan)."
 printf 'Is that you (alerts and commands will be accepted only from this chat)? [y/N] '
