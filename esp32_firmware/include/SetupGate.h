@@ -6,16 +6,24 @@
 // Pure (no Arduino types) so host_tests/setup_gate_test.cpp can test it.
 
 #include <cstring>
+#include "Product.h"
 
 namespace setupgate {
 
 // Admin password of a box that has just been flashed or factory reset.
 static const char* const DEFAULT_PASSWORD = "Coinslot@Setup";
 
+#if PISO_HAS_GATEWAY
 // The box has no access point of its own. A fresh or factory-reset box joins this hidden Wi-Fi, which the router's
 // setup script creates (it admits only this box's MAC address, so the published password is not a way in for anyone else).
 static const char* const DEFAULT_WIFI_SSID = "PisoCoinBox";
 static const char* const DEFAULT_WIFI_PASSWORD = "PisoCoinBox@Setup";
+#else
+// The PisoPhone-only box has no known Wi-Fi to join: with a published default password it must not connect to a network that
+// anyone could have named to catch it. The setup program gives it the shop's Wi-Fi over the USB cable (SerialProvision.h).
+static const char* const DEFAULT_WIFI_SSID = "";
+static const char* const DEFAULT_WIFI_PASSWORD = "";
+#endif
 
 static const unsigned MIN_PASSWORD_LENGTH = 8;
 
@@ -25,9 +33,8 @@ inline bool passwordAcceptable(const char* candidate) {
     return std::strlen(candidate) >= MIN_PASSWORD_LENGTH && std::strcmp(candidate, DEFAULT_PASSWORD) != 0;
 }
 
-// The password of the rental phones' hidden Wi-Fi (PisoKiosk), which the router hands to the box so the "Set up a phone"
-// link can carry it. Wi-Fi allows 8-63 printable characters; nothing else is stored.
-inline bool kioskWifiPasswordValid(const char* candidate) {
+// A Wi-Fi password: 8-63 printable characters; nothing else is stored.
+inline bool wifiPasswordValid(const char* candidate) {
     if (!candidate) return false;
     size_t n = std::strlen(candidate);
     if (n < 8 || n > 63) return false;
@@ -38,8 +45,8 @@ inline bool kioskWifiPasswordValid(const char* candidate) {
     return true;
 }
 
-// The name of the rental phones' Wi-Fi: 1 to 32 printable ASCII characters (the phone app and the setup page accept no others).
-inline bool kioskWifiSsidValid(const char* candidate) {
+// A Wi-Fi name: 1 to 32 printable ASCII characters.
+inline bool wifiSsidValid(const char* candidate) {
     if (!candidate) return false;
     size_t n = std::strlen(candidate);
     if (n < 1 || n > 32) return false;
@@ -49,6 +56,17 @@ inline bool kioskWifiSsidValid(const char* candidate) {
     }
     return true;
 }
+
+#if PISO_HAS_PHONES
+// The password and the name of the rental phones' hidden Wi-Fi (PisoKiosk), which the router hands to the box so the "Set up a
+// phone" link can carry them: the same rules as any Wi-Fi password and name.
+inline bool kioskWifiPasswordValid(const char* candidate) {
+    return wifiPasswordValid(candidate);
+}
+inline bool kioskWifiSsidValid(const char* candidate) {
+    return wifiSsidValid(candidate);
+}
+#endif
 
 // Coins may only be accepted once the operator has chosen their own admin password.
 inline bool usageAllowed(bool adminPasswordChanged) {

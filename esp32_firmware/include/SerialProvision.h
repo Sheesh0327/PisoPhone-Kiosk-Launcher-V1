@@ -71,10 +71,9 @@ inline Parse parseSetup(const std::string& rest, Request& out) {
     if (!hexDecode(word[0], out.wifiName, 32) || !hexDecode(word[1], out.wifiPassword, 63) ||
         !hexDecode(word[2], out.adminPassword, 64))
         return Parse::BadFormat;
-    if (!setupgate::kioskWifiSsidValid(out.wifiName.c_str()) ||
-        out.wifiName.size() != std::strlen(out.wifiName.c_str()))
+    if (!setupgate::wifiSsidValid(out.wifiName.c_str()) || out.wifiName.size() != std::strlen(out.wifiName.c_str()))
         return Parse::BadWifiName;
-    if (!setupgate::kioskWifiPasswordValid(out.wifiPassword.c_str()) ||
+    if (!setupgate::wifiPasswordValid(out.wifiPassword.c_str()) ||
         out.wifiPassword.size() != std::strlen(out.wifiPassword.c_str()))
         return Parse::BadWifiPassword;
     if (!printableAscii(out.adminPassword) || !setupgate::passwordAcceptable(out.adminPassword.c_str()))

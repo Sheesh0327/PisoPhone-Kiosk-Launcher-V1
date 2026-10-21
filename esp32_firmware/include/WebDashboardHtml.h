@@ -2,13 +2,16 @@
 #define WEB_DASHBOARD_HTML_H
 
 #include <Arduino.h>
+#include "Product.h"
 
 void streamPortalHtml();
 // A coloured message box for the dashboard. kind: "ok", "warn", "bad" or ""; icon: a name from the icon sprite.
 // Makes text from a request safe to put inside HTML.
 String escapeHtmlText(String s);
 String noteHtml(const char* kind, const char* icon, const String& html);
+#if PISO_HAS_PHONES
 String renderDeviceOptions(String selectedIp);
 String renderPhoneSlotsHtml();
+#endif
 
 #endif // WEB_DASHBOARD_HTML_H

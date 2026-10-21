@@ -2,12 +2,16 @@
 #define WEB_SERVER_AUTH_H
 
 #include <Arduino.h>
+#include "Product.h"
+
+#if PISO_HAS_PHONES
 
 void authWorkerTask(void* pvParameters);
 // The AuthWorker task must not touch the account table or the phone slots (loop() owns them, with no lock). It hands each
 // confirmed phone acknowledgement to loop() through this queue; loop() applies it by calling processWorkerAcks().
 void initWorkerAckQueue();
 void processWorkerAcks();
+#endif
 bool checkAuth();
 bool checkAdminAuth();
 // Like checkAdminAuth() for the dashboard page: a browser that has no credentials yet gets the sign-in page (admin password or

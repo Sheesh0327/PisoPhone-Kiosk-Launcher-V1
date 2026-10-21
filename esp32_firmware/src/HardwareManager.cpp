@@ -5,14 +5,18 @@
 #include "HardwareManager.h"
 #include "CoinSlotManager.h"
 #include "Config.h"
+#if PISO_HAS_PHONES
 #include "DeviceManager.h"
+#endif
 #include "PulseGuard.h"
 #include <WiFi.h>
 #include "hal/gpio_ll.h"
 
+#if PISO_HAS_PHONES
 // Forward declarations of WebSocket client from WebServerModule
 extern WiFiClient wsClient;
 extern bool isWsConnected;
+#endif
 
 // ============================================================================
 // NON-BLOCKING LED INDICATOR STATE MACHINE

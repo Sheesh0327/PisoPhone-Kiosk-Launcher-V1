@@ -2,7 +2,10 @@
 #define CONFIG_H
 
 #include <Arduino.h>
+#include "Product.h"
+#if PISO_HAS_PHONES
 #include "SlotLicense.h"
+#endif
 #include <Preferences.h>
 #include <functional>
 
@@ -16,26 +19,34 @@ extern const bool DEFAULT_LED_ACTIVE_LOW;
 extern const int DEFAULT_RELAY_PIN;
 extern const int DEFAULT_PORT;
 extern const int HARDWARE_RESET_PIN;
+#if PISO_HAS_PHONES
 extern const int UDP_DISCOVERY_PORT;
+#endif
 extern const int DEFAULT_MINUTES_PER_COIN;
 
+#if PISO_HAS_PHONES
 // The most phones any box can pair (SlotLicense.h: 2 slots are free, each of the others needs a license key). Room is also kept
 // for the phones that have only said hello (identify, a heartbeat before pairing): MAX_TRACKED_DEVICES.
 #define MAX_SUPPORTED_SLOTS 12
 static_assert(MAX_SUPPORTED_SLOTS == slotlicense::MAX_SLOTS, "the slot limit and the license limit must agree");
 #define MAX_TRACKED_DEVICES 24
+#endif
 
 // ============================================================================
 // NVS KEYS
 // ============================================================================
 extern const char* const NVS_NAMESPACE;
+#if PISO_HAS_PHONES
 extern const char* const NVS_KEY_SLOTS_DATA;
 extern const char* const NVS_KEY_IPS;
+#endif
 
 extern const char* const NVS_KEY_WIFI_SSID;
 extern const char* const NVS_KEY_WIFI_PASS;
+#if PISO_HAS_PHONES
 extern const char* const NVS_KEY_KIOSK_WIFI_PASS;
 extern const char* const NVS_KEY_KIOSK_WIFI_SSID;
+#endif
 extern const char* const NVS_KEY_U_COIN_PIN;
 extern const char* const NVS_KEY_LED_PIN;
 extern const char* const NVS_KEY_LED_ACTIVE_LOW;
@@ -50,15 +61,18 @@ extern const char* const NVS_KEY_ADMIN_PW_CHANGED;
 extern const char* const NVS_KEY_SETUP_AP_PASS;
 extern const char* const NVS_KEY_SHARED_SECRET;
 extern const char* const NVS_KEY_LEGACY_KEY;
+#if PISO_HAS_PHONES
 extern const char* const NVS_KEY_P1;
 extern const char* const NVS_KEY_P2;
 extern const char* const NVS_KEY_MATCH;
+#endif
 extern const char* const NVS_KEY_TOTAL_COINS;
 extern const char* const NVS_KEY_TOTAL_CENTAVOS;
 
 // ============================================================================
 // DATA STRUCTURES
 // ============================================================================
+#if PISO_HAS_PHONES
 struct DeviceConfig {
     String id;
     String ip;
@@ -97,6 +111,7 @@ struct AuthRequest {
     char params[256];
     int timeoutMs;
 };
+#endif
 
 // ============================================================================
 // GLOBAL CONFIGURATION & STATE DECLARATIONS
@@ -114,10 +129,12 @@ extern int coinPulseMinMs;
 
 extern String wifiSsid;
 extern String wifiPass;
+#if PISO_HAS_PHONES
 extern String
     kioskWifiPass; // the rental phones' Wi-Fi password, given by the router (carried by the "Set up a phone" link)
 extern String kioskWifiSsid; // and the name of that network (each router has its own; empty: the shared name PisoKiosk)
 extern String androidIps;
+#endif
 extern String webPassword;
 extern bool adminPwChanged;                // false until the default admin password is replaced
 void runConfigMigrations();                // brings saved settings to this firmware's format (ConfigMigration.h)
@@ -129,6 +146,7 @@ String getLegacySharedSecret();            // old shared key (legacy mode); a ne
 bool isLegacyKeyMode();                    // true until the operator switches the box to its own key
 void switchToOwnKey();                     // leaves legacy mode for good
 void loadSecretMode();                     // reads the box secret and legacy-mode flag
+#if PISO_HAS_PHONES
 // Slot licenses (SlotLicense.h): how many phones this box may pair. Opened only by a key the owner signed for THIS box.
 int getDeviceCap();       // 2 free slots plus one for each license key used (never fewer than the grandfathered floor)
 int getLicenseKeyCount(); // license keys used on this box
@@ -138,6 +156,7 @@ bool addLicenseKey(const String& id); // saves one more used key (callers have v
 int pairedDeviceCount();              // phones paired right now
 void loadLicenses();                  // reads the saved keys and the floor (a box with none has the 2 free slots)
 void settleLicenseFloor(); // first start with licensing: records how many phones are paired now, once (after loadSlots)
+#endif
 extern String macAddressStr;
 
 extern int targetPort;
@@ -146,12 +165,14 @@ extern int minutesPerCoin;
 extern const unsigned long ARM_TTL;
 extern const unsigned long MAX_SESSION_DURATION;
 
+#if PISO_HAS_PHONES
 extern String p1Ip;
 extern String p2Ip;
 extern int matchMinutes;
 extern bool matchActive;
 extern String matchStatusMsg;
 extern String quickTimeStatusMsg;
+#endif
 
 // Revenue & Audit
 extern uint32_t totalCoinsLifetime;
@@ -166,6 +187,7 @@ extern const unsigned long REVENUE_SAVE_DELAY_MS;
 extern const unsigned long REVENUE_SAVE_MAX_DEFER_MS;
 extern unsigned long revenueDirtySinceMs;
 
+#if PISO_HAS_PHONES
 // Device & Slot Arrays
 extern PhoneSlot phoneSlots[MAX_SUPPORTED_SLOTS];
 extern DeviceTelemetry trackedDevices[MAX_TRACKED_DEVICES];
@@ -173,14 +195,17 @@ extern int trackedDeviceCount;
 
 bool isSlotActive(int slotIdx);
 int findSlotIndexForDevice(String devId, String ip);
+#endif
 
 // ============================================================================
 // CONFIGURATION & TIME FUNCTIONS
 // ============================================================================
 void loadAllConfig();
+#if PISO_HAS_PHONES
 void loadSlots();
 void saveSlots();
 void syncAndroidIpsFromSlots();
+#endif
 
 void processRevenuePersistence();
 void flushRevenueNow();
@@ -193,7 +218,9 @@ uint64_t getCurrentMasterTimeMs();
 String boxTimeJsonField(); // ,"server_time_ms":<ms> (the box's clock for phones to sign with), or "" while it has none
 String generateTxId(const char* prefix = "tx-");
 
+#if PISO_HAS_PHONES
 bool parseDeviceEntry(const String& entry, DeviceConfig& out);
 void forEachConfiguredDevice(std::function<bool(const DeviceConfig&)> callback);
+#endif
 
 #endif // CONFIG_H

@@ -67,30 +67,34 @@ def main():
         except Exception:
             return False
 
-    # --- firmware feed
-    fw_version = re.search(r'PISO_FW_VERSION "([^"]+)"', open("esp32_firmware/include/FirmwareVersion.h").read()).group(1)
-    feed = json.load(open("website/update/firmware.json"))
-    chip_ids = {"esp32c3": 5, "esp32": 0}
-    problems = []
-    for chip, ent in feed.get("chips", {}).items():
-        try:
-            img = open("website/update/firmware-%s.bin" % chip, "rb").read()
-            man = json.load(open("website/update/firmware-%s.bin.manifest.json" % chip))
-        except OSError as e:
-            problems.append("%s: %s" % (chip, e))
+    # --- firmware feeds: the full product's, and the PisoPhone-only and PisoWiFi-only products' when they are published
+    for feed_dir, label in (("website/update", "firmware feed"), ("website/update/phone", "PisoPhone-only firmware feed"),
+                            ("website/update/wifi", "PisoWiFi-only firmware feed")):
+        if feed_dir != "website/update" and not os.path.exists(feed_dir + "/firmware.json"):
             continue
-        sha = hashlib.sha256(img).hexdigest()
-        if not (sha == ent["sha256"] == man["sha256"] and len(img) == ent["size"] == man["size"]):
-            problems.append("%s: checksum or size differs between the image, its manifest and firmware.json" % chip)
-        if img[:1] != b"\xe9" or int.from_bytes(img[12:14], "little") != chip_ids.get(chip, -1):
-            problems.append("%s: not an image for this chip" % chip)
-        if pub and not (verifies(man["sig"], "pisophone-fw-v1|%s|%s|%s|%d" % (chip, man["version"], sha, len(img))) and ent["sig"] == man["sig"]):
-            problems.append("%s: signature does not verify" % chip)
-        if man["version"] != feed["version"]:
-            problems.append("%s: manifest says %s, firmware.json says %s" % (chip, man["version"], feed["version"]))
-    if not feed.get("chips"):
-        problems.append("firmware.json lists no chip")
-    report("FAIL" if problems else "PASS", "firmware feed (version %s, build %s): %s" % (feed["version"], feed.get("build"), "; ".join(problems) or "checksums, sizes, headers and signatures all verify"))
+        fw_version = re.search(r'PISO_FW_VERSION "([^"]+)"', open("esp32_firmware/include/FirmwareVersion.h").read()).group(1)
+        feed = json.load(open(feed_dir + "/firmware.json"))
+        chip_ids = {"esp32c3": 5, "esp32": 0}
+        problems = []
+        for chip, ent in feed.get("chips", {}).items():
+            try:
+                img = open(feed_dir + "/firmware-%s.bin" % chip, "rb").read()
+                man = json.load(open(feed_dir + "/firmware-%s.bin.manifest.json" % chip))
+            except OSError as e:
+                problems.append("%s: %s" % (chip, e))
+                continue
+            sha = hashlib.sha256(img).hexdigest()
+            if not (sha == ent["sha256"] == man["sha256"] and len(img) == ent["size"] == man["size"]):
+                problems.append("%s: checksum or size differs between the image, its manifest and firmware.json" % chip)
+            if img[:1] != b"\xe9" or int.from_bytes(img[12:14], "little") != chip_ids.get(chip, -1):
+                problems.append("%s: not an image for this chip" % chip)
+            if pub and not (verifies(man["sig"], "pisophone-fw-v1|%s|%s|%s|%d" % (chip, man["version"], sha, len(img))) and ent["sig"] == man["sig"]):
+                problems.append("%s: signature does not verify" % chip)
+            if man["version"] != feed["version"]:
+                problems.append("%s: manifest says %s, firmware.json says %s" % (chip, man["version"], feed["version"]))
+        if not feed.get("chips"):
+            problems.append("firmware.json lists no chip")
+        report("FAIL" if problems else "PASS", label + " (version %s, build %s): %s" % (feed["version"], feed.get("build"), "; ".join(problems) or "checksums, sizes, headers and signatures all verify"))
 
     # --- router feed
     r = json.load(open("website/update/router.json"))

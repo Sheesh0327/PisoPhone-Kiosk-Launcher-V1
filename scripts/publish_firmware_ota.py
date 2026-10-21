@@ -6,6 +6,10 @@ writes website/update/firmware.json (version, build, sha256, size, signature). R
   python3 scripts/publish_firmware_ota.py --images DIR [--key owner.pem]   copy, sign and announce new images
   python3 scripts/publish_firmware_ota.py --json-only                      only rewrite firmware.json from the files already in
                                                                            website/update/ (after signing by hand, docs/KEYS.md)
+  --product full|phone|wifi                                                which coin box product (default full): the PisoPhone-only
+                                                                           and PisoWiFi-only images have their own signed feed in
+                                                                           website/update/phone/ and website/update/wifi/, so a box
+                                                                           never sees another product's image
 
 DIR holds firmware-esp32c3.bin and firmware-esp32.bin: the app-only images PlatformIO builds (.pio/build/<env>/firmware.bin).
 For each chip this copies the image to website/update/, signs it when a key is given (website/update/firmware-<chip>.bin.manifest.json),
@@ -40,6 +44,20 @@ CHIPS = ("esp32c3", "esp32")
 ESP_IMAGE_MAGIC = 0xE9
 VERSION_HEADER = os.path.join(ROOT, "esp32_firmware", "include", "FirmwareVersion.h")
 PAGES_UPDATE_URL = "https://pisophone.pages.dev/update"
+
+
+PRODUCTS = ("full", "phone", "wifi")
+
+
+def use_product(product):
+    """Points the script at one product's feed: website/update (full) or website/update/<product>."""
+    global UPDATE_DIR, FIRMWARE_JSON, PAGES_UPDATE_URL
+    if product not in PRODUCTS:
+        sys.exit(f"Error: --product is one of {', '.join(PRODUCTS)}")
+    suffix = "" if product == "full" else "/" + product
+    UPDATE_DIR = os.path.join("website", "update") + suffix.replace("/", os.sep)
+    FIRMWARE_JSON = os.path.join(UPDATE_DIR, "firmware.json")
+    PAGES_UPDATE_URL = "https://pisophone.pages.dev/update" + suffix
 
 
 def firmware_has_owner_key():
@@ -128,7 +146,9 @@ def main():
     p.add_argument("--images", help="folder with firmware-esp32c3.bin and firmware-esp32.bin")
     p.add_argument("--json-only", action="store_true", help="only rewrite firmware.json from the files already in website/update/")
     p.add_argument("--key", help="the owner's private key (PEM); signs the images")
+    p.add_argument("--product", default="full", help="full (default), phone (PisoPhone only) or wifi (PisoWiFi only)")
     args = p.parse_args()
+    use_product(args.product)
 
     if args.json_only:
         write_firmware_json()
@@ -172,6 +192,10 @@ def main():
 
     private = sign_firmware.owner_key.load_private(args.key) if args.key else None
     os.makedirs(UPDATE_DIR, exist_ok=True)
+    if not os.path.exists(FIRMWARE_JSON):   # a product's first release: its feed starts empty
+        with open(FIRMWARE_JSON, "w", encoding="utf-8") as f:
+            json.dump({"build": 300, "chips": {}}, f, indent=2)
+            f.write("\n")
     for chip in CHIPS:
         out = os.path.join(UPDATE_DIR, f"firmware-{chip}.bin")
         with open(out, "wb") as f:

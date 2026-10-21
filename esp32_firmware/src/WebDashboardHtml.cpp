@@ -1,5 +1,6 @@
 #include "WebDashboardHtml.h"
 #include "RevenueVault.h"
+#include "Product.h"
 #include "WebAssetServer.h"
 #include "SuperAdminTemplate.h"
 #include "WebDashboardIcons.h"
@@ -8,7 +9,9 @@
 #include "SuperAdminManager.h"
 #include "Config.h"
 #include "HardwareManager.h"
+#if PISO_HAS_PHONES
 #include "DeviceManager.h"
+#endif
 #include "Security.h"
 #include <WebServer.h>
 #include <WiFi.h>
@@ -52,18 +55,25 @@ static int getWifiQuality(int rssi) {
 }
 
 static String getPlaceholderValue(const String& tag) {
+    if (tag == "PRODUCT_NAME") return PISO_PRODUCT_NAME;
     if (tag == "WIFI_SSID") return wifiSsid;
     if (tag == "WIFI_PASS") return wifiPass;
+#if PISO_HAS_PHONES
     if (tag == "PORT") return String(targetPort);
+#endif
     if (tag == "U_COIN_PIN") return String(universalCoinPin);
     if (tag == "LED_PIN") return String(ledPin);
     if (tag == "RELAY_PIN") return String(relayPin);
     if (tag == "MINUTES_PER_COIN") return String(minutesPerCoin);
     if (tag == "ADMIN_PASSWORD") return webPassword;
+#if PISO_HAS_PHONES
     if (tag == "MATCH_MINUTES") return String(matchMinutes);
+#endif
     if (tag == "TOTAL_COINS") return String(vaultCoins()); // since the last collection
     if (tag == "SESSION_COINS") return String(totalCoinsSession);
+#if PISO_HAS_PHONES
     if (tag == "DEVICE_OPTIONS") return renderDeviceOptions("");
+#endif
     if (tag == "LED_ACTIVE_LOW_SELECTED") return ledActiveLow ? "selected" : "";
     if (tag == "LED_ACTIVE_HIGH_SELECTED") return !ledActiveLow ? "selected" : "";
     if (tag == "RELAY_HIGH_SELECTED") return !relayActiveLow ? "selected" : "";
@@ -72,8 +82,10 @@ static String getPlaceholderValue(const String& tag) {
     if (tag == "PULSE_GUARD_OFF_SELECTED") return !coinPulseGuard ? "selected" : "";
     if (tag == "PULSE_MIN_MS") return String(pulseMinMsClamp(coinPulseMinMs));
     if (tag == "PULSE_STATS") return renderPulseStats();
+#if PISO_HAS_PHONES
     if (tag == "P1_OPTIONS") return renderDeviceOptions(p1Ip);
     if (tag == "P2_OPTIONS") return renderDeviceOptions(p2Ip);
+#endif
 
     if (tag == "IP_ADDRESS") {
         String ip = WiFi.localIP().toString();
@@ -82,10 +94,12 @@ static String getPlaceholderValue(const String& tag) {
     }
 
     if (tag == "MAC_ADDRESS") return macAddressStr;
+#if PISO_HAS_PHONES
     // In legacy mode phones still use the old key, so provisioning links carry no secret until the box is switched.
     if (tag == "SHARED_SECRET") return isLegacyKeyMode() ? String("") : getBoxSecret();
     if (tag == "DEVICE_SLOTS_MANAGER") return renderPhoneSlotsHtml();
     if (tag == "MAX_SLOTS") return String(MAX_SUPPORTED_SLOTS);
+#endif
     if (tag == "ASSET_V_PORTAL_CSS") return webAssetVersion("portal.css");
     if (tag == "ASSET_V_PORTAL_CORE") return webAssetVersion("portal-core.js");
     if (tag == "ASSET_V_PORTAL_MODALS") return webAssetVersion("portal-modals.js");
@@ -107,6 +121,7 @@ static String getPlaceholderValue(const String& tag) {
         return "0";
     }
 
+#if PISO_HAS_PHONES
     if (tag == "QUICK_TIME_ALERT") {
         if (quickTimeStatusMsg.length() > 0) {
             String alert = quickTimeStatusMsg;
@@ -162,6 +177,7 @@ static String getPlaceholderValue(const String& tag) {
         }
         return "";
     }
+#endif
 
     return "";
 }

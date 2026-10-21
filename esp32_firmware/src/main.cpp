@@ -7,18 +7,25 @@
 #include <WiFi.h>
 #include <Preferences.h>
 #include <esp_task_wdt.h>
+#include "Product.h"
+#if PISO_HAS_PHONES
 #include "AccountStorage.h"
 #include "WebServerAccounts.h"
+#endif
 #include "esp_wifi.h"
 #include "Config.h"
 #include "Security.h"
 #include "HardwareManager.h"
 #include "CoinSlotManager.h"
+#if PISO_HAS_PHONES
 #include "DeviceManager.h"
+#endif
 #include "DeviceNetwork.h"
 #include "WebServerModule.h"
 #include "SuperAdminManager.h"
+#if PISO_HAS_GATEWAY
 #include "GatewayCoinslot.h"
+#endif
 #include "PaymentQueueManager.h"
 #include "FirmwareVersion.h"
 #include "Diagnostics.h"
@@ -84,6 +91,12 @@ static void reportWifiEvents() {
 
 // Starts a connection attempt from a clean radio state (boot and every retry).
 static void startWifiConnect() {
+#if !PISO_HAS_GATEWAY
+    if (wifiSsid.length() == 0) {
+        diagLog("[WIFI] No Wi-Fi is set yet: run the setup program (pisophone_setup.py) with the box on USB.\n");
+        return;
+    }
+#endif
     WiFi.disconnect(true, true);
     delay(100);
     WiFi.mode(WIFI_STA);
@@ -150,7 +163,11 @@ void setup() {
     diagInit();
     otaRollbackBegin(); // is this image on trial after an update? (see OtaRollback.cpp)
 
+#if PISO_HAS_PHONES
     diagLog("\n--- HARDWARE Master Kiosk Controller v%s ---\n", PISO_FW_VERSION);
+#else
+    diagLog("\n--- HARDWARE Coin Box v%s ---\n", PISO_FW_VERSION);
+#endif
 
     // Initialize Hardware Watchdog Early
     initHardwareWatchdog();
@@ -159,8 +176,12 @@ void setup() {
     loadAllConfig();
     orphansBegin(); // payments the box gave up on, kept until the operator deals with them
     vaultBegin();   // after the counters are loaded: the vault is the lifetime total less the last collection
+#if PISO_HAS_PHONES
     accountsBegin();
+#endif
+#if PISO_HAS_GATEWAY
     gatewayInit();
+#endif
     if (defaultCredentialsActive()) {
         diagLog(
             "[AUTH] WARNING: the default admin password has not been changed yet; coins are blocked until it is.\n");
@@ -170,8 +191,10 @@ void setup() {
     // Initialize Dynamic Hardware Pins & Hardware Reset Pin (GPIO 2)
     applyCoinSlotHardwareConfig();
     initCoinSlotManager();
+#if PISO_HAS_PHONES
     setGlobalCoinPaymentCallback(
         [](const String& sessionId, int pulses) { triggerUniversalCoinEvent(pulses, sessionId); });
+#endif
     pinMode(HARDWARE_RESET_PIN, INPUT_PULLUP);
     setLedHardware(false);
     // Initialize relay hardware (OFF by default - Armed-Only mode)
@@ -197,7 +220,11 @@ void setup() {
     unsigned long wifiConnectStart = millis();
     const unsigned long WIFI_BOOT_TIMEOUT_MS = wifilink::BOOT_CONNECT_MS;
 
-    while (WiFi.status() != WL_CONNECTED && (millis() - wifiConnectStart < WIFI_BOOT_TIMEOUT_MS)) {
+    while (WiFi.status() != WL_CONNECTED && (millis() - wifiConnectStart < WIFI_BOOT_TIMEOUT_MS)
+#if !PISO_HAS_GATEWAY
+           && wifiSsid.length() > 0
+#endif
+    ) {
         delay(20);
         esp_task_wdt_reset();
         processLedBlink();
@@ -232,8 +259,10 @@ void loop() {
 
     // 0. Process Debounced Hardware-Conservative NVS Revenue Persistence
     processRevenuePersistence();
+#if PISO_HAS_PHONES
     accountsLoop();
     accountsWatchdogLoop();
+#endif
 
     // 0. Process Super Admin 5-minute auto-reset retrieval window
     processSuperAdminLoop();
@@ -242,11 +271,15 @@ void loop() {
     processHardwareResetPin();
 
     // 0. Apply phone acknowledgements the AuthWorker task confirmed (only this task changes accounts and phone slots)
+#if PISO_HAS_PHONES
     processWorkerAcks();
+#endif
 
     // 1. Process Unified Coin Slot Manager (Arming, Pulse Accumulation & Draining)
     processCoinSlotSession();
+#if PISO_HAS_GATEWAY
     gatewayEventsLoop(); // push coin events to the router (if it asked for them)
+#endif
 
     // 2. Process Coin Slot Power/Enable Relay (Synchronized with Arming / Insert Coin)
     processRelayState();
@@ -255,11 +288,13 @@ void loop() {
     webServer.handleClient();
     yield();
 
+#if PISO_HAS_PHONES
     // 4. Handle Port 81 WebSocket Client & Frames
     processWebSocketServer();
 
     // 5. Handle Port 8888 UDP Broadcast Discovery
     processUdpDiscovery();
+#endif
 
     // 6. Handle USB Serial CLI commands
     processSerialCli();
@@ -279,8 +314,10 @@ void loop() {
                 diagCount(DiagCounter::WifiReconnects);
                 diagLog("\n[📶 WATCHDOG] Wi-Fi lost. Attempting reconnection to \"%s\"...\n", wifiSsid.c_str());
                 startWifiConnect();
+#if PISO_HAS_PHONES
                 udpServer.stop();
                 udpServer.begin(UDP_DISCOVERY_PORT);
+#endif
             }
         }
     }

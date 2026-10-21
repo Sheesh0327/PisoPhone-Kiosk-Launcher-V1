@@ -9,7 +9,10 @@
 #include "WebServerModule.h"
 #include "Config.h"
 #include "Security.h"
+#include "DeviceNetwork.h" // urlEncode
+#if PISO_HAS_PHONES
 #include "DeviceManager.h"
+#endif
 #include "SuperAdminManager.h"
 #include "Diagnostics.h"
 #include "InputSafety.h"
@@ -18,9 +21,11 @@
 #include <esp_random.h>
 #include "SuperAdminSession.h"
 #include "WebAssetServer.h"
+#include "Product.h"
 #include "RevenueVault.h"
 #include "RevenueLedger.h"
 
+#if PISO_HAS_PHONES
 // A phone acknowledgement the AuthWorker confirmed, waiting for loop() to apply it (see WebServerAuth.h).
 struct WorkerAck {
     char deviceId[97]; // PaymentRecord::targetId is the same size
@@ -237,6 +242,7 @@ void authWorkerTask(void* pvParameters) {
         }
     }
 }
+#endif
 
 static inputsafety::LoginThrottle loginThrottle;
 
@@ -418,14 +424,14 @@ static void sendLoginPage() {
     String next = htmlEscape(safeNext(requestedPage()));
     String page = F("<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\">"
                     "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">"
-                    "<meta name=\"color-scheme\" content=\"light dark\"><title>Sign in - TechNet PisoHub</title>"
+                    "<meta name=\"color-scheme\" content=\"light dark\"><title>Sign in - " PISO_PRODUCT_NAME "</title>"
                     "<link rel=\"stylesheet\" href=\"/assets/portal.css\"></head><body data-next=\"");
     page += next;
     page += F(
         "\"><div class=\"center-page\"><div class=\"card-narrow\" style=\"text-align:center\">"
         "<div class=\"hero-logo\"><img class=\"mascot\" src=\"/assets/mascot.png\" alt=\"\" width=\"100\" height=\"103\">"
         "<img class=\"badge\" src=\"/assets/brand.png\" alt=\"\" width=\"56\" height=\"56\"></div>"
-        "<h1>TechNet PisoHub admin</h1><p class=\"muted\">Sign in to manage this coin box.</p>"
+        "<h1>" PISO_PRODUCT_NAME " admin</h1><p class=\"muted\">Sign in to manage this coin box.</p>"
         "<p><a class=\"btn primary\" id=\"pw\" style=\"display:block\" href=\"/signin?next=");
     page += urlEncode(safeNext(requestedPage()));
     page += F("\">Sign in with the admin password</a></p>"
@@ -472,6 +478,7 @@ bool checkAuth() {
     bool lockedOut = false;
     if (adminCredentialsOk(lockedOut)) return true;
     if (lockedOut) return false;
+#if PISO_HAS_PHONES
     // Device telemetry signatures are ONLY accepted for telemetry / device status checks
     if (webServer.hasArg("device_id") && webServer.hasArg("ts") && webServer.hasArg("sig")) {
         String devId = webServer.arg("device_id");
@@ -481,6 +488,7 @@ bool checkAuth() {
             return true;
         }
     }
+#endif
     denyAdmin("Unauthorized: Access denied.");
     return false;
 }
@@ -503,25 +511,27 @@ void handleLogout() {
     adminSessions.end(cookieValue(ADMIN_COOKIE).c_str());
     webServer.sendHeader("Set-Cookie", String(ADMIN_COOKIE) + "=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0");
     webServer.requestAuthentication(BASIC_AUTH, "HARDWARE Admin Login", "Logged out");
-    webServer.send(401, "text/html; charset=utf-8", R"HTML(
+    webServer.send(401, "text/html; charset=utf-8",
+                   String(R"HTML(
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="color-scheme" content="light dark">
-    <title>Signed out - TechNet PisoHub</title>
+    <title>Signed out - )HTML" +
+                          String(PISO_PRODUCT_NAME) + R"HTML(</title>
     <link rel="stylesheet" href="/assets/portal.css">
 </head>
 <body>
     <div class="center-page">
         <div class="card-narrow" style="text-align: center;">
             <h1>You are signed out</h1>
-            <p class="muted">Your session on the PisoPhone coin box has ended.</p>
+            <p class="muted">Your session on the coin box has ended.</p>
             <a href="/" class="btn primary block">Sign in again</a>
         </div>
     </div>
 </body>
 </html>
-)HTML");
+)HTML"));
 }
