@@ -2,7 +2,7 @@
   "version": "1.5.13",
   "sha256": "1cf193bcd731977f18e2f0dabbb50430d3a5e2eb9c28dd72e6584020d972364b",
   "size": 1311879,
-  "rollout": 0,
-  "changelog": "Router software release 1.5.13",
-  "sig": "MEUCIQDVmUwCs+9P6wdBzG5GvHuGoOYr8122VyopvtV9Wd2DyQIgdO/xpjgF8npuVJ30YgQifFsI0h+hb/f5DBRB9F1oEuc="
+  "rollout": 100,
+  "changelog": "Money and time kept right across power cuts and a wrong clock (1.5.13)",
+  "sig": "MEUCIQC9UUfto1rjq/o0qh9uNNlmbfu2lg0NzEDRGy43keIMIgIgMTmnSrUVbxSi9igrLSp0Hk2yzxdKKvgv9clIQODRaOg="
 }
