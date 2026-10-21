@@ -9,15 +9,14 @@
   "severity": "high",
   "money_or_signing": true,
   "confidence": "confirmed",
-  "status": "open",
+  "status": "fixed",
   "fix": "queue, then revenue, LED, pushes",
   "test": {
    "kind": "host",
    "where": "host_tests/coin_record_order_test.cpp",
    "fails_before": true
   },
-  "release": "firmware",
-  "prior_work": "implemented and tested on claude/sleepy-gauss-rn31gl@748add9; not on beta. Bring back through a feature spec."
+  "release": "firmware"
  },
  {
   "id": "FW-02",
@@ -30,15 +29,14 @@
   "severity": "high",
   "money_or_signing": true,
   "confidence": "reported",
-  "status": "open",
+  "status": "fixed",
   "fix": "re-apply coin hardware only on change and when IDLE",
   "test": {
    "kind": "host",
    "where": "host_tests/coin_hw_apply_test.cpp",
    "fails_before": true
   },
-  "release": "firmware",
-  "prior_work": "implemented and tested on claude/sleepy-gauss-rn31gl@748add9; not on beta. Bring back through a feature spec."
+  "release": "firmware"
  },
  {
   "id": "FW-01",
@@ -51,15 +49,14 @@
   "severity": "high",
   "money_or_signing": true,
   "confidence": "reported",
-  "status": "open",
+  "status": "fixed",
   "fix": "restart guard on all four paths",
   "test": {
    "kind": "host",
    "where": "host_tests/restart_guard_test.cpp",
    "fails_before": true
   },
-  "release": "firmware",
-  "prior_work": "implemented and tested on claude/sleepy-gauss-rn31gl@748add9; not on beta. Bring back through a feature spec."
+  "release": "firmware"
  },
  {
   "id": "FW-05",
@@ -72,15 +69,14 @@
   "severity": "high",
   "money_or_signing": true,
   "confidence": "reported",
-  "status": "open",
+  "status": "fixed",
   "fix": "clamp 1..1440, 64-bit credit",
   "test": {
    "kind": "host",
    "where": "host_tests/coin_credit_test.cpp",
    "fails_before": true
   },
-  "release": "firmware",
-  "prior_work": "implemented and tested on claude/sleepy-gauss-rn31gl@748add9; not on beta. Bring back through a feature spec."
+  "release": "firmware"
  },
  {
   "id": "FW-06",
@@ -92,15 +88,14 @@
   "severity": "high",
   "money_or_signing": true,
   "confidence": "reported",
-  "status": "open",
+  "status": "fixed",
   "fix": "idle coin goes to the orphan list",
   "test": {
    "kind": "host",
-   "where": "host_tests (3.11.1 batch)",
+   "where": "host_tests/idle_coin_test.cpp",
    "fails_before": true
   },
-  "release": "firmware",
-  "prior_work": "implemented and tested on claude/sleepy-gauss-rn31gl@748add9; not on beta. Bring back through a feature spec."
+  "release": "firmware"
  },
  {
   "id": "APP-06",

@@ -26,6 +26,8 @@ bool isPaymentStorageReady();
 bool hasUnpersistedPayments();
 int getPendingPaymentCount();
 bool canPerformRebootOrOta();
+// pulses that arrived while no session owned the slot: written to the orphan ledger so the operator can see them
+void recordIdleCoin(int pulses);
 #if PISO_HAS_PHONES
 bool acknowledgePhonePayment(const String& deviceId, const String& txId);
 int getPendingPhonePaymentsJson(const String& deviceId, String& outJsonArray);

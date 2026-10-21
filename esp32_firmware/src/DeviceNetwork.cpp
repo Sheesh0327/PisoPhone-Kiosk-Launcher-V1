@@ -11,6 +11,8 @@
 #include "Security.h"
 #endif
 #include "Money.h"
+#include "CoinRecordOrder.h"
+#include "CoinCredit.h"
 #if PISO_HAS_PHONES
 #include "WebServerModule.h"
 #include "WebServerApi.h"
@@ -96,18 +98,16 @@ void triggerUniversalCoinEvent(int pulses, const String& targetDeviceId) {
 
     // The rate of the phone that gets the coin: its profile's (PhoneProfiles.h), the standard rate when it has none.
     int rate = minutesPerCoinForDevice(targetDev, targetIp);
-    if (rate < 1) rate = 1;
-    int addedMinutes = pulses * rate;
-    int addedSeconds = addedMinutes * 60;
-
-    recordCoinRevenue(pulses, CoinSlotOwnerType::PHONE);
-
-    triggerLedBlink(pulses > 1 ? 4 : 2);
+    int addedSeconds = coinCreditSeconds(pulses, rate); // 64-bit, clamped (FW-05)
+    int addedMinutes = addedSeconds / 60;
 
     unsigned long long ts = (unsigned long long)getCurrentMasterTimeMs();
     String txId = generateTxId("tx-");
 
-    bool retained = enqueuePendingPayment(txId, targetDev, pulses, CoinSlotOwnerType::PHONE, addedSeconds);
+    // Queue the payment first, then revenue, then the LED (CoinRecordOrder.h).
+    bool retained = recordCoinInOrder(
+        [&] { return enqueuePendingPayment(txId, targetDev, pulses, CoinSlotOwnerType::PHONE, addedSeconds); },
+        [&] { recordCoinRevenue(pulses, CoinSlotOwnerType::PHONE); }, [&] { triggerLedBlink(pulses > 1 ? 4 : 2); });
     if (!retained) {
         Serial.printf("[UNIVERSAL COIN] CRITICAL: Could not retain tx_id='%s'.\n", txId.c_str());
     }

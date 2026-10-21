@@ -2,8 +2,9 @@ Moved out of `CLAUDE.md` section 2 so that `CLAUDE.md` stays byte-for-byte the s
 be read from the prompt cache; see `specs/GUIDE.md`, part B). **Update this file whenever a release goes out**, never `CLAUDE.md`.
 It is read after the stable files, on demand: `specs/README.md` lists it with `specs/STATUS.md` (the board of features).
 
-# Where the repository is now (release state) (2026-10-18)
-- **Live (all at 100%):** router **1.5.12**; coin box firmware **3.9.0** (`PISO_FW_VERSION`; boxes update from their dashboards); the phone app from CI (dev builds from `beta`,
+# Where the repository is now (release state) (2026-10-21)
+- **On `beta`, not released** (merged 2026-10-21, never run on real hardware): router **1.5.13** (feature 001: money and time across power cuts and a wrong clock, hardware check RS32); firmware **3.11.0** (feature 002: product images, USB Wi-Fi setup, coin-counter hardening); phone app change for touch in games on tablets (feature 003, APP-27, hardware check RS33). `main` still has none of them.
+- **Live (all at 100%):** router **1.5.12**; coin box firmware **3.10.0** (`PISO_FW_VERSION`; boxes update from their dashboards); the phone app from CI (dev builds from `beta`,
   stable builds from `main`; the number is the CI run number). **Routers 1.5.7-1.5.12 have never run on a real router** (modem block; guests apart and
   rental phones reaching only the router and the coin box: bridge rules in `router/piso_isolation.sh`, they need `kmod-nft-bridge`; the router login pages
   and the console closed on Wi-Fi, `piso-setup wifi-admin`; one admin page: `http://admin.hub`, the router's own DNS name, the console as the front page on

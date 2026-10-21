@@ -6,6 +6,7 @@
 #include "PhoneProfileStore.h"
 #endif
 #include "PulseGuard.h"
+#include "CoinCredit.h"
 #include "PinRules.h"
 #include "OwnerData.h"
 #if PISO_HAS_PHONES
@@ -642,7 +643,7 @@ void loadAllConfig() {
     targetPort = prefs.getInt(NVS_KEY_PORT, targetPort);
     if (targetPort <= 0 || targetPort > 65535) targetPort = DEFAULT_PORT;
     minutesPerCoin = prefs.getInt(NVS_KEY_MINS_PER_COIN, DEFAULT_MINUTES_PER_COIN);
-    if (minutesPerCoin < 1) minutesPerCoin = 1;
+    minutesPerCoin = clampMinutesPerCoin(minutesPerCoin); // 1..1440, also for a value saved by an older version
 #if PISO_HAS_PHONES
     loadPhoneProfilesFromPrefs();
 #endif

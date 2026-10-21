@@ -3,6 +3,7 @@
 #include "CoinSettle.h"
 #include "PaymentQueueManager.h"
 #include "HardwareManager.h"
+#include "IdleCoin.h"
 #include "Config.h"
 #include "Diagnostics.h"
 
@@ -301,6 +302,9 @@ void releaseCoinSlot(const String& sessionId, CoinSlotOwnerType ownerType, bool 
 void processCoinSlotSession() {
     unsigned long now = millis();
 
+    // A coin pin / pulse guard / pulse width saved while the slot was in use is applied once it is idle (FW-02)
+    serviceCoinSlotHardwareConfig();
+
     // Periodically retry unacknowledged payment dispatches
     processPendingPaymentRetries();
 
@@ -356,9 +360,12 @@ void processCoinSlotSession() {
     // 3. Strict Isolation: If no active or draining session, discard any spurious pulses
     if (currentState == CoinSlotState::IDLE || activeSessionId.length() == 0) {
         if (newPulses > 0 || sessionAccumulatedPulses > 0) {
+            // Counted before the zeroing (the log used to print only newPulses).
+            int lost = idleCoinPulses(newPulses, sessionAccumulatedPulses);
             sessionAccumulatedPulses = 0;
-            Serial.printf("[🪙 COIN SLOT] Discarded %d spurious pulse(s) received while IDLE/unreserved.\n",
-                          newPulses + sessionAccumulatedPulses);
+            Serial.printf("[🪙 COIN SLOT] %d pulse(s) received while IDLE/unreserved; recorded for the operator.\n",
+                          lost);
+            recordIdleCoin(lost);
         }
         return;
     }

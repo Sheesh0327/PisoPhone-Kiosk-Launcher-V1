@@ -9,6 +9,9 @@
 #include "DeviceManager.h"
 #endif
 #include "PulseGuard.h"
+#include "CoinHwApply.h"
+#include "PaymentQueueManager.h"
+#include "RestartGuard.h"
 #include <WiFi.h>
 #include "hal/gpio_ll.h"
 
@@ -257,8 +260,14 @@ int coinPulsesPeek(unsigned long* lastPulseMs) {
     return pulses;
 }
 
+// The pin the interrupt is attached to now. universalCoinPin may already hold a new value (a save waiting for the slot to
+// be idle), and it is the old pin that has to be detached.
+static int attachedCoinPin = -1;
+static bool coinHwConfigPending = false;
+
 void applyCoinSlotHardwareConfig() {
-    detachInterrupt(digitalPinToInterrupt(universalCoinPin));
+    if (attachedCoinPin >= 0) detachInterrupt(digitalPinToInterrupt(attachedCoinPin));
+    attachedCoinPin = universalCoinPin;
 
     // Universal Multi-Coin Pulse Slot (Allan 124A/616A)
     pinMode(universalCoinPin, INPUT_PULLUP);
@@ -271,6 +280,24 @@ void applyCoinSlotHardwareConfig() {
     Serial.printf("[+] Active Coin Mode: UNIVERSAL MULTI-COIN (GPIO %d, Interrupt Active).\n", universalCoinPin);
 
     resetCoinDetectorStates();
+}
+
+// A Settings save: re-apply the coin hardware only if it changed and only when the slot is IDLE (CoinHwApply.h).
+void requestCoinSlotHardwareConfig(bool pinChanged, bool guardChanged, bool minMsChanged) {
+    CoinHwApply action = coinHwApplyDecision(pinChanged, guardChanged, minMsChanged, coinHwConfigPending,
+                                             getCoinSlotState() == CoinSlotState::IDLE);
+    if (action == CoinHwApply::NOW) {
+        applyCoinSlotHardwareConfig();
+        coinHwConfigPending = false;
+    } else if (action == CoinHwApply::LATER) {
+        coinHwConfigPending = true;
+        Serial.println("[+] Coin settings saved; they apply when the coin slot is idle.");
+    }
+}
+
+// Called from the main loop: apply a change that was waiting for the slot to be idle.
+void serviceCoinSlotHardwareConfig() {
+    if (coinHwConfigPending) requestCoinSlotHardwareConfig(false, false, false);
 }
 
 // ============================================================================
@@ -299,7 +326,9 @@ void processHardwareResetPin() {
         if (resetPinLowStart == 0) {
             resetPinLowStart = millis();
             Serial.printf("[⚠️] GPIO %d connected to GND. Hold for 5 seconds to factory reset...\n", HARDWARE_RESET_PIN);
-        } else if (millis() - resetPinLowStart >= 5000) {
+        } else if (millis() - resetPinLowStart >= 5000 &&
+                   resetPinMayRestart(canPerformRebootOrOta(), millis() - resetPinLowStart)) {
+            // after the 5 s hold, wait (up to 30 s more) for a safe moment so a coin in flight is drained first (FW-01)
             Serial.printf("\n[⚠️ RESET] GPIO %d held to GND for > 5 seconds! Triggering Factory Reset...\n",
                           HARDWARE_RESET_PIN);
             factoryResetDefaults();
