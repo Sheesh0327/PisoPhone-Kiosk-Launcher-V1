@@ -1,6 +1,6 @@
 # Feature 002: restore firmware 3.11.0 (products, USB Wi-Fi setup, coin-counter hardening)
 
-Status: **draft** (waiting for the owner)   Branch: `feat/002-firmware-3-11-0`   Area: firmware (with setup program, scripts and CI that belong to it)
+Status: **approved** (owner, 2026-10-21: one feature, setup choices in scope)   Branch: `feat/002-firmware-3-11-0`   Area: firmware (with setup program, scripts and CI that belong to it)
 Backlog rows: none (owner features from the old `beta`, found at the 2026-10-21 replan)   Release: firmware (3.11.0), router (`setup/RELEASE`)
 
 ## Intent
