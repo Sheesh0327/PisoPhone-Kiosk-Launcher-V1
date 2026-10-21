@@ -24,4 +24,4 @@ Updated: 2026-10-21, against `beta` at `2d40ad3` plus the ktlint pin. Row-level 
 | 4 to 8 | not started. 7.1 is blocked outside this repo. |
 
 ## Next step
-R2 pinning (ST-6, CI-3) needs hash and digest lookups that are best done in CI. Otherwise start R3 with the router rows (RT-10, RT-18, RT-17, RT-08/26, RT-22), or wait for your answer on ST-2 and SC-4.
+R3: RT-17 and RT-09 (router). Handoff: `specs/notes/2026-10-21_spec01_r2-r3-router.md`. Owner decisions still open: ST-2, SC-4, ST-8, DEAD-1, APP-04, roadmap 0.1.
