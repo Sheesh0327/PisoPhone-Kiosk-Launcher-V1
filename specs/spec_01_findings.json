@@ -1,0 +1,1933 @@
+[
+ {
+  "id": "FW-03",
+  "area": "firmware",
+  "files": [
+   "esp32_firmware/src/DeviceNetwork.cpp"
+  ],
+  "category": "logic",
+  "severity": "high",
+  "money_or_signing": true,
+  "confidence": "confirmed",
+  "status": "fixed",
+  "fix": "queue, then revenue, LED, pushes",
+  "test": {
+   "kind": "host",
+   "where": "host_tests/coin_record_order_test.cpp",
+   "fails_before": true
+  },
+  "release": "firmware"
+ },
+ {
+  "id": "FW-02",
+  "area": "firmware",
+  "files": [
+   "esp32_firmware/src/WebServerConfig.cpp",
+   "esp32_firmware/src/HardwareManager.cpp"
+  ],
+  "category": "logic",
+  "severity": "high",
+  "money_or_signing": true,
+  "confidence": "reported",
+  "status": "fixed",
+  "fix": "re-apply coin hardware only on change and when IDLE",
+  "test": {
+   "kind": "host",
+   "where": "host_tests/coin_hw_apply_test.cpp",
+   "fails_before": true
+  },
+  "release": "firmware"
+ },
+ {
+  "id": "FW-01",
+  "area": "firmware",
+  "files": [
+   "esp32_firmware/src/WebServerModule.cpp",
+   "esp32_firmware/src/HardwareManager.cpp"
+  ],
+  "category": "logic",
+  "severity": "high",
+  "money_or_signing": true,
+  "confidence": "reported",
+  "status": "fixed",
+  "fix": "restart guard on all four paths",
+  "test": {
+   "kind": "host",
+   "where": "host_tests/restart_guard_test.cpp",
+   "fails_before": true
+  },
+  "release": "firmware"
+ },
+ {
+  "id": "FW-05",
+  "area": "firmware",
+  "files": [
+   "esp32_firmware/src/WebServerConfig.cpp",
+   "esp32_firmware/src/DeviceNetwork.cpp"
+  ],
+  "category": "logic",
+  "severity": "high",
+  "money_or_signing": true,
+  "confidence": "reported",
+  "status": "fixed",
+  "fix": "clamp 1..1440, 64-bit credit",
+  "test": {
+   "kind": "host",
+   "where": "host_tests/coin_credit_test.cpp",
+   "fails_before": true
+  },
+  "release": "firmware"
+ },
+ {
+  "id": "FW-06",
+  "area": "firmware",
+  "files": [
+   "esp32_firmware/src/CoinSlotManager.cpp"
+  ],
+  "category": "logic",
+  "severity": "high",
+  "money_or_signing": true,
+  "confidence": "reported",
+  "status": "fixed",
+  "fix": "idle coin goes to the orphan list",
+  "test": {
+   "kind": "host",
+   "where": "host_tests (3.11.1 batch)",
+   "fails_before": true
+  },
+  "release": "firmware"
+ },
+ {
+  "id": "APP-06",
+  "area": "app",
+  "files": [
+   "app/src/main/java/KioskHttpServer.kt"
+  ],
+  "category": "logic",
+  "severity": "high",
+  "money_or_signing": true,
+  "confidence": "confirmed",
+  "status": "fixed",
+  "fix": "missing amount counts 0 (unit tests written; NOT compiled or run: no Android SDK)",
+  "test": {
+   "kind": "unit",
+   "where": "app/src/test (PaymentRepositoryUnitTest and others)"
+  },
+  "release": "app"
+ },
+ {
+  "id": "APP-01",
+  "area": "app",
+  "files": [
+   "app/src/main/**/KioskSessionSupervisor.kt"
+  ],
+  "category": "logic",
+  "severity": "high",
+  "money_or_signing": true,
+  "confidence": "reported",
+  "status": "fixed",
+  "fix": "lock when unlocked with nothing left (unit tests written; NOT compiled or run: no Android SDK)",
+  "test": {
+   "kind": "unit",
+   "where": "app/src/test (PaymentRepositoryUnitTest and others)"
+  },
+  "release": "app"
+ },
+ {
+  "id": "APP-02",
+  "area": "app",
+  "files": [
+   "app/src/main/**/PaymentRepository.kt"
+  ],
+  "category": "logic",
+  "severity": "high",
+  "money_or_signing": true,
+  "confidence": "reported",
+  "status": "fixed",
+  "fix": "remove orphan-to-receipt recovery (unit tests written; NOT compiled or run: no Android SDK)",
+  "test": {
+   "kind": "unit",
+   "where": "app/src/test (PaymentRepositoryUnitTest and others)"
+  },
+  "release": "app"
+ },
+ {
+  "id": "APP-08",
+  "area": "app",
+  "files": [
+   "app/src/main/**/PaymentRepository.kt"
+  ],
+  "category": "logic",
+  "severity": "high",
+  "money_or_signing": true,
+  "confidence": "reported",
+  "status": "fixed",
+  "fix": "remove orphan-to-receipt recovery (unit tests written; NOT compiled or run: no Android SDK)",
+  "test": {
+   "kind": "unit",
+   "where": "app/src/test (PaymentRepositoryUnitTest and others)"
+  },
+  "release": "app"
+ },
+ {
+  "id": "APP-05",
+  "area": "app",
+  "files": [
+   "app/src/main/**/Esp32ConnectionManager.kt"
+  ],
+  "category": "logic",
+  "severity": "high",
+  "money_or_signing": true,
+  "confidence": "reported",
+  "status": "fixed",
+  "fix": "mark tx only after ack (unit tests written; NOT compiled or run: no Android SDK)",
+  "test": {
+   "kind": "unit",
+   "where": "app/src/test (PaymentRepositoryUnitTest and others)"
+  },
+  "release": "app"
+ },
+ {
+  "id": "APP-10",
+  "area": "app",
+  "files": [
+   "app/src/main/**/KioskEngine.kt",
+   "app/src/main/**/PaymentRepository.kt"
+  ],
+  "category": "logic",
+  "severity": "high",
+  "money_or_signing": true,
+  "confidence": "reported",
+  "status": "fixed",
+  "fix": "callback errors cannot turn APPLIED into FAILED (unit tests written; NOT compiled or run: no Android SDK)",
+  "test": {
+   "kind": "unit",
+   "where": "app/src/test (PaymentRepositoryUnitTest and others)"
+  },
+  "release": "app"
+ },
+ {
+  "id": "APP-03",
+  "area": "app",
+  "files": [
+   "app/src/main/**/KioskEngine.kt"
+  ],
+  "category": "logic",
+  "severity": "high",
+  "money_or_signing": true,
+  "confidence": "reported",
+  "status": "fixed",
+  "fix": "health check has its own lock (unit tests written; NOT compiled or run: no Android SDK)",
+  "test": {
+   "kind": "unit",
+   "where": "app/src/test (PaymentRepositoryUnitTest and others)"
+  },
+  "release": "app"
+ },
+ {
+  "id": "APP-09",
+  "area": "app",
+  "files": [
+   "app/src/main/**/KioskSessionSupervisor.kt"
+  ],
+  "category": "logic",
+  "severity": "high",
+  "money_or_signing": true,
+  "confidence": "reported",
+  "status": "fixed",
+  "fix": "atomic timeout update (unit tests written; NOT compiled or run: no Android SDK)",
+  "test": {
+   "kind": "unit",
+   "where": "app/src/test (PaymentRepositoryUnitTest and others)"
+  },
+  "release": "app"
+ },
+ {
+  "id": "APP-04",
+  "area": "app",
+  "files": [
+   "app/src/main/**/KioskStateManager.kt",
+   "app/src/main/**/KioskEngine.kt"
+  ],
+  "category": "logic",
+  "severity": "high",
+  "money_or_signing": true,
+  "confidence": "uncertain",
+  "status": "owner-decision",
+  "fix": "refusing coins until restore works could leave a phone stuck; skipped on purpose",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "app"
+ },
+ {
+  "id": "RT-01",
+  "area": "router",
+  "files": [
+   "tools/pisoportal/src"
+  ],
+  "category": "logic",
+  "severity": "high",
+  "money_or_signing": true,
+  "confidence": "reported",
+  "status": "fixed",
+  "fix": "router 1.5.14; see the commit e827c98",
+  "test": {
+   "kind": "integration",
+   "where": "tools/pisoportal cargo tests + tests/test_flow.py",
+   "fails_before": true
+  },
+  "release": "router"
+ },
+ {
+  "id": "RT-02",
+  "area": "router",
+  "files": [
+   "tools/pisoportal/src"
+  ],
+  "category": "logic",
+  "severity": "high",
+  "money_or_signing": true,
+  "confidence": "reported",
+  "status": "fixed",
+  "fix": "router 1.5.14; see the commit e827c98",
+  "test": {
+   "kind": "integration",
+   "where": "tools/pisoportal cargo tests + tests/test_flow.py",
+   "fails_before": true
+  },
+  "release": "router"
+ },
+ {
+  "id": "RT-03",
+  "area": "router",
+  "files": [
+   "tools/pisoportal/src"
+  ],
+  "category": "logic",
+  "severity": "high",
+  "money_or_signing": true,
+  "confidence": "reported",
+  "status": "fixed",
+  "fix": "router 1.5.14; see the commit e827c98",
+  "test": {
+   "kind": "integration",
+   "where": "tools/pisoportal cargo tests + tests/test_flow.py",
+   "fails_before": true
+  },
+  "release": "router"
+ },
+ {
+  "id": "RT-04",
+  "area": "router",
+  "files": [
+   "tools/pisoportal/src"
+  ],
+  "category": "logic",
+  "severity": "high",
+  "money_or_signing": true,
+  "confidence": "reported",
+  "status": "fixed",
+  "fix": "router 1.5.14; see the commit e827c98",
+  "test": {
+   "kind": "integration",
+   "where": "tools/pisoportal cargo tests + tests/test_flow.py",
+   "fails_before": true
+  },
+  "release": "router"
+ },
+ {
+  "id": "RT-05",
+  "area": "router",
+  "files": [
+   "tools/pisoportal/src"
+  ],
+  "category": "logic",
+  "severity": "high",
+  "money_or_signing": true,
+  "confidence": "reported",
+  "status": "fixed",
+  "fix": "router 1.5.14; see the commit e827c98",
+  "test": {
+   "kind": "integration",
+   "where": "tools/pisoportal cargo tests + tests/test_flow.py",
+   "fails_before": true
+  },
+  "release": "router"
+ },
+ {
+  "id": "RT-06",
+  "area": "router",
+  "files": [
+   "tools/pisoportal/src"
+  ],
+  "category": "logic",
+  "severity": "high",
+  "money_or_signing": true,
+  "confidence": "reported",
+  "status": "fixed",
+  "fix": "router 1.5.14; see the commit e827c98",
+  "test": {
+   "kind": "integration",
+   "where": "tools/pisoportal cargo tests + tests/test_flow.py",
+   "fails_before": true
+  },
+  "release": "router"
+ },
+ {
+  "id": "RT-07",
+  "area": "router",
+  "files": [
+   "tools/pisoportal/src"
+  ],
+  "category": "logic",
+  "severity": "high",
+  "money_or_signing": true,
+  "confidence": "reported",
+  "status": "fixed",
+  "fix": "router 1.5.14; see the commit e827c98",
+  "test": {
+   "kind": "integration",
+   "where": "tools/pisoportal cargo tests + tests/test_flow.py",
+   "fails_before": true
+  },
+  "release": "router"
+ },
+ {
+  "id": "RT-14",
+  "area": "router",
+  "files": [
+   "tools/pisoportal/src"
+  ],
+  "category": "logic",
+  "severity": "high",
+  "money_or_signing": true,
+  "confidence": "reported",
+  "status": "fixed",
+  "fix": "router 1.5.14; see the commit e827c98",
+  "test": {
+   "kind": "integration",
+   "where": "tools/pisoportal cargo tests + tests/test_flow.py",
+   "fails_before": true
+  },
+  "release": "router"
+ },
+ {
+  "id": "CI-1",
+  "area": "ci",
+  "files": [
+   ".github/workflows/firmware-images.yml"
+  ],
+  "category": "logic",
+  "severity": "high",
+  "money_or_signing": true,
+  "confidence": "confirmed",
+  "status": "fixed",
+  "fix": "sign from the approved commit (commit f8367b2)",
+  "test": {
+   "kind": "ci",
+   "where": "scripts/tests/test_workflow_signing.py (passes on beta)"
+  },
+  "release": "none"
+ },
+ {
+  "id": "CI-2",
+  "area": "ci",
+  "files": [
+   ".github/workflows/publish-router.yml"
+  ],
+  "category": "logic",
+  "severity": "high",
+  "money_or_signing": true,
+  "confidence": "reported",
+  "status": "fixed",
+  "fix": "approval covers the signed commit (f8367b2)",
+  "test": {
+   "kind": "ci",
+   "where": "scripts/tests/test_workflow_signing.py (passes on beta)"
+  },
+  "release": "none"
+ },
+ {
+  "id": "CI-4",
+  "area": "ci",
+  "files": [
+   ".github/workflows/build-apk.yml"
+  ],
+  "category": "logic",
+  "severity": "med",
+  "money_or_signing": true,
+  "confidence": "reported",
+  "status": "fixed",
+  "fix": "test jobs read-only (f8367b2); verify the two remaining write jobs are the commit jobs",
+  "test": {
+   "kind": "ci",
+   "where": "review of build-apk.yml permissions"
+  },
+  "release": "none"
+ },
+ {
+  "id": "CI-9",
+  "area": "ci",
+  "files": [
+   ".github/workflows/build-apk.yml"
+  ],
+  "category": "logic",
+  "severity": "med",
+  "money_or_signing": true,
+  "confidence": "reported",
+  "status": "fixed",
+  "fix": "missing apksigner is fatal (f8367b2); confirm",
+  "test": {
+   "kind": "ci",
+   "where": "not re-checked"
+  },
+  "release": "none"
+ },
+ {
+  "id": "ST-1",
+  "area": "setup",
+  "files": [
+   "setup/pisophone_setup.py"
+  ],
+  "category": "logic",
+  "severity": "high",
+  "money_or_signing": true,
+  "confidence": "confirmed",
+  "status": "fixed",
+  "fix": "name EXPECTED_OWNER_FINGERPRINT no longer present (0a7f5b1); confirm AC2.2 test exists",
+  "test": {
+   "kind": "unit",
+   "where": "router/tests/test_setup_tools.py"
+  },
+  "release": "none"
+ },
+ {
+  "id": "SC-1",
+  "area": "scripts",
+  "files": [
+   "scripts/check_security_rules.sh"
+  ],
+  "category": "logic",
+  "severity": "med",
+  "money_or_signing": true,
+  "confidence": "reported",
+  "status": "fixed",
+  "fix": "base64-PEM and DER patterns added (0a7f5b1)",
+  "test": {
+   "kind": "unit",
+   "where": "scripts/tests/test_security_rules.py (9 checks pass)",
+   "fails_before": true
+  },
+  "release": "none"
+ },
+ {
+  "id": "SC-3",
+  "area": "scripts",
+  "files": [
+   "scripts/sign_router.py",
+   "scripts/sign_firmware.py"
+  ],
+  "category": "logic",
+  "severity": "med",
+  "money_or_signing": true,
+  "confidence": "reported",
+  "status": "fixed",
+  "fix": "signature verified before writing (0a7f5b1)",
+  "test": {
+   "kind": "unit",
+   "where": "scripts/tests/test_signing_keys.py",
+   "fails_before": true
+  },
+  "release": "none"
+ },
+ {
+  "id": "SC-4",
+  "area": "scripts",
+  "files": [
+   "scripts/check_published_apk.py",
+   "scripts/apk_production_cert.txt"
+  ],
+  "category": "logic",
+  "severity": "med",
+  "money_or_signing": true,
+  "confidence": "reported",
+  "status": "owner-decision",
+  "fix": "check is in place; scripts/apk_production_cert.txt is empty until the owner fills in the production certificate",
+  "test": {
+   "kind": "unit",
+   "where": "scripts/tests/test_check_published_apk.py"
+  },
+  "release": "none"
+ },
+ {
+  "id": "SC-2",
+  "area": "scripts",
+  "files": [
+   "scripts/make_owner_keys.py"
+  ],
+  "category": "logic",
+  "severity": "low",
+  "money_or_signing": true,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 section 6, R2",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "none"
+ },
+ {
+  "id": "ST-2",
+  "area": "setup",
+  "files": [
+   "setup/pisophone_setup.py"
+  ],
+  "category": "logic",
+  "severity": "med",
+  "money_or_signing": true,
+  "confidence": "uncertain",
+  "status": "owner-decision",
+  "fix": "see spec_01 section 6, R2",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "none"
+ },
+ {
+  "id": "ST-3",
+  "area": "setup",
+  "files": [
+   "setup/pisophone_setup.py"
+  ],
+  "category": "logic",
+  "severity": "med",
+  "money_or_signing": true,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 section 6, R2",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "none"
+ },
+ {
+  "id": "ST-4",
+  "area": "setup",
+  "files": [
+   "setup/pisophone_setup.py"
+  ],
+  "category": "logic",
+  "severity": "med",
+  "money_or_signing": true,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 section 6, R2",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "none"
+ },
+ {
+  "id": "SC-7",
+  "area": "scripts",
+  "files": [
+   "scripts/sign_console_ui.py"
+  ],
+  "category": "logic",
+  "severity": "low",
+  "money_or_signing": true,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 section 6, R2",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "none"
+ },
+ {
+  "id": "CI-7",
+  "area": "scripts",
+  "files": [
+   "scripts/publish_firmware_ota.py"
+  ],
+  "category": "logic",
+  "severity": "low",
+  "money_or_signing": true,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 section 6, R2",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "none"
+ },
+ {
+  "id": "CI-3",
+  "area": "ci",
+  "files": [
+   ".github/workflows/router-program.yml"
+  ],
+  "category": "logic",
+  "severity": "low",
+  "money_or_signing": true,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 section 6, R2",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "none"
+ },
+ {
+  "id": "CI-8",
+  "area": "ci",
+  "files": [
+   ".github/workflows/quality.yml"
+  ],
+  "category": "logic",
+  "severity": "low",
+  "money_or_signing": true,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 section 6, R2",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "none"
+ },
+ {
+  "id": "ST-6",
+  "area": "setup",
+  "files": [
+   "setup/pisophone_setup.py"
+  ],
+  "category": "logic",
+  "severity": "low",
+  "money_or_signing": true,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 section 6, R2",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "none"
+ },
+ {
+  "id": "RT-10",
+  "area": "router",
+  "files": [
+   "router/piso_isolation.sh"
+  ],
+  "category": "logic",
+  "severity": "med",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 section 6, R3",
+  "test": {
+   "kind": "integration",
+   "where": "router/tests/test_setup.py"
+  },
+  "release": "router"
+ },
+ {
+  "id": "RT-18",
+  "area": "router",
+  "files": [
+   "tools/pisoportal/src/config.rs"
+  ],
+  "category": "logic",
+  "severity": "med",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 section 6, R3",
+  "test": {
+   "kind": "integration",
+   "where": "router/tests"
+  },
+  "release": "router"
+ },
+ {
+  "id": "RT-09",
+  "area": "router",
+  "files": [
+   "tools/pisoportal/src/console.rs"
+  ],
+  "category": "logic",
+  "severity": "med",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 section 6, R3",
+  "test": {
+   "kind": "integration",
+   "where": "integration"
+  },
+  "release": "router"
+ },
+ {
+  "id": "RT-17",
+  "area": "router",
+  "files": [
+   "tools/pisoportal/src/core.rs"
+  ],
+  "category": "logic",
+  "severity": "med",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 section 6, R3",
+  "test": {
+   "kind": "unit",
+   "where": "cargo test"
+  },
+  "release": "router"
+ },
+ {
+  "id": "RT-08",
+  "area": "router",
+  "files": [
+   "tools/pisoportal/src/util.rs"
+  ],
+  "category": "logic",
+  "severity": "med",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 section 6, R3",
+  "test": {
+   "kind": "unit",
+   "where": "cargo test"
+  },
+  "release": "router"
+ },
+ {
+  "id": "RT-26",
+  "area": "router",
+  "files": [
+   "tools/pisoportal/src/console.rs"
+  ],
+  "category": "logic",
+  "severity": "med",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 section 6, R3",
+  "test": {
+   "kind": "unit",
+   "where": "cargo test"
+  },
+  "release": "router"
+ },
+ {
+  "id": "RT-22",
+  "area": "setup",
+  "files": [
+   "setup/src/96-space-backup.sh"
+  ],
+  "category": "logic",
+  "severity": "med",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 section 6, R3",
+  "test": {
+   "kind": "integration",
+   "where": "router/tests/test_setup_tools.py"
+  },
+  "release": "none"
+ },
+ {
+  "id": "FW-04",
+  "area": "firmware",
+  "files": [
+   "esp32_firmware/src/WebServerAuth.cpp"
+  ],
+  "category": "logic",
+  "severity": "med",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 section 6, R3",
+  "test": {
+   "kind": "hardware",
+   "where": "hardware"
+  },
+  "release": "firmware"
+ },
+ {
+  "id": "FW-07",
+  "area": "firmware",
+  "files": [
+   "esp32_firmware/src/WebSocketsUdp.cpp"
+  ],
+  "category": "logic",
+  "severity": "med",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 section 6, R3",
+  "test": {
+   "kind": "hardware",
+   "where": "hardware"
+  },
+  "release": "firmware"
+ },
+ {
+  "id": "FW-08",
+  "area": "firmware",
+  "files": [
+   "esp32_firmware/src/HardwareManager.cpp"
+  ],
+  "category": "logic",
+  "severity": "med",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 section 6, R3",
+  "test": {
+   "kind": "host",
+   "where": "host_tests"
+  },
+  "release": "firmware"
+ },
+ {
+  "id": "FW-10",
+  "area": "firmware",
+  "files": [
+   "esp32_firmware/src/Config.cpp"
+  ],
+  "category": "logic",
+  "severity": "med",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 section 6, R3",
+  "test": {
+   "kind": "host",
+   "where": "host_tests"
+  },
+  "release": "firmware"
+ },
+ {
+  "id": "FW-11",
+  "area": "firmware",
+  "files": [
+   "esp32_firmware/src/Config.cpp"
+  ],
+  "category": "logic",
+  "severity": "med",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 section 6, R3",
+  "test": {
+   "kind": "host",
+   "where": "host_tests/tx_id_test.cpp"
+  },
+  "release": "firmware"
+ },
+ {
+  "id": "FW-12",
+  "area": "firmware",
+  "files": [
+   "esp32_firmware/include/Config.h"
+  ],
+  "category": "logic",
+  "severity": "med",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 section 6, R3",
+  "test": {
+   "kind": "host",
+   "where": "host_tests"
+  },
+  "release": "firmware"
+ },
+ {
+  "id": "FW-13",
+  "area": "firmware",
+  "files": [
+   "esp32_firmware/src/WebSocketsUdp.cpp"
+  ],
+  "category": "logic",
+  "severity": "med",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 section 6, R3",
+  "test": {
+   "kind": "host",
+   "where": "host_tests"
+  },
+  "release": "firmware"
+ },
+ {
+  "id": "FW-14",
+  "area": "firmware",
+  "files": [
+   "esp32_firmware/src/WebServerAuth.cpp"
+  ],
+  "category": "logic",
+  "severity": "med",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 section 6, R3",
+  "test": {
+   "kind": "host",
+   "where": "host_tests/ack_parse_test.cpp"
+  },
+  "release": "firmware"
+ },
+ {
+  "id": "APP-21",
+  "area": "app",
+  "files": [
+   "app/src/main/java/KioskUpdateManager.kt"
+  ],
+  "category": "logic",
+  "severity": "med",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 section 6, R3",
+  "test": {
+   "kind": "unit",
+   "where": "unit"
+  },
+  "release": "app"
+ },
+ {
+  "id": "ST-5",
+  "area": "setup",
+  "files": [
+   "setup/pisophone_setup.py"
+  ],
+  "category": "logic",
+  "severity": "med",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 section 6, R3",
+  "test": {
+   "kind": "integration",
+   "where": "router/tests"
+  },
+  "release": "none"
+ },
+ {
+  "id": "ST-7",
+  "area": "setup",
+  "files": [
+   "setup/pisophone_setup.py"
+  ],
+  "category": "logic",
+  "severity": "med",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 section 6, R3",
+  "test": {
+   "kind": "unit",
+   "where": "unit"
+  },
+  "release": "none"
+ },
+ {
+  "id": "CI-5",
+  "area": "ci",
+  "files": [
+   ".github/workflows/quality.yml"
+  ],
+  "category": "logic",
+  "severity": "med",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 section 6, R3",
+  "test": {
+   "kind": "ci",
+   "where": "ci"
+  },
+  "release": "none"
+ },
+ {
+  "id": "CI-6",
+  "area": "ci",
+  "files": [
+   ".github/workflows/quality.yml"
+  ],
+  "category": "logic",
+  "severity": "med",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 section 6, R3",
+  "test": {
+   "kind": "ci",
+   "where": "ci"
+  },
+  "release": "none"
+ },
+ {
+  "id": "WEB-1",
+  "area": "website",
+  "files": [
+   "website/_headers"
+  ],
+  "category": "logic",
+  "severity": "med",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 section 6, R3",
+  "test": {
+   "kind": "unit",
+   "where": "test_site_page.py"
+  },
+  "release": "site"
+ },
+ {
+  "id": "WEB-2",
+  "area": "website",
+  "files": [
+   "website/_headers"
+  ],
+  "category": "logic",
+  "severity": "med",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 section 6, R3",
+  "test": {
+   "kind": "unit",
+   "where": "test_site_page.py"
+  },
+  "release": "site"
+ },
+ {
+  "id": "DEAD-1",
+  "area": "scripts",
+  "files": [
+   "package.json"
+  ],
+  "category": "dead",
+  "severity": "low",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "owner-decision",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "none"
+ },
+ {
+  "id": "APP-11",
+  "area": "app",
+  "files": [
+   "app/src/main"
+  ],
+  "category": "sloppy",
+  "severity": "low",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "app"
+ },
+ {
+  "id": "APP-12",
+  "area": "app",
+  "files": [
+   "app/src/main"
+  ],
+  "category": "sloppy",
+  "severity": "low",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "app"
+ },
+ {
+  "id": "APP-16",
+  "area": "app",
+  "files": [
+   "app/src/main"
+  ],
+  "category": "dead",
+  "severity": "low",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "app"
+ },
+ {
+  "id": "APP-17",
+  "area": "app",
+  "files": [
+   "app/src/main"
+  ],
+  "category": "dead",
+  "severity": "low",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "app"
+ },
+ {
+  "id": "APP-18",
+  "area": "app",
+  "files": [
+   "app/src/main"
+  ],
+  "category": "dead",
+  "severity": "low",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "app"
+ },
+ {
+  "id": "APP-19",
+  "area": "app",
+  "files": [
+   "app/src/main"
+  ],
+  "category": "dead",
+  "severity": "low",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "app"
+ },
+ {
+  "id": "APP-20",
+  "area": "app",
+  "files": [
+   "app/src/main"
+  ],
+  "category": "sloppy",
+  "severity": "low",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "app"
+ },
+ {
+  "id": "APP-22",
+  "area": "app",
+  "files": [
+   "app/src/main"
+  ],
+  "category": "sloppy",
+  "severity": "low",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "app"
+ },
+ {
+  "id": "APP-24",
+  "area": "app",
+  "files": [
+   "app/src/main"
+  ],
+  "category": "sloppy",
+  "severity": "low",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "app"
+ },
+ {
+  "id": "APP-25",
+  "area": "app",
+  "files": [
+   "app/src/main"
+  ],
+  "category": "sloppy",
+  "severity": "low",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "app"
+ },
+ {
+  "id": "APP-26",
+  "area": "app",
+  "files": [
+   "app/src/main"
+  ],
+  "category": "dead",
+  "severity": "low",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "app"
+ },
+ {
+  "id": "FW-21",
+  "area": "firmware",
+  "files": [
+   "esp32_firmware/web"
+  ],
+  "category": "sloppy",
+  "severity": "low",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "firmware"
+ },
+ {
+  "id": "FW-22",
+  "area": "firmware",
+  "files": [
+   "esp32_firmware/src"
+  ],
+  "category": "dead",
+  "severity": "low",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "firmware"
+ },
+ {
+  "id": "FW-23",
+  "area": "firmware",
+  "files": [
+   "esp32_firmware/src"
+  ],
+  "category": "dead",
+  "severity": "low",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "firmware"
+ },
+ {
+  "id": "FW-24",
+  "area": "firmware",
+  "files": [
+   "esp32_firmware/src"
+  ],
+  "category": "sloppy",
+  "severity": "low",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "firmware"
+ },
+ {
+  "id": "FW-09",
+  "area": "firmware",
+  "files": [
+   "esp32_firmware/src"
+  ],
+  "category": "sloppy",
+  "severity": "low",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "firmware"
+ },
+ {
+  "id": "FW-25",
+  "area": "firmware",
+  "files": [
+   "esp32_firmware/include"
+  ],
+  "category": "sloppy",
+  "severity": "low",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "firmware"
+ },
+ {
+  "id": "RT-19",
+  "area": "router",
+  "files": [
+   "tools/pisoportal/src"
+  ],
+  "category": "sloppy",
+  "severity": "low",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "router"
+ },
+ {
+  "id": "RT-20",
+  "area": "router",
+  "files": [
+   "tools/pisoportal/src"
+  ],
+  "category": "sloppy",
+  "severity": "low",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "router"
+ },
+ {
+  "id": "RT-23",
+  "area": "router",
+  "files": [
+   "tools/pisoportal/src"
+  ],
+  "category": "sloppy",
+  "severity": "low",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "router"
+ },
+ {
+  "id": "RT-24",
+  "area": "router",
+  "files": [
+   "tools/pisoportal/src"
+  ],
+  "category": "sloppy",
+  "severity": "low",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "router"
+ },
+ {
+  "id": "ST-8",
+  "area": "setup",
+  "files": [
+   "setup/pisophone_setup.py",
+   "scripts/make_cards.py"
+  ],
+  "category": "sloppy",
+  "severity": "low",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "owner-decision",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "none"
+ },
+ {
+  "id": "ST-11",
+  "area": "setup",
+  "files": [
+   "setup/pisophone_setup.py"
+  ],
+  "category": "sloppy",
+  "severity": "low",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "none"
+ },
+ {
+  "id": "SC-8",
+  "area": "scripts",
+  "files": [
+   "scripts"
+  ],
+  "category": "sloppy",
+  "severity": "low",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "none"
+ },
+ {
+  "id": "SC-6",
+  "area": "scripts",
+  "files": [
+   "scripts"
+  ],
+  "category": "sloppy",
+  "severity": "low",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "none"
+ },
+ {
+  "id": "SC-9",
+  "area": "scripts",
+  "files": [
+   "scripts"
+  ],
+  "category": "sloppy",
+  "severity": "low",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "none"
+ },
+ {
+  "id": "CI-10",
+  "area": "ci",
+  "files": [
+   ".github/workflows"
+  ],
+  "category": "sloppy",
+  "severity": "low",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "none"
+ },
+ {
+  "id": "CI-11",
+  "area": "ci",
+  "files": [
+   ".github/workflows"
+  ],
+  "category": "sloppy",
+  "severity": "low",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "none"
+ },
+ {
+  "id": "FW-16",
+  "area": "firmware",
+  "files": [
+   "esp32_firmware/src"
+  ],
+  "category": "overengineered",
+  "severity": "med",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "firmware"
+ },
+ {
+  "id": "FW-15",
+  "area": "firmware",
+  "files": [
+   "esp32_firmware/src"
+  ],
+  "category": "overengineered",
+  "severity": "low",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "none"
+ },
+ {
+  "id": "RT-15",
+  "area": "router",
+  "files": [
+   "tools/pisoportal/src/core.rs"
+  ],
+  "category": "overengineered",
+  "severity": "med",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "router"
+ },
+ {
+  "id": "FW-26",
+  "area": "firmware",
+  "files": [
+   "esp32_firmware/src"
+  ],
+  "category": "overengineered",
+  "severity": "med",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "firmware"
+ },
+ {
+  "id": "ST-9",
+  "area": "setup",
+  "files": [
+   "setup/pisophone_setup.py"
+  ],
+  "category": "overengineered",
+  "severity": "med",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "none"
+ },
+ {
+  "id": "ST-10",
+  "area": "setup",
+  "files": [
+   "setup/pisophone_setup.py"
+  ],
+  "category": "overengineered",
+  "severity": "med",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "none"
+ },
+ {
+  "id": "RT-12",
+  "area": "router",
+  "files": [
+   "tools/pisoportal/src"
+  ],
+  "category": "inefficient",
+  "severity": "low",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "router"
+ },
+ {
+  "id": "RT-13",
+  "area": "router",
+  "files": [
+   "tools/pisoportal/src"
+  ],
+  "category": "inefficient",
+  "severity": "low",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "router"
+ },
+ {
+  "id": "RT-16",
+  "area": "router",
+  "files": [
+   "tools/pisoportal/src/ledger.rs"
+  ],
+  "category": "inefficient",
+  "severity": "low",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "router"
+ },
+ {
+  "id": "FW-17",
+  "area": "firmware",
+  "files": [
+   "esp32_firmware/src"
+  ],
+  "category": "inefficient",
+  "severity": "low",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "firmware"
+ },
+ {
+  "id": "FW-18",
+  "area": "firmware",
+  "files": [
+   "esp32_firmware/src"
+  ],
+  "category": "inefficient",
+  "severity": "low",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "firmware"
+ },
+ {
+  "id": "FW-19",
+  "area": "firmware",
+  "files": [
+   "esp32_firmware/web"
+  ],
+  "category": "inefficient",
+  "severity": "low",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "firmware"
+ },
+ {
+  "id": "FW-20",
+  "area": "firmware",
+  "files": [
+   "esp32_firmware/src"
+  ],
+  "category": "inefficient",
+  "severity": "low",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "firmware"
+ },
+ {
+  "id": "APP-13",
+  "area": "app",
+  "files": [
+   "app/src/main"
+  ],
+  "category": "inefficient",
+  "severity": "low",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "app"
+ },
+ {
+  "id": "APP-14",
+  "area": "app",
+  "files": [
+   "app/src/main"
+  ],
+  "category": "inefficient",
+  "severity": "low",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "app"
+ },
+ {
+  "id": "APP-15",
+  "area": "app",
+  "files": [
+   "app/src/main"
+  ],
+  "category": "inefficient",
+  "severity": "low",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "see spec_01 sections 6 (R4 to R6)",
+  "test": {
+   "kind": "unit",
+   "where": "not written"
+  },
+  "release": "app"
+ }
+]

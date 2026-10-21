@@ -1,6 +1,10 @@
 # Negative constraints ledger
 
-Failures seen while working, logged before any fix is attempted.
+Failures seen while working, logged before any fix is attempted (constitution rule 6).
+New entries use this table; the dated sections below it are earlier free-text entries.
+
+| date | task | model | error_class | traceback_hash | constraint_violated | resolved |
+|------|------|-------|-------------|----------------|---------------------|----------|
 
 ## 2026-10-21: FW-03 `coin_record_order_test` (expected red test, before the fix)
 

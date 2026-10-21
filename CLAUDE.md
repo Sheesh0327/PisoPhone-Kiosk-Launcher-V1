@@ -1,5 +1,7 @@
 # CLAUDE.md: what this project is and how to work on it
 
+Spec-driven work: read `constitution.md`, then `specs/README.md` (which points to the specs and `specs/STATUS.md`).
+
 Read this first. It is short on purpose: the details are in the documents it points to. Section 2 says where the repository stands
 today; update it whenever a release goes out.
 
