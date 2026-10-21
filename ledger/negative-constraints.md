@@ -107,3 +107,16 @@ Refusing payments until a state restore succeeds could leave a phone that never 
 Android SDK here to try it. Left open for the owner (spec status `owner-decision`).
 ## R2 CI agent: scripts/tests/test_workflow_signing.py (expected red before the fix)
 FAIL: firmware-images.yml:204 signing script after git reset --hard (196); publish-router.yml:87,101,111,117 after reset (86). Fix: run signing scripts from a copy of $GITHUB_SHA ($TRUSTED/scripts/...), not the reset tree.
+
+## 2026-10-21: R3 router rows RT-10, RT-18, RT-22, RT-08, RT-26 (expected red tests, before the fix)
+
+`python3 router/tests/test_setup.py` with the new checks and the old scripts: 294 checks, 6 failures, all on purpose:
+```
+FAIL: RT-10: no separate `nft delete table` call: ARGS delete table bridge piso_guest
+FAIL: RT-10: each rule file declares, deletes and re-creates its table in one file
+FAIL: RT-18: CONSOLE_BIND '0.0.0.0' / '' : the router's own address is read from br-lan   (4 checks, two cases each way)
+```
+`cargo test rt08` / `rt26` with the old `jget`: `left: "x\\"` `right: "x\"b\":1"` and `left: "pa\\"` `right: "pa\"ss\\word"`.
+RT-22 (checked by hand against the old function): the old `cmd_import` accepted `etc/coinslot.d/../passwd` past its pattern and went on to unpack
+(GNU tar then refused it itself; the router's busybox tar was not tried), so on the router the file filter was the only guard.
+Cause: fixes not written yet. Tests written first on purpose. All green after the fix (295 checks in test_setup.py, 89 cargo tests).

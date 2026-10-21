@@ -87,18 +87,132 @@ pub fn random_hex(n: usize) -> String {
     s
 }
 
-/// The value of `key` in a flat JSON object (quoted or not), like the shell's jget: "" when missing.
+/// The value of `key` among the top-level keys of a JSON object, "" when it is missing or the text is not an object. A string
+/// value is returned with its escapes decoded; a number, true/false/null is returned as written; a nested object or array is
+/// returned as its own text. A key name that only appears inside another value's text, or inside a nested value, is not found.
 pub fn jget(body: &str, key: &str) -> String {
-    let pat = format!("\"{}\"", key);
-    let Some(i) = body.find(&pat) else { return String::new() };
-    let rest = body[i + pat.len()..].trim_start();
-    let Some(rest) = rest.strip_prefix(':') else { return String::new() };
-    let rest = rest.trim_start();
-    if let Some(q) = rest.strip_prefix('"') {
-        q.split('"').next().unwrap_or("").to_string()
-    } else {
-        rest.split([',', '}']).next().unwrap_or("").trim().to_string()
+    let b = body.as_bytes();
+    let mut i = 0;
+    json_ws(b, &mut i);
+    if b.get(i) != Some(&b'{') {
+        return String::new();
     }
+    i += 1;
+    loop {
+        json_ws(b, &mut i);
+        if b.get(i) != Some(&b'"') {
+            return String::new();
+        }
+        let Some(k) = json_string(b, &mut i) else { return String::new() };
+        json_ws(b, &mut i);
+        if b.get(i) != Some(&b':') {
+            return String::new();
+        }
+        i += 1;
+        json_ws(b, &mut i);
+        let value = match b.get(i) {
+            Some(b'"') => json_string(b, &mut i),
+            Some(b'{') | Some(b'[') => json_skip_nested(b, &mut i).map(|r| body[r.0..r.1].to_string()),
+            Some(_) => {
+                let start = i;
+                while i < b.len() && !matches!(b[i], b',' | b'}') {
+                    i += 1;
+                }
+                Some(body[start..i].trim().to_string())
+            }
+            None => None,
+        };
+        let Some(value) = value else { return String::new() };
+        if k == key {
+            return value;
+        }
+        json_ws(b, &mut i);
+        match b.get(i) {
+            Some(b',') => i += 1,
+            _ => return String::new(),
+        }
+    }
+}
+
+fn json_ws(b: &[u8], i: &mut usize) {
+    while *i < b.len() && matches!(b[*i], b' ' | b'\t' | b'\r' | b'\n') {
+        *i += 1;
+    }
+}
+
+/// A JSON string starting at the opening quote; leaves `i` after the closing quote. None when it is cut short or has a bad escape.
+fn json_string(b: &[u8], i: &mut usize) -> Option<String> {
+    *i += 1;
+    let mut out: Vec<u8> = Vec::new();
+    loop {
+        let c = *b.get(*i)?;
+        *i += 1;
+        match c {
+            b'"' => return String::from_utf8(out).ok(),
+            b'\\' => {
+                let e = *b.get(*i)?;
+                *i += 1;
+                match e {
+                    b'"' | b'\\' | b'/' => out.push(e),
+                    b'b' => out.push(8),
+                    b'f' => out.push(12),
+                    b'n' => out.push(b'\n'),
+                    b'r' => out.push(b'\r'),
+                    b't' => out.push(b'\t'),
+                    b'u' => {
+                        let mut cp = json_hex4(b, i)?;
+                        if (0xd800..0xdc00).contains(&cp) {
+                            // a high surrogate must be followed by \uDC00..\uDFFF
+                            if b.get(*i) != Some(&b'\\') || b.get(*i + 1) != Some(&b'u') {
+                                return None;
+                            }
+                            *i += 2;
+                            let lo = json_hex4(b, i)?;
+                            if !(0xdc00..0xe000).contains(&lo) {
+                                return None;
+                            }
+                            cp = 0x10000 + ((cp - 0xd800) << 10) + (lo - 0xdc00);
+                        }
+                        let mut buf = [0u8; 4];
+                        out.extend_from_slice(char::from_u32(cp)?.encode_utf8(&mut buf).as_bytes());
+                    }
+                    _ => return None,
+                }
+            }
+            _ => out.push(c),
+        }
+    }
+}
+
+fn json_hex4(b: &[u8], i: &mut usize) -> Option<u32> {
+    let h = b.get(*i..*i + 4)?;
+    *i += 4;
+    u32::from_str_radix(std::str::from_utf8(h).ok()?, 16).ok()
+}
+
+/// Skips a nested object or array starting at its opening bracket; returns its byte range.
+fn json_skip_nested(b: &[u8], i: &mut usize) -> Option<(usize, usize)> {
+    let start = *i;
+    let mut depth = 0usize;
+    while *i < b.len() {
+        match b[*i] {
+            b'"' => {
+                json_string(b, i)?;
+                continue;
+            }
+            b'{' | b'[' => depth += 1,
+            b'}' | b']' => {
+                depth -= 1;
+                if depth == 0 {
+                    *i += 1;
+                    return Some((start, *i));
+                }
+            }
+            _ => {}
+        }
+        *i += 1;
+    }
+    None
 }
 
 pub fn jget_u64(body: &str, key: &str) -> Option<u64> {
@@ -284,6 +398,31 @@ mod tests {
         assert_eq!(jget(j, "final"), "false");
         assert_eq!(jget(j, "nokey"), "");
         assert_eq!(jget_u64(j, "pulses"), Some(3));
+    }
+
+    #[test]
+    fn rt08_json_reader_reads_top_level_keys_only() {
+        // a key name inside another value's text is not a key (RT-08)
+        let j = r#"{"a":"x\"b\":1","b":2}"#;
+        assert_eq!(jget(j, "b"), "2");
+        assert_eq!(jget(j, "a"), "x\"b\":1");
+        // a key inside a nested object or array is not a top-level key
+        assert_eq!(jget(r#"{"o":{"pulses":9},"pulses":3}"#, "pulses"), "3");
+        assert_eq!(jget(r#"{"l":[{"state":"x"}]}"#, "state"), "");
+        // text that merely contains the key quoted, with no colon after it, is skipped
+        assert_eq!(jget(r#"{"note":"say \"mac\" twice","mac":"aa"}"#, "mac"), "aa");
+    }
+
+    #[test]
+    fn rt26_json_reader_unescapes_strings() {
+        assert_eq!(jget(r#"{"password":"pa\"ss\\word"}"#, "password"), "pa\"ss\\word");
+        assert_eq!(jget(r#"{"x":"a\nb\tc\/d"}"#, "x"), "a\nb\tc/d");
+        assert_eq!(jget(r#"{"x":"\u0041\u00e9\ud83d\ude00"}"#, "x"), "A\u{e9}\u{1f600}");
+        // a broken string gives "" and never panics
+        assert_eq!(jget(r#"{"x":"abc"#, "x"), "");
+        assert_eq!(jget(r#"{"x":"\u12"}"#, "x"), "");
+        assert_eq!(jget("", "x"), "");
+        assert_eq!(jget("not json", "x"), "");
     }
 
     #[test]

@@ -557,7 +557,7 @@ fn handle(c: &Console, req: Request, mut conn: Incoming) {
             if wait > 0 {
                 return json(&mut conn, "429 Too Many Requests", &format!("{{\"error\":\"LOCKED\",\"retry\":{}}}", wait), "");
             }
-            if c.password_ok(&crate::util::jget(&body, "password").replace("\\\"", "\"").replace("\\\\", "\\")) {
+            if c.password_ok(&crate::util::jget(&body, "password")) {
                 let token = c.new_session();
                 json(
                     &mut conn,

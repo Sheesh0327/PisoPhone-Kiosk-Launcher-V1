@@ -733,11 +733,12 @@
   "severity": "med",
   "money_or_signing": false,
   "confidence": "reported",
-  "status": "open",
-  "fix": "see spec_01 section 6, R3",
+  "status": "fixed",
+  "fix": "old table deleted in the same nft transaction as the new load",
   "test": {
    "kind": "integration",
-   "where": "router/tests/test_setup.py"
+   "where": "router/tests/test_setup.py (RT-10 checks)",
+   "fails_before": true
   },
   "release": "router"
  },
@@ -751,11 +752,12 @@
   "severity": "med",
   "money_or_signing": false,
   "confidence": "reported",
-  "status": "open",
-  "fix": "see spec_01 section 6, R3",
+  "status": "fixed",
+  "fix": "router address read from br-lan; else console ports closed for any address (not 80/443)",
   "test": {
    "kind": "integration",
-   "where": "router/tests"
+   "where": "router/tests/test_setup.py (RT-18 checks)",
+   "fails_before": true
   },
   "release": "router"
  },
@@ -805,11 +807,12 @@
   "severity": "med",
   "money_or_signing": false,
   "confidence": "reported",
-  "status": "open",
-  "fix": "see spec_01 section 6, R3",
+  "status": "fixed",
+  "fix": "strict top-level JSON reader",
   "test": {
    "kind": "unit",
-   "where": "cargo test"
+   "where": "tools/pisoportal util.rs rt08 test",
+   "fails_before": true
   },
   "release": "router"
  },
@@ -823,11 +826,12 @@
   "severity": "med",
   "money_or_signing": false,
   "confidence": "reported",
-  "status": "open",
-  "fix": "see spec_01 section 6, R3",
+  "status": "fixed",
+  "fix": "strings unescaped; console password no longer cut at a quote",
   "test": {
    "kind": "unit",
-   "where": "cargo test"
+   "where": "tools/pisoportal util.rs rt26 test",
+   "fails_before": true
   },
   "release": "router"
  },
@@ -841,13 +845,14 @@
   "severity": "med",
   "money_or_signing": false,
   "confidence": "reported",
-  "status": "open",
-  "fix": "see spec_01 section 6, R3",
+  "status": "fixed",
+  "fix": "import refuses any .. path part; mktemp for the list",
   "test": {
    "kind": "integration",
-   "where": "router/tests/test_setup_tools.py"
+   "where": "router/tests/test_setup.py (RT-22 check)",
+   "fails_before": true
   },
-  "release": "none"
+  "release": "router"
  },
  {
   "id": "FW-04",
