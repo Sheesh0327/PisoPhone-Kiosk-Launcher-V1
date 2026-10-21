@@ -1,12 +1,14 @@
 # Specs: spec-driven development in this repo
 
+The full guide (workflow, cache rules, templates) is `specs/GUIDE.md`. Start every chat with `specs/templates/session-start.md`.
+
 Specs are permanent files that tell a stateless agent what to build and what not to break. Chat is for steering, not for remembering.
 The owner is the architect: writes or approves the spec; the agent plans, builds and proves it.
 
 ## Reading order for every new chat (a stable prefix, so it can be cached)
 
 1. `constitution.md` (frozen rules for the agent)  2. `CLAUDE.md`  3. this file  4. `specs/STATUS.md`
-5. Only then the feature you are working on: `specs/features/NNN-name/`, and the backlog row it came from.
+5. `specs/RELEASE_STATE.md` when the task needs to know what is live. Only then the feature you are working on: `specs/features/NNN-name/`, and the backlog row it came from.
 Never read generated or big files (`CLAUDE.md` section 4). Search with `grep -n`, read line ranges.
 
 ## The three layers
@@ -47,4 +49,4 @@ A row with `prior_work` has a tested solution on another branch; bring it back t
 
 `constitution.md` agent rules (frozen) · `specs/mission.md`, `techstack.md`, `roadmap.md` direction · `specs/spec_NN_*` epics and trackers ·
 `specs/features/` active and finished features · `specs/STATUS.md` the board · `specs/REPLAN.md` + `specs/replans/` replanning ·
-`specs/notes/` handoffs · `ledger/negative-constraints.md` failures · `.claude/skills/sdd-*` the workflow as skills.
+`specs/RELEASE_STATE.md` what is live · `specs/GUIDE.md` the guide · `specs/templates/` templates · `scripts/cache_report.py` cache hit rate · `specs/notes/` handoffs · `ledger/negative-constraints.md` failures · `.claude/skills/sdd-*` the workflow as skills.

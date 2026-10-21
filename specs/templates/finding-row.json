@@ -1,0 +1,16 @@
+{
+  "id": "RT-10",
+  "area": "router",
+  "files": ["router/piso_isolation.sh:32-35"],
+  "category": "logic",
+  "severity": "med",
+  "money_or_signing": false,
+  "confidence": "reported",
+  "status": "open",
+  "fix": "load the new table and delete the old one in one nft -f transaction",
+  "test": { "kind": "integration", "where": "router/tests/test_setup.py (RT-10 checks)", "fails_before": true },
+  "release": "router",
+  "feature": "NNN-name (set when a feature takes the row)",
+  "prior_work": "optional: where a tested solution already exists (branch@commit)",
+  "implemented_in": "optional: feat/NNN-name"
+}
