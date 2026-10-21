@@ -1,0 +1,7 @@
+{
+  "chip": "esp32",
+  "version": "3.11.1",
+  "sha256": "6ad57fea5745bf9a5c2de77a7ac664ff1a041ee5243b87ae400ee71f5d3aea7d",
+  "size": 1331840,
+  "sig": "MEUCIQDWz/HKUEQbGPP+E/SqTcGmwLg6rZusNTs1rl0glxajXgIgfOBEm9jC/I756vDSC+9vfkgDtkj5X0qG2IBQ/hu1e90="
+}
