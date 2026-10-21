@@ -11,6 +11,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
@@ -85,9 +86,8 @@ class KioskSessionSupervisor(
                     val curState = stateManager.appState.value
                     // Session arming / waiting countdown
                     if (SessionRules.isArmed(curState)) {
-                        if (stateManager.paymentTimeout.value > 0) {
-                            stateManager.paymentTimeout.value -= 1
-                        }
+                        // atomic: a coin arming the window at the same moment must not be overwritten (APP-09)
+                        stateManager.paymentTimeout.update { if (it > 0) it - 1 else it }
                         if (stateManager.paymentTimeout.value == 0) {
                             if (stateManager.coinsInserted.value > 0) {
                                 onFinishPayment()
@@ -111,7 +111,14 @@ class KioskSessionSupervisor(
 
                         if (remainingSec <= 0) {
                             val expiryResult = paymentRepo.expireSessionIfDue()
-                            if (expiryResult.didExpire) {
+                            // APP-01: unlocked with deadline 0 and nothing left in Room was never "due", so it never locked.
+                            val sessionInRoom = expiryResult.sessionState
+                            val lockNow = expiryResult.didExpire || SessionRules.isUnlockedWithNothingLeft(
+                                curState,
+                                sessionInRoom.sessionExpiryDeadlineMs,
+                                sessionInRoom.sessionTimeRemaining,
+                            )
+                            if (lockNow) {
                                 val stateBefore = stateManager.appState.value
                                 val applied = stateManager.applySessionUpdate(
                                     deadlineMs = expiryResult.sessionState.sessionExpiryDeadlineMs,
