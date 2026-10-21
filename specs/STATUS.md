@@ -6,7 +6,7 @@ Updated: 2026-10-21. `beta` was recreated from `main` (`49ebad4`) with only the 
 
 | # | Feature | State | Notes |
 |---|---|---|---|
-| 002 | Restore firmware 3.11.0 (product images, USB Wi-Fi setup, coin-counter hardening) | **spec and plan drafted, waiting for owner approval** | `specs/features/002-firmware-3-11-0/`. Trial apply: 8 commits, conflicts only in `core.rs`/`ledger.rs` (resolved), compile and host tests not yet run here. |
+| 002 | Restore firmware 3.11.0 (product images, USB Wi-Fi setup, coin-counter hardening) | **implemented on `feat/002-firmware-3-11-0`, blocked on owner decision 3** | 9 commits; host tests, clang-format, generated-file checks pass. `check_product_strip.py` fails for PisoWiFi-only (69 "phone" traces in revenue counters). CI not run yet. A missing generator (`embed_web.py`) had to be written. Handoff: `specs/notes/2026-10-21_feature-002.md`. |
 | 001 | Router money and time (RT-01 to 07, 14) | **implemented on `feat/001-router-money-time`, waiting for owner review** | `specs/features/001-router-money-time/`. Router 1.5.13. cargo 87, test_flow 202, router setup tests all 0 failures. No lines of `4b6312d` were needed. Not tried on a router; CI not run yet. |
 
 ## Backlog: Spec 01 (`specs/spec_01_findings.json`, 106 rows, all `open` or `owner-decision`)
