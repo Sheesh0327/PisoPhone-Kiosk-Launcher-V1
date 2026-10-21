@@ -33,3 +33,4 @@ ST-2 (signed flash manifest), SC-4 (`scripts/apk_production_cert.txt` empty), ST
 
 ## Next step
 Feature 004 waits for CI and owner review (a pull request into `beta` runs Code quality and the firmware image build; open it when the owner asks). Then feature 005: R1 app rows or R2 signing.
+Handoff note: `specs/notes/2026-10-21_feature-004-firmware.md`.
