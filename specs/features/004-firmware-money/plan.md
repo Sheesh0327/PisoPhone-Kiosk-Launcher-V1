@@ -21,7 +21,7 @@ Test first: in each group, add the test, run it on the unfixed code and see it f
 - [x] 3. FW-02 apply only on change and when idle: `coin_hw_apply_test.cpp` + `CoinHwApply.h` + `HardwareManager`, `WebServerConfig`, `CoinSlotManager`. Red result logged: yes (compile failure: helper missing)
 - [x] 4. FW-01 restart guard: `restart_guard_test.cpp` + `RestartGuard.h` + `PaymentQueueManager`, `HardwareManager`, `WebServerConfig`. Red result logged: yes (compile failure: helper missing)
 - [x] 5. FW-05 clamp and 64-bit credit: `coin_credit_test.cpp` + `CoinCredit.h` + `Config`, `DeviceNetwork`, `WebServerConfig`. Red result logged: yes (compile failure: helper missing)
-- [ ] 6. FW-06 idle coin to the orphan list: find or write the host test first, then `CoinSlotManager`. Red result logged: no
+- [x] 6. FW-06 idle coin to the orphan list: find or write the host test first, then `CoinSlotManager`. Red result logged: yes (compile failure: helper missing; test written new, the old commit had none)
 - [ ] 7. `FirmwareVersion.h` to 3.11.1; add RS28 to RS31 to `docs/REAL_WORLD_TESTING.md` (keep RS32, RS33); run all gates (below); fill `validation.md`; update `STATUS.md` and the five backlog rows to `fixed`.
 
 Gates for every group: `cd esp32_firmware/host_tests && ./run.sh` (background, last lines only), `clang-format --dry-run --Werror` on touched files, `bash scripts/check_security_rules.sh`. At the end: `pio run` for both environments if PlatformIO exists here.
