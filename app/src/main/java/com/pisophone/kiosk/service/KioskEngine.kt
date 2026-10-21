@@ -319,8 +319,14 @@ class KioskEngine(
         }
     }
 
-    @Synchronized
-    fun ensureHttpServerRunning(): Boolean {
+    // Its own lock, not the engine's: the loopback health probe can wait 1.5 s and must not hold up the Done button (APP-03).
+    private val httpServerLock = Any()
+
+    fun ensureHttpServerRunning(): Boolean = synchronized(httpServerLock) {
+        ensureHttpServerRunningLocked()
+    }
+
+    private fun ensureHttpServerRunningLocked(): Boolean {
         if (nanoServer?.isAlive == true) {
             val healthy = checkHttpLoopbackHealth()
             if (healthy) return true

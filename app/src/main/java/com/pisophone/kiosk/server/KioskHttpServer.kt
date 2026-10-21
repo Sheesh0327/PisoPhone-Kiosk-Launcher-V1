@@ -228,7 +228,8 @@ class KioskHttpServer(
                     Log.w(TAG, "Rejecting coin credit: Invalid amount parameter")
                     return createResponse(Response.Status.BAD_REQUEST, "text/plain", "INVALID_AMOUNT")
                 }
-                val amount = amountParam ?: 1.0
+                // No amount means complimentary time (APP-06), not a 1 peso coin; the signed v_sig path uses the same 0.
+                val amount = amountParam ?: 0.0
                 if (amount < 0.0) {
                     Log.w(TAG, "Rejecting coin credit: Negative amount")
                     return createResponse(Response.Status.BAD_REQUEST, "text/plain", "INVALID_AMOUNT")

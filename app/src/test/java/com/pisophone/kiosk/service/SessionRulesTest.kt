@@ -18,6 +18,17 @@ class SessionRulesTest {
     private val UNLOCKED_ARMED = 3
     private val allStates = listOf(0, 1, 2, 3, 4, -1)
 
+    // APP-01
+    @Test
+    fun app01UnlockedWithNoDeadlineAndNoSecondsLeftMustLock() {
+        assertTrue(SessionRules.isUnlockedWithNothingLeft(UNLOCKED, 0L, 0))
+        assertTrue(SessionRules.isUnlockedWithNothingLeft(UNLOCKED_ARMED, 0L, 0))
+        assertFalse("held time is not expired", SessionRules.isUnlockedWithNothingLeft(UNLOCKED, 0L, 60))
+        assertFalse("running time is not expired", SessionRules.isUnlockedWithNothingLeft(UNLOCKED, 5_000L, 0))
+        assertFalse("a locked phone has nothing to lock", SessionRules.isUnlockedWithNothingLeft(LOCKED, 0L, 0))
+        assertFalse(SessionRules.isUnlockedWithNothingLeft(ARMED_LOCKED, 0L, 0))
+    }
+
     @Test
     fun stateCodesAreStable() {
         assertEquals(0, SessionState.LOCKED.code)

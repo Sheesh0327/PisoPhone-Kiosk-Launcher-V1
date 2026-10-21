@@ -119,6 +119,18 @@ class KioskHttpServerUnitTest {
         assertEquals(5.0, lastCreditedAmount ?: 0.0, 0.001)
     }
 
+    // APP-06: a complimentary /add_time with no amount must not count as a 1 peso coin.
+    @Test
+    fun testApp06MissingAmountIsCreditedAsZeroNotOnePeso() {
+        val now = System.currentTimeMillis()
+        val query = "tx_id=tx-free-1&seconds=300&ts=$now"
+        val response = server.serve(createSession("/add_time", createEncryptedParams(query)))
+
+        assertEquals(200, response.status.requestStatus)
+        assertEquals(1, creditPaymentCallCount)
+        assertEquals(0.0, lastCreditedAmount ?: -1.0, 0.001)
+    }
+
     @Test
     fun testAlreadyAppliedReturns200AlreadyProcessed() {
         simulatedPaymentResult = PaymentResult.ALREADY_APPLIED

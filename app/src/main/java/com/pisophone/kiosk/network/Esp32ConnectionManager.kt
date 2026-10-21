@@ -692,9 +692,21 @@ class Esp32ConnectionManager(
                     txId = txId,
                 )
                 val req = Request.Builder().url(ackUrl).build()
-                httpClient.newCall(req).execute().close()
-            } catch (_: Exception) {}
+                val acked = httpClient.newCall(req).execute().use { it.isSuccessful }
+                if (!acked) releaseAfterFailedAck(txId, "not accepted")
+            } catch (e: Exception) {
+                releaseAfterFailedAck(txId, e.message ?: "error")
+            }
         }
+    }
+
+    /**
+     * The box did not take the ack (APP-05): forget the tx id so the next status poll / WS push offers the coin again. The credit
+     * is already in Room, so the repeat answers ALREADY_APPLIED (no second credit) and the ack is sent again.
+     */
+    private fun releaseAfterFailedAck(txId: String, why: String) {
+        Log.w(TAG, "ACK for txId=$txId failed ($why); will retry on the next poll")
+        processedTxIds.remove(txId)
     }
 
     private fun connectWebSocket(ipHost: String, deviceId: String, armingTimeoutSeconds: Int, attemptId: Long, isHttpArmed: Boolean = false) {

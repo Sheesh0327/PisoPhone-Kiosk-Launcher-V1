@@ -162,8 +162,18 @@ class PaymentRepository(
 
         if (result == PaymentResult.APPLIED) {
             val snapshot = committedSnapshot ?: SessionSnapshot(0L, 0, 0L)
-            onPaymentApplied?.invoke(txId, seconds, amount, snapshot)
-            onSessionStateChanged?.invoke(snapshot)
+            // The credit is committed. A callback that throws (a toast, a sound) must not turn it into FAILED:
+            // the box would resend a coin that is already credited (APP-10).
+            try {
+                onPaymentApplied?.invoke(txId, seconds, amount, snapshot)
+            } catch (e: Exception) {
+                Log.e(TAG, "onPaymentApplied failed after commit for $txId: ${e.message}", e)
+            }
+            try {
+                onSessionStateChanged?.invoke(snapshot)
+            } catch (e: Exception) {
+                Log.e(TAG, "onSessionStateChanged failed after commit for $txId: ${e.message}", e)
+            }
         }
 
         return result
@@ -440,26 +450,7 @@ class PaymentRepository(
             paymentDao.setMetadata(AppMetadata(KEY_PENDING_TX, ""))
         }
 
-        // 2. Reconcile any unrecorded coin events into payment receipts
-        try {
-            val events = db.coinEventDao().getLatestEvents(limit = 100)
-            for (ev in events) {
-                if (paymentDao.getReceiptByTxId(ev.txId) == null) {
-                    paymentDao.insertReceiptIgnore(
-                        PaymentReceipt(
-                            txId = ev.txId,
-                            secondsCredited = ev.secondsAdded,
-                            amount = 0.0,
-                            acceptanceTimestamp = ev.timestamp,
-                        ),
-                    )
-                }
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Error reconciling coin events during recovery: ${e.message}")
-        }
-
-        // 3. Inspect and sanitize PaidSessionState
+        // 2. Inspect and sanitize PaidSessionState
         val currentState = paymentDao.getSessionState()
         if (currentState != null) {
             var sanitizedRemaining = currentState.sessionTimeRemaining
