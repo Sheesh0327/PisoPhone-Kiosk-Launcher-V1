@@ -10,7 +10,11 @@ void sendAddTime(int minutes, String targetIp, String txId = "");
 #endif
 // Adds coins to the lifetime/session revenue counters (persisted by the revenue debounce).
 // Every accepted coin, whoever it is credited to, goes through here.
+#if PISO_HAS_PHONES
 void recordCoinRevenue(int pulses, CoinSlotOwnerType owner = CoinSlotOwnerType::PHONE);
+#else
+void recordCoinRevenue(int pulses, CoinSlotOwnerType owner = CoinSlotOwnerType::GATEWAY);
+#endif
 #if PISO_HAS_PHONES
 void triggerUniversalCoinEvent(int pulses, const String& targetDeviceId = "");
 void recordSessionCoinTx(const String& devId, const String& txId, int pulses, int seconds, double amount);
