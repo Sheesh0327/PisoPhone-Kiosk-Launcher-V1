@@ -1,6 +1,9 @@
 ## What and why
 <!-- One or two sentences. Link the issue. -->
 
+## Spec
+<!-- Link `specs/features/NNN-name/` (or say why none: docs/CI only). Reviewers read the spec, its success criteria and `validation.md` first. -->
+
 ## Area
 - [ ] Android app
 - [ ] ESP32 firmware

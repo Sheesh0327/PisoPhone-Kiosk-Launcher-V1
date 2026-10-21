@@ -1,5 +1,7 @@
 # CLAUDE.md: what this project is and how to work on it
 
+Spec-driven work: read `constitution.md`, then `specs/README.md` (the loop: plan, implement, validate; skills in `.claude/skills/sdd-*`). No code without an approved feature spec.
+
 Read this first. It is short on purpose: the details are in the documents it points to. Section 2 says where the repository stands
 today; update it whenever a release goes out.
 
