@@ -2055,5 +2055,25 @@
    "where": "not written"
   },
   "release": "app"
+ },
+ {
+  "id": "APP-27",
+  "area": "app",
+  "files": [
+   "app/src/main/java/com/pisophone/kiosk/overlay/KioskOverlay.kt:160-260"
+  ],
+  "category": "logic",
+  "severity": "high",
+  "money_or_signing": true,
+  "confidence": "uncertain",
+  "status": "open",
+  "fix": "after time is granted, touch must work inside games on tablets: hypothesis, the hidden lock overlay is hidden by view alpha only so Android 12+ treats its window as obscuring and blocks touches to other apps; diagnose with adb first",
+  "test": {
+   "kind": "unit",
+   "where": "app/src/test (lock overlay window parameters when hidden and shown)",
+   "fails_before": true
+  },
+  "release": "app",
+  "feature": "003-tablet-game-touch"
  }
 ]
