@@ -45,7 +45,9 @@ def sandbox(name, with_key_in_firmware):
 
 
 def run(d, *args):
-    p = subprocess.run([sys.executable, "scripts/publish_firmware_ota.py", *args], cwd=d, capture_output=True, text=True)
+    # (never main: the same version with new bytes is an error there, and these sandboxes start from the repository's real feed)
+    p = subprocess.run([sys.executable, "scripts/publish_firmware_ota.py", *args], cwd=d, capture_output=True, text=True,
+                       env=dict(os.environ, GITHUB_REF_NAME="beta"))
     return p.returncode, p.stdout + p.stderr
 
 
@@ -77,6 +79,26 @@ for chip, e in f["chips"].items():
 before = open(os.path.join(d, "website/update/firmware.json")).read()
 rc, out = run(d, "--images", images, "--key", pem)
 check(rc == 0 and "nothing to do" in out and open(os.path.join(d, "website/update/firmware.json")).read() == before, "publishing the same images twice changes nothing")
+
+# the same version with different bytes: boxes would say "up to date" and never install it. A warning on a branch, a failure on main.
+changed = os.path.join(tmp, "changed")
+os.makedirs(changed)
+for i, chip in enumerate(("esp32c3", "esp32")):
+    open(os.path.join(changed, f"firmware-{chip}.bin"), "wb").write(b"\xe9" + bytes((j * 11 + i) % 253 for j in range(150000)))
+
+
+def run_on(d, branch, *args):
+    env = dict(os.environ, GITHUB_REF_NAME=branch)
+    p = subprocess.run([sys.executable, "scripts/publish_firmware_ota.py", *args], cwd=d, capture_output=True, text=True, env=env)
+    return p.returncode, p.stdout + p.stderr
+
+
+before = open(os.path.join(d, "website/update/firmware.json")).read()
+rc, out = run_on(d, "main", "--images", changed, "--key", pem)
+check(rc != 0 and "PISO_FW_VERSION" in out, "main: the same version with new bytes fails: " + out[-200:])
+check(open(os.path.join(d, "website/update/firmware.json")).read() == before, "main: nothing was published when it failed")
+rc, out = run_on(d, "beta", "--images", changed, "--key", pem)
+check(rc == 0 and "::warning::PISO_FW_VERSION" in out, "beta: the same version with new bytes is only a warning: " + out[-200:])
 
 # a firmware that has an owner key refuses to publish unsigned images
 rc, out = run(sandbox("nokey", True), "--images", images)

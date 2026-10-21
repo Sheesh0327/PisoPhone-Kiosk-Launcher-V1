@@ -1,0 +1,5 @@
+# SHA-256 of the PRODUCTION APK signing certificate, for scripts/check_published_apk.py.
+# Owner step: put it on the line below (url-safe base64 without padding, 43 characters: the "signatureChecksum" that app.json
+# carries after a build signed with your release keystore). While this line is empty, main does not check the certificate.
+# Once it is set, a published APK on main that is signed with any other certificate (for example the public dev test key) fails.
+# This is a public fingerprint, not a key. Never put a keystore, password or token here.

@@ -57,6 +57,11 @@ def main():
                     help="firmware header that receives the public key")
     a = ap.parse_args()
 
+    # the key never goes inside the repository, with or without --github-secret (checked before anything is read or written)
+    if inside_repo(a.path):
+        sys.exit(f"Refusing: {a.path} is inside the repository ({ROOT}). Pick a folder outside it, "
+                 f"for example: python scripts/make_owner_keys.py C:\\keys\\pisophone_license_key.pem")
+
     if a.github_secret:
         if os.path.exists(a.path):
             key = owner_key.load_private(a.path)
@@ -89,9 +94,6 @@ Then clear your terminal scrollback.
 Next: git add esp32_firmware/include/LicensePubKey.h tools/pisoportal/owner_key.b64 && git commit -m "Install owner public key", then rebuild and flash the boxes.""")
         return
 
-    if inside_repo(a.path):
-        sys.exit(f"Refusing: {a.path} is inside the repository ({ROOT}). Pick a folder outside it, "
-                 f"for example: python scripts/make_owner_keys.py C:\\keys\\pisophone_license_key.pem")
     if os.path.exists(a.path):
         sys.exit(f"Refusing: {a.path} already exists. Move it away first; replacing it makes every signed update invalid.")
     key, pem = make_key()

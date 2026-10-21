@@ -72,12 +72,18 @@ def main():
     p.add_argument("--setup", default=DEFAULT_SETUP, help="the setup file to sign (default: setup/piso-setup.sh)")
     p.add_argument("--rollout", type=int, default=100, help="percent of routers that take it now (default 100)")
     p.add_argument("--changelog", default="", help="one line shown in the routers' Telegram message")
+    p.add_argument("--public-key", help="a file holding the owner public key (base64 DER, like tools/pisoportal/owner_key.b64) to check the "
+                   "signature against; default: the key installed in this repository")
     p.add_argument("--out-dir", default=DEFAULT_OUT, help="default: website/update")
     args = p.parse_args()
     try:
         with open(args.setup, "rb") as f:
             data = f.read()
         manifest = make_manifest(owner_key.load_private(args.private), data, args.rollout, args.changelog)
+        # a key that is not the one routers trust would make a release no router installs: check before writing anything
+        owner_key.verify_signature(owner_key.repo_public_key("router", args.public_key), manifest["sig"],
+                                   canonical(manifest["version"], manifest["sha256"], manifest["size"], manifest["rollout"]),
+                                   f"router release {manifest['version']}")
     except (ValueError, OSError) as e:
         sys.exit(f"Error: {e}")
     os.makedirs(args.out_dir, exist_ok=True)

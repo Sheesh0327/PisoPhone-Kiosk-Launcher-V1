@@ -16,6 +16,8 @@ tmp = tempfile.mkdtemp()
 os.environ["PISOPHONE_HOME"] = os.path.join(tmp, "home")
 os.environ["PISOPHONE_KEYS"] = os.path.join(tmp, "keys")
 os.environ["PISOPHONE_OWNER_FINGERPRINT"] = "*"
+os.environ["PISOPHONE_CARD_FINGERPRINT"] = "*"
+os.environ["PISOPHONE_ADMIN_FINGERPRINT"] = "*"
 os.makedirs(os.environ["PISOPHONE_KEYS"])
 checks = failures = 0
 
@@ -53,7 +55,9 @@ check(os.path.isfile(path) and (os.name == "nt" or stat.S_IMODE(os.stat(path).st
 check(ps.key_fingerprint(ps.load_key("card")) == ps.key_fingerprint(card_key), "and it is the same key")
 check("already is a key" in (problem(ps.import_key, "card", text=pem.decode()) or ""), "an existing key is not overwritten by accident")
 ps.import_key("card", text=pem.decode(), replace=True)
-check(os.path.isfile(path + ".old"), "replacing keeps the old key as .old")
+import glob  # noqa: E402
+backups = glob.glob(glob.escape(path) + ".old-*")
+check(len(backups) == 1 and open(backups[0], "rb").read() == pem, "replacing keeps the old key as a time-stamped .old-<time> file")
 rsa_pem = rsa.generate_private_key(65537, 2048).private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption())
 check("P-256" in (problem(ps.import_key, "admin", text=rsa_pem.decode()) or ""), "a key of another kind is refused")
 check("not a usable key" in (problem(ps.import_key, "admin", text="hello") or ""), "so is text that is no key")
@@ -64,6 +68,15 @@ ps.import_key("owner", path=kfile)
 check(os.path.isfile(ps.key_path("owner")), "a key can be imported from a file on this computer")
 made = ps.create_key("admin")
 check(ps.key_fingerprint(ps.load_key("admin")) == ps.key_fingerprint(made), "a new key can be made when none exists")
+
+# ST-3: a second replacement keeps the first backup, and an existing backup is never overwritten
+orig_stamp = ps.backup_stamp
+ps.backup_stamp = lambda: "fixed"
+ps.import_key("card", text=pem.decode(), replace=True)
+check("backup" in (problem(ps.import_key, "card", text=pem.decode(), replace=True) or "").lower(), "an existing backup is not overwritten: the replacement is refused")
+check(open(path, "rb").read() == pem and os.path.isfile(path + ".old-fixed"), "and the key in use is left as it was")
+ps.backup_stamp = orig_stamp
+os.remove(path + ".old-fixed")
 
 # base64 import tests
 b64_pem = base64.b64encode(pem).decode()
@@ -312,6 +325,29 @@ check("0a1b45" not in ps._CARD_CSS and "CARD_EMBLEM" not in back and back.count(
 os.environ["PISOPHONE_OWNER_FINGERPRINT"] = "deadbeef12345678"
 check("does not match the public key" in (problem(ps.load_key, "owner") or ""), "mismatched owner key is rejected by load_key")
 os.environ["PISOPHONE_OWNER_FINGERPRINT"] = "*"
+# ST-4: the card and admin keys are checked against their built-in fingerprints too
+os.environ["PISOPHONE_CARD_FINGERPRINT"] = "deadbeef12345678"
+os.environ["PISOPHONE_ADMIN_FINGERPRINT"] = "deadbeef12345678"
+check("does not match the public key" in (problem(ps.load_key, "card") or ""), "mismatched card key is rejected by load_key")
+check("does not match the public key" in (problem(ps.load_key, "admin") or ""), "mismatched admin key is rejected by load_key")
+check("does not match the public key" in (problem(ps.import_key, "card", text=pem.decode(), replace=True) or ""), "mismatched card key is rejected by import_key")
+os.environ["PISOPHONE_CARD_FINGERPRINT"] = "*"
+os.environ["PISOPHONE_ADMIN_FINGERPRINT"] = "*"
+
+# AC2.2: with no override set, the Owner tools page works (it used to fail with NameError) and a key that matches is "found"
+own_fp = ps.key_fingerprint(ps.load_key("owner"))
+del os.environ["PISOPHONE_OWNER_FINGERPRINT"]
+real_fp = ps.EXPECTED_FINGERPRINTS["owner"]
+ps.EXPECTED_FINGERPRINTS["owner"] = own_fp
+try:
+    owner_status = {k["kind"]: k["status"] for k in session.snapshot()["tools"]["keys"]}
+    check(owner_status.get("owner") == "found", f"snapshot with PISOPHONE_OWNER_FINGERPRINT unset: owner key status found: {owner_status}")
+    ps.EXPECTED_FINGERPRINTS["owner"] = "0000000000000000"
+    owner_status = {k["kind"]: k["status"] for k in session.snapshot()["tools"]["keys"]}
+    check(owner_status.get("owner") == "mismatch", "and a different key is reported as a mismatch")
+finally:
+    ps.EXPECTED_FINGERPRINTS["owner"] = real_fp
+    os.environ["PISOPHONE_OWNER_FINGERPRINT"] = "*"
 
 # check owner tools CLI
 check(ps.main(["--check-keys"]) == 0, "CLI --check-keys exits cleanly")

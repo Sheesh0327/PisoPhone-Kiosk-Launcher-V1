@@ -187,10 +187,19 @@ def main():
                  "Set the repository secret OWNER_SIGNING_KEY_B64 (python3 scripts/make_owner_keys.py --github-secret, docs/KEYS.md).")
     if published.get("version") == version and any(
             chips.get(c, {}).get("sha256") not in ("", None, hashlib.sha256(images[c]).hexdigest()) for c in CHIPS):
-        print(f"::warning::PISO_FW_VERSION is still {version}, but the firmware changed. Boxes already on {version} will say "
-              f"'up to date' and refuse the new image (not newer). Raise PISO_FW_VERSION in esp32_firmware/include/FirmwareVersion.h.")
+        message = (f"PISO_FW_VERSION is still {version}, but the firmware changed. Boxes already on {version} will say "
+                   f"'up to date' and refuse the new image (not newer). Raise PISO_FW_VERSION in esp32_firmware/include/FirmwareVersion.h.")
+        if os.environ.get("GITHUB_REF_NAME") == "main":   # production: publishing it would announce an update that cannot install
+            sys.exit(f"Error: {message} Nothing was published.")
+        print(f"::warning::{message}")
 
     private = sign_firmware.owner_key.load_private(args.key) if args.key else None
+    if private:   # a key that is not the one built into the firmware signs images no box installs: find out before writing anything
+        try:
+            for chip in CHIPS:
+                sign_firmware.check_against_repo_key(sign_firmware.make_manifest(private, chip, version, images[chip]))
+        except ValueError as e:
+            sys.exit(f"Error: {e}")
     os.makedirs(UPDATE_DIR, exist_ok=True)
     if not os.path.exists(FIRMWARE_JSON):   # a product's first release: its feed starts empty
         with open(FIRMWARE_JSON, "w", encoding="utf-8") as f:

@@ -34,8 +34,45 @@ def git(*args):
     return p.stdout if p.returncode == 0 else None
 
 
+CONSOLE_UI_MIN_DAYS = 30   # routers ignore an expired ui.json; re-sign (scripts/sign_console_ui.py) well before
+
+
+def check_console_ui(path, pub, now=None):
+    """(level, text) for the console page's signed script: more than CONSOLE_UI_MIN_DAYS days of validity left, ui.js is the file that
+    was signed, and (when the owner public key `pub` is known) the signature verifies."""
+    import time
+    if not os.path.exists(path):
+        return "WARN", "console script: %s is not published" % path
+    try:
+        ui = json.load(open(path))
+        data = open(os.path.join(os.path.dirname(path), "ui.js"), "rb").read()
+        expires, sha = int(ui["expires"]), ui["sha256"]
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        return "FAIL", "console script: ui.json or ui.js cannot be read (%s)" % e
+    problems = []
+    days = (expires - (time.time() if now is None else now)) / 86400
+    if days <= 0:
+        problems.append("the signature has expired: routers ignore the new console script. Run scripts/sign_console_ui.py")
+    elif days <= CONSOLE_UI_MIN_DAYS:
+        problems.append("the signature expires in %d days (less than %d): sign it again with scripts/sign_console_ui.py" % (days, CONSOLE_UI_MIN_DAYS))
+    # (a Windows checkout may turn the script's line ends into CRLF; git and the website hold the LF file that was signed)
+    if sha not in (hashlib.sha256(data).hexdigest(), hashlib.sha256(data.replace(b"\r\n", b"\n")).hexdigest()):
+        problems.append("ui.js is not the file ui.json signed (checksum differs)")
+    if pub is not None:
+        try:
+            from cryptography.hazmat.primitives import hashes
+            from cryptography.hazmat.primitives.asymmetric import ec
+            pub.verify(base64.b64decode(ui["sig"]), ("pisophone-console-ui-v1|%s|%s|%s|%s" % (ui["version"], ui["api"], expires, sha)).encode(),
+                       ec.ECDSA(hashes.SHA256()))
+        except Exception:
+            problems.append("the signature does not verify")
+    if problems:
+        return "FAIL", "console script (version %s): %s" % (ui.get("version"), "; ".join(problems))
+    return "PASS", "console script (version %s): signature good for %d more days, checksum%s verify" % (ui.get("version"), days, " and signature" if pub is not None else "")
+
+
 def main():
-    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap =argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--against", default="origin/main", help="the ref that is live now (default origin/main)")
     a = ap.parse_args()
     try:
@@ -124,6 +161,9 @@ def main():
         if ("PISO_ARCH='%s'" % fam).encode() not in rrb:
             fp.append("the setup file is not built for %s" % fam)
         report("FAIL" if fp else "PASS", "router feed %s (release %s, rollout %s%%): %s" % (fam, rr["version"], rr["rollout"], "; ".join(fp) or "checksum, size and signature verify"))
+
+    # --- the owner console's signed script
+    report(*check_console_ui("website/console/ui.json", pub))
 
     # --- the app
     p = subprocess.run([sys.executable, "scripts/check_published_apk.py"], capture_output=True, text=True)

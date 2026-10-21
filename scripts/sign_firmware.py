@@ -63,6 +63,14 @@ def make_manifest(private_key, chip, version, image_bytes):
             "sig": base64.b64encode(sig).decode()}
 
 
+def check_against_repo_key(manifest):
+    """Raises ValueError unless the manifest's signature verifies under the owner key built into esp32_firmware (the one boxes trust):
+    a wrong private key would make an image no box installs, and nobody would know until verify_release.py is run."""
+    owner_key.verify_signature(owner_key.repo_public_key("firmware"), manifest["sig"],
+                               canonical(manifest["chip"], manifest["version"], manifest["sha256"], manifest["size"]),
+                               f"{manifest['chip']} firmware {manifest['version']}")
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--private", required=True, help="private key (PEM) made by make_owner_keys.py")
@@ -79,6 +87,7 @@ def main():
         with open(args.image, "rb") as f:
             image = f.read()
         manifest = make_manifest(owner_key.load_private(args.private), args.chip, version, image)
+        check_against_repo_key(manifest)
     except (ValueError, OSError) as e:
         sys.exit(f"Error: {e}")
     out = args.out or args.image + ".manifest.json"

@@ -243,6 +243,9 @@ shutil.rmtree(cache)
 check(raises(ps.SetupError, ps.fetch_image, "main", build, cache, fake_open(image[:-1])) is not None, "an image that does not match its checksum is refused")
 bad = dict(build, file="../evil.bin")
 check(raises(ps.SetupError, ps.fetch_image, "main", bad, cache, fake_open(image)) is not None, "a file name with a path in it is refused")
+for odd in ("../../evil", "ABCDEF" + "0" * 58, "a" * 63, "a" * 64 + "/x", ""):
+    check(raises(ps.SetupError, ps.fetch_image, "main", dict(build, sha256=odd), cache, fake_open(image)) is not None, f"a sha256 of the wrong shape is refused: {odd[:12]!r}")
+check(not os.path.exists(os.path.join(cache, "..", "evil")), "and it never reaches the cache path")
 check(ps.site_url("main") == "https://pisophone.pages.dev", "the images come from the same website as the app")
 
 class FakeTool:

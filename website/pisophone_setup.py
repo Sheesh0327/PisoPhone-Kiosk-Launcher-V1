@@ -2350,9 +2350,9 @@ def choose_build(manifest, chip):
 
 def fetch_image(branch, build, cache_dir, opener=urllib.request.urlopen):
     """The path of the image, downloaded and checked against the manifest's size and sha256 (kept for next time)."""
-    path = os.path.join(cache_dir, f"{build['sha256'][:16]}-{build['file']}")
-    if re.search(r"[/\\]", build["file"]):
+    if not re.fullmatch(r"[0-9a-f]{64}", str(build.get("sha256", ""))) or re.search(r"[/\\]", build["file"]):
         raise SetupError("the website's software list is not valid.")
+    path = os.path.join(cache_dir, f"{build['sha256'][:16]}-{build['file']}")
 
     def good(data):
         return len(data) == build["size"] and hashlib.sha256(data).hexdigest() == build["sha256"]
@@ -2854,6 +2854,15 @@ EXPECTED_FINGERPRINTS = {
 }
 
 
+def expected_fingerprint(kind):
+    """The fingerprint a key of this kind must have: PISOPHONE_<KIND>_FINGERPRINT when set ("*" = any), else the built-in one."""
+    return os.environ.get(f"PISOPHONE_{kind.upper()}_FINGERPRINT") or EXPECTED_FINGERPRINTS.get(kind)
+
+
+def backup_stamp():
+    return time.strftime("%Y%m%d-%H%M%S-") + f"{int(time.time() * 1000000) % 1000000:06d}"
+
+
 def b64u(data):
     return base64.urlsafe_b64encode(data).decode().rstrip("=")
 
@@ -2872,9 +2881,7 @@ def load_key(kind, path=None, check_match=True):
     if not isinstance(key, ec.EllipticCurvePrivateKey) or key.curve.name != "secp256r1":
         raise ToolError(f"The key file {path} is not a P-256 key.")
     if check_match:
-        expected_fp = os.environ.get(f"PISOPHONE_{kind.upper()}_FINGERPRINT")
-        if expected_fp is None and kind == "owner":
-            expected_fp = EXPECTED_FINGERPRINTS.get("owner")
+        expected_fp = expected_fingerprint(kind)
         if expected_fp and expected_fp != "*":
             fp = key_fingerprint(key)
             if fp != expected_fp:
@@ -2893,13 +2900,17 @@ def key_fingerprint(key):
 
 
 def write_private_key(kind, pem, replace=False):
-    """Saves a key file (mode 600); an existing key is only replaced on request and then kept as <file>.old."""
+    """Saves a key file (mode 600); an existing key is only replaced on request and then kept as <file>.old-<time>
+    (an earlier backup is never overwritten)."""
     path = key_path(kind)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     if os.path.exists(path):
         if not replace:
             raise ToolError(f"There already is a key at {path}. Replacing it makes everything printed with the old one stop working.")
-        os.replace(path, path + ".old")
+        backup = f"{path}.old-{backup_stamp()}"
+        if os.path.exists(backup):
+            raise ToolError(f"The backup {backup} already exists, so the key was not replaced. Try again in a moment.")
+        os.replace(path, backup)
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     with os.fdopen(fd, "wb") as f:
         f.write(pem if isinstance(pem, bytes) else pem.encode())
@@ -2952,17 +2963,14 @@ def import_key(kind, text=None, path=None, replace=False):
     if not isinstance(key, ec.EllipticCurvePrivateKey) or key.curve.name != "secp256r1":
         raise ToolError("That is not a P-256 key.")
 
-    if kind == "owner":
-        expected_fp = os.environ.get("PISOPHONE_OWNER_FINGERPRINT")
-        if expected_fp is None:
-            expected_fp = EXPECTED_FINGERPRINTS.get("owner")
-        if expected_fp and expected_fp != "*":
-            fp = key_fingerprint(key)
-            if fp != expected_fp:
-                raise ToolError(
-                    f"The imported owner key ({fp}) does not match the public key built into the boxes and routers ({expected_fp}). "
-                    "Codes signed with this key will be refused by the boxes. Please paste the secret key from GitHub (OWNER_SIGNING_KEY_B64) or your secret backup."
-                )
+    expected_fp = expected_fingerprint(kind)
+    if expected_fp and expected_fp != "*":
+        fp = key_fingerprint(key)
+        if fp != expected_fp:
+            raise ToolError(
+                f"The imported {kind} key ({fp}) does not match the public key built into the boxes and routers ({expected_fp}). "
+                "Codes signed with this key will be refused by the boxes. Please paste the secret key from GitHub (OWNER_SIGNING_KEY_B64) or your secret backup."
+            )
 
     write_private_key(kind, pem_bytes, replace)
     return key
@@ -4646,7 +4654,6 @@ class Session:
 
     def tools_snapshot(self):
         keys = []
-        expected_owner = os.environ.get("PISOPHONE_OWNER_FINGERPRINT") or EXPECTED_OWNER_FINGERPRINT
         for kind, (_name, label) in KEY_FILES.items():
             path = key_path(kind)
             found = os.path.isfile(path)
@@ -4654,14 +4661,15 @@ class Session:
             note = ""
             if found:
                 try:
-                    k = load_key(kind, path, check_owner=False)
+                    k = load_key(kind, path, check_match=False)
                     fp = key_fingerprint(k)
-                    if kind == "owner" and expected_owner != "*" and fp != expected_owner:
+                    expected = expected_fingerprint(kind)
+                    if expected and expected != "*" and fp != expected:
                         status = "mismatch"
-                        note = f"Fingerprint {fp} does not match firmware ({expected_owner})"
+                        note = f"Fingerprint {fp} does not match firmware ({expected})"
                     else:
                         note = f"Fingerprint {fp}"
-                except Exception as e:
+                except (ToolError, OSError) as e:
                     status = "bad"
                     note = str(e)
             keys.append({"kind": kind, "label": label, "path": path, "found": found, "status": status, "note": note})
@@ -5091,7 +5099,7 @@ a{color:var(--acc)}.hide{display:none!important}
    <label for="kKind">Which key</label><select id="kKind"></select>
    <label for="kPath">The file on this computer <span class="hint">or paste its text below</span></label><input id="kPath" autocomplete="off" placeholder="/home/you/pisophone_card_key.pem">
    <textarea id="kText" rows="4" style="width:100%;font:12px ui-monospace,Menlo,Consolas,monospace;margin-top:8px" placeholder="or paste the whole key text here"></textarea>
-   <label style="font-weight:400;display:flex;gap:10px;align-items:center"><input type="checkbox" id="kReplace" style="width:auto;min-height:0"> Replace the key that is there (the old one is kept as .old)</label>
+   <label style="font-weight:400;display:flex;gap:10px;align-items:center"><input type="checkbox" id="kReplace" style="width:auto;min-height:0"> Replace the key that is there (the old one is kept as a time-stamped .old file)</label>
    <p><button id="btnKeyImport">Save this key</button></p></details>
   <details style="margin-top:8px"><summary class="mut small">Make a new key (only for your own firmware build)</summary>
    <p class="mut small">A coin box trusts only the keys its firmware was built with. A new card or admin key therefore works only after the firmware is rebuilt with its public half; the published boxes keep the old key.</p>
@@ -5461,7 +5469,7 @@ def main(argv=None):
     p.add_argument("--key-kind", choices=["owner", "card", "admin"], default="owner", help="with --import-key: which key (default owner)")
     p.add_argument("--key-text", help="with --import-key: key string (PEM or base64)")
     p.add_argument("--key-file", help="with --import-key: path to key file")
-    p.add_argument("--replace", action="store_true", help="with --import-key: overwrite existing key file (kept as .old)")
+    p.add_argument("--replace", action="store_true", help="with --import-key: overwrite existing key file (kept as a time-stamped .old file)")
     p.add_argument("--make-cards", action="store_true", help="make QR time cards for --box")
     p.add_argument("--hours", default="1", help="with --make-cards: play duration in hours (default 1)")
     p.add_argument("--flip", choices=["long", "short"], default="long", help="with --make-cards: paper flip edge (default long)")

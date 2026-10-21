@@ -15,6 +15,14 @@ EXCLUDE='--exclude-dir=.git --exclude-dir=build --exclude-dir=target --exclude-d
 if grep -rEIl $EXCLUDE -e '-----BEGIN [A-Z ]*PRIVATE KEY-----' . ; then
     bad "a private key is committed (files listed above)"
 fi
+# The same key pasted as one base64 line (what make_owner_keys.py --github-secret prints) hides the BEGIN line. Three patterns: the
+# base64 of "PRIVATE KEY---" at each of the three byte offsets a line can start at. And an unwrapped DER PKCS8 / SEC1 key in base64:
+# the fixed start of an EC (P-256, P-384), RSA or Ed25519 PKCS8 key, or of a SEC1 EC key.
+B64_PEM='VkFURSBLRVktLS0t|SVZBVEUgS0VZLS0t|UklWQVRFIEtFWS0t'
+B64_DER='MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEH|MIG2AgEAMBAGByqGSM49AgEGBSuBBAAi|AgEAMA0GCSqGSIb3DQEBAQUA|MC4CAQAwBQYDK2Vw|MHcCAQEEI[A-Za-z0-9+/]{20}|MHQCAQEEI[A-Za-z0-9+/]{20}'
+if grep -rEIl $EXCLUDE -e "$B64_PEM" -e "$B64_DER" . ; then
+    bad "a private key is committed as base64 text (files listed above)"
+fi
 
 # 2. The shared master secret may only remain in the two files still being migrated off it.
 #    Any new use fails the build; the list shrinks to nothing when S3 lands. Source files only (-I): the firmware images

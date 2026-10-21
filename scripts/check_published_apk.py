@@ -18,6 +18,8 @@ import struct
 import sys
 
 V2, V3 = 0x7109871A, 0xF05368C0
+# The owner puts the production certificate's SHA-256 (url-safe base64, no padding) here; empty until then (docs/RELEASE.md).
+PIN_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "apk_production_cert.txt")
 
 
 def signing_block_pairs(data: bytes) -> dict:
@@ -61,7 +63,23 @@ def signature_checksum(apk: bytes) -> str:
     return base64.urlsafe_b64encode(hashlib.sha256(first_certificate(blob)).digest()).decode().rstrip("=")
 
 
-def check(directory: str) -> list:
+def load_pin(path: str = PIN_FILE) -> str:
+    """The production signing certificate's SHA-256 (url-safe base64, the same form as app.json's signatureChecksum) from the pin file,
+    or "" when the owner has not filled it in (lines starting with # and blank lines are ignored)."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            lines = [ln.strip() for ln in f if ln.strip() and not ln.lstrip().startswith("#")]
+    except OSError:
+        return ""
+    return lines[0] if lines else ""
+
+
+def check(directory: str, branch: str = None, pin: str = None) -> list:
+    """Problems with the published APK. On main, when the production certificate is pinned (scripts/apk_production_cert.txt), the APK
+    must be signed with exactly that certificate: a dev-signed APK (the public test key) must never reach the shops from main.
+    `branch` defaults to $GITHUB_REF_NAME, `pin` to the pin file; an empty pin means the owner has not supplied it yet."""
+    branch = os.environ.get("GITHUB_REF_NAME", "") if branch is None else branch
+    pin = load_pin() if pin is None else pin
     problems = []
     meta_path = os.path.join(directory, "app.json")
     apk_path = os.path.join(directory, "app-release.apk")
@@ -81,6 +99,9 @@ def check(directory: str) -> list:
     else:
         try:
             actual = signature_checksum(apk)
+            if branch == "main" and pin and actual != pin:
+                problems.append(f"the APK's signing certificate ({actual}) is not the production certificate pinned in "
+                                f"scripts/apk_production_cert.txt ({pin}): main must not publish a dev-signed or foreign-signed APK")
             if actual != expected:
                 problems.append(f"app.json's signatureChecksum ({expected}) is not the APK's signing certificate ({actual}): QR setup would fail")
         except Exception as e:   # noqa: BLE001 - say what is wrong with the file, whatever it is
@@ -96,3 +117,5 @@ if __name__ == "__main__":
     if issues:
         sys.exit(1)
     print("the published APK matches app.json (size, sha256, signing certificate)")
+    if os.environ.get("GITHUB_REF_NAME") == "main" and not load_pin():
+        print("note: scripts/apk_production_cert.txt is empty, so main does not check that the APK carries the production certificate")

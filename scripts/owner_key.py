@@ -9,6 +9,7 @@ Never commit the private key. Keep an offline copy. If it is put in CI at all, i
 
 import base64
 import os
+import re
 import sys
 
 PUBKEY_HEADER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "esp32_firmware", "include",
@@ -29,6 +30,44 @@ def load_private(path: str):
     _, serialization, _ = _crypto()
     with open(path, "rb") as f:
         return serialization.load_pem_private_key(f.read(), password=None)
+
+
+def repo_public_key(kind: str, path: str = None):
+    """The owner public key this repository installs: 'firmware' (the header the boxes are built with) or 'router'
+    (tools/pisoportal/owner_key.b64, what routers trust). `path` names another file in the same format. Raises ValueError when
+    none is installed or the file cannot be read, so a signing tool fails closed."""
+    _, serialization, _ = _crypto()
+    path = path or (PUBKEY_HEADER if kind == "firmware" else ROUTER_KEY_FILE)
+    try:
+        with open(path, encoding="utf-8") as f:
+            text = f.read()
+    except OSError as e:
+        raise ValueError(f"cannot read the owner public key {path}: {e}")
+    if path.endswith(".h"):
+        body = text.split("LICENSE_PUBKEY_DER", 1)[1].split("}", 1)[0] if "LICENSE_PUBKEY_DER" in text else ""
+        der = bytes(int(x, 16) for x in re.findall(r"0x([0-9a-fA-F]{2})", body))
+    else:
+        try:
+            der = base64.b64decode(text.strip())
+        except ValueError:
+            der = b""
+    if not der:
+        raise ValueError(f"no owner public key is installed in {path}: run make_owner_keys.py first")
+    try:
+        return serialization.load_der_public_key(der)
+    except ValueError as e:
+        raise ValueError(f"the owner public key in {path} is not valid: {e}")
+
+
+def verify_signature(public_key, sig_b64: str, text: str, what: str = "this release"):
+    """Raises ValueError unless `sig_b64` is a valid signature of `text` under `public_key`: the check that a wrong private key
+    cannot produce a release nobody can install."""
+    hashes, _, ec = _crypto()
+    try:
+        public_key.verify(base64.b64decode(sig_b64), text.encode(), ec.ECDSA(hashes.SHA256()))
+    except Exception:
+        raise ValueError(f"the key given does not match the owner public key installed in this repository: the signature of {what} "
+                         f"does not verify, so no box or router would accept it. Nothing was written. Use the key made by make_owner_keys.py")
 
 
 def write_router_key(public_key, path: str = ROUTER_KEY_FILE):

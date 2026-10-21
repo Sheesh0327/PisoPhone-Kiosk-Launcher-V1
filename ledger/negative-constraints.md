@@ -101,3 +101,5 @@ Cause: wall-clock waits in checks that predate this work (a page that opens with
 
 Refusing payments until a state restore succeeds could leave a phone that never takes coins again, and there is no device or
 Android SDK here to try it. Left open for the owner (spec status `owner-decision`).
+## R2 CI agent: scripts/tests/test_workflow_signing.py (expected red before the fix)
+FAIL: firmware-images.yml:204 signing script after git reset --hard (196); publish-router.yml:87,101,111,117 after reset (86). Fix: run signing scripts from a copy of $GITHUB_SHA ($TRUSTED/scripts/...), not the reset tree.
