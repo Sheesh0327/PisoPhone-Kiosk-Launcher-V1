@@ -15,7 +15,6 @@
 //! Files in DATA_DIR: voucher.key (the secret, 0600), voucher_batches.txt, voucher_codes.txt. The caller holds the process-wide file lock.
 use crate::util::{hmac_hex, random_hex, sha256_hex};
 use std::fs;
-use std::io::Write;
 
 /// A voucher bought with coins is good for this long.
 pub const VALID_DAYS: u64 = 30;
@@ -144,21 +143,14 @@ fn secret(dir: &str) -> Option<String> {
     if let Some(s) = read_secret(dir) {
         return Some(s);
     }
-    let _ = fs::create_dir_all(dir);
     let path = format!("{}/voucher.key", dir);
+    // RT-06: a key file that has anything in it is never replaced (a damaged key may still be repaired by the owner; a new one
+    // would make every code already issued useless). Only a missing or empty file gets a new key.
+    if fs::metadata(&path).map(|m| m.len() > 0).unwrap_or(false) {
+        return None;
+    }
     let s = random_hex(64);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        if let Ok(mut f) = fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&path) {
-            let _ = writeln!(f, "{}", s);
-            let _ = f.sync_all();
-        }
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = fs::write(&path, format!("{}\n", s));
-    }
+    let _ = crate::util::write_atomic_private(&path, format!("{}\n", s).as_bytes());
     read_secret(dir)
 }
 
@@ -217,15 +209,8 @@ fn load_codes(dir: &str) -> Vec<CodeRow> {
 }
 
 fn write_atomic(path: &str, lines: impl Iterator<Item = String>) -> std::io::Result<()> {
-    let tmp = format!("{}.tmp", path);
-    {
-        let mut f = fs::File::create(&tmp)?;
-        for l in lines {
-            writeln!(f, "{}", l)?;
-        }
-        f.sync_all().ok();
-    }
-    fs::rename(&tmp, path)
+    let text: String = lines.map(|l| format!("{}\n", l)).collect();
+    crate::util::write_atomic(path, text.as_bytes())
 }
 
 /// What `issue` made (or found again).
@@ -324,6 +309,35 @@ pub fn prune(dir: &str, now: u64) {
         let _ = write_atomic(&codes_path(dir), rows.iter().map(|r| r.line()));
         let _ = write_atomic(&batches_path(dir), batches.iter().map(|b| b.line()));
     }
+}
+
+/// The router's clock jumped forward by `delta` seconds (see `roll::shift`): vouchers made with the stale clock (created in
+/// `since <= created < until`) move forward with it, with their 30 days, and so does the time a code was used when that time
+/// is in the window. A voucher made after the jump is not touched. Returns how many vouchers moved. The caller holds the file lock.
+pub fn shift(dir: &str, since: u64, until: u64, delta: u64) -> usize {
+    let in_window = |t: u64| t >= since && t < until;
+    let mut batches = load_batches(dir);
+    let mut rows = load_codes(dir);
+    let mut moved = 0;
+    for b in batches.iter_mut().filter(|b| in_window(b.created)) {
+        b.created += delta;
+        if b.expires > 0 {
+            b.expires += delta;
+        }
+        moved += 1;
+    }
+    let mut rows_moved = false;
+    for r in rows.iter_mut().filter(|r| r.used_at > 0 && in_window(r.used_at)) {
+        r.used_at += delta;
+        rows_moved = true;
+    }
+    if rows_moved {
+        let _ = write_atomic(&codes_path(dir), rows.iter().map(|r| r.line()));
+    }
+    if moved > 0 {
+        let _ = write_atomic(&batches_path(dir), batches.iter().map(|b| b.line()));
+    }
+    moved
 }
 
 /// A voucher this device bought and has not used: what its page lists, so a closed page does not lose the money.
@@ -459,6 +473,52 @@ mod tests {
         fs::write(batches_path(dir), text).unwrap();
         let b = load_batches(dir).into_iter().find(|b| b.id == id).unwrap();
         (b, codes.iter().map(|c| display(c)).collect())
+    }
+
+    #[test]
+    fn rt03_a_voucher_made_with_the_stale_clock_moves_with_the_clock() {
+        let d = tmp("shift");
+        let mac = "aa:bb:cc:00:00:01";
+        let (stale_start, jump_at, delta) = (1_000_000u64, 1_000_200u64, 40 * 86_400u64); // the clock was set 40 days forward
+        let before = issue(&d, 500_000, mac, "w0", "hyper", 30, 5).unwrap(); // made before the power cut: right clock
+        let stale = issue(&d, 1_000_050, mac, "w1", "hyper", 60, 10).unwrap(); // bought during the stale period
+        let used = issue(&d, 1_000_060, mac, "w2", "hyper", 15, 3).unwrap();
+        let (_, h) = lookup(&d, 1_000_100, &used.code).unwrap();
+        assert!(mark_used(&d, &h, 1_000_100, mac));
+        let after = issue(&d, 1_000_200 + delta + 10, mac, "w3", "hyper", 30, 5).unwrap(); // bought after the clock was right
+        let now = 1_000_200 + delta + 20;
+        assert_eq!(lookup(&d, now, &stale.code), Err(RedeemError::Expired), "without the shift the 30 days have 'passed'");
+        assert_eq!(shift(&d, stale_start, jump_at, delta), 2, "the two vouchers bought in the stale period move");
+        let (b, _) = lookup(&d, now, &stale.code).expect("the voucher is good for its 30 days again");
+        assert_eq!((b.created, b.expires), (1_000_050 + delta, 1_000_050 + delta + 30 * 86_400));
+        let kept = load_batches(&d);
+        let get = |id: &str| kept.iter().find(|b| b.id == id).unwrap().clone();
+        assert_eq!(
+            (get(&before.batch.id).created, get(&before.batch.id).expires),
+            (500_000, before.batch.expires),
+            "a voucher from before the cut keeps its times"
+        );
+        assert_eq!(get(&after.batch.id).created, after.batch.created, "a voucher bought after the jump is not moved");
+        assert_eq!(get(&after.batch.id).expires, after.batch.expires);
+        // the redeemed one: when it was used moves with the clock too
+        let (redeemed, _) = counts(&d, 1_000_100 + delta, now);
+        assert_eq!(redeemed, 1);
+    }
+
+    #[test]
+    fn rt06_an_existing_voucher_key_is_never_overwritten() {
+        let d = tmp("key");
+        let path = format!("{}/voucher.key", d);
+        fs::write(&path, "damaged\n").unwrap(); // not empty, but not a whole key
+        assert_eq!(secret(&d), None, "a key that cannot be used is not replaced: codes made from it would be lost");
+        assert_eq!(fs::read_to_string(&path).unwrap(), "damaged\n");
+        assert_eq!(issue(&d, 1000, "aa:bb:cc:00:00:01", "w", "hyper", 30, 5).unwrap_err(), "IO");
+        assert_eq!(fs::read_to_string(&path).unwrap(), "damaged\n");
+        // an empty file (the power went before the key was written) is made again
+        fs::write(&path, "").unwrap();
+        let s = secret(&d).expect("a key is made when there is none");
+        assert!(s.len() >= 32);
+        assert_eq!(secret(&d).unwrap(), s, "and then it stays");
     }
 
     #[test]

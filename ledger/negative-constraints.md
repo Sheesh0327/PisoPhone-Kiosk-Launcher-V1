@@ -5,3 +5,4 @@ Earlier entries from the first run are kept on branch `claude/sleepy-gauss-rn31g
 
 | date | task | model | error_class | traceback_hash | constraint_violated | resolved |
 |------|------|-------|-------------|----------------|---------------------|----------|
+| 2026-10-21 | feat 001 port of e827c98 | - | merge conflict | - | patch assumed 4b6312d (3 hunks in core.rs, ledger.rs) | yes: patch side taken, nothing needed from 4b6312d; builds and 87 tests pass |

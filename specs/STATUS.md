@@ -6,7 +6,7 @@ Updated: 2026-10-21. `beta` was recreated from `main` (`49ebad4`) with only the 
 
 | # | Feature | State | Notes |
 |---|---|---|---|
-| 001 | Router money and time (RT-01 to 07, 14) | **spec and plan drafted, waiting for owner approval** | `specs/features/001-router-money-time/`. Patch verified on `claude/sleepy-gauss-rn31gl` (89 cargo tests pass); not on `beta`; does not apply cleanly (depends on `4b6312d`). Owner question 1 open. |
+| 001 | Router money and time (RT-01 to 07, 14) | **implemented on `feat/001-router-money-time`, waiting for owner review** | `specs/features/001-router-money-time/`. Router 1.5.13. cargo 87, test_flow 202, router setup tests all 0 failures. No lines of `4b6312d` were needed. Not tried on a router; CI not run yet. |
 
 ## Backlog: Spec 01 (`specs/spec_01_findings.json`, 106 rows, all `open` or `owner-decision`)
 
@@ -31,4 +31,4 @@ Earlier work exists on branch `claude/sleepy-gauss-rn31gl` (tip `748add9`) with 
 ST-2 (signed flash manifest), SC-4 (`scripts/apk_production_cert.txt` empty), ST-8 (card and slot limits), DEAD-1 (root `package.json`), APP-04 (refuse coins until restore), roadmap 0.1 (any boxes in legacy mode?).
 
 ## Next step
-Owner reads `specs/features/001-router-money-time/spec.md` and `plan.md`, answers owner question 1, and approves; then `/sdd-implement`.
+Owner reviews `specs/features/001-router-money-time/validation.md`; then merge to `beta` (owner's call), watch Code quality, then `/sdd-replan`.

@@ -145,11 +145,7 @@ impl Games {
     fn persist(&self, inner: &Inner, day: u64) {
         let text: String =
             inner.days.iter().filter(|(_, d)| d.day == day).map(|(k, d)| format!("{} {} {}\n", k, d.day, d.used_ms / 1000)).collect();
-        let tmp = format!("{}.tmp", self.path);
-        if let Some(dir) = std::path::Path::new(&self.path).parent() {
-            let _ = fs::create_dir_all(dir);
-        }
-        let _ = fs::write(&tmp, text).and_then(|_| fs::rename(&tmp, &self.path));
+        let _ = crate::util::write_atomic(&self.path, text.as_bytes());
     }
 }
 

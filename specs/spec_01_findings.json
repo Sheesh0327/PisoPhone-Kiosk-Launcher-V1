@@ -284,7 +284,7 @@
   "severity": "high",
   "money_or_signing": true,
   "confidence": "reported",
-  "status": "open",
+  "status": "fixed",
   "fix": "router 1.5.14; see the commit e827c98",
   "test": {
    "kind": "integration",
@@ -301,7 +301,8 @@
    "on_beta": false,
    "applies_cleanly_to_beta": false,
    "note": "depends on router lines of 4b6312d; not tried on a real router"
-  }
+  },
+  "implemented_in": "feat/001-router-money-time (router 1.5.13, not on beta yet)"
  },
  {
   "id": "RT-02",
@@ -313,7 +314,7 @@
   "severity": "high",
   "money_or_signing": true,
   "confidence": "reported",
-  "status": "open",
+  "status": "fixed",
   "fix": "router 1.5.14; see the commit e827c98",
   "test": {
    "kind": "integration",
@@ -330,7 +331,8 @@
    "on_beta": false,
    "applies_cleanly_to_beta": false,
    "note": "depends on router lines of 4b6312d; not tried on a real router"
-  }
+  },
+  "implemented_in": "feat/001-router-money-time (router 1.5.13, not on beta yet)"
  },
  {
   "id": "RT-03",
@@ -342,7 +344,7 @@
   "severity": "high",
   "money_or_signing": true,
   "confidence": "reported",
-  "status": "open",
+  "status": "fixed",
   "fix": "router 1.5.14; see the commit e827c98",
   "test": {
    "kind": "integration",
@@ -359,7 +361,8 @@
    "on_beta": false,
    "applies_cleanly_to_beta": false,
    "note": "depends on router lines of 4b6312d; not tried on a real router"
-  }
+  },
+  "implemented_in": "feat/001-router-money-time (router 1.5.13, not on beta yet)"
  },
  {
   "id": "RT-04",
@@ -371,7 +374,7 @@
   "severity": "high",
   "money_or_signing": true,
   "confidence": "reported",
-  "status": "open",
+  "status": "fixed",
   "fix": "router 1.5.14; see the commit e827c98",
   "test": {
    "kind": "integration",
@@ -388,7 +391,8 @@
    "on_beta": false,
    "applies_cleanly_to_beta": false,
    "note": "depends on router lines of 4b6312d; not tried on a real router"
-  }
+  },
+  "implemented_in": "feat/001-router-money-time (router 1.5.13, not on beta yet)"
  },
  {
   "id": "RT-05",
@@ -400,7 +404,7 @@
   "severity": "high",
   "money_or_signing": true,
   "confidence": "reported",
-  "status": "open",
+  "status": "fixed",
   "fix": "router 1.5.14; see the commit e827c98",
   "test": {
    "kind": "integration",
@@ -417,7 +421,8 @@
    "on_beta": false,
    "applies_cleanly_to_beta": false,
    "note": "depends on router lines of 4b6312d; not tried on a real router"
-  }
+  },
+  "implemented_in": "feat/001-router-money-time (router 1.5.13, not on beta yet)"
  },
  {
   "id": "RT-06",
@@ -429,7 +434,7 @@
   "severity": "high",
   "money_or_signing": true,
   "confidence": "reported",
-  "status": "open",
+  "status": "fixed",
   "fix": "router 1.5.14; see the commit e827c98",
   "test": {
    "kind": "integration",
@@ -446,7 +451,8 @@
    "on_beta": false,
    "applies_cleanly_to_beta": false,
    "note": "depends on router lines of 4b6312d; not tried on a real router"
-  }
+  },
+  "implemented_in": "feat/001-router-money-time (router 1.5.13, not on beta yet)"
  },
  {
   "id": "RT-07",
@@ -458,7 +464,7 @@
   "severity": "high",
   "money_or_signing": true,
   "confidence": "reported",
-  "status": "open",
+  "status": "fixed",
   "fix": "router 1.5.14; see the commit e827c98",
   "test": {
    "kind": "integration",
@@ -475,7 +481,8 @@
    "on_beta": false,
    "applies_cleanly_to_beta": false,
    "note": "depends on router lines of 4b6312d; not tried on a real router"
-  }
+  },
+  "implemented_in": "feat/001-router-money-time (router 1.5.13, not on beta yet)"
  },
  {
   "id": "RT-14",
@@ -487,7 +494,7 @@
   "severity": "high",
   "money_or_signing": true,
   "confidence": "reported",
-  "status": "open",
+  "status": "fixed",
   "fix": "router 1.5.14; see the commit e827c98",
   "test": {
    "kind": "integration",
@@ -504,7 +511,8 @@
    "on_beta": false,
    "applies_cleanly_to_beta": false,
    "note": "depends on router lines of 4b6312d; not tried on a real router"
-  }
+  },
+  "implemented_in": "feat/001-router-money-time (router 1.5.13, not on beta yet)"
  },
  {
   "id": "CI-1",

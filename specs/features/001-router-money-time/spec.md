@@ -1,6 +1,6 @@
 # Feature 001: router money and time
 
-Status: **draft** (waiting for the owner)   Branch: `feat/001-router-money-time`   Area: router
+Status: **implemented, waiting for owner review** (approved 2026-10-21, base option (a))   Branch: `feat/001-router-money-time`   Area: router
 Backlog rows: RT-01, RT-02, RT-03, RT-04, RT-05, RT-06, RT-07, RT-14 (`specs/spec_01_findings.json`; Spec 01 section 6, package R1)   Release: router (raise `setup/RELEASE`)
 
 ## Intent

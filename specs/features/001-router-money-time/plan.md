@@ -16,12 +16,12 @@ Unresolved ledger entries: none. Source of the patch: `git show e827c98` and `66
 
 ## Task groups (test first; each ends with the red result logged in `ledger/negative-constraints.md`)
 
-- [ ] 1. **Base.** Decide owner question 1. For (a): list the lines of `4b6312d` in `core.rs`, `ledger.rs`, `boxlink.rs`, `console.rs`, `reconcile.rs` that the RT patch touches or relies on, port only those.
-- [ ] 2. **RT-05, RT-06, RT-14**: `util::write_atomic` (write, fsync, rename, fsync dir); move every writer to it; voucher key never replaced. Tests: `rt05_*`, `rt06_*`, `rt14_no_other_file_renames_a_file_itself`.
-- [ ] 3. **RT-04**: ledger row written whole with one write; torn tail skipped and reported, not "LEDGER WAS CHANGED". Tests: four `rt04_*`.
-- [ ] 4. **RT-01, RT-02, RT-03**: clock check first in `tick()` and `reconnect`; only `purge` deletes; shift only the stale period (`clockjump` record); vouchers move with the clock. Tests: `rt01_*`, `rt02_*`, `rt03_*`.
-- [ ] 5. **RT-07**: late-coin window id `{wid}L{boxed}`. Test `rt07_*` and the two-late-rounds check in `test_flow.py`.
-- [ ] 6. **Docs and release**: raise `setup/RELEASE`, run `build_piso_setup.py`, `CHANGELOG.md`, hardware check RS32.
+- [x] 1. **Base.** Decide owner question 1. Result: **no lines of `4b6312d` were needed.** The RT diff applied with three conflicting hunks (one in `core.rs`, two in `ledger.rs`), and in all three the `beta` side was code the patch replaces or empty. Taking the patch side compiled and passed. (Original instruction: list the lines of `4b6312d` in `core.rs`, `ledger.rs`, `boxlink.rs`, `console.rs`, `reconcile.rs` that the RT patch touches or relies on, port only those.)
+- [x] 2. **RT-05, RT-06, RT-14**: `util::write_atomic` (write, fsync, rename, fsync dir); move every writer to it; voucher key never replaced. Tests: `rt05_*`, `rt06_*`, `rt14_no_other_file_renames_a_file_itself`.
+- [x] 3. **RT-04**: ledger row written whole with one write; torn tail skipped and reported, not "LEDGER WAS CHANGED". Tests: four `rt04_*`.
+- [x] 4. **RT-01, RT-02, RT-03**: clock check first in `tick()` and `reconnect`; only `purge` deletes; shift only the stale period (`clockjump` record); vouchers move with the clock. Tests: `rt01_*`, `rt02_*`, `rt03_*`.
+- [x] 5. **RT-07**: late-coin window id `{wid}L{boxed}`. Test `rt07_*` and the two-late-rounds check in `test_flow.py`.
+- [x] 6. **Docs and release**: raise `setup/RELEASE`, run `build_piso_setup.py`, `CHANGELOG.md`, hardware check RS32.
 
 ## Release
 Router only. `setup/RELEASE` raised once (next after the live 1.5.12). Regenerate `setup/piso-setup*.sh`, `website/setup/*`; CI rebuilds `tools/pisoportal/bin/*`. No merge to `main` unless the owner asks.
