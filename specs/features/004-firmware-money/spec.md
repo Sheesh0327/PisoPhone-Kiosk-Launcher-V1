@@ -1,6 +1,6 @@
 # Feature 004: firmware money rows (a coin is never lost, double counted or mis-credited)
 
-Status: **approved 2026-10-21 (reset pin waits up to 30 s, then resets, confirmed by the owner)**   Branch: `feat/004-firmware-money`   Area: firmware
+Status: **implemented on the branch, waiting for CI and owner review** (approved 2026-10-21; reset pin waits up to 30 s, then resets, confirmed by the owner)   Branch: `feat/004-firmware-money`   Area: firmware
 Backlog rows: FW-01, FW-02, FW-03, FW-05, FW-06 (`specs/spec_01_findings.json`)   Release: firmware (`PISO_FW_VERSION` 3.11.1)
 
 ## Intent
