@@ -292,7 +292,16 @@
    "fails_before": true
   },
   "release": "router",
-  "prior_work": "implemented and tested on claude/sleepy-gauss-rn31gl@748add9; not on beta. Bring back through a feature spec."
+  "prior_work": "implemented and tested on claude/sleepy-gauss-rn31gl@748add9; not on beta. Bring back through a feature spec.",
+  "feature": "001-router-money-time",
+  "prior_work_verified": {
+   "date": "2026-10-21",
+   "commit": "e827c98 (on 748add9)",
+   "result": "cargo test 89 passed, 0 failed; tests: core::rt01_rt02_the_fair_use_tick..., core::rt01_reconnect_keeps_a_session..., roll::rt01_session_never_deletes...",
+   "on_beta": false,
+   "applies_cleanly_to_beta": false,
+   "note": "depends on router lines of 4b6312d; not tried on a real router"
+  }
  },
  {
   "id": "RT-02",
@@ -312,7 +321,16 @@
    "fails_before": true
   },
   "release": "router",
-  "prior_work": "implemented and tested on claude/sleepy-gauss-rn31gl@748add9; not on beta. Bring back through a feature spec."
+  "prior_work": "implemented and tested on claude/sleepy-gauss-rn31gl@748add9; not on beta. Bring back through a feature spec.",
+  "feature": "001-router-money-time",
+  "prior_work_verified": {
+   "date": "2026-10-21",
+   "commit": "e827c98 (on 748add9)",
+   "result": "cargo test 89 passed, 0 failed; tests: ledger::rt02_a_payment_after_the_jump_is_not_moved, roll::rt02_a_session_paid_after_the_jump..., core::rt01_rt02...",
+   "on_beta": false,
+   "applies_cleanly_to_beta": false,
+   "note": "depends on router lines of 4b6312d; not tried on a real router"
+  }
  },
  {
   "id": "RT-03",
@@ -332,7 +350,16 @@
    "fails_before": true
   },
   "release": "router",
-  "prior_work": "implemented and tested on claude/sleepy-gauss-rn31gl@748add9; not on beta. Bring back through a feature spec."
+  "prior_work": "implemented and tested on claude/sleepy-gauss-rn31gl@748add9; not on beta. Bring back through a feature spec.",
+  "feature": "001-router-money-time",
+  "prior_work_verified": {
+   "date": "2026-10-21",
+   "commit": "e827c98 (on 748add9)",
+   "result": "cargo test 89 passed, 0 failed; tests: core::rt03_vouchers_and_ledger_rows..., voucher::rt03_a_voucher_made_with_the_stale_clock...",
+   "on_beta": false,
+   "applies_cleanly_to_beta": false,
+   "note": "depends on router lines of 4b6312d; not tried on a real router"
+  }
  },
  {
   "id": "RT-04",
@@ -352,7 +379,16 @@
    "fails_before": true
   },
   "release": "router",
-  "prior_work": "implemented and tested on claude/sleepy-gauss-rn31gl@748add9; not on beta. Bring back through a feature spec."
+  "prior_work": "implemented and tested on claude/sleepy-gauss-rn31gl@748add9; not on beta. Bring back through a feature spec.",
+  "feature": "001-router-money-time",
+  "prior_work_verified": {
+   "date": "2026-10-21",
+   "commit": "e827c98 (on 748add9)",
+   "result": "cargo test 89 passed, 0 failed; tests: ledger::rt04_* (4 tests)",
+   "on_beta": false,
+   "applies_cleanly_to_beta": false,
+   "note": "depends on router lines of 4b6312d; not tried on a real router"
+  }
  },
  {
   "id": "RT-05",
@@ -372,7 +408,16 @@
    "fails_before": true
   },
   "release": "router",
-  "prior_work": "implemented and tested on claude/sleepy-gauss-rn31gl@748add9; not on beta. Bring back through a feature spec."
+  "prior_work": "implemented and tested on claude/sleepy-gauss-rn31gl@748add9; not on beta. Bring back through a feature spec.",
+  "feature": "001-router-money-time",
+  "prior_work_verified": {
+   "date": "2026-10-21",
+   "commit": "e827c98 (on 748add9)",
+   "result": "cargo test 89 passed, 0 failed; tests: util::rt05_write_atomic_* (2 tests)",
+   "on_beta": false,
+   "applies_cleanly_to_beta": false,
+   "note": "depends on router lines of 4b6312d; not tried on a real router"
+  }
  },
  {
   "id": "RT-06",
@@ -392,7 +437,16 @@
    "fails_before": true
   },
   "release": "router",
-  "prior_work": "implemented and tested on claude/sleepy-gauss-rn31gl@748add9; not on beta. Bring back through a feature spec."
+  "prior_work": "implemented and tested on claude/sleepy-gauss-rn31gl@748add9; not on beta. Bring back through a feature spec.",
+  "feature": "001-router-money-time",
+  "prior_work_verified": {
+   "date": "2026-10-21",
+   "commit": "e827c98 (on 748add9)",
+   "result": "cargo test 89 passed, 0 failed; tests: voucher::rt06_an_existing_voucher_key_is_never_overwritten",
+   "on_beta": false,
+   "applies_cleanly_to_beta": false,
+   "note": "depends on router lines of 4b6312d; not tried on a real router"
+  }
  },
  {
   "id": "RT-07",
@@ -412,7 +466,16 @@
    "fails_before": true
   },
   "release": "router",
-  "prior_work": "implemented and tested on claude/sleepy-gauss-rn31gl@748add9; not on beta. Bring back through a feature spec."
+  "prior_work": "implemented and tested on claude/sleepy-gauss-rn31gl@748add9; not on beta. Bring back through a feature spec.",
+  "feature": "001-router-money-time",
+  "prior_work_verified": {
+   "date": "2026-10-21",
+   "commit": "e827c98 (on 748add9)",
+   "result": "cargo test 89 passed, 0 failed; tests: core::rt07_a_second_late_round_of_the_same_window_has_its_own_id",
+   "on_beta": false,
+   "applies_cleanly_to_beta": false,
+   "note": "depends on router lines of 4b6312d; not tried on a real router"
+  }
  },
  {
   "id": "RT-14",
@@ -432,7 +495,16 @@
    "fails_before": true
   },
   "release": "router",
-  "prior_work": "implemented and tested on claude/sleepy-gauss-rn31gl@748add9; not on beta. Bring back through a feature spec."
+  "prior_work": "implemented and tested on claude/sleepy-gauss-rn31gl@748add9; not on beta. Bring back through a feature spec.",
+  "feature": "001-router-money-time",
+  "prior_work_verified": {
+   "date": "2026-10-21",
+   "commit": "e827c98 (on 748add9)",
+   "result": "cargo test 89 passed, 0 failed; tests: util::rt14_no_other_file_renames_a_file_itself",
+   "on_beta": false,
+   "applies_cleanly_to_beta": false,
+   "note": "depends on router lines of 4b6312d; not tried on a real router"
+  }
  },
  {
   "id": "CI-1",
