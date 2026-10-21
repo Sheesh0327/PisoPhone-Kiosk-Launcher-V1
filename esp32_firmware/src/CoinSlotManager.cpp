@@ -359,9 +359,10 @@ void processCoinSlotSession() {
     // 3. Strict Isolation: If no active or draining session, discard any spurious pulses
     if (currentState == CoinSlotState::IDLE || activeSessionId.length() == 0) {
         if (newPulses > 0 || sessionAccumulatedPulses > 0) {
+            int lost = newPulses + sessionAccumulatedPulses; // counted before the zeroing (the log used to print only newPulses)
             sessionAccumulatedPulses = 0;
-            Serial.printf("[🪙 COIN SLOT] Discarded %d spurious pulse(s) received while IDLE/unreserved.\n",
-                          newPulses + sessionAccumulatedPulses);
+            Serial.printf("[🪙 COIN SLOT] %d pulse(s) received while IDLE/unreserved; recorded for the operator.\n", lost);
+            recordIdleCoin(lost);
         }
         return;
     }

@@ -11,6 +11,9 @@
 #include "DeviceNetwork.h"
 #include "Config.h"
 #include "Diagnostics.h"
+#include "CoinSlotManager.h"
+#include "HardwareManager.h"
+#include "RestartGuard.h"
 #include "OrphanLedger.h"
 #include "OrphanPayments.h"
 
@@ -203,9 +206,28 @@ int getPendingPaymentCount() {
     return count;
 }
 
+void recordIdleCoin(int pulses) {
+    if (pulses <= 0) return;
+    // A stray pulse train at an idle slot writes flash, so at most one record every 5 s; the rest are only counted in the log.
+    static unsigned long lastMs = 0;
+    if (lastMs != 0 && millis() - lastMs < 5000) {
+        Serial.printf("[PAY QUEUE] %d pulse(s) at an idle slot, not recorded again within 5 s.\n", pulses);
+        return;
+    }
+    lastMs = millis();
+    // The coin may be real money that nothing is waiting for: write it down where the operator will see it (FW-06).
+    orphanRecord(generateTxId("idle-").c_str(), "", ownerCodeOf(CoinSlotOwnerType::ANY), (uint32_t)pulses, 0, 0,
+                 orphans::NOT_QUEUED);
+}
+
 bool canPerformRebootOrOta() {
-    if (hasUnpersistedPayments()) {
-        Serial.println("[PAY QUEUE] Reboot/OTA blocked: unpersisted transactions remain in RAM.");
+    // FW-01: also not while a coin may be in flight (slot in use, or a pulse counted but not yet turned into a payment)
+    if (!mayRestart(hasUnpersistedPayments(), getCoinSlotState() == CoinSlotState::IDLE, coinPulsesPeek())) {
+        static unsigned long lastLogMs = 0; // the reset pin asks on every loop pass while it is held
+        if (lastLogMs == 0 || millis() - lastLogMs > 2000) {
+            lastLogMs = millis();
+            Serial.println("[PAY QUEUE] Reboot/OTA blocked: unpersisted transactions in RAM, or a coin may be in flight.");
+        }
         return false;
     }
     return true;
