@@ -33,7 +33,7 @@ releases. Update `specs/RELEASE_STATE.md` whenever a release goes out. Other poi
 Run every check for the area you touched; the commands are in the table in `CONTRIBUTING.md`, "Before you open a pull request".
 Always run `bash scripts/check_security_rules.sh`. For the router add-on also run `cargo test` and `python3 tests/test_flow.py`
 in `tools/pisoportal`, and `python3 router/tests/test_setup.py`, `test_pisophone_setup.py`, `test_setup_web.py`,
-`test_setup_tools.py`. CI (`.github/workflows/quality.yml`) runs the same for the parts a change touches. Code style: ktlint
+`test_setup_tools.py`; for the setup program also `test_setup_phone_web.py` and `test_phone_only.py`. CI (`.github/workflows/quality.yml`) runs the same for the parts a change touches. Code style: ktlint
 (Kotlin), clang-format (`esp32_firmware/.clang-format`).
 
 ## 4. Generated and published files: never edit by hand

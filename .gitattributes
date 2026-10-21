@@ -18,3 +18,10 @@ setup/piso-setup.sh text eol=lf
 
 # The router's update file is signed over its exact bytes: never converted.
 website/update/router-setup.sh -text
+
+# Web assets embedded in the box firmware must maintain exact LF byte representation everywhere
+esp32_firmware/include/WebAssets.h text eol=lf
+esp32_firmware/web/*.js text eol=lf
+esp32_firmware/web/*.css text eol=lf
+esp32_firmware/web/*.md text eol=lf
+

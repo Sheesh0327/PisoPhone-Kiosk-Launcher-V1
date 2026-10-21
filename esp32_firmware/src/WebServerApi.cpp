@@ -6,14 +6,20 @@
 #include "WebServerModule.h"
 #include "WebServerAuth.h"
 #include "Config.h"
+#if PISO_HAS_PHONES
 #include "PhoneProfileStore.h"
+#endif
 #include "WebDashboardHtml.h"
 #include "SuperAdminPubKey.h"
 #include "SuperAdminManager.h"
+#if PISO_HAS_PHONES
 #include "LicensePubKey.h"
+#endif
 #include "Security.h"
 #include "HardwareManager.h"
+#if PISO_HAS_PHONES
 #include "DeviceManager.h"
+#endif
 #include "CoinSlotManager.h"
 #include "DeviceNetwork.h"
 #include "PaymentQueueManager.h"
@@ -22,6 +28,7 @@
 #include <WiFi.h>
 #include <WebServer.h>
 
+#if PISO_HAS_PHONES
 void handleAddTime() {
     if (!checkAdminAuth()) return;
     int minutes = 60;
@@ -302,6 +309,8 @@ void handleApiSlotCloudSync() {
     webServer.send(200, "application/json", "{\"success\":true,\"message\":\"Cloud snapshot sent\"}");
 }
 
+#endif // PISO_HAS_PHONES
+
 void handleApiStatus() {
     if (!checkAuth()) return;
 
@@ -332,7 +341,9 @@ void handleApiStatus() {
     String json = "{";
     json += "\"admin_qr\":" + String(SUPER_ADMIN_PUBKEY_LEN > 0 ? "true" : "false") + ",";
     json += "\"default_credentials\":" + String(defaultCredentialsActive() ? "true" : "false") + ",";
+#if PISO_HAS_PHONES
     json += "\"legacy_key\":" + String(isLegacyKeyMode() ? "true" : "false") + ",";
+#endif
     json += "\"orphans\":{\"unhandled\":" + String(orphansUnhandledCount()) +
             ",\"pulses\":" + String(orphansUnhandledPulses()) + "},";
     json += "\"wifi\":{";
@@ -342,8 +353,9 @@ void handleApiStatus() {
     json += "\"ssid\":\"" + jsonEsc(wifiSsid) + "\",";
     json += "\"ip\":\"" + jsonEsc(WiFi.localIP().toString()) + "\",";
     json += "\"connected\":" + String(isConnected ? "true" : "false");
-    json += "},";
-    json += "\"devices\":[";
+    json += "}";
+#if PISO_HAS_PHONES
+    json += ",\"devices\":[";
 
     bool first = true;
     for (int i = 0; i < MAX_SUPPORTED_SLOTS; i++) {
@@ -421,9 +433,13 @@ void handleApiStatus() {
         json += "\"online\":" + String(isOnline ? "true" : "false");
         json += "}";
     }
-    json += "]}";
+    json += "]";
+#endif
+    json += "}";
     webServer.send(200, "application/json", json);
 }
+
+#if PISO_HAS_PHONES
 
 // Unsigned, so it may introduce a phone that is not paired yet, but it never moves a paired phone to another address (its
 // signed heartbeat keeps that current) and never speaks for an address other than the caller's: otherwise anyone on the
@@ -460,3 +476,4 @@ void handleIdentify() {
     json += "}";
     webServer.send(200, "application/json", json);
 }
+#endif // PISO_HAS_PHONES

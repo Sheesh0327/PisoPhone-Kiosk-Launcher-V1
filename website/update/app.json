@@ -1,10 +1,10 @@
 {
-  "versionCode": 487,
-  "versionName": "4.8.7",
-  "channel": "stable",
+  "versionCode": 491,
+  "versionName": "4.9.1-dev",
+  "channel": "dev",
   
-  "signatureChecksum": "Un0usqLMwnmeaowrY2g21EgRVWe4bTRDLUi2RH12WbE",
-  "sha256": "d42a1a29bd69417ce5bb8264d77ef786842b471a997f2fb9c6776bd9e1703f5d",
-  "size": 3540990,
-  "releaseDate": "2026-10-18"
+  "signatureChecksum": "DiFF_STFcP7MrUKtszkGshMCDzo8YHv1Q1jtomQFpLU",
+  "sha256": "65e3a2445274583aa814b7cb11530a9f3d004d40abe87f6592807fecb636e173",
+  "size": 3540988,
+  "releaseDate": "2026-10-21"
 }

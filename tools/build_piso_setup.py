@@ -98,7 +98,7 @@ if __name__ == "__main__":
         for p, t in files.items():
             target = os.path.join(ROOT, p)
             os.makedirs(os.path.dirname(target), exist_ok=True)
-            open(target, "w").write(t)
+            open(target, "w", newline="\n").write(t)
             if p.endswith((".sh", ".py")) and not p.endswith(".sha256"):
                 os.chmod(target, 0o755)
             print(f"wrote {target} ({len(t)} bytes)")

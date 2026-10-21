@@ -1,4 +1,8 @@
 #include "WebDashboardComponents.h"
+#include "Product.h"
+
+// Everything here is about the rental phones: the PisoWiFi-only image compiles nothing from this file.
+#if PISO_HAS_PHONES
 #include "WebDashboardHtml.h"
 #include "Config.h"
 #include "DeviceManager.h"
@@ -158,3 +162,5 @@ String renderPhoneSlotsHtml() {
     html += "</div></div>";
     return html;
 }
+
+#endif // PISO_HAS_PHONES

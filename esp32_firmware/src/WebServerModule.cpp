@@ -2,8 +2,10 @@
 // Authentication is decided inside the handlers (see WebServerAuth.cpp), not here.
 
 #include "WebServerModule.h"
+#if PISO_HAS_PHONES
 #include "WebServerAccounts.h"
 #include "WebServerProfiles.h"
+#endif
 #include "CoinSlotManager.h"
 #include "PaymentQueueManager.h"
 #include "Diagnostics.h"
@@ -16,7 +18,9 @@
 #include "Config.h"
 #include "Security.h"
 #include "HardwareManager.h"
+#if PISO_HAS_PHONES
 #include "DeviceManager.h"
+#endif
 #include "SuperAdminManager.h"
 #include "SuperAdminSession.h"
 #include "WebDashboardHtml.h"
@@ -29,18 +33,22 @@
 #include <esp_task_wdt.h>
 
 WebServer webServer(80);
+#if PISO_HAS_PHONES
 WiFiServer wsServer(81);
 WiFiClient wsClient;
 bool isWsConnected = false;
 String wsSessionDeviceId = "";
 WiFiUDP udpServer;
 QueueHandle_t authQueue = NULL;
+#endif
 
 void setupWebServer() {
+#if PISO_HAS_PHONES
     // Initialize Authenticated Request Worker Queue & FreeRTOS Supervisor Task (8KB stack)
     authQueue = xQueueCreate(16, sizeof(AuthRequest));
     initWorkerAckQueue(); // before the task starts: it posts into this queue
     xTaskCreate(authWorkerTask, "AuthWorker", 8192, NULL, 1, NULL);
+#endif
 
     // Port 80: HTTP Portal & API routes
     webServer.on("/", HTTP_GET, handlePortalRoot);
@@ -49,8 +57,10 @@ void setupWebServer() {
     webServer.on("/save", HTTP_POST, handleSave);
     webServer.on("/reboot", HTTP_POST, handleReboot);
     webServer.on("/factory_reset", HTTP_POST, handleFactoryReset);
+#if PISO_HAS_PHONES
     webServer.on("/add_time", HTTP_POST, handleAddTime);
     webServer.on("/one_vs_one", HTTP_POST, handleOneVsOne);
+#endif
     webServer.on("/api/superadmin/challenge", HTTP_GET, handleSuperAdminChallenge);
     webServer.on("/api/superadmin/qr_login", HTTP_POST, handleSuperAdminQrLogin);
     webServer.on("/api/superadmin/auth", HTTP_POST, handleSuperAdminAuth);
@@ -61,6 +71,7 @@ void setupWebServer() {
     webServer.on("/api/superadmin/save_split", HTTP_POST, handleSuperAdminSaveSplit);
     webServer.on("/api/superadmin/factory_reset", HTTP_POST, handleSuperAdminFactoryReset);
     webServer.on("/api/status", HTTP_GET, handleApiStatus);
+#if PISO_HAS_PHONES
     webServer.on("/check_qualification", HTTP_GET, handleCheckQualification);
     webServer.on("/identify", HTTP_GET, handleIdentify);
     webServer.on("/query_time", HTTP_GET, handleQueryTime);
@@ -93,7 +104,9 @@ void setupWebServer() {
     webServer.on("/api/accounts", HTTP_GET, handleApiAccountsList);
     webServer.on("/api/accounts/adjust", HTTP_POST, handleApiAccountsAdjust);
     webServer.on("/api/accounts/delete", HTTP_POST, handleApiAccountsDelete);
+#endif
 
+#if PISO_HAS_GATEWAY
     // Network coin-slot gateway (router payment verification). Disabled until a key is configured.
     webServer.on("/api/gateway/challenge", HTTP_GET, handleGatewayChallenge);
     webServer.on("/api/gateway/arm", HTTP_ANY, handleGatewayArm);
@@ -101,6 +114,7 @@ void setupWebServer() {
     webServer.on("/api/gateway/release", HTTP_ANY, handleGatewayRelease);
     webServer.on("/api/gateway/ack", HTTP_ANY, handleGatewayAck);
     webServer.on("/api/gateway/config", HTTP_ANY, handleGatewayConfig);
+#endif
 
     webServer.on("/api/relay", HTTP_ANY, []() {
         if (!checkAdminAuth()) return;
@@ -337,17 +351,21 @@ void setupWebServer() {
     webServer.collectHeaders(kCollectedHeaders, 5);
     webServer.begin();
 
+#if PISO_HAS_PHONES
     // Port 81: Real-time WebSocket Server
     wsServer.begin();
 
     // Port 8888: UDP Broadcast Discovery Service
     udpServer.begin(UDP_DISCOVERY_PORT);
     Serial.printf("[!] Port %d: UDP Discovery Server active\n", UDP_DISCOVERY_PORT);
+#endif
 
     if (WiFi.status() == WL_CONNECTED) {
         Serial.printf("[!] Port 80: Management at http://%s:80\n", WiFi.localIP().toString().c_str());
+#if PISO_HAS_PHONES
         Serial.printf("[!] Port 81: WebSocket at ws://%s:81/ws\n\n", WiFi.localIP().toString().c_str());
         sendUdpDiscoveryResponse(IPAddress(255, 255, 255, 255), UDP_DISCOVERY_PORT);
+#endif
     } else {
         Serial.printf("[!] Wi-Fi disconnected. Waiting for hotspot '%s' to become available...\n", wifiSsid.c_str());
     }

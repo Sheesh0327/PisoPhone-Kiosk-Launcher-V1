@@ -24,8 +24,9 @@ Never read generated or big files (`CLAUDE.md` section 4). Search with `grep -n`
 1. **Plan** (`/sdd-plan`): copy `specs/features/_template/`, write the spec (intent, constraints, success criteria) and plan. **Owner approves. No code before this.**
 2. **Implement** (`/sdd-implement`): test first (see it fail, log it in `ledger/`), fix in the source, regenerate generated files, one commit per task group.
 3. **Validate** (`/sdd-validate`): fill `validation.md` with evidence, run the gates, update STATUS and the backlog row.
-4. **Review** the owner reads spec, criteria and evidence first; style last. Merge to `beta`. `main` and releases only when the owner asks (`CLAUDE.md` section 5).
-5. **Replan** (`/sdd-replan`) before the next feature (`specs/REPLAN.md`).
+4. **CI**: Code quality runs only on pull requests into `beta`/`main` and pushes to them, not on `feat/*` pushes. Open a PR (when the owner asks) or merge to `beta`, then read the result.
+5. **Review** the owner reads spec, criteria and evidence first; style last. Merge to `beta`. `main` and releases only when the owner asks (`CLAUDE.md` section 5).
+6. **Replan** (`/sdd-replan`) before the next feature (`specs/REPLAN.md`).
 End a long chat with `/sdd-handoff`: a note in `specs/notes/`, then start a fresh chat.
 
 ## If the spec is wrong or silent

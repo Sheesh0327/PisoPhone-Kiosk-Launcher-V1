@@ -218,8 +218,10 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .row:last-child { border-bottom: 0; }
 .row.head { padding-top: 9px; padding-bottom: 9px; background: var(--surface-2); color: var(--muted); font-size: 13px; font-weight: 550; }
 .row.empty { background: var(--surface-2); }
+/*@phones*/
 .row.pending { background: var(--warn-soft); }
 .row.acct { grid-template-columns: minmax(0, 1.5fr) 110px minmax(0, 1.2fr) minmax(0, 1.6fr); }
+/*@end*/
 .row-name { font-weight: 600; line-height: 1.3; }
 .row-sub { color: var(--muted); font-size: 13px; font-family: var(--mono); }
 .row-time { font-family: var(--mono); font-variant-numeric: tabular-nums; font-weight: 600; }
@@ -258,6 +260,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .mini { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r); padding: 11px 14px; }
 .mini .k { color: var(--muted); font-size: 13px; }
 .mini .v { font: 500 20px var(--serif); }
+/*@phones*/
 .slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
 .slot { background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--r); padding: 14px; min-height: 124px; display: flex; flex-direction: column; justify-content: space-between; gap: 10px; text-align: left; cursor: pointer; font: inherit; }
 .slot:hover { border-color: var(--accent); }
@@ -272,13 +275,16 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .slot-name, .slot-sub { display: block; }
 .slot-name { font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .slot-sub { color: var(--muted); font-size: 12px; }
+/*@end*/
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); display: inline-block; }
 .dot.off { background: var(--bad); }
 .dot.locked { background: var(--muted); }
 
 /* Match mode and vendor */
+/*@phones*/
 .duel { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
 .duel > div { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r); padding: 14px; display: flex; flex-direction: column; gap: 10px; }
+/*@end*/
 .vault-mask { cursor: pointer; text-align: center; padding: 28px 16px; border: 1.5px dashed var(--line-strong); border-radius: var(--R); background: var(--surface-2); }
 .vault-mask:hover { border-color: var(--accent); }
 .vault-mask .big { font: 500 36px var(--serif); letter-spacing: 4px; color: var(--muted); }
@@ -303,7 +309,9 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .choice:hover { border-color: var(--accent); background: var(--accent-soft); }
 .choice-t { font-weight: 600; font-size: 14px; }
 .choice-s { color: var(--muted); font-size: 13px; }
+/*@phones*/
 .slot-pick { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+/*@end*/
 .empty-box { border: 1.5px dashed var(--line-strong); border-radius: var(--r); padding: 18px; text-align: center; color: var(--muted); font-size: 14px; }
 .empty-box b { display: block; color: var(--ink); margin-bottom: 4px; }
 

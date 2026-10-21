@@ -600,14 +600,17 @@
   "severity": "high",
   "money_or_signing": true,
   "confidence": "confirmed",
-  "status": "open",
+  "status": "fixed",
   "fix": "name EXPECTED_OWNER_FINGERPRINT no longer present (0a7f5b1); confirm AC2.2 test exists",
   "test": {
    "kind": "unit",
-   "where": "router/tests/test_setup_tools.py"
+   "where": "router/tests/test_setup_tools.py (ST-1 block)",
+   "fails_before": true
   },
   "release": "none",
-  "prior_work": "implemented and tested on claude/sleepy-gauss-rn31gl@748add9; not on beta. Bring back through a feature spec."
+  "prior_work": "implemented and tested on claude/sleepy-gauss-rn31gl@748add9; not on beta. Bring back through a feature spec.",
+  "feature": "002-firmware-3-11-0",
+  "implemented_in": "feat/002-firmware-3-11-0"
  },
  {
   "id": "SC-1",

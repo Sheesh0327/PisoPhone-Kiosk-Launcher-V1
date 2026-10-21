@@ -47,6 +47,8 @@
     // Which firmware file this board needs and which version it runs; filled in by the ESP32
     // when it serves this page.
     const CHIP_ID = (window.PISO_OTA && window.PISO_OTA.chip) || '';
+    // Each product has its own signed feed (the page says which); no address means the full product's, /update.
+    const FEED_PATH = (window.PISO_OTA && window.PISO_OTA.feed) || '/update';
     const RUNNING_VERSION = (window.PISO_OTA && window.PISO_OTA.version) || '';
 
     // SHA-256 for the OTA page. crypto.subtle only exists on https/localhost pages, and this page is
@@ -115,7 +117,7 @@
     }
 
     async function fetchChipFirmwareInfo() {
-        const res = await fetch('https://pisophone.pages.dev/update/firmware.json', { cache: 'no-store' });
+        const res = await fetch('https://pisophone.pages.dev' + FEED_PATH + '/firmware.json', { cache: 'no-store' });
         if (!res.ok) throw new Error('firmware.json returned HTTP ' + res.status);
         const data = await res.json();
         const entry = data.chips && data.chips[CHIP_ID];

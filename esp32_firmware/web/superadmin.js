@@ -256,7 +256,7 @@
             const operatorPayout = (saVaultTotal * (opSplit / 100.0)).toFixed(2);
             const d = new Date().toLocaleString();
             
-            const text = 'PISOPHONE REVENUE COLLECTION\n' +
+            const text = (window.RECEIPT_TITLE || 'REVENUE COLLECTION') + '\n' +
                          '----------------------------\n' +
                          'Date/time: ' + d + '\n' +
                          'Total collected: ₱' + saVaultTotal + '\n' +

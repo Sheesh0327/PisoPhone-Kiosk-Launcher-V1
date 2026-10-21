@@ -83,6 +83,9 @@ class KioskHttpServer(
     }
 
     private fun isRateLimited(ip: String): Boolean {
+        if (ip == "127.0.0.1" || ip == "::1" || ip == "localhost") {
+            return false
+        }
         val now = System.currentTimeMillis()
         if (rateLimits.size > MAX_TRACKED_IPS) {
             // Drop IPs whose last request is outside the window so the map cannot grow without bound.
