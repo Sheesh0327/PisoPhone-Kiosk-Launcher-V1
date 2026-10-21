@@ -704,8 +704,7 @@ void loadAllConfig() {
 
 void flushRevenueNow() {
     if (!revenueDirty && totalCoinsLifetime == lastSavedTotalCoins &&
-        totalWifiCoinsLifetime == lastSavedTotalWifiCoins &&
-        totalPhoneCoinsLifetime == lastSavedTotalPhoneCoins &&
+        totalWifiCoinsLifetime == lastSavedTotalWifiCoins && totalPhoneCoinsLifetime == lastSavedTotalPhoneCoins &&
         totalCentavosLifetime == lastSavedTotalCentavos) {
         return;
     }

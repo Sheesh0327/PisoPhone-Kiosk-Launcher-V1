@@ -174,12 +174,10 @@ void handleSuperAdminCollections() {
     String json = "{\"status\":\"ok\",\"lifetime_coins\":" + String(totalCoinsLifetime) +
                   ",\"lifetime_wifi_coins\":" + String(totalWifiCoinsLifetime) +
                   ",\"lifetime_phone_coins\":" + String(totalPhoneCoinsLifetime) +
-                  ",\"today_coins\":" + String(vaultTodayCoins()) +
-                  ",\"week_coins\":" + String(vaultLast7DaysCoins()) +
-                  ",\"month_coins\":" + String(vaultLast30DaysCoins()) +
-                  ",\"lifetime_earnings\":" + lifetimeEarnings + ",\"vault_coins\":" + String(vaultCoins()) +
-                  ",\"vault_earnings\":" + vaultEarnings + ",\"collections\":" + String(vaultCollections()) +
-                  ",\"days\":" + vaultPeriodDaysJson(30) +
+                  ",\"today_coins\":" + String(vaultTodayCoins()) + ",\"week_coins\":" + String(vaultLast7DaysCoins()) +
+                  ",\"month_coins\":" + String(vaultLast30DaysCoins()) + ",\"lifetime_earnings\":" + lifetimeEarnings +
+                  ",\"vault_coins\":" + String(vaultCoins()) + ",\"vault_earnings\":" + vaultEarnings +
+                  ",\"collections\":" + String(vaultCollections()) + ",\"days\":" + vaultPeriodDaysJson(30) +
                   ",\"history\":" + vaultHistoryJson(revenue::RING_SIZE) + "}";
     webServer.send(200, "application/json", json);
 }

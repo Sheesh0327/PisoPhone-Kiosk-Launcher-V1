@@ -57,7 +57,8 @@ int main() {
     CHECK(s.maxUs == 250000, "the longest is the stuck line");
     CHECK(s.bucket[0] == 1 && s.bucket[1] == 1 && s.bucket[3] == 5 && s.bucket[5] == 1,
           "the buckets say: one spark, one spike, five coins, one long");
-    CHECK(pulseStatsAvgUs(s) == (uint32_t)((20000 + 20500 + 21000 + 21500 + 22000 + 80 + 4000 + 250000) / 8), "the average");
+    CHECK(pulseStatsAvgUs(s) == (uint32_t)((20000 + 20500 + 21000 + 21500 + 22000 + 80 + 4000 + 250000) / 8),
+          "the average");
 
     // the first pulse sets the minimum, whatever it is
     PulseStats t;
