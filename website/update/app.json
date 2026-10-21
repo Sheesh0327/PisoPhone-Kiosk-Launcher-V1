@@ -1,10 +1,10 @@
 {
-  "versionCode": 488,
-  "versionName": "4.8.8-dev",
+  "versionCode": 489,
+  "versionName": "4.8.9-dev",
   "channel": "dev",
   
   "signatureChecksum": "DiFF_STFcP7MrUKtszkGshMCDzo8YHv1Q1jtomQFpLU",
-  "sha256": "0974ff049b96cd8ccf383ede7c76f4dbc413e7b8d6da8c9515e4bd3e662118cb",
+  "sha256": "1c7a479b2f82a49efe103e2ee6f10addc2e139e5499b7aad95870dd266745663",
   "size": 3540988,
-  "releaseDate": "2026-10-19"
+  "releaseDate": "2026-10-21"
 }
