@@ -96,6 +96,12 @@ try:
     # ---- the owner turns it on ----------------------------------------------------------------------------------------------------
     code, j, _ = console("/api/wheel", {"table": "0x20 2x5"}, cookie)
     check(code == 400 and j.get("error") == "BAD_TABLE" and "at most 24" in j.get("why", ""), f"a wheel with more than 24 slots is refused: {j}")
+    code, j, _ = console("/api/wheel", {"table": "0x12 2x6 3x1 5x1t"}, cookie)
+    check(code == 200 and j["table"] == "0x12 2x6 3x1 5x1t", f"the thin jackpot table is saved and written back with its mark: {j.get('table')}")
+    code, j, _ = console("/api/wheel", {"table": "0x20 2x5t"}, cookie)
+    check(code == 400 and j.get("error") == "BAD_TABLE" and "at most 24" in j.get("why", ""), f"thin slots count towards the 24-slice cap: {j}")
+    code, j, _ = console("/api/wheel", {"table": "0x1 5x1t"}, cookie)
+    check(code == 400 and j.get("error") == "BAD_TABLE", f"a thin wheel that pays back more than 100% is refused: {j}")
     code, j, _ = console("/api/wheel", {"table": "2x3 0x1"}, cookie)
     check(code == 400 and j.get("error") == "BAD_TABLE", f"a wheel that pays back more than 100% is refused: {j}")
     code, j, _ = console("/api/wheel", {"table": "2x1 0x1", "wait": "0", "max_bet": "10"}, cookie)
