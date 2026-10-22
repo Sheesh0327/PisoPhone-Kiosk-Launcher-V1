@@ -141,6 +141,14 @@ secret() {  # secret NAME LENGTH [hex]: the stored value, or a new random one th
 
 
 # ---------------------------------------------------------------------------------------------------------------------
+# The product: SHOP_PRODUCT=wifi (PisoWiFi only: no rental-phone Wi-Fi) or both (the default; also what a router set up before
+# this existed is). The environment wins over the settings file, so re-running the installer with a product switches it.
+shop_product() { _sp="${SHOP_PRODUCT:-$(conf_get SHOP_PRODUCT)}"; echo "${_sp:-both}"; }
+wifi_only() { [ "$(shop_product)" = wifi ]; }
+check_product() { case "$(shop_product)" in wifi | both) ;; *) die "SHOP_PRODUCT must be wifi or both" ;; esac; }
+store_product() { [ "$DRY" = 1 ] || conf_set SHOP_PRODUCT "$(shop_product)"; }
+
+# ---------------------------------------------------------------------------------------------------------------------
 # This router's own Wi-Fi names
 # ---------------------------------------------------------------------------------------------------------------------
 # Every router used to broadcast the same hidden names (PisoKiosk, PisoCoinBox) with its own passwords. Two routers in range of each
@@ -340,7 +348,9 @@ EOT
 		echo "set wireless.$r.disabled='0'"
 		echo "set wireless.$r.country='$COUNTRY'"
 		[ "$_band" = 2g ] && echo "set wireless.$r.htmode='HT20'"
-		cat << EOT
+		# the rental phones' hidden Wi-Fi: not on a PisoWiFi-only router
+		if ! wifi_only; then
+			cat << EOT
 set wireless.kiosk_$r=wifi-iface
 set wireless.kiosk_$r.device='$r'
 set wireless.kiosk_$r.mode='ap'
@@ -350,6 +360,9 @@ set wireless.kiosk_$r.hidden='1'
 set wireless.kiosk_$r.encryption='psk2'
 set wireless.kiosk_$r.key='$KIOSK_PASS'
 set wireless.kiosk_$r.isolate='0'
+EOT
+		fi
+		cat << EOT
 set wireless.guest_$r=wifi-iface
 set wireless.guest_$r.device='$r'
 set wireless.guest_$r.mode='ap'
@@ -682,11 +695,12 @@ PORTAL_PORT='$PORTAL_PORT'
 GATEWAY_NAME='$(conf_get GUEST_NAME)'
 CONSOLE_BIND='$LAN_IP'
 CONSOLE_PORT='$(console_port)'
+SHOP_PRODUCT='$(shop_product)'
 EOT
 		# the voucher choice on the coin page (piso-setup voucher-choice on|off); nothing is written until it is set: the portal's default is on
 		[ -z "$(conf_get VOUCHER_CHOICE)" ] || printf "VOUCHER_CHOICE='%s'\n" "$(conf_get VOUCHER_CHOICE)"
 		# every other line is the owner's own (prices, SEND_HOST, PAUSE_*, ...): kept as it was, the setup only owns the keys above
-		[ -r "$_cf" ] && grep -v -E '^(GW_BOX|GW_KEY|GW_BOX_MAC|PORTAL_BIND|PORTAL_PORT|GATEWAY_NAME|CONSOLE_BIND|CONSOLE_PORT|VOUCHER_CHOICE)=' "$_cf"
+		[ -r "$_cf" ] && grep -v -E '^(GW_BOX|GW_KEY|GW_BOX_MAC|PORTAL_BIND|PORTAL_PORT|GATEWAY_NAME|CONSOLE_BIND|CONSOLE_PORT|SHOP_PRODUCT|VOUCHER_CHOICE)=' "$_cf"
 		:
 	} > "$_cf.new"
 	if grep -q '^GW_KEY=' "$_cf.new"; then mv "$_cf.new" "$_cf"; else rm -f "$_cf.new"; umask 022; die "could not write $_cf (is the router's flash full? piso-setup space)"; fi
@@ -853,6 +867,7 @@ provision_box() {
 # needs no typing, and a phone can no longer be set up with a stale or mistyped password. Never fatal: an older box (firmware
 # before 3.3.3) ignores it, and the status check says when the link does not carry it yet.
 push_kiosk_wifi() {
+	wifi_only && return 0   # (a PisoWiFi-only shop has no rental phones: the box is given no kiosk name or password)
 	_kp=$(conf_get KIOSK_PASS); _bp=$(conf_get BOX_ADMIN_PASS)
 	[ -n "$_kp" ] && [ -n "$_bp" ] || return 0
 	box_curl "$_bp" /save --data-urlencode "kiosk_wifi=$_kp" --data-urlencode "kiosk_ssid=$KIOSK_SSID"
@@ -865,6 +880,7 @@ push_kiosk_wifi() {
 
 # kiosk_wifi_on_box: the box's "Set up a phone" link carries this router's current PisoKiosk password
 kiosk_wifi_on_box() {
+	wifi_only && return 0   # (nothing to carry: no problem)
 	_kp=$(conf_get KIOSK_PASS); _bp=$(conf_get BOX_ADMIN_PASS)
 	[ -n "$_kp" ] && [ -n "$_bp" ] || return 1
 	# (curl writes %2b where the box writes %2B: the escapes are put in capitals before comparing; letters are left alone)
@@ -879,6 +895,7 @@ kiosk_wifi_on_box() {
 
 # sync_kiosk_wifi: give the box the password when it does not have it (a box that was reflashed, updated or reset since)
 sync_kiosk_wifi() {
+	wifi_only && return 0
 	box_up || return 0
 	kiosk_wifi_on_box || push_kiosk_wifi
 	return 0
@@ -916,7 +933,14 @@ PisoPhone setup summary ($(date '+%F %T'), setup file version $VERSION)
 Keep this file private (it is readable by root only).
 
 Router (SSH / LuCI):   root@$LAN_IP        password: $(if [ "$(conf_get ROOT_PASS_SET)" = 1 ]; then conf_get ROOT_PASS; else echo "NOT SET by this setup (the router keeps its previous one): run piso-setup set-password"; fi)
+EOT
+	# the rental phones' hidden Wi-Fi: not on a PisoWiFi-only router
+	if ! wifi_only; then
+		cat >> "$SUMMARY" << EOT
 Kiosk Wi-Fi:           $KIOSK_SSID (HIDDEN)   password: $(conf_get KIOSK_PASS)    (rental phones only; the coin box's "Set up a phone" link carries it, nobody types it)
+EOT
+	fi
+	cat >> "$SUMMARY" << EOT
 PisoWiFi (customers):  $(conf_get GUEST_NAME)   (open; rename with: piso-setup wifi-name "New Name")
 Coin box:              http://$BOX_IP      admin password: $(conf_get BOX_ADMIN_PASS)    hidden Wi-Fi: $BOX_SSID (only MAC $(conf_get BOX_MAC))
 
@@ -963,7 +987,7 @@ ag_is_kiosk() { ag_every_iface kiosk_ key "$(conf_get KIOSK_PASS)" && ag_every_i
 ag_is_name() { ag_every_iface guest_ ssid "$(conf_get GUEST_NAME)" && [ "$(uci -q get 'opennds.@opennds[0].gatewayname')" = "$(conf_get GUEST_NAME)" ] && [ "$(cs_get GATEWAY_NAME)" = "$(conf_get GUEST_NAME)" ]; }
 ag_is_bind() { [ -n "$(cs_get PORTAL_BIND)" ] && ip -4 addr show br-guest | grep -q "inet $(cs_get PORTAL_BIND)/" && [ "$(cs_get PORTAL_PORT)" = "$(uci -q get 'opennds.@opennds[0].fasport')" ]; }
 ag_is_boxwifi() { [ "$(conf_get BOX_WIFI_ROTATED)" != 1 ] || { [ -n "$(conf_get BOX_WIFI_PASS_NEW)" ] && [ "$(uci -q get wireless.box_ap.key)" = "$(conf_get BOX_WIFI_PASS_NEW)" ] && [ "$(uci -q get wireless.box_ap.ssid)" = "$BOX_SSID" ]; }; }
-ag_is_summary() { ag_summary_has "$(conf_get KIOSK_PASS)" && ag_summary_has "$(conf_get BOX_ADMIN_PASS)"; }
+ag_is_summary() { { wifi_only || ag_summary_has "$(conf_get KIOSK_PASS)"; } && ag_summary_has "$(conf_get BOX_ADMIN_PASS)"; }
 ag_is_gwkey_box() { "$PORTAL_BIN" box | grep -qi answers; }
 
 AGREE_FAILS=""
@@ -972,15 +996,16 @@ agree_all() {  # prints PASS/FAIL lines, returns the number of disagreements; th
 	_abad=0; AGREE_FAILS=""
 	ag_run "the gateway key in the settings is the one in the portal's file" ag_is_key
 	ag_run "the coin box's address is the same in the settings, the portal's file and the box network's allow list" ag_is_mac
-	ag_run "the kiosk network's name and password in the settings are on every kiosk radio" ag_is_kiosk
+	wifi_only || ag_run "the kiosk network's name and password in the settings are on every kiosk radio" ag_is_kiosk
 	ag_run "the customer Wi-Fi name is the same in the settings, on every radio, in openNDS and in the portal's file" ag_is_name
 	ag_run "the portal listens on the guest network's address and on the port openNDS sends guests to" ag_is_bind
 	ag_run "the coin box network's name and password are the ones the router gave the box" ag_is_boxwifi
-	ag_run "the setup summary shows the current PisoKiosk and coin box passwords" ag_is_summary
+	if wifi_only; then ag_run "the setup summary shows the current coin box password" ag_is_summary
+	else ag_run "the setup summary shows the current PisoKiosk and coin box passwords" ag_is_summary; fi
 	if box_up; then
 		ag_run "the box accepts the router's gateway key (signed request)" ag_is_gwkey_box
 		ag_run "the box accepts the admin password the router stored" ag_box_admin_ok
-		ag_run "the box's \"Set up a phone\" link carries the PisoKiosk password (box firmware 3.3.3 or newer; else: piso-setup kiosk-wifi)" kiosk_wifi_on_box
+		wifi_only || ag_run "the box's \"Set up a phone\" link carries the PisoKiosk password (box firmware 3.3.3 or newer; else: piso-setup kiosk-wifi)" kiosk_wifi_on_box
 	else
 		log "SKIP  the checks that need the coin box (it does not answer at $BOX_IP)"
 	fi
@@ -1014,7 +1039,7 @@ check_all() {  # prints PASS/FAIL lines, returns the number of failures
 	_ck() { if eval "$2" > /dev/null 2>&1; then log "PASS  $1"; else log "FAIL  $1"; _bad=$((_bad + 1)); fi; }
 	_ck "LAN address is $LAN_IP" "ip -4 addr show br-lan | grep -q 'inet $LAN_IP/'"
 	_ck "guest network is up" "ip -4 addr show br-guest | grep -q 'inet $GUEST_IP/'"
-	_ck "hidden Wi-Fi $KIOSK_SSID is on" "iwinfo | grep -q 'ESSID: \"$KIOSK_SSID\"' || wifi status 2> /dev/null | grep -q '\"ssid\": \"$KIOSK_SSID\"'"
+	wifi_only || _ck "hidden Wi-Fi $KIOSK_SSID is on" "iwinfo | grep -q 'ESSID: \"$KIOSK_SSID\"' || wifi status 2> /dev/null | grep -q '\"ssid\": \"$KIOSK_SSID\"'"
 	_ck "Wi-Fi $(conf_get GUEST_NAME) is broadcasting" "iwinfo | grep -q 'ESSID: \"$(conf_get GUEST_NAME)\"'"
 	_ck "the coin box has its own Wi-Fi password (not the published default)" "[ \"\$(uci -q get wireless.box_ap.key)\" != '$BOX_DEFAULT_WIFI' ]"
 	_ck "hidden Wi-Fi $BOX_SSID is on and locked to the box" "[ \"\$(uci -q get wireless.box_ap.macfilter)\" = allow ] && [ -n \"\$(uci -q get wireless.box_ap.maclist)\" ]"
@@ -1755,6 +1780,9 @@ write_handout() {
 	_f="${HANDOUT:-/root/piso-handout.html}"
 	_site=$(html_esc "$(conf_get SITE_NAME)"); _guest=$(html_esc "$(conf_get GUEST_NAME)"); _kp=$(html_esc "$(conf_get KIOSK_PASS)")
 	_bp=$(html_esc "$(conf_get BOX_ADMIN_PASS)"); _rp=$(html_esc "$(if [ "$(conf_get ROOT_PASS_SET)" = 1 ]; then conf_get ROOT_PASS; else echo "(not set by the setup: run piso-setup set-password)"; fi)")
+	# where the owner reaches the coin box and the router: the rental phones' Wi-Fi exists only when there are rental phones
+	if wifi_only; then _where_box="on the router's LAN"; _where_router="on a LAN cable"; _pin_note=""
+	else _where_box="on the PisoKiosk network"; _where_router="on the PisoKiosk network or a LAN cable"; _pin_note="<br>This password is also the admin PIN of the rental phones."; fi
 	umask 077
 	cat > "$_f" << EOT
 <!doctype html><html><head><meta charset="utf-8"><title>${_site:-PisoPhone} setup sheet</title>
@@ -1765,11 +1793,23 @@ code{font:1.05em monospace}.warn{border:2px solid #b00;padding:.6rem 1rem;margin
 <div class="warn"><b>Keep this page private.</b> It holds the passwords for the whole system. Store it safely and do not post it.</div>
 <table>
 <tr><th>Customer Wi-Fi (public)</th><td><code>${_guest}</code> &middot; open, customers pay by coin</td></tr>
+EOT
+	if ! wifi_only; then
+		cat >> "$_f" << EOT
 <tr><th>Rental-phone Wi-Fi (hidden)</th><td>name <code>${KIOSK_SSID}</code><br>password <code>${_kp}</code><br>Not shown in any Wi-Fi list. Only used when setting up a phone.</td></tr>
-<tr><th>Coin box admin page</th><td>address <code>http://${BOX_IP}</code> (on the PisoKiosk network)<br>user <code>admin</code><br>password <code>${_bp}</code><br>This password is also the admin PIN of the rental phones.</td></tr>
-<tr><th>Router login (SSH / LuCI)</th><td>address <code>${LAN_IP}</code> (on the PisoKiosk network or a LAN cable)<br>user <code>root</code><br>password <code>${_rp}</code></td></tr>
+EOT
+	fi
+	cat >> "$_f" << EOT
+<tr><th>Coin box admin page</th><td>address <code>http://${BOX_IP}</code> (${_where_box})<br>user <code>admin</code><br>password <code>${_bp}</code>${_pin_note}</td></tr>
+<tr><th>Router login (SSH / LuCI)</th><td>address <code>${LAN_IP}</code> (${_where_router})<br>user <code>root</code><br>password <code>${_rp}</code></td></tr>
 </table>
+EOT
+	if ! wifi_only; then
+		cat >> "$_f" << EOT
 <p><b>Setting up a new rental phone:</b> open the coin box admin page and tap <i>Set up a phone</i>. The page already has the PisoKiosk password above (the box holds it for the link); type it only if the page asks. Then scan the QR code on the factory-reset phone, or plug it in by USB.</p>
+EOT
+	fi
+	cat >> "$_f" << EOT
 </body></html>
 EOT
 	umask 022
@@ -2087,7 +2127,7 @@ ask_password() {
 # Every password the system needs is chosen here, once. Super admin has no password: the owner opens it with the admin QR code.
 choose_passwords() {
 	ask_password ROOT_PASS "router password (SSH and LuCI login)" 8 63 "$ROOT_PASSWORD"
-	ask_password KIOSK_PASS "PisoKiosk Wi-Fi password (typed once into each rental phone's setup page)" 8 63 "$KIOSK_PASSWORD"
+	wifi_only || ask_password KIOSK_PASS "PisoKiosk Wi-Fi password (typed once into each rental phone's setup page)" 8 63 "$KIOSK_PASSWORD"
 	ask_password BOX_ADMIN_PASS_NEW "coin box admin password (the box's web page; also the phones' admin PIN)" 8 32 "$BOX_NEW_ADMIN_PASSWORD"
 }
 
@@ -2098,12 +2138,12 @@ review_choices() {
 	echo
 	echo "================ PLEASE REVIEW ================"
 	echo "  Public Wi-Fi (customers):  $GUEST_NAME  (open, behind the coin payment page)"
-	echo "  Rental-phone Wi-Fi:        $KIOSK_SSID  (hidden, 2.4 + 5 GHz)"
+	wifi_only || echo "  Rental-phone Wi-Fi:        $KIOSK_SSID  (hidden, 2.4 + 5 GHz)"
 	echo "  Coin box network:          $BOX_SSID  (hidden, only the box)"
 	echo "  Site name:                 $(conf_get SITE_NAME)"
 	echo "  Router address:            $LAN_IP   Country: ${COUNTRY:-PH}"
 	echo "  Router password:           $(_pw ROOT_PASS)"
-	echo "  Kiosk Wi-Fi password:      $(_pw KIOSK_PASS)"
+	wifi_only || echo "  Kiosk Wi-Fi password:      $(_pw KIOSK_PASS)"
 	echo "  Coin box admin password:   $(_pw BOX_ADMIN_PASS_NEW)"
 	echo "  The Wi-Fi networks of this router are replaced; the coin box is paired and set up; SSH stays open."
 	echo "==============================================="
@@ -2111,7 +2151,11 @@ review_choices() {
 	case "$_a" in y | Y | yes) ;; *) echo "Cancelled. Nothing was changed (answers kept: run the setup again to change them)."; exit 1 ;; esac
 }
 
+# kiosk_pass: the rental phones' Wi-Fi password (made once); a PisoWiFi-only router has none
+kiosk_pass() { wifi_only && return 0; secret KIOSK_PASS 12; }
+
 stage1() {
+	check_product
 	preflight
 	if [ "$DRY" != 1 ] && [ "$ASSUME_YES" != 1 ] && [ -t 0 ]; then
 		echo
@@ -2119,12 +2163,13 @@ stage1() {
 		echo "First a few questions; nothing is changed until you have reviewed your answers."
 	fi
 	choose_names
+	store_product
 	ask_name SITE_NAME "shop / site (printed on the setup sheet, shown in Telegram messages)" "$GUEST_NAME" "$SITE_NAME"
 	valid_plain "$ASKED" || die "the site name may not contain quotes, backslashes, \$ or backticks"
 	choose_passwords
 	review_choices
 	ask_telegram
-	KIOSK_PASS=$(secret KIOSK_PASS 12)
+	KIOSK_PASS=$(kiosk_pass)
 	secret ROOT_PASS 14 > /dev/null; secret GW_KEY 64 hex > /dev/null; secret BOX_ADMIN_PASS_NEW 16 > /dev/null
 	BOX_MAC=$(conf_get BOX_MAC)
 	if [ "$DRY" = 1 ]; then uci_batch "<kiosk password>" "$GUEST_NAME" "$BOX_MAC"; return 0; fi
@@ -2182,6 +2227,7 @@ main() {
 		wifi-admin) cmd_wifi_admin "$ARG" ;;
 		verify) cmd_verify ;;
 		kiosk-wifi)
+			if wifi_only; then echo "this shop has no rental phones (PisoWiFi only)"; return 0; fi
 			DRY=0; [ "$(id -u)" = 0 ] || die "run as root"
 			push_kiosk_wifi
 			if kiosk_wifi_on_box; then log "checked: the box's \"Set up a phone\" link carries the password"

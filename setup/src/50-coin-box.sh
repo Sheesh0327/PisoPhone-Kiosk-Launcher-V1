@@ -140,6 +140,7 @@ provision_box() {
 # needs no typing, and a phone can no longer be set up with a stale or mistyped password. Never fatal: an older box (firmware
 # before 3.3.3) ignores it, and the status check says when the link does not carry it yet.
 push_kiosk_wifi() {
+	wifi_only && return 0   # (a PisoWiFi-only shop has no rental phones: the box is given no kiosk name or password)
 	_kp=$(conf_get KIOSK_PASS); _bp=$(conf_get BOX_ADMIN_PASS)
 	[ -n "$_kp" ] && [ -n "$_bp" ] || return 0
 	box_curl "$_bp" /save --data-urlencode "kiosk_wifi=$_kp" --data-urlencode "kiosk_ssid=$KIOSK_SSID"
@@ -152,6 +153,7 @@ push_kiosk_wifi() {
 
 # kiosk_wifi_on_box: the box's "Set up a phone" link carries this router's current PisoKiosk password
 kiosk_wifi_on_box() {
+	wifi_only && return 0   # (nothing to carry: no problem)
 	_kp=$(conf_get KIOSK_PASS); _bp=$(conf_get BOX_ADMIN_PASS)
 	[ -n "$_kp" ] && [ -n "$_bp" ] || return 1
 	# (curl writes %2b where the box writes %2B: the escapes are put in capitals before comparing; letters are left alone)
@@ -166,6 +168,7 @@ kiosk_wifi_on_box() {
 
 # sync_kiosk_wifi: give the box the password when it does not have it (a box that was reflashed, updated or reset since)
 sync_kiosk_wifi() {
+	wifi_only && return 0
 	box_up || return 0
 	kiosk_wifi_on_box || push_kiosk_wifi
 	return 0

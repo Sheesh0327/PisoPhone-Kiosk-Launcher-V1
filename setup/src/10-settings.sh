@@ -31,6 +31,14 @@ secret() {  # secret NAME LENGTH [hex]: the stored value, or a new random one th
 
 
 # ---------------------------------------------------------------------------------------------------------------------
+# The product: SHOP_PRODUCT=wifi (PisoWiFi only: no rental-phone Wi-Fi) or both (the default; also what a router set up before
+# this existed is). The environment wins over the settings file, so re-running the installer with a product switches it.
+shop_product() { _sp="${SHOP_PRODUCT:-$(conf_get SHOP_PRODUCT)}"; echo "${_sp:-both}"; }
+wifi_only() { [ "$(shop_product)" = wifi ]; }
+check_product() { case "$(shop_product)" in wifi | both) ;; *) die "SHOP_PRODUCT must be wifi or both" ;; esac; }
+store_product() { [ "$DRY" = 1 ] || conf_set SHOP_PRODUCT "$(shop_product)"; }
+
+# ---------------------------------------------------------------------------------------------------------------------
 # This router's own Wi-Fi names
 # ---------------------------------------------------------------------------------------------------------------------
 # Every router used to broadcast the same hidden names (PisoKiosk, PisoCoinBox) with its own passwords. Two routers in range of each

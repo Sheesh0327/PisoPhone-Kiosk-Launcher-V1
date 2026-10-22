@@ -116,11 +116,12 @@ PORTAL_PORT='$PORTAL_PORT'
 GATEWAY_NAME='$(conf_get GUEST_NAME)'
 CONSOLE_BIND='$LAN_IP'
 CONSOLE_PORT='$(console_port)'
+SHOP_PRODUCT='$(shop_product)'
 EOT
 		# the voucher choice on the coin page (piso-setup voucher-choice on|off); nothing is written until it is set: the portal's default is on
 		[ -z "$(conf_get VOUCHER_CHOICE)" ] || printf "VOUCHER_CHOICE='%s'\n" "$(conf_get VOUCHER_CHOICE)"
 		# every other line is the owner's own (prices, SEND_HOST, PAUSE_*, ...): kept as it was, the setup only owns the keys above
-		[ -r "$_cf" ] && grep -v -E '^(GW_BOX|GW_KEY|GW_BOX_MAC|PORTAL_BIND|PORTAL_PORT|GATEWAY_NAME|CONSOLE_BIND|CONSOLE_PORT|VOUCHER_CHOICE)=' "$_cf"
+		[ -r "$_cf" ] && grep -v -E '^(GW_BOX|GW_KEY|GW_BOX_MAC|PORTAL_BIND|PORTAL_PORT|GATEWAY_NAME|CONSOLE_BIND|CONSOLE_PORT|SHOP_PRODUCT|VOUCHER_CHOICE)=' "$_cf"
 		:
 	} > "$_cf.new"
 	if grep -q '^GW_KEY=' "$_cf.new"; then mv "$_cf.new" "$_cf"; else rm -f "$_cf.new"; umask 022; die "could not write $_cf (is the router's flash full? piso-setup space)"; fi

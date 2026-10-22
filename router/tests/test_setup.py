@@ -1065,5 +1065,51 @@ for free, mem, want_low, want_upd in ((1500, 64000, True, False), (3000, 64000, 
         check(("less than 2 MB free: records and updates may not fit" in out) == want_low, f"{what}: low-space warning is {want_low} at {free} KB free")
         check(("too little free flash to download an update" in out) == want_upd, f"{what}: update-room warning is {want_upd} at {free} KB free, {mem} KB memory")
 os.remove(f"{bindir}/df")
+# ---- feature 010 group 5: a PisoWiFi-only router (SHOP_PRODUCT=wifi) has no rental-phone Wi-Fi --------------------------------------
+fake_uci({"radio0": "2g", "radio1": "5g"})
+both_batch = run("--dry-run").stdout
+wifi_batch = run("--dry-run", env={"SHOP_PRODUCT": "wifi"}).stdout
+check("wireless.kiosk_radio0" in both_batch and "wireless.kiosk_radio1" in both_batch, "SHOP_PRODUCT missing: the kiosk Wi-Fi is set up as before")
+check(run("--dry-run", env={"SHOP_PRODUCT": "both"}).stdout == both_batch, "SHOP_PRODUCT=both gives exactly the batch of a missing SHOP_PRODUCT")
+check("kiosk_" not in wifi_batch and "wireless.guest_radio0" in wifi_batch and "wireless.box_ap" in wifi_batch,
+      "SHOP_PRODUCT=wifi: no wireless.kiosk_* section; guest Wi-Fi and the coin box Wi-Fi are still there")
+r = run("--dry-run", env={"SHOP_PRODUCT": "phone"})
+check(r.returncode != 0 and "SHOP_PRODUCT must be wifi or both" in r.stdout + r.stderr, "any other SHOP_PRODUCT stops the setup: " + r.stdout + r.stderr)
+r = lib("shop_product; echo ---; conf_set SHOP_PRODUCT wifi; shop_product; echo ---; SHOP_PRODUCT=both shop_product")
+check(r.stdout.split() == ["both", "---", "wifi", "---", "both"], "shop_product: missing is both; the settings file is read; the environment wins: " + r.stdout)
+r = lib("DRY=0; SHOP_PRODUCT=wifi store_product; grep SHOP_PRODUCT $CONF")
+check("SHOP_PRODUCT='wifi'" in r.stdout, "the product is stored in /etc/piso-setup.conf: " + r.stdout + r.stderr)
+# no KIOSK_PASS asked, made or stored
+r = lib("rm -f $CONF; SHOP_PRODUCT=wifi; ASSUME_YES=1; KIOSK_PASSWORD=Chosen12345; choose_passwords; echo K=[$(kiosk_pass)]; echo N=$(cat $CONF 2>/dev/null | grep -c KIOSK_PASS)")
+check("K=[]" in r.stdout and "N=0" in r.stdout, "wifi: KIOSK_PASS is not taken from the environment, made or stored: " + r.stdout + r.stderr)
+r = lib("rm -f $CONF; ASSUME_YES=1; KIOSK_PASSWORD=Chosen12345; choose_passwords; K=$(kiosk_pass); echo ${#K}; grep KIOSK_PASS $CONF")
+check("KIOSK_PASS='Chosen12345'" in r.stdout and r.stdout.split()[0] == "11", "both: the password is chosen and kept as before: " + r.stdout + r.stderr)
+# the coin box is not given a kiosk name or password
+pre_wifi = "conf_set BOX_ADMIN_PASS x; conf_set KIOSK_PASS stale-old; SHOP_PRODUCT=wifi; curl() { echo CURL; }; "
+r = lib(pre_wifi + "push_kiosk_wifi; echo rc=$?; sync_kiosk_wifi; echo rc=$?; kiosk_wifi_on_box; echo rc=$?", env={"BOX_IP": "127.0.0.1:9"})
+check("CURL" not in r.stdout and r.stdout.count("rc=0") == 3 and "PisoKiosk" not in r.stdout, "wifi: the coin box is never given a kiosk name or password; the box-link check reports no problem: " + r.stdout + r.stderr)
+# the agreement checks skip the kiosk Wi-Fi
+r = agree(env={"SHOP_PRODUCT": "wifi", "T_KIOSK": "an-old-password"})
+check("rc=0" in r.stdout and "kiosk" not in r.stdout.lower().replace("fails=", ""), "wifi: the agreement skips the kiosk Wi-Fi and the PisoKiosk link, and reports no problem: " + r.stdout[-400:] + r.stderr)
+r = agree(env={"SHOP_PRODUCT": "wifi"}, extra="conf_set KIOSK_PASS ''; echo old > \"$SUMMARY\"; echo \"$(conf_get BOX_ADMIN_PASS)\" > \"$SUMMARY\"")
+check("rc=0" in r.stdout, "wifi: the summary check needs only the coin box password: " + r.stdout[-300:])
+r = agree(env={"SHOP_PRODUCT": "both", "T_KIOSK": "an-old-password"})
+check("rc=1" in r.stdout and "kiosk network" in r.stdout, "both: the kiosk check is still there")
+check("wifi_only ||" in text.split("check_all() {")[1].split("\n}\n")[0] and "hidden Wi-Fi $KIOSK_SSID" in text.split("check_all() {")[1], "the stage-2 checks skip the kiosk Wi-Fi on a wifi router")
+# summary, handout, plan
+r = lib('rm -f $CONF; SHOP_PRODUCT=wifi; conf_set ROOT_PASS_SET 1; write_summary; cat "$SUMMARY"; HANDOUT=' + tmp + '/h-wifi.html write_handout > /dev/null; cat ' + tmp + '/h-wifi.html')
+check("Kiosk Wi-Fi" not in r.stdout and "Rental-phone Wi-Fi" not in r.stdout and "rental phone" not in r.stdout.lower() and "PisoKiosk" not in r.stdout.split("<html")[1] and "Customer Wi-Fi" in r.stdout and "Coin box" in r.stdout,
+      "wifi: the summary and the handout have no rental-phone Wi-Fi lines: " + r.stdout[:600])
+r = lib('rm -f $CONF; conf_set ROOT_PASS_SET 1; write_summary; cat "$SUMMARY"; HANDOUT=' + tmp + '/h-both.html write_handout > /dev/null; cat ' + tmp + '/h-both.html')
+check("Kiosk Wi-Fi:" in r.stdout and "Rental-phone Wi-Fi (hidden)" in r.stdout and "Setting up a new rental phone" in r.stdout, "both: the summary and the handout keep their rental-phone lines")
+plan = text.split("review_choices() {")[1].split("\n}\n")[0]
+check("wifi_only ||" in plan and "Rental-phone Wi-Fi" in plan and "Kiosk Wi-Fi password" in plan, "the plan screen skips the rental-phone lines on a wifi router")
+# piso-setup kiosk-wifi
+r = run("kiosk-wifi", env={"SHOP_PRODUCT": "wifi"})
+check(r.returncode == 0 and "this shop has no rental phones (PisoWiFi only)" in r.stdout + r.stderr, "wifi: piso-setup kiosk-wifi says there are no rental phones: " + r.stdout + r.stderr)
+# the program's settings
+r = lib("SHOP_PRODUCT=wifi; rm -f $PISO_ROOT/etc/coinslot.conf; write_coinslot_conf k1 aa; cat $PISO_ROOT/etc/coinslot.conf; SHOP_PRODUCT=both; write_coinslot_conf k1 aa; grep -c SHOP_PRODUCT $PISO_ROOT/etc/coinslot.conf; grep SHOP_PRODUCT $PISO_ROOT/etc/coinslot.conf",
+        env={"PISO_ROOT": f"{tmp}/prodroot"})
+check("SHOP_PRODUCT='wifi'" in r.stdout and r.stdout.count("SHOP_PRODUCT='both'") == 1 and "\n1\n" in r.stdout, "SHOP_PRODUCT is written to /etc/coinslot.conf, once: " + r.stdout + r.stderr)
 print(f"{checks} checks, {failures} failures")
 sys.exit(1 if failures else 0)
