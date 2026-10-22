@@ -3,11 +3,13 @@
 //! on how they did before. Nothing in this file changes a session yet (that is `spin` below, task 2) and nothing is served yet.
 #![allow(dead_code)]
 
-/// One slot of the wheel: `mult` 0 loses the bet; 2 returns it doubled (net gain = the bet); and so on.
+/// One row of the table: `weight` slots that pay `mult` (0 loses the bet; 2 returns it doubled, net gain = the bet; and so on). A `thin` slot is
+/// half as likely as a normal one and is drawn half as wide on the wheel (the slice's width is its chance).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Segment {
     pub mult: u32,
     pub weight: u32,
+    pub thin: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -25,31 +27,66 @@ pub const MAX_SLOTS: u32 = 24;
 pub const MAX_MULT: u32 = 10;
 
 impl Table {
-    /// 20 slots: 13 lose, 5 x2, 1 x3, 1 x5. Win chance 35%, average return 90%.
+    /// 20 slots: 12 lose, 6 x2, 1 x3 and a thin x5 (the jackpot, half a slot: 1 chance in 39). Win chance 38.5%, average return 89.7%.
     pub fn default_table() -> Table {
-        Table { segs: [(0, 13), (2, 5), (3, 1), (5, 1)].iter().map(|&(mult, weight)| Segment { mult, weight }).collect() }
+        Table {
+            segs: [(0, 12, false), (2, 6, false), (3, 1, false), (5, 1, true)]
+                .iter()
+                .map(|&(mult, weight, thin)| Segment { mult, weight, thin })
+                .collect(),
+        }
     }
 
+    /// The number of slots (one slice each on the wheel).
     pub fn total_weight(&self) -> u32 {
         self.segs.iter().map(|s| s.weight).sum()
     }
 
+    /// The size of a normal slot in units of chance: 2 when the table has thin slots (a thin slot is 1), otherwise 1 (so a table without
+    /// thin slots draws exactly as it always did).
+    pub fn unit(&self) -> u32 {
+        if self.segs.iter().any(|s| s.thin) {
+            2
+        } else {
+            1
+        }
+    }
+
+    /// Units of chance of one slot of this row.
+    pub fn slot_size(&self, s: &Segment) -> u32 {
+        if s.thin {
+            1
+        } else {
+            self.unit()
+        }
+    }
+
+    /// Units of chance of the whole row.
+    pub fn row_size(&self, s: &Segment) -> u32 {
+        s.weight * self.slot_size(s)
+    }
+
+    /// Units of chance in all: a row's chance is its size over this.
+    pub fn total_size(&self) -> u32 {
+        self.segs.iter().map(|s| self.row_size(s)).sum()
+    }
+
     /// Average return in parts per thousand, rounded down.
     pub fn rtp_permille(&self) -> u32 {
-        let total = self.total_weight() as u64;
+        let total = self.total_size() as u64;
         if total == 0 {
             return 0;
         }
-        (self.segs.iter().map(|s| s.weight as u64 * s.mult as u64).sum::<u64>() * 1000 / total) as u32
+        (self.segs.iter().map(|s| self.row_size(s) as u64 * s.mult as u64).sum::<u64>() * 1000 / total) as u32
     }
 
     /// Chance of a win in parts per thousand.
     pub fn win_permille(&self) -> u32 {
-        let total = self.total_weight() as u64;
+        let total = self.total_size() as u64;
         if total == 0 {
             return 0;
         }
-        (self.segs.iter().filter(|s| s.mult > 0).map(|s| s.weight as u64).sum::<u64>() * 1000 / total) as u32
+        (self.segs.iter().filter(|s| s.mult > 0).map(|s| self.row_size(s) as u64).sum::<u64>() * 1000 / total) as u32
     }
 
     /// The router refuses a table that favours the customer, an empty one, or one with a multiplier it does not allow.
@@ -84,16 +121,20 @@ impl Table {
         Ok(())
     }
 
-    /// "0x13 2x5 3x1 5x1": multiplier x weight, spaces between.
+    /// "0x12 2x6 3x1 5x1t": multiplier x slots, spaces between; a `t` after the slots makes them thin.
     pub fn parse(text: &str) -> Result<Table, String> {
         let mut segs = Vec::new();
         for part in text.split_whitespace() {
             let (m, w) = part.split_once('x').ok_or_else(|| format!("\"{}\" is not multiplier x slots (for example 2x5)", part))?;
+            let (w, thin) = match w.strip_suffix('t') {
+                Some(n) => (n, true),
+                None => (w, false),
+            };
             let (mult, weight) = (
                 m.parse::<u32>().map_err(|_| format!("\"{}\" is not a number", m))?,
                 w.parse::<u32>().map_err(|_| format!("\"{}\" is not a number", w))?,
             );
-            segs.push(Segment { mult, weight });
+            segs.push(Segment { mult, weight, thin });
         }
         if segs.is_empty() {
             return Err("the wheel needs at least one slot".into());
@@ -102,21 +143,22 @@ impl Table {
     }
 
     pub fn to_text(&self) -> String {
-        self.segs.iter().map(|s| format!("{}x{}", s.mult, s.weight)).collect::<Vec<_>>().join(" ")
+        self.segs.iter().map(|s| format!("{}x{}{}", s.mult, s.weight, if s.thin { "t" } else { "" })).collect::<Vec<_>>().join(" ")
     }
 
     /// The slot a random number lands on.
     pub fn draw(&self, r: u64) -> usize {
-        let total = self.total_weight() as u64;
+        let total = self.total_size() as u64;
         if total == 0 {
             return 0;
         }
         let mut at = r % total;
         for (i, s) in self.segs.iter().enumerate() {
-            if at < s.weight as u64 {
+            let size = self.row_size(s) as u64;
+            if at < size {
                 return i;
             }
-            at -= s.weight as u64;
+            at -= size;
         }
         0
     }
@@ -179,12 +221,41 @@ mod tests {
     use super::*;
 
     #[test]
-    fn rt_default_table_is_20_slots_90_percent_return_35_percent_wins() {
+    fn rt_default_table_is_the_thin_jackpot_wheel_20_slices_jackpot_1_in_39_return_89_7_percent() {
         let t = Table::default_table();
-        assert_eq!(t.total_weight(), 20);
-        assert_eq!(t.rtp_permille(), 900);
-        assert_eq!(t.win_permille(), 350);
+        assert_eq!((t.total_weight(), t.unit(), t.total_size()), (20, 2, 39));
+        assert_eq!(t.rtp_permille(), 897);
+        assert_eq!(t.win_permille(), 384);
         assert!(t.validate().is_ok());
+        let sizes: Vec<u32> = t.segs.iter().map(|s| t.row_size(s)).collect();
+        assert_eq!(sizes, vec![24, 12, 2, 1], "units of chance per row: 24 + 12 + 2 + 1 of 39");
+    }
+
+    #[test]
+    fn rt_a_table_without_thin_slots_behaves_exactly_as_before() {
+        let t = Table::parse("0x13 2x5 3x1 5x1").unwrap();
+        assert_eq!((t.unit(), t.total_size()), (1, 20));
+        assert_eq!((t.rtp_permille(), t.win_permille()), (900, 350));
+        // the same slot gets the same row for every random number as before (13 lose, then 5 x2, 1 x3, 1 x5)
+        let rows: Vec<usize> = (0..20u64).map(|r| t.draw(r)).collect();
+        assert_eq!(rows, [vec![0; 13], vec![1; 5], vec![2], vec![3]].concat());
+        assert_eq!(t.draw(20), 0, "the draw wraps like it always did");
+    }
+
+    #[test]
+    fn rt_a_thin_row_has_half_the_chance_of_a_normal_slot() {
+        let t = Table::parse("0x12 2x6 3x1 5x1t").unwrap();
+        assert!(t.segs[3].thin && !t.segs[0].thin);
+        assert_eq!(t, Table::default_table());
+        // one full cycle over the 39 units of chance: 24 lose, 12 x2, 2 x3, 1 x5
+        let mut counts = [0u32; 4];
+        for r in 0..39u64 {
+            counts[t.draw(r)] += 1;
+        }
+        assert_eq!(counts, [24, 12, 2, 1]);
+        // two thin slots equal one normal slot
+        let a = Table::parse("0x9 2x1t 2x1t").unwrap();
+        assert_eq!((a.unit(), a.total_size()), (2, 9 * 2 + 1 + 1));
     }
 
     #[test]
@@ -212,38 +283,47 @@ mod tests {
     #[test]
     fn rt_table_text_round_trips() {
         let t = Table::default_table();
-        assert_eq!(t.to_text(), "0x13 2x5 3x1 5x1");
+        assert_eq!(t.to_text(), "0x12 2x6 3x1 5x1t");
         assert_eq!(Table::parse(&t.to_text()).unwrap(), t);
+        // an older table (no marks) is written back without any
+        let old = Table::parse("0x13 2x5 3x1 5x1").unwrap();
+        assert_eq!(old.to_text(), "0x13 2x5 3x1 5x1");
+        assert!(Table::parse("5x1T").is_err() && Table::parse("5x1tt").is_err() && Table::parse("5xt").is_err());
     }
 
     #[test]
     fn rt_the_draw_follows_the_table_exactly_over_one_full_cycle() {
         let t = Table::default_table();
         let mut counts = std::collections::HashMap::new();
-        for r in 0..20u64 {
+        for r in 0..39u64 {
             *counts.entry(t.segs[t.draw(r)].mult).or_insert(0u32) += 1;
         }
-        assert_eq!(counts.get(&0), Some(&13));
-        assert_eq!(counts.get(&2), Some(&5));
-        assert_eq!(counts.get(&3), Some(&1));
+        assert_eq!(counts.get(&0), Some(&24));
+        assert_eq!(counts.get(&2), Some(&12));
+        assert_eq!(counts.get(&3), Some(&2));
         assert_eq!(counts.get(&5), Some(&1));
     }
 
     #[test]
     fn rt_the_draw_over_a_large_run_stays_near_the_published_return() {
         let t = Table::default_table();
-        // a simple deterministic spread (a multiplicative hash); the table's return is 90%
-        let n = 200_000u64;
+        // a simple deterministic spread (a xorshift); the table's return is 89.7%, the jackpot comes up 1 time in 39
+        let n = 400_000u64;
         let mut x = 0x9E37_79B9_7F4A_7C15u64;
-        let mut ret: u64 = 0;
+        let (mut ret, mut jackpots, mut wins) = (0u64, 0u64, 0u64);
         for _ in 0..n {
             x ^= x << 13;
             x ^= x >> 7;
             x ^= x << 17;
-            ret += t.segs[t.draw(x)].mult as u64;
+            let m = t.segs[t.draw(x)].mult as u64;
+            ret += m;
+            jackpots += (m == 5) as u64;
+            wins += (m > 0) as u64;
         }
         let rtp = ret as f64 / n as f64;
-        assert!((rtp - 0.90).abs() < 0.02, "return {}", rtp);
+        assert!((rtp - 0.897).abs() < 0.02, "return {}", rtp);
+        assert!((jackpots as f64 / n as f64 - 1.0 / 39.0).abs() < 0.003, "jackpot chance {}", jackpots as f64 / n as f64);
+        assert!((wins as f64 / n as f64 - 15.0 / 39.0).abs() < 0.01, "win chance {}", wins as f64 / n as f64);
     }
 
     #[test]
@@ -292,5 +372,18 @@ mod tests {
         assert!(Table::parse("0x1001").unwrap().validate_saved().is_err());
         // and the return rule still applies to a saved table
         assert!(Table::parse("2x30 0x10").unwrap().validate_saved().is_err());
+    }
+
+    #[test]
+    fn rt_thin_slots_follow_the_same_rules_return_cap_and_slot_cap() {
+        // the return is worked out over sizes: a 5x jackpot that is not thin and 1 lose of 3 units: 166%, refused
+        assert!(Table::parse("0x1 5x1t").unwrap().validate().is_err(), "0x1 normal (2) + 5x1 thin (1): 5/3 = 166%");
+        // thin losses are allowed: 2 thin losses + 1 x2 normal = 4 units, return 2*2/4 = 100%
+        let fair = Table::parse("0x2t 2x1").unwrap();
+        assert_eq!((fair.total_size(), fair.rtp_permille()), (4, 1000));
+        assert!(fair.validate().is_ok());
+        // the cap counts slices (slots), not size
+        assert!(Table::parse("0x10 2x10t 3x5t").unwrap().validate().is_err(), "25 slots");
+        assert!(Table::parse("0x10 2x10t 3x4t").unwrap().validate().is_ok(), "24 slots");
     }
 }
