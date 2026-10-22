@@ -1,5 +1,7 @@
 # Plan: feature 010, router flash profile and setup check
 
+Status: **plan approved by the owner (2026-10-22). Waiting for the review phase; no code until review is done.**
+
 Context manifest (constitution rule 1): `file | purpose | lines | est_tokens`. Unresolved ledger entries loaded: none checked yet (`ledger/negative-constraints.md` to be read at the start of the work).
 
 | file | purpose | lines read | est_tokens |
