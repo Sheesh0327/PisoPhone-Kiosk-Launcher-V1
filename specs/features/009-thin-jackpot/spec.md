@@ -1,6 +1,6 @@
 # Feature 009: a rarer jackpot, drawn as a thin slice to scale (x5 becomes the jackpot)
 
-Status: **draft** (the owner chose the approach on 2026-10-22; waits for the owner's approval of this spec and plan)   Branch: `feat/009-thin-jackpot` (from `beta`)   Area: router (odds table, draw, wheel page, console)
+Status: **approved** (owner, 2026-10-22, with the proposed default numbers; to be built after router 1.5.15 is live)   Branch: `feat/009-thin-jackpot` (from `beta`)   Area: router (odds table, draw, wheel page, console)
 Backlog rows: none (owner request 2026-10-22)   Release: router (`setup/RELEASE` the number after 1.5.15; after 1.5.15 is live)   Depends on: 007 (the wheel page and its layout)
 
 ## Intent
@@ -54,7 +54,5 @@ A customer wins slightly more often (38.5% against 35%) but the top prize is rar
 ## Out of scope
 A third size (quarter slots), per-slice colours chosen by the owner, changing the limits, the gate, the journal or the ledger, fractional multipliers, a separate jackpot counter or progressive prize.
 
-## Owner decisions
-1. Approve this spec and plan.
-2. Confirm the proposed default (`0x12 2x6 3x1 5x1t`: jackpot 1 in 39, win chance 38.5%, return 89.7%) or give other numbers.
-3. Release: after router 1.5.15 is live; this becomes router 1.5.16 (merge to `beta`, then `main` at 0%, your 100% order).
+## Owner answers (2026-10-22: "Approve 009, do it after 1.5.15 is live")
+1. Spec and plan approved. 2. The proposed default is taken as confirmed (`0x12 2x6 3x1 5x1t`: jackpot 1 in 39, win chance 38.5%, return 89.7%). 3. Release: after router 1.5.15 is live; this becomes the next router release (merge to `beta`, then `main` at 0%; the 100% order is the owner's).
