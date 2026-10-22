@@ -15,6 +15,13 @@ conf_set() {  # conf_set NAME VALUE
 		rm -f "$_ct"; log "could not save the setting $1 (is the router's flash full? piso-setup space)"; return 1
 	fi
 }
+conf_del() {  # conf_del NAME: take a setting out (the rest stays; the file is replaced by a complete new copy, like conf_set)
+	[ "$DRY" = 1 ] && return 0
+	[ -f "$CONF" ] && grep -q "^$1=" "$CONF" || return 0
+	_ct="$CONF.tmp.$$"
+	if (umask 077; grep -v "^$1=" "$CONF" > "$_ct") 2> /dev/null; then mv "$_ct" "$CONF"; chmod 600 "$CONF"
+	else rm -f "$_ct"; log "could not remove the setting $1 (is the router's flash full? piso-setup space)"; return 1; fi
+}
 rand() {  # rand <length> [hex]: random characters (letters and digits, no look-alikes; or hex)
 	if [ "$2" = hex ]; then head -c 8192 /dev/urandom | tr -dc '0-9a-f' | cut -c1-"$1"     # (only tools every BusyBox has)
 	else head -c 512 /dev/urandom | tr -dc 'a-hjkmnp-zA-HJ-NP-Z2-9' | cut -c1-"$1"; fi

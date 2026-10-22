@@ -1105,11 +1105,116 @@ check("Kiosk Wi-Fi:" in r.stdout and "Rental-phone Wi-Fi (hidden)" in r.stdout a
 plan = text.split("review_choices() {")[1].split("\n}\n")[0]
 check("wifi_only ||" in plan and "Rental-phone Wi-Fi" in plan and "Kiosk Wi-Fi password" in plan, "the plan screen skips the rental-phone lines on a wifi router")
 # piso-setup kiosk-wifi
-r = run("kiosk-wifi", env={"SHOP_PRODUCT": "wifi"})
+open(f"{tmp}/conf", "a").write("SHOP_PRODUCT='wifi'\n")
+r = run("kiosk-wifi")
+os.remove(f"{tmp}/conf")
 check(r.returncode == 0 and "this shop has no rental phones (PisoWiFi only)" in r.stdout + r.stderr, "wifi: piso-setup kiosk-wifi says there are no rental phones: " + r.stdout + r.stderr)
 # the program's settings
 r = lib("SHOP_PRODUCT=wifi; rm -f $PISO_ROOT/etc/coinslot.conf; write_coinslot_conf k1 aa; cat $PISO_ROOT/etc/coinslot.conf; SHOP_PRODUCT=both; write_coinslot_conf k1 aa; grep -c SHOP_PRODUCT $PISO_ROOT/etc/coinslot.conf; grep SHOP_PRODUCT $PISO_ROOT/etc/coinslot.conf",
         env={"PISO_ROOT": f"{tmp}/prodroot"})
 check("SHOP_PRODUCT='wifi'" in r.stdout and r.stdout.count("SHOP_PRODUCT='both'") == 1 and "\n1\n" in r.stdout, "SHOP_PRODUCT is written to /etc/coinslot.conf, once: " + r.stdout + r.stderr)
+# ---- feature 010 group 6: switching the product keeps everything else ---------------------------------------------------------------
+import hashlib, pty, select
+sroot = f"{tmp}/switchroot"
+shutil.rmtree(sroot, ignore_errors=True)
+os.makedirs(f"{sroot}/etc/coinslot.d")
+for name, body in (("sessions.csv", "aa:bb,paid,1800\n"), ("revenue.csv", "2026-10-22,5\n"), ("ledger.txt", "coin 1\ncoin 2\n"), ("vouchers.txt", "CODE1 30 unused\n"), ("sales.log", "sale 5\n")):
+    open(f"{sroot}/etc/coinslot.d/{name}", "w").write(body)
+open(f"{sroot}/etc/coinslot.conf", "w").write("GW_BOX='10.0.0.10'\nPRICE_NOTE='mine'\nSEND_HOST='owner.example'\n")
+
+
+def data_hash():
+    h = hashlib.sha256()
+    for n in sorted(os.listdir(f"{sroot}/etc/coinslot.d")):
+        h.update(n.encode() + open(f"{sroot}/etc/coinslot.d/{n}", "rb").read())
+    return h.hexdigest()
+
+
+def conf_without(path, *drop):
+    return sorted(l for l in open(path).read().splitlines() if not any(l.startswith(d + "=") for d in drop))
+
+
+BOTHCONF = "KIOSK_PASS='oldKioskPw1'\nKIOSK_SSID_NAME='PisoKiosk-a1b2'\nBOX_SSID_NAME='PisoCoinBox-a1b2'\nBOX_MAC='AA:BB:CC:00:00:01'\nGW_KEY='k1'\nGUEST_NAME='ShopWiFi'\nROOT_PASS='rootpw12345'\n"
+senv = {"PISO_ROOT": sroot, "PISO_CONF": f"{tmp}/swconf"}
+
+
+def sw(code, env=None, conf=BOTHCONF):
+    open(f"{tmp}/swconf", "w").write(conf)
+    return lib(code, env=dict(senv, **(env or {})))
+
+
+before = data_hash()
+# both -> wifi, accepted with --yes: warns, drops the kiosk password, keeps every other setting and the data
+r = sw("ASSUME_YES=1; resolve_wifi_names; choose_product; write_coinslot_conf k1 aa; echo rc=$?", env={"SHOP_PRODUCT": "wifi"})
+check("rental phones on PisoKiosk-a1b2 will lose their Wi-Fi" in r.stdout + r.stderr and "rc=0" in r.stdout, "both -> wifi: the warning names the Wi-Fi: " + r.stdout + r.stderr)
+after = open(f"{tmp}/swconf").read()
+check("KIOSK_PASS" not in after and "SHOP_PRODUCT='wifi'" in after, "both -> wifi: KIOSK_PASS is deleted, SHOP_PRODUCT=wifi is stored: " + after)
+check(sorted(after.splitlines()) == sorted([l for l in BOTHCONF.splitlines() if not l.startswith("KIOSK_PASS=")] + ["SHOP_PRODUCT='wifi'"]),
+      "every other setting of /etc/piso-setup.conf is kept, nothing else is added: " + after)
+cs = open(f"{sroot}/etc/coinslot.conf").read()
+check("PRICE_NOTE='mine'" in cs and "SEND_HOST='owner.example'" in cs and "SHOP_PRODUCT='wifi'" in cs, "the portal's own settings are kept and the product is written: " + cs)
+check(data_hash() == before, "the data folder is byte for byte the same after the switch to wifi")
+# the batch of the switched router has no kiosk Wi-Fi
+fake_uci({"radio0": "2g", "radio1": "5g"})
+r = run("--dry-run", env={"PISO_CONF": f"{tmp}/swconf"})
+check("kiosk_" not in r.stdout and "wireless.guest_radio0" in r.stdout, "the next run of a wifi router writes no kiosk Wi-Fi (the product comes from the settings): " + r.stdout[:200])
+# no SHOP_PRODUCT: the product stays
+r = sw("ASSUME_YES=1; choose_product; shop_product", conf="SHOP_PRODUCT='wifi'\nBOX_MAC='x'\n")
+check(r.stdout.split()[-1] == "wifi" and "lose their Wi-Fi" not in r.stdout + r.stderr, "without SHOP_PRODUCT a wifi router stays wifi, with no warning: " + r.stdout + r.stderr)
+r = sw("ASSUME_YES=1; choose_product; shop_product; grep -c KIOSK_PASS $CONF", conf=BOTHCONF)
+check(r.stdout.split()[-2] == "both" and r.stdout.split()[-1] == "1" and "lose their Wi-Fi" not in r.stdout + r.stderr, "without SHOP_PRODUCT an installed router (no product stored) stays both and keeps its kiosk password: " + r.stdout + r.stderr)
+# wifi -> both: the kiosk Wi-Fi comes back with a new password
+r = sw("rm -f /dev/null; ASSUME_YES=1; choose_product; choose_passwords; K=$(kiosk_pass); echo LEN=${#K}; grep SHOP_PRODUCT $CONF", env={"SHOP_PRODUCT": "both"},
+       conf="SHOP_PRODUCT='wifi'\nBOX_MAC='x'\nKIOSK_SSID_NAME='PisoKiosk-a1b2'\nBOX_SSID_NAME='PisoCoinBox-a1b2'\n")
+check("LEN=12" in r.stdout and "SHOP_PRODUCT='both'" in r.stdout and "KIOSK_PASS='" in open(f"{tmp}/swconf").read(), "wifi -> both: a new kiosk password is made and stored: " + r.stdout + r.stderr)
+check(data_hash() == before, "the data folder is byte for byte the same after the switch back")
+# a dry run only warns
+r = sw("DRY=1; choose_product; echo rc=$?", env={"SHOP_PRODUCT": "wifi"})
+check("lose their Wi-Fi" in r.stdout and "KIOSK_PASS='oldKioskPw1'" in open(f"{tmp}/swconf").read() and "SHOP_PRODUCT" not in open(f"{tmp}/swconf").read(), "--dry-run warns and changes nothing")
+# no terminal and no --yes: refused, nothing changed
+r = sw("choose_product < /dev/null; echo rc=$?", env={"SHOP_PRODUCT": "wifi"})
+check("rc=" not in r.stdout and "KIOSK_PASS='oldKioskPw1'" in open(f"{tmp}/swconf").read() and "--yes" in r.stdout + r.stderr, "no terminal and no --yes: it stops, nothing is changed: " + r.stdout + r.stderr)
+
+
+def at_terminal(code, answer):
+    """Run shell code with a real terminal on stdin (the question is only asked at a terminal) and type an answer."""
+    open(f"{tmp}/swconf", "w").write(BOTHCONF)
+    env = dict(os.environ, PATH=f"{bindir}:" + os.environ["PATH"], PISO_SETUP_SOURCE_ONLY="1", PISO_LOG=f"{tmp}/log2", PISO_STATE=f"{tmp}/state2",
+               PISO_ROUTER_ID="a1b2", SHOP_PRODUCT="wifi", **senv)
+    pid, fd = pty.fork()
+    if pid == 0:
+        os.execvpe("sh", ["sh", "-c", f". {SCRIPT}; {code}"], env)
+    out = b""
+    sent = False
+    while True:
+        ready, _, _ = select.select([fd], [], [], 15)
+        if not ready:
+            break
+        try:
+            chunk = os.read(fd, 4096)
+        except OSError:
+            break
+        if not chunk:
+            break
+        out += chunk
+        if not sent and b"[y/N]" in out:
+            os.write(fd, (answer + "\n").encode())
+            sent = True
+    os.waitpid(pid, 0)
+    return out.decode(errors="replace")
+
+
+out = at_terminal("choose_product; echo DONE", "n")
+check("lose their Wi-Fi" in out and "DONE" not in out and "KIOSK_PASS='oldKioskPw1'" in open(f"{tmp}/swconf").read(), "asked at a terminal, answered no: cancelled, nothing changed: " + out[-300:])
+out = at_terminal("choose_product; echo DONE", "y")
+check("DONE" in out and "KIOSK_PASS" not in open(f"{tmp}/swconf").read(), "asked at a terminal, answered yes: switched: " + out[-300:])
+# an update never changes the product: the environment applies only to the installer
+open(f"{tmp}/swconf", "w").write(BOTHCONF)
+r = run("kiosk-wifi", env={"SHOP_PRODUCT": "wifi", "PISO_CONF": f"{tmp}/swconf"})
+check("no rental phones" not in r.stdout + r.stderr, "SHOP_PRODUCT in the environment is ignored by every command except the install: " + r.stdout + r.stderr)
+main_body = text.split("\nmain() {")[1].split("\n}\n")[0]
+check('unset SHOP_PRODUCT' in main_body and main_body.index("unset SHOP_PRODUCT") < main_body.index('case "$CMD" in'), "main drops SHOP_PRODUCT before running any command but the install")
+st1 = text.split("\nstage1() {")[1].split("\n}\n")[0]
+check(st1.index("choose_product") < st1.index("choose_passwords") and "store_product" not in st1, "stage 1 chooses the product before any password and any change")
 print(f"{checks} checks, {failures} failures")
 sys.exit(1 if failures else 0)
