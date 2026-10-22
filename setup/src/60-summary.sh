@@ -12,6 +12,8 @@ Kiosk Wi-Fi:           $KIOSK_SSID (HIDDEN)   password: $(conf_get KIOSK_PASS)  
 PisoWiFi (customers):  $(conf_get GUEST_NAME)   (open; rename with: piso-setup wifi-name "New Name")
 Coin box:              http://$BOX_IP      admin password: $(conf_get BOX_ADMIN_PASS)    hidden Wi-Fi: $BOX_SSID (only MAC $(conf_get BOX_MAC))
 
+$(flash_report)
+
 Useful commands on the router:
   piso-setup status            health check of every part
   piso-setup wifi-name "Name"  rename the customer Wi-Fi
