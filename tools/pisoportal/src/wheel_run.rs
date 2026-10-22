@@ -37,7 +37,7 @@ impl Wheel {
         let mine = crate::config::override_get(data_dir, "WHEEL");
         let setting = crate::config::parse_switch(&mine, file_setting);
         let table = match Table::parse(&crate::config::override_get(data_dir, "WHEEL_TABLE")) {
-            Ok(t) if t.validate().is_ok() => t,
+            Ok(t) if t.validate_saved().is_ok() => t,
             _ => Table::default_table(),
         };
         let mut limits = Limits::default_limits();
@@ -207,7 +207,7 @@ impl Wheel {
         };
         let segs: Vec<String> = t.segs.iter().map(|s| format!("{{\"mult\":{},\"weight\":{}}}", s.mult, s.weight)).collect();
         let json = format!(
-            "{{\"ok\":true,\"segments\":[{}],\"total\":{},\"rtp\":{},\"win\":{},\"left_min\":{},\"paused\":{},\"can_spin\":{},\"reason\":\"{}\",\"max_bet\":{},\"limit_max_bet\":{},\"floor\":{},\"spins_left\":{},\"wait\":{},\"win_room\":{}}}",
+            "{{\"ok\":true,\"segments\":[{}],\"total\":{},\"rtp\":{},\"win\":{},\"left_min\":{},\"paused\":{},\"can_spin\":{},\"reason\":\"{}\",\"max_bet\":{},\"limit_max_bet\":{},\"floor\":{},\"spins_left\":{},\"wait\":{},\"win_room\":{},\"max_slices\":{},\"spins_per_day\":{},\"wait_secs\":{},\"win_cap\":{}}}",
             segs.join(","),
             t.total_weight(),
             t.rtp_permille(),
@@ -221,7 +221,11 @@ impl Wheel {
             l.floor,
             spins_left,
             self.days.wait_left(mac, now, &l),
-            self.days.win_room(mac, day, &l)
+            self.days.win_room(mac, day, &l),
+            wheel::MAX_SLOTS,
+            l.spins_per_day,
+            l.wait_secs,
+            l.win_cap_per_day
         );
         (200, json)
     }
@@ -288,6 +292,23 @@ impl Wheel {
             }
         }
     }
+}
+
+/// The odds table as plain HTML rows (the page fills them in again from `/wheel/state`; a browser without script still reads the odds).
+pub fn odds_rows(t: &Table) -> String {
+    let n = t.total_weight().max(1);
+    t.segs
+        .iter()
+        .map(|s| {
+            let pct = (s.weight as f64 * 1000.0 / n as f64).round() / 10.0;
+            let (label, pays) = if s.mult == 0 {
+                ("LOSE".to_string(), "your bet is lost".to_string())
+            } else {
+                (format!("x{}", s.mult), format!("your bet x{}", s.mult))
+            };
+            format!("<tr><td>{}</td><td>{}</td><td>{} of {} ({}%)</td></tr>", label, pays, s.weight, n, pct)
+        })
+        .collect()
 }
 
 fn bet_words(b: &wheel::BetError) -> &'static str {
@@ -533,5 +554,35 @@ mod tests {
         w.set_limits(Limits { max_bet: 7, ..Limits::default_limits() }).unwrap();
         let again = Wheel::new(&dir, &format!("{}/roll.csv", dir), false);
         assert_eq!((again.table().to_text().as_str(), again.limits().max_bet), ("0x3 2x1", 7));
+    }
+
+    #[test]
+    fn rt_a_saved_table_above_the_cap_still_works_and_the_state_names_the_slice_cap_and_limits() {
+        let (w, files, dir) = world("cap24");
+        // saved by an earlier release (101 slots): loaded as it is, not replaced by the default
+        assert!(crate::config::override_set(&dir, "WHEEL_TABLE", "0x66 2x25 3x6 5x4"));
+        let w2 = Wheel::new(&dir, &format!("{}/roll.csv", dir), false);
+        assert_eq!(w2.table().total_weight(), 101);
+        on(&w2);
+        // a new or edited table is refused above 24 and the old one stays
+        assert!(w2.set_table("0x16 2x8").is_ok());
+        assert!(w2.set_table("0x60 2x30").is_err());
+        assert_eq!(w2.table().total_weight(), 24);
+        let st = w2.state(&files, MAC, 5, NOW).1;
+        assert_eq!((field(&st, "max_slices").as_str(), field(&st, "total").as_str()), ("24", "24"));
+        assert_eq!(
+            (field(&st, "spins_per_day").as_str(), field(&st, "wait_secs").as_str(), field(&st, "win_cap").as_str()),
+            ("10", "10", "60")
+        );
+        drop(w);
+    }
+
+    #[test]
+    fn rt_the_odds_table_is_in_the_page_itself_for_a_browser_without_script() {
+        let rows = odds_rows(&Table::default_table());
+        assert_eq!(rows.matches("<tr>").count(), 4);
+        assert!(rows.contains("<td>LOSE</td><td>your bet is lost</td><td>13 of 20 (65%)</td>"), "{}", rows);
+        assert!(rows.contains("<td>x5</td><td>your bet x5</td><td>1 of 20 (5%)</td>"), "{}", rows);
+        assert!(!rows.contains("%ODDS%"));
     }
 }

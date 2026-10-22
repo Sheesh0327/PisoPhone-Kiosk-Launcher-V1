@@ -104,8 +104,8 @@ pub fn send_page(max_mb: u64) -> String {
 }
 
 /// The spinning wheel's page (the odds and the result come from the router: `/wheel/state`, `/wheel/spin`).
-pub fn wheel_page() -> String {
-    squeeze(include_str!("wheel.html"))
+pub fn wheel_page(t: &crate::wheel::Table) -> String {
+    squeeze(include_str!("wheel.html")).replace("%ODDS%", &crate::wheel_run::odds_rows(t))
 }
 
 /// What a device sees when it opens the game with no time left today.
@@ -626,7 +626,7 @@ fn handle(p: Arc<Portal>, stream: TcpStream, peer: SocketAddr) {
             if !p.core.wheel.enabled() {
                 return respond(&mut conn.s, "404 Not Found", "text/plain", "not found", "");
             }
-            let html = wheel_page();
+            let html = wheel_page(&p.core.wheel.table());
             respond_bytes(&mut conn.s, "200 OK", "text/html; charset=utf-8", html.as_bytes(), "Cache-Control: no-store\r\n", !head_only)
         }
         "/wheel/state" => {

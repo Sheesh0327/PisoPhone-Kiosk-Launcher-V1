@@ -19,6 +19,8 @@ pub struct Table {
 pub const MAX_RTP_PERMILLE: u32 = 1000;
 /// The console warns below this.
 pub const LOW_RTP_PERMILLE: u32 = 800;
+/// The most slots a table the owner saves may have: the page draws one slice per slot, and more cannot be read on a phone.
+pub const MAX_SLOTS: u32 = 24;
 /// The biggest multiplier a table may have.
 pub const MAX_MULT: u32 = 10;
 
@@ -52,6 +54,14 @@ impl Table {
 
     /// The router refuses a table that favours the customer, an empty one, or one with a multiplier it does not allow.
     pub fn validate(&self) -> Result<(), String> {
+        if self.total_weight() > MAX_SLOTS {
+            return Err(format!("the wheel may have at most {} slots (one slice each, so the wheel stays readable)", MAX_SLOTS));
+        }
+        self.validate_saved()
+    }
+
+    /// The rules a table saved by an earlier release must still meet: the cap on slots was 1000 then (the page draws 24 proportional slices).
+    pub fn validate_saved(&self) -> Result<(), String> {
         if self.segs.is_empty() || self.total_weight() == 0 {
             return Err("the wheel needs at least one slot".into());
         }
@@ -266,5 +276,21 @@ mod tests {
         assert_eq!(delta_minutes(2, 5), 5);
         assert_eq!(delta_minutes(3, 5), 10);
         assert_eq!(delta_minutes(5, 10), 40);
+    }
+
+    #[test]
+    fn rt_a_new_table_may_have_at_most_24_slots_but_a_saved_larger_one_is_still_accepted() {
+        let ok = Table::parse("0x14 2x9 3x1").unwrap();
+        assert_eq!(ok.total_weight(), 24);
+        assert!(ok.validate().is_ok(), "24 slots is the most that can be drawn evenly on a phone");
+        let big = Table::parse("0x66 2x25 3x6 5x4").unwrap();
+        assert_eq!(big.total_weight(), 101);
+        let why = big.validate().unwrap_err();
+        assert!(why.contains("at most 24"), "{}", why);
+        // a table saved before the cap (up to the old 1000) keeps working: the page draws 24 proportional slices
+        assert!(big.validate_saved().is_ok());
+        assert!(Table::parse("0x1001").unwrap().validate_saved().is_err());
+        // and the return rule still applies to a saved table
+        assert!(Table::parse("2x30 0x10").unwrap().validate_saved().is_err());
     }
 }

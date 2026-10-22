@@ -164,7 +164,7 @@ try:
         check(cp.text_content("#spl") == "9", "spins left went down by one")
         check(cp.is_disabled("#go") and "Wait" in cp.text_content("#go"), "the wait between spins shows on the button: " + cp.text_content("#go"))
         cp.wait_for_function("!document.getElementById('go').disabled", timeout=14000)
-        check(cp.text_content("#go").strip() == "Spin", "and the button comes back after the wait")
+        check(cp.text_content("#go").strip() == "SPIN", "and the button comes back after the wait")
         check(cp.evaluate("document.getElementById('wheel').style.transform").startswith("rotate("), "the wheel was turned")
 
         # the coin page: the wheel button, no mini-game
