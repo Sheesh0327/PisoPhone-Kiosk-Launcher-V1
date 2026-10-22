@@ -982,5 +982,27 @@ check("OTHER=1" in r.stdout.split("SETTINGS")[1].split("STATUS")[0] and "VOUCHER
       "a choice the owner made in the console is replaced (other console settings stay): " + r.stdout)
 check("voucher choice is off" in r.stdout and "VOUCHER_CHOICE='on'" in r.stdout and "usage: piso-setup voucher-choice" in r.stderr and "rc=1" in r.stdout,
       "voucher-choice shows its state, turns on again, and refuses anything else: " + r.stdout + r.stderr)
+# ---- feature 010: no installer copy is left behind after a good install ------------------------------------------------------------
+croot = f"{tmp}/copyroot"
+for d in ("tmp", "root", "other"):
+    os.makedirs(f"{croot}/{d}", exist_ok=True)
+for name in ("tmp/piso-setup.sh", "root/piso-setup.sh", "other/piso-setup.sh", "tmp/piso-setup.sh.bak"):
+    open(f"{croot}/{name}", "w").write("installer copy\n")
+r = lib(f"cd {croot}/tmp && echo REL=$(abs_path ./piso-setup.sh) && echo ABS=$(abs_path {croot}/other/piso-setup.sh)", env={"PISO_ROOT": croot})
+check(f"REL={croot}/tmp/piso-setup.sh" in r.stdout and f"ABS={croot}/other/piso-setup.sh" in r.stdout,
+      "abs_path turns ./piso-setup.sh (as install.sh starts it from inside its folder) into an absolute path: " + r.stdout + r.stderr)
+for name, gone in (("tmp/piso-setup.sh", True), ("root/piso-setup.sh", True), ("other/piso-setup.sh", False)):
+    r = lib(f'SELF_COPY={croot}/{name}; drop_installer_copy', env={"PISO_ROOT": croot})
+    check(os.path.exists(f"{croot}/{name}") != gone, f"drop_installer_copy: {name} is {'deleted' if gone else 'left alone (a copied file or a branch test)'}: " + r.stderr)
+    open(f"{croot}/{name}", "w").write("installer copy\n")
+check(os.path.exists(f"{croot}/tmp/piso-setup.sh.bak"), "drop_installer_copy deletes only the file it was started from")
+r = lib("SELF_COPY=; drop_installer_copy; echo rc=$?", env={"PISO_ROOT": croot})
+check("rc=0" in r.stdout, "drop_installer_copy with no copy known does nothing")
+s2 = text.split("stage2() {")[1].split("\n}\n")[0]
+ok_branch, bad_branch = s2.split('if [ "$_f" = 0 ]; then')[1].split("\telse\n")
+check("drop_installer_copy" in ok_branch and "drop_installer_copy" not in bad_branch, "stage 2 deletes the copy only when every check passed; a failed install keeps it for the next run")
+main_body = text.split("\nmain() {")[1].split("\n}\n")[0]
+check("SELF_COPY=$(abs_path \"$0\")" in main_body, "main makes $0 absolute before anything changes directory")
+check("/usr/sbin/piso-setup" in text and "extract_payload \"$0\"" in text, "the installed /usr/sbin/piso-setup is still written from the running file before the copy goes")
 print(f"{checks} checks, {failures} failures")
 sys.exit(1 if failures else 0)

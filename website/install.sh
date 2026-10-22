@@ -11,7 +11,7 @@
 #                               passwords from ROOT_PASSWORD, KIOSK_PASSWORD, BOX_NEW_ADMIN_PASSWORD or generated). Used by
 #                               setup/pisophone_setup.py, which does the whole router setup from your computer
 #
-# It downloads the current setup file (setup/piso-setup.sh) to /root, checks it against its published sha256 and that it is
+# It downloads the current setup file (setup/piso-setup.sh) to /tmp (or /root when memory is short), checks it against its published sha256 and that it is
 # complete, moves a router still on its factory address to 10.0.0.1 (after asking: the SSH session then drops and you log in
 # again at 10.0.0.1), and runs the setup. No file copying, no line-ending fixes, no chmod.
 # Everything is inside main(), called on the last line: a download cut short runs nothing.
@@ -20,11 +20,27 @@
 # repository is public or private):
 # main's from the production site, any other branch's from that branch's preview site (beta: beta.pisophone.pages.dev).
 SITE_HOST="${PISO_SITE_HOST:-pisophone.pages.dev}"
-DIR="${PISO_INSTALL_DIR:-/root}"
+# where the setup file is saved: in memory (/tmp) when the router has at least 24000 KB free (the rule updates use, setup/src/96-space-backup.sh),
+# else on flash (/root). It is deleted after a good install, so the 1.6 MB never stays on flash. PISO_INSTALL_DIR overrides both.
+DIR="${PISO_INSTALL_DIR:-}"
 TTY="${PISO_TTY:-/dev/tty}"
 LAN_TARGET=10.0.0.1
 NETWORK_INIT="${PISO_NETWORK_INIT:-/etc/init.d/network}"
 SELF_PATH="${PISO_SELF_PATH:-/usr/sbin/piso-setup}"
+
+# mem_available_kb: free memory in KB (0 when unknown); PISO_MEM_KB is the test hook
+mem_available_kb() {
+	if [ -n "$PISO_MEM_KB" ]; then echo "$PISO_MEM_KB"; return; fi
+	sed -n 's/^MemAvailable: *\([0-9]*\) kB.*/\1/p' /proc/meminfo 2> /dev/null | head -n 1 | sed 's/^$/0/'
+}
+
+# pick_dir: sets DIR (unless PISO_INSTALL_DIR gave it) and IN_RAM=1 when the copy goes to /tmp. Memory unknown counts as enough.
+pick_dir() {
+	IN_RAM=""
+	if [ -n "$DIR" ]; then return 0; fi
+	_m=$(mem_available_kb); _m="${_m:-0}"
+	if [ "$_m" -gt 0 ] 2> /dev/null && [ "$_m" -lt 24000 ]; then DIR="${PISO_ROOT:-}/root"; else DIR="${PISO_ROOT:-}/tmp"; IN_RAM=1; fi
+}
 
 say() { printf '%s\n' "$*"; }
 fail() { say "ERROR: $*"; exit 1; }
@@ -76,15 +92,16 @@ move_lan() {
 		say "then log in again and start the setup:"
 		say ""
 		say "    ssh root@$LAN_TARGET"
-		say "    ./piso-setup.sh"
+		say "    sh $DIR/piso-setup.sh"
 		say ""
+		if [ -n "$IN_RAM" ]; then say "(The setup file is kept in the router's memory. If the router restarts before that, run the one-line installer again.)"; say ""; fi
 	fi
 	ask "Move the router to $LAN_TARGET now?" || fail "nothing was changed. Run this again when you are ready (the setup file is kept in $DIR)."
 	if ! uci set network.lan.ipaddr="$LAN_TARGET" || ! uci commit network; then fail "could not change the LAN address"; fi
 	if [ -n "$ASSUME_YES" ]; then
 		say "Moving to $LAN_TARGET in 3 seconds (this connection ends)."
 	else
-		say "Moving to $LAN_TARGET in 3 seconds. Log in again with: ssh root@$LAN_TARGET   then run: ./piso-setup.sh"
+		say "Moving to $LAN_TARGET in 3 seconds. Log in again with: ssh root@$LAN_TARGET   then run: sh $DIR/piso-setup.sh"
 	fi
 	# (the dropped SSH connection must not stop it half way)
 	(trap '' HUP; sleep 3; "$NETWORK_INIT" restart) > /dev/null 2>&1 &
@@ -113,6 +130,7 @@ main() {
 	fi
 	if [ "$1" = update ]; then say "NOTE: the setup file of branch '$branch' is not signed by the owner. Use it for testing only."; fi
 
+	pick_dir
 	base="$(site_for "$branch")/setup"
 	# the setup file carries a portal program built for one CPU family: mipsel is piso-setup.sh (as it always was), the others have their own
 	file=piso-setup.sh
