@@ -30,7 +30,7 @@ try:
     check(env.start(), "the portal starts")
     env.nds_client(MAC)
     code, page, _ = env.get("/")
-    check('id="wh"' in page and 'id="fwh"' in page, "the coin page carries the wheel button in the idle and in the 'You are online' screen")
+    check('id="wh"' in page, "the coin page carries the wheel button")
 
     # ---- nobody has paid ---------------------------------------------------------------------------------------------------------------
     a = Cust("127.0.0.1", port=env.PP)

@@ -121,6 +121,20 @@ try:
         check(cp.is_disabled("#p") and cp.is_disabled("#m"), "and the bet buttons are disabled")
         check(bought_rows() == {}, "nothing was spent")
 
+        # the same visitor pays with real coins: the 'You are online' screen offers the wheel too
+        env.nds_client(MAC)
+        env.set_box(busy=False, coins_at=[0.4, 0.8, 1.2])
+        cp.goto(f"http://127.0.0.1:{env.PP}/")
+        cp.wait_for_selector("#v-idle", state="visible", timeout=8000)
+        cp.click(".coin")
+        cp.wait_for_selector("#ldone", state="visible", timeout=10000)
+        cp.wait_for_function("document.getElementById('lpes').textContent.indexOf('3')>=0", timeout=10000)
+        cp.click("#ldone")
+        cp.wait_for_selector("#v-final", state="visible", timeout=10000)
+        check("You are online" in cp.text_content("#fon"), "the visitor paid and is online")
+        cp.wait_for_selector("#wh", state="visible", timeout=5000)
+        check("Spin the wheel" in cp.text_content("#wh"), "and the 'You are online' screen has the Spin the wheel button")
+
         # ---- a customer ----------------------------------------------------------------------------------------------------------
         Path(f"{env.data}/vouchers.txt").write_text(f"c1,0,0,0,0,60,{now},{MAC},0,0,0,hyper,w1,10,60,10,1\n")
         cp.close()
@@ -155,8 +169,7 @@ try:
 
         # the coin page: the wheel button, no mini-game
         cp.goto(f"http://127.0.0.1:{env.PP}/")
-        cp.wait_for_selector("#v-idle", state="visible", timeout=8000)
-        cp.wait_for_selector("#wh", state="visible", timeout=5000)
+        cp.wait_for_selector("#wh", state="visible", timeout=8000)   # (the purchase above still shows as the 'You are online' screen for two minutes)
         check("Spin the wheel" in cp.text_content("#wh") and not cp.is_visible("#gm"), "the coin page offers the wheel and not the mini-game")
 
         # ---- turned off from the console ----------------------------------------------------------------------------------------------------

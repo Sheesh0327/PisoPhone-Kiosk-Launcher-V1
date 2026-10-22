@@ -79,7 +79,6 @@ details .btn{margin:8px 0 12px}
 <p class="mut" id="vm" role="status"></p></details>
 <a class="btn alt" id="gm" href="/game" style="display:none">Play a mini-game</a>
 <p class="sub" id="gms"></p>
-<a class="btn alt" id="wh" href="/wheel" style="display:none">Spin the wheel</a>
 <a class="btn alt" id="snd" href="/send" style="display:none">Send a file to the owner</a>
 </div>
 <div id="v-live" class="v card">
@@ -109,13 +108,13 @@ details .btn{margin:8px 0 12px}
 </div>
 <div class="msg w" id="foff" style="display:none"></div>
 <a class="btn" id="fcont" style="display:none">Continue browsing</a>
-<a class="btn alt" id="fwh" href="/wheel" style="display:none">Spin the wheel</a>
 <button class="btn alt" id="fagain" type="button">Add more time</button>
 </div>
 <div id="v-msg" class="v card" role="alert">
 <div id="mtext"></div>
 <div id="mbtns"></div>
 </div>
+<a class="btn alt" id="wh" href="/wheel" style="display:none">Spin the wheel</a>
 <p class="foot">TechNet Solutions &middot; Connect &middot; Play &middot; More Possibilities</p>
 </div>
 <script>
@@ -206,7 +205,7 @@ function vsave(c){try{var a=document.createElement("a");a.href=URL.createObjectU
 function vcopy(b){var ok=0;try{var r=document.createRange();r.selectNodeContents(el("vcode"));var g=getSelection();g.removeAllRanges();g.addRange(r);ok=document.execCommand("copy")}catch(e){}
  b.textContent=ok?"Copied":"Press and hold the code to copy it"}
 function vshow(j){show("final");pes=0;tt=0;pj=false;tstop();foff(false);var c=j.vcode;
- el("fn").style.display="none";el("fv").style.display="block";el("fcont").style.display="none";el("fwh").style.display="none";put("fagain","Back to start");
+ el("fn").style.display="none";el("fv").style.display="block";el("fcont").style.display="none";put("fagain","Back to start");
  put("vcode",c);put("fmin","₱"+j.pulses+" = "+fmt(j.minutes)+" voucher");
  try{put("vexp",new Date(j.vexp*1e3).toLocaleDateString([],{day:"numeric",month:"short",year:"numeric"}))}catch(e){}
  el("vcopy").onclick=function(){vcopy(this)};
@@ -216,7 +215,7 @@ function vshow(j){show("final");pes=0;tt=0;pj=false;tstop();foff(false);var c=j.
 function vlist(a){var b=el("vls"),i,h="";for(i=0;i<a.length;i++){var c=String(a[i].c).replace(/[^0-9A-Z-]/g,"");h+='<div class="vr"><div><b>'+c+'</b><div class="mut">'+fmt(a[i].m)+" · "+pn(a[i].p)+'</div></div><button class="btn alt" type="button" data-c="'+c+'">Use</button></div>'}
  b.innerHTML=h;el("vlist").style.display=a.length?"block":"none";var l=b.getElementsByTagName("button");for(i=0;i<l.length;i++)l[i].onclick=function(){redeem(this.getAttribute("data-c"))}}
 function view(j){
-var s=j.s;
+var s=j.s;el("wh").style.display=(s==="idle"||s==="final")&&j.wh&&!j.vcode?"block":"none";
 if(s!=="armed")stopTick();if(s!=="idle"&&s!=="final"&&s!=="paused")tstop();if(s!=="final"){foff(false);clearTimeout(wk);wk=null}
 /* a window that stays in "Counting coins" is asked about again by a new connection every 3 s (a phone may have paused the old one) */
 if(s==="closing"){if(!cw)cw=setInterval(connect,3e3)}else if(cw){clearInterval(cw);cw=0}
@@ -227,7 +226,7 @@ if(s==="idle"||s==="paused"){
  el("vchoice").style.display=vch?"block":"none";
  el("snd").style.display=s==="idle"&&j.sd?"block":"none";
  var gl=s==="idle"&&j.gm!==undefined?j.gm:-1;el("gm").style.display=gl>0?"block":"none";put("gms",gl>0?"Mini-game: "+Math.ceil(gl/60)+" min left today":gl===0?"Mini-game time is used up today. Back tomorrow.":"");
- el("wh").style.display=s==="idle"&&j.wh?"block":"none";el("hd").style.display=tm?"none":"flex";el("vd").style.display=ps?"none":"block";
+ el("hd").style.display=tm?"none":"flex";el("vd").style.display=ps?"none":"block";
  if(tm){on.style.display="block";put("tplan",pn(j.plan));el("tused").style.display=j.plan==="hyper"&&!ps?"inline":"none";put("tused",j.used_mb+" MB used");el("tslow").style.display=j.slow>0&&!ps?"block":"none";
   el("pz").style.display=!ps&&j.pm>0&&!(j.pn>0)?"block":"none";el("rs").style.display=ps?"block":"none";el("rs").disabled=false;el("rs").textContent="Resume time";el("pz").removeAttribute("aria-disabled");
   var cap=ps?"":j.pn>0&&j.pm>0?"Pay \u20b1"+j.pn+" more to unlock a pause":j.pl<1?"No pauses left":j.left<120?"Pause needs 2 min left":j.pw>0?"You can pause again in "+j.pw+" s":j.pl+(j.pl>1?" pauses":" pause")+" left";
@@ -249,7 +248,7 @@ if(s==="closing"){show("live");el("lcd").style.display="none";el("ldone").style.
 if(s==="final"){
  if(j.vcode){vshow(j);return}
  show("final");el("fn").style.display="block";el("fv").style.display="none";put("fagain","Add more time");pes=0;tt=0;pj=false;tstart(j.left);put("fmin","time left · ₱"+j.pulses+" = "+fmt(j.minutes)+" bought");
- el("fwh").style.display=j.wh?"block":"none";el("ck").style.display=j.online?"block":"none";put("fon",j.online?"✓ You are online":"");foff(!j.online);
+ el("ck").style.display=j.online?"block":"none";put("fon",j.online?"✓ You are online":"");foff(!j.online);
  var c=el("fcont");if(cont){c.href=cont;c.style.display="block"}else c.style.display="none";
  if(j.online&&!woke&&!wk){setTimeout(function(){say("You are online",function(){ding(2)})},900);wk=setTimeout(wake,2500);try{navigator.vibrate&&navigator.vibrate([100,60,100])}catch(e){}}return}
 if(s==="empty"){msg("No coins detected, you were not charged.",[["Try again",again]]);return}
