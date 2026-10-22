@@ -17,7 +17,7 @@ Playwright and Chromium are needed (installed; CI has them). `node` runs the pur
 ## Task groups
 Small, ordered, test first (red result in `ledger/negative-constraints.md`). Start only after 006 is merged (same page), or fold 006 into this branch if the owner prefers one release.
 
-- [ ] 1. **Layout function** (pure JS, in its own `<script>` block of `wheel.html` and tested from `node` by extracting the block): one slice per slot, equal widths, wins and bigger multipliers spread evenly, deterministic. Tests first (success criterion 1).
+- [x] 1. **Layout function** (pure JS, in its own `<script>` block of `wheel.html` and tested from `node` by extracting the block): one slice per slot, equal widths, wins and bigger multipliers spread evenly, deterministic. Tests first (success criterion 1).
 - [ ] 2. **Table cap** (`wheel.rs::validate`, console message): refuse a table above N total slots; saved larger tables still draw N proportional slices with a note. Rust tests first.
 - [ ] 3. **The wheel picture** (inline SVG): rim with lights/pegs, labelled slices (two lose shades alternating, bright win colours by multiplier), pointer with flick, centre hub, the game look at 360 px. Browser test: slice counts and labels equal the odds (criterion 2).
 - [ ] 4. **The spin** (animation): same duration and easing for every result; stop inside the middle 80% of a slice of the result's row; reduced-motion and no-script behaviour. Landing test over simulated results (criteria 2, 3, 5).
