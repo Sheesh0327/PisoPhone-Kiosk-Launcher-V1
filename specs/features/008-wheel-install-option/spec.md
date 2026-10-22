@@ -1,6 +1,6 @@
 # Feature 008: the wheel is an install option, offered only on routers with more than 16 MB of flash
 
-Status: **draft** (waits for the owner's answers to the review questions, then approval)   Branch: `feat/008-wheel-install-option` (made from `beta` when work starts)   Area: setup (the router installer and the computer setup program) and router (one switch)
+Status: **parked** (2026-10-22: the owner will write a separate spec for this; the facts below are kept for it; no questions answered, no code)   Branch: `feat/008-wheel-install-option` (made from `beta` when work starts)   Area: setup (the router installer and the computer setup program) and router (one switch)
 Backlog rows: none (owner request 2026-10-22)   Release: router (`setup/src/` changes what routers install: raise `setup/RELEASE`, the number after 007's release)
 
 ## Intent
