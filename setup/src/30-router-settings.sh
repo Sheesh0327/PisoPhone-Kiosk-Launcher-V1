@@ -38,7 +38,9 @@ EOT
 		echo "set wireless.$r.disabled='0'"
 		echo "set wireless.$r.country='$COUNTRY'"
 		[ "$_band" = 2g ] && echo "set wireless.$r.htmode='HT20'"
-		cat << EOT
+		# the rental phones' hidden Wi-Fi: not on a PisoWiFi-only router
+		if ! wifi_only; then
+			cat << EOT
 set wireless.kiosk_$r=wifi-iface
 set wireless.kiosk_$r.device='$r'
 set wireless.kiosk_$r.mode='ap'
@@ -48,6 +50,9 @@ set wireless.kiosk_$r.hidden='1'
 set wireless.kiosk_$r.encryption='psk2'
 set wireless.kiosk_$r.key='$KIOSK_PASS'
 set wireless.kiosk_$r.isolate='0'
+EOT
+		fi
+		cat << EOT
 set wireless.guest_$r=wifi-iface
 set wireless.guest_$r.device='$r'
 set wireless.guest_$r.mode='ap'

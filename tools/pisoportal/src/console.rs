@@ -17,6 +17,12 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 const UI: &str = include_str!("console.html");
+/// The console page. The tab that shows the coin box's own page is named "Coin box" on a PisoWiFi-only router and "Rental phones"
+/// otherwise; its id (`ph`) and the page inside do not change.
+fn page_html(product: &str) -> String {
+    UI.replace("@PHTAB@", if product == "wifi" { "Coin box" } else { "Rental phones" })
+}
+
 const UI_JS: &str = include_str!("console-ui.js");
 const VERIFY_JS: &str = include_str!("console-verify.js");
 const SESSION_IDLE: u64 = 30 * 60;
@@ -527,7 +533,7 @@ fn handle(c: &Console, req: Request, mut conn: Incoming) {
     let body = if req.method == "POST" { body_of(&req, &mut conn) } else { String::new() };
     match (req.method.as_str(), req.path.as_str()) {
         ("GET" | "HEAD", "/") => {
-            let page = UI.replace("@OWNER_KEY@", &crate::update::owner_key());
+            let page = page_html(&c.core.cfg.shop_product).replace("@OWNER_KEY@", &crate::update::owner_key());
             respond_bytes(
                 &mut conn.s,
                 "200 OK",
@@ -807,6 +813,16 @@ pub fn start(core: Arc<Core>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_coin_box_tab_is_named_for_the_product() {
+        let wifi = page_html("wifi");
+        assert!(wifi.contains(r#"<button data-t="ph">Coin box</button>"#) && !wifi.contains("Rental phones"));
+        let both = page_html("both");
+        assert!(both.contains(r#"<button data-t="ph">Rental phones</button>"#) && !both.contains("Coin box</button>"));
+        assert!(!wifi.contains("@PHTAB@") && !both.contains("@PHTAB@"));
+        assert!(wifi.contains(r#"id="t-ph""#) && wifi.contains(r#"id="boxf""#), "the tab id and the page inside it do not change");
+    }
 
     #[test]
     fn the_internet_line_is_found_and_counted() {
