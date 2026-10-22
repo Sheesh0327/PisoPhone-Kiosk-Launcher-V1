@@ -1,6 +1,6 @@
 # Plan: feature 011, first setup without internet on the router
 
-Status: **draft, waiting for the owner's approval of spec.md (and its three owner decisions) and this plan. No code until approved. Start only after feature 010 is merged into `beta`: rebase this branch on `beta` first.**
+Status: **approved by the owner (2026-10-22). Not started: start only after feature 010 is merged into `beta` (rebase this branch on `beta` first) and the owner says to start.**
 
 How to work (for the execution model): one task group at a time, in order. Test first: write the test, run it, see it fail, log the red result in `ledger/negative-constraints.md`; then the code; then the test passes. One commit per group, plain English, with the session's trailer lines. Tick the box here. Use only the names in the spec's "Names" table. Generated files are made by `python3 tools/build_piso_setup.py`, never by hand. If the spec does not say something you need, stop and ask the owner.
 
@@ -20,7 +20,7 @@ Context manifest (constitution rule 1). Unresolved ledger entries loaded: read `
 ## Task groups
 Each group names the spec criteria it proves.
 
-- [ ] 0. **Owner gate.** The owner approves the spec, its three owner decisions and this plan. Feature 010 is merged into `beta`; this branch is rebased on it.
+- [ ] 0. **Owner gate.** Spec, its three owner decisions and this plan approved (2026-10-22). Left: feature 010 merged into `beta`, this branch rebased on it, the owner's go.
 - [ ] 1. **Baseline** (criterion 1). Run the tests; counts in `validation.md`.
 - [ ] 2. **Router-side check and install, tests first** (criterion 6). `setup/src/21-local-packages.sh` with `install_local_packages`; tests with stub `usign`, `sha256sum`, `opkg`, including a tampered `.ipk` and a tampered `Packages`.
 - [ ] 3. **Installer without internet, tests first** (criterion 7). `PISO_LOCAL_PKGS` in `20-preflight.sh` (no ping, no `opkg update`, `install_local_packages` instead); `install.sh --local`. The existing tests pass unchanged. Raise `setup/RELEASE` here. Regenerate; `--check` passes.

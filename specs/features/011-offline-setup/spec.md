@@ -1,6 +1,6 @@
 # Feature 011: first setup without internet on the router (the computer brings the files)
 
-Status: **draft, waiting for the owner's approval. No code until approved.**
+Status: **approved by the owner (2026-10-22), with owner decisions 1 to 3 as proposed. Not started: build after feature 010 is merged into `beta`, and only when the owner says to start.**
 Branch: `feat/011-offline-setup` (from `beta`). Area: setup, router. Depends on: feature 010 (it changes the same files: `setup/install.sh`, `20-preflight.sh`, the setup program's router flow); build 011 after 010 is merged into `beta`, and rebase this branch on it first. Release: router (`setup/RELEASE`, the number after 010's 1.5.17) and the setup program (`website/pisophone_setup.py`).
 Backlog rows: none (owner request 2026-10-22, idea checked against the code before this spec).
 
@@ -23,7 +23,7 @@ Today the router must have internet during its first setup. A shop owner who set
 5. **OpenWrt 25.x replaces opkg with apk** (other index format and signatures). Releases 22.03 to 24.10 use opkg.
 6. **RAM:** `opkg update` keeps all package lists in RAM (`/tmp/opkg-lists`), several MB. The router's update already uses the rule "work in RAM unless `MemAvailable` is under 24000 KB" (`96-space-backup.sh:15-25`).
 
-## Decisions (proposed; the owner approves them with the spec)
+## Decisions (approved by the owner, 2026-10-22)
 1. **Only the setup program path.** The one-line installer typed on the router by hand keeps needing the router's internet (there is no computer).
 2. **Offline first, today's path as the fallback.** The setup program prepares the files on the computer before it touches the router. If preparing fails (no source reachable, a package missing, apk router, too little RAM, no usign or no keys), it says why and, if the router has internet, runs today's path; if not, it stops before changing anything.
 3. **The router checks what it installs:** each source's `Packages` against its `Packages.sig` with the router's own `usign` and keys, then each package's sha256 against that `Packages`; the installer against its published `.sha256` as today. Anything that fails: nothing is installed, the setup stops with the reason.
@@ -71,7 +71,7 @@ Today the router must have internet during its first setup. A shop owner who set
 - Updates (they keep using the router's internet and the owner's signature).
 - A copy of the OpenWrt package sources kept on the website.
 
-## Owner decisions (answer before code)
-1. **Offline first by default?** Proposed: yes, the setup program always tries the offline path first (decision 2), with today's path as the automatic fallback and `--router-online` to skip it. The alternative is an opt-in option `--router-offline`, which is less tested by use.
-2. **A router with no internet and no way to prepare offline:** proposed: stop before changing anything, with both reasons (criterion 8). The alternative is to set up without the packages and let the owner add them later, which leaves a router without its portal: not proposed.
-3. **Release order:** proposed: after 010 is merged into `beta` and published; 011 is its own router release.
+## Owner decisions (answered 2026-10-22: all three as proposed)
+1. **Offline first by default: yes (approved).** As proposed: the setup program always tries the offline path first (decision 2), with today's path as the automatic fallback and `--router-online` to skip it. The alternative is an opt-in option `--router-offline`, which is less tested by use.
+2. **A router with no internet and no way to prepare offline: stop (approved).** As proposed: before changing anything, with both reasons (criterion 8). The alternative is to set up without the packages and let the owner add them later, which leaves a router without its portal: not proposed.
+3. **Release order (approved):** after 010 is merged into `beta` and published; 011 is its own router release.
