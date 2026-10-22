@@ -1,6 +1,6 @@
 # Feature 005: spinning wheel on the PisoWiFi portal (replaces the free mini-game)
 
-Status: **approved** (owner, 2026-10-21, with the recommended answers to decisions 1 to 7)   Branch: `feat/005-spinning-wheel`   Area: router (portal program, console, setup defaults)
+Status: **done** (all 8 success criteria passed on the computer, see `validation.md`; released as router 1.5.14 on 2026-10-22; open: hardware check RS34 and the legal review of the warning text). Approved by the owner 2026-10-21 with the recommended answers to decisions 1 to 7   Branch: `feat/005-spinning-wheel`   Area: router (portal program, console, setup defaults)
 Backlog rows: none (side feature, owner request 2026-10-21)   Release: router (raise `setup/RELEASE`)
 
 ## Intent

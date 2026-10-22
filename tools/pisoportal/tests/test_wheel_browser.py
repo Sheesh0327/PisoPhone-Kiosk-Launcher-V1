@@ -3,7 +3,15 @@
 disabled until the exact phrase is typed (lower case, an extra space or half the phrase do not count), Cancel leaves the wheel off, a wheel that pays
 back more than 100% is refused with its reason. Customer side: the wheel page shows the odds before any spin, a spin ends with the result in words and the
 router's time left, a double tap spends one spin, the wait between spins shows, and nothing spins by itself."""
-import glob, json, os, re, shutil, sys, time
+import glob
+import json
+import os
+import re
+import shutil
+import sys
+import time
+from pathlib import Path
+
 from harness import *
 
 try:
@@ -15,9 +23,9 @@ except ImportError:
 CP = 18420
 env = Env(offset=105)
 tmp = env.tmp
-open(f"{tmp}/ubus", "w").write('#!/bin/sh\ncase "$4" in *\\"password\\":\\"router-pass\\"*) echo \'{ "ubus_rpc_session": "abc" }\';; *) echo \'{}\';; esac\n')
+Path(f"{tmp}/ubus").write_text('#!/bin/sh\ncase "$4" in *\\"password\\":\\"router-pass\\"*) echo \'{ "ubus_rpc_session": "abc" }\';; *) echo \'{}\';; esac\n')
 os.chmod(f"{tmp}/ubus", 0o755)
-open(f"{tmp}/setup.conf", "w").write("BOX_ADMIN_PASS='box-pass-123'\n")
+Path(f"{tmp}/setup.conf").write_text("BOX_ADMIN_PASS='box-pass-123'\n")
 env.extra.update(CONSOLE_PORT=CP, CONSOLE_BIND="127.0.0.1", UBUS=f"{tmp}/ubus", PISO_SETUP_CONF=f"{tmp}/setup.conf")
 MAC = "aa:bb:cc:00:00:01"
 PHRASE = "I TAKE RESPONSIBILITY"
@@ -34,7 +42,7 @@ def wheel_state():
 try:
     check(env.start(), "the portal starts")
     now = int(time.time())
-    open(f"{env.data}/vouchers.txt", "w").write(f"c1,0,0,0,0,60,{now},{MAC},0,0,0,hyper,w1,10,60,10,1\n")
+    Path(f"{env.data}/vouchers.txt").write_text(f"c1,0,0,0,0,60,{now},{MAC},0,0,0,hyper,w1,10,60,10,1\n")
     chrome = os.environ.get("CHROME") or next((c for c in [shutil.which(x) for x in ("google-chrome", "chromium", "chromium-browser")] + glob.glob("/opt/pw-browsers/chromium-*/chrome-linux/chrome") if c), None)
     with sync_playwright() as pw:
         br = pw.chromium.launch(executable_path=chrome, args=["--no-sandbox"])
@@ -115,7 +123,7 @@ try:
         check(bool(m), "the result is in words: " + res)
         now_bought = bought()
         check(now_bought == (65 if m and m.group(1) == "won" else 55), f"the router's time changed by exactly the bet: {now_bought}")
-        check(open(f"{env.data}/wheel.log").read().count(",spin,") == 1, "a double tap made one spin")
+        check(Path(f"{env.data}/wheel.log").read_text().count(",spin,") == 1, "a double tap made one spin")
         left = int(cp.text_content("#left"))
         check(abs(left - now_bought) <= 1 and left == int(m.group(2)), f"the page's time left matches the router's: {left} / {now_bought}")
         check(cp.text_content("#spl") == "9", "spins left went down by one")

@@ -1,6 +1,6 @@
 # Validation: spinning wheel (feature 005)
 
-Router 1.5.14. Checked on a computer only; nothing was tried on a router, a phone or a customer's device (hardware check RS34).
+Router 1.5.14, released to 100% on 2026-10-22. Validated again on `beta` on 2026-10-22 (commands and last lines below). Checked on a computer only; nothing was tried on a router, a phone or a customer's device (hardware check RS34).
 
 | # | Success criterion (from spec.md) | Check | Result | Evidence |
 |---|---|---|---|---|
@@ -30,3 +30,27 @@ Router 1.5.14. Checked on a computer only; nothing was tried on a router, a phon
 - Customer time: a spin writes its decided result to a journal first (write, flush, rename, flush the folder), then changes the session's bought minutes once under the router's file lock, then marks the journal done. A repeated spin id is answered from the journal and never charged twice, also after a restart (`test_wheel.py`). A spin cut short is finished or voided at the next start and in maintenance, never applied twice. A day's spin is reserved before it is made and given back if refused.
 - Coins and the revenue ledger (`revenue.csv`), the box protocol and reconciliation: not touched. `test_wheel.py` checks `revenue.csv` is identical after spins.
 - Rule 2 (signed software): not touched; the router update is signed and published by the owner's usual process.
+
+## Evidence (run on `beta`, 2026-10-22)
+```
+cargo fmt --check                                   (clean)
+cargo clippy --locked --release --all-targets -- -D warnings   Finished (no warnings)
+cargo test --locked --release                       test result: ok. 131 passed; 0 failed
+tests/test_wheel.py                                 42 checks, 0 failures
+tests/test_wheel_browser.py                         39 checks, 0 failures   (run 3 times)
+tests/test_flow.py                                  202 checks, 0 failures
+tests/test_console.py 90 / test_pricing_flow.py 9 / test_link_loss.py 16 / test_browser.py 53 / test_console_loader.py 8 /
+test_console_prices.py 13 / test_console_frame.py 6 / test_game_browser.py 14 / test_send.py 24      all 0 failures
+router/tests: test_setup.py 288, test_pisophone_setup.py 167, test_setup_web.py 127, test_setup_tools.py 88   0 failures (before the merge)
+bash scripts/check_security_rules.sh                security rules: all passed
+python3 tools/build_piso_setup.py --check           up to date
+python3 scripts/check_product_strip.py              phone: no trace of the other product / wifi: no trace of the other product
+python3 scripts/verify_release.py (on main, after the 100% publish)   0 FAIL, 0 WARN, 12 PASS; router 1.5.14 rollout 100%
+CI: PR #98 13 of 13 checks green; Code quality #591 on the merge commit green; Router program #136 green (all CPU families)
+```
+Notes: `ruff` is not a repository gate for `tools/pisoportal/tests` (the constitution scopes it to `scripts/`, `setup/` and `router/tests`); I still cleaned the two new test files (imports, `Path.write_text`), the only finding left is the shebang without the executable bit, the same as every neighbouring test. One browser test run failed once while stray processes from a crashed earlier run were still holding the test's ports; it passed three times after they were gone.
+
+## Open (not failures of a criterion)
+- Hardware check **RS34** (not run): the owner tries the wheel on a router.
+- **Legal review of the warning text** (roadmap 8.3): owed before anyone switches the wheel on.
+- Later: remove the old mini-game code (owner answer 3).

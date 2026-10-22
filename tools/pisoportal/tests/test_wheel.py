@@ -3,15 +3,20 @@
 version; a setting typed into a file is not enough), the free mini-game stays while it is off, a spin changes a paying customer's time once (a repeat of
 the same spin id changes nothing, even after a restart), another site cannot spin for a customer, the revenue ledger is never touched, and turning
 the wheel off is immediate."""
-import json, os, urllib.error, urllib.request
+import json
+import os
+import urllib.error
+import urllib.request
+from pathlib import Path
+
 from harness import *
 
 CP = 18400
 env = Env(offset=100)
 tmp = env.tmp
-open(f"{tmp}/ubus", "w").write('#!/bin/sh\ncase "$4" in *\\"password\\":\\"router-pass\\"*) echo \'{ "ubus_rpc_session": "abc" }\';; *) echo \'{}\';; esac\n')
+Path(f"{tmp}/ubus").write_text('#!/bin/sh\ncase "$4" in *\\"password\\":\\"router-pass\\"*) echo \'{ "ubus_rpc_session": "abc" }\';; *) echo \'{}\';; esac\n')
 os.chmod(f"{tmp}/ubus", 0o755)
-open(f"{tmp}/setup.conf", "w").write("BOX_ADMIN_PASS='box-pass-123'\n")
+Path(f"{tmp}/setup.conf").write_text("BOX_ADMIN_PASS='box-pass-123'\n")
 env.extra.update(CONSOLE_PORT=CP, CONSOLE_BIND="127.0.0.1", UBUS=f"{tmp}/ubus", PISO_SETUP_CONF=f"{tmp}/setup.conf")
 MAC = "aa:bb:cc:00:00:01"
 ID1, ID2 = "0123456789abcdef", "fedcba9876543210"
@@ -76,11 +81,12 @@ try:
     check(console("/api/wheel", {"on": "1", "phrase": PHRASE, "version": "1"})[0] == 401, "turning on without signing in is refused")
 
     # a setting typed into a file does not turn it on, not even after a restart
-    open(f"{env.data}/settings.txt", "a").write("WHEEL=on\n")
+    with open(f"{env.data}/settings.txt", "a") as settings:
+        settings.write("WHEEL=on\n")
     env.stop()
     check(env.start(), "the portal restarts with WHEEL=on typed into the settings")
     check(env.get("/wheel/state")[0] == 404 and spin(ID1, 5)[0] == 404, "WHEEL=on alone leaves the wheel off")
-    check("stays off" in open(f"{env.data}/wheel.log").read(), "and the wheel log says why")
+    check("stays off" in Path(f"{env.data}/wheel.log").read_text(), "and the wheel log says why")
     code, body, h = console("/api/login", {"password": "router-pass"})
     cookie = (h.get("Set-Cookie") or "").split(";")[0]
 
@@ -120,7 +126,7 @@ try:
     check(code == 200 and again["repeated"] is True and minutes_bought() == after, "after a restart the same spin id still gives the first answer and charges nothing")
     code, r2 = spin(ID2, 3)
     check(code == 200 and r2["spins_left"] == 8, f"the spins left today count down by one per spin: {r2}")
-    log = open(f"{env.data}/wheel.log").read()
+    log = Path(f"{env.data}/wheel.log").read_text()
     check(log.count(",spin,") == 2 and ",on," in log, "each spin and the turn on are in the wheel log")
 
     # ---- off again --------------------------------------------------------------------------------------------------------------------
