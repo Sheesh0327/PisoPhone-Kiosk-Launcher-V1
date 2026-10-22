@@ -2,7 +2,7 @@
   "version": "1.5.14",
   "sha256": "c36e5b78f792b57a1398479eecbacf5a9cbadf371cff8b6b1f991714535a9453",
   "size": 1563682,
-  "rollout": 0,
+  "rollout": 100,
   "changelog": "Router software release 1.5.14",
-  "sig": "MEQCIB6BJV2/P40TWctDvGa4bblBvBg8gF7irAQkWZFOBhgkAiAIOasyZa7o3up54DbG1oY2L+D4+I1imEYM7eC7Rd5WFQ=="
+  "sig": "MEUCIQD6/icZGRDr/dtOmqi+G9jtob8PKz/wi3w3Zpis++5GGAIgCixawxA4pvrnBPYaj3Oo4AgK9Gx5zUTidxroGkVD1qI="
 }
