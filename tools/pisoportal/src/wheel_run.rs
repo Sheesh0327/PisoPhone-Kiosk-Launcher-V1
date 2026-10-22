@@ -511,7 +511,7 @@ mod tests {
         on(&w);
         let (code, s) = w.state(&files, MAC, 5, NOW);
         assert_eq!(code, 200);
-        assert_eq!((field(&s, "rtp").as_str(), field(&s, "win").as_str(), field(&s, "total").as_str()), ("897", "384", "20"));
+        assert_eq!((field(&s, "rtp").as_str(), field(&s, "win").as_str(), field(&s, "total").as_str()), ("897", "385", "20"));
         // the slices are drawn by size: 39 units of chance, a normal slot is 2 and a thin one 1
         assert_eq!((field(&s, "total_size").as_str(), field(&s, "unit").as_str()), ("39", "2"));
         // 60 minutes left: bet at most 10 (the limit), not more than half (30), 5 must stay (55)

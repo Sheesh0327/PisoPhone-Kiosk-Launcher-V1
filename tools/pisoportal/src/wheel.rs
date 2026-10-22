@@ -71,22 +71,22 @@ impl Table {
         self.segs.iter().map(|s| self.row_size(s)).sum()
     }
 
-    /// Average return in parts per thousand, rounded down.
+    /// Average return in parts per thousand, rounded to the nearest (for showing; the 100% rule below compares exactly).
     pub fn rtp_permille(&self) -> u32 {
         let total = self.total_size() as u64;
         if total == 0 {
             return 0;
         }
-        (self.segs.iter().map(|s| self.row_size(s) as u64 * s.mult as u64).sum::<u64>() * 1000 / total) as u32
+        ((self.segs.iter().map(|s| self.row_size(s) as u64 * s.mult as u64).sum::<u64>() * 1000 + total / 2) / total) as u32
     }
 
-    /// Chance of a win in parts per thousand.
+    /// Chance of a win in parts per thousand, rounded to the nearest.
     pub fn win_permille(&self) -> u32 {
         let total = self.total_size() as u64;
         if total == 0 {
             return 0;
         }
-        (self.segs.iter().filter(|s| s.mult > 0).map(|s| self.row_size(s) as u64).sum::<u64>() * 1000 / total) as u32
+        ((self.segs.iter().filter(|s| s.mult > 0).map(|s| self.row_size(s) as u64).sum::<u64>() * 1000 + total / 2) / total) as u32
     }
 
     /// The router refuses a table that favours the customer, an empty one, or one with a multiplier it does not allow.
@@ -111,7 +111,9 @@ impl Table {
         if self.total_weight() > 1000 {
             return Err("the wheel may have at most 1000 slots".into());
         }
-        if self.rtp_permille() > MAX_RTP_PERMILLE {
+        // exact: units of return against units of chance (the rounded permille could hide 100.1%)
+        let back: u64 = self.segs.iter().map(|s| self.row_size(s) as u64 * s.mult as u64).sum();
+        if back * 1000 > self.total_size() as u64 * MAX_RTP_PERMILLE as u64 {
             return Err(format!(
                 "this wheel returns {}.{}% of the bets on average, more than 100%: customers would win over time",
                 self.rtp_permille() / 10,
@@ -225,7 +227,7 @@ mod tests {
         let t = Table::default_table();
         assert_eq!((t.total_weight(), t.unit(), t.total_size()), (20, 2, 39));
         assert_eq!(t.rtp_permille(), 897);
-        assert_eq!(t.win_permille(), 384);
+        assert_eq!(t.win_permille(), 385, "15 of 39 is 38.46%: shown as 38.5%");
         assert!(t.validate().is_ok());
         let sizes: Vec<u32> = t.segs.iter().map(|s| t.row_size(s)).collect();
         assert_eq!(sizes, vec![24, 12, 2, 1], "units of chance per row: 24 + 12 + 2 + 1 of 39");
@@ -385,5 +387,14 @@ mod tests {
         // the cap counts slices (slots), not size
         assert!(Table::parse("0x10 2x10t 3x5t").unwrap().validate().is_err(), "25 slots");
         assert!(Table::parse("0x10 2x10t 3x4t").unwrap().validate().is_ok(), "24 slots");
+    }
+
+    #[test]
+    fn rt_a_table_that_returns_even_a_hair_more_than_100_percent_is_refused() {
+        // 1000 of 999 units: 100.1%. The rounded permille says 1001 or 1000 depending on the rounding, the exact comparison must refuse it.
+        let t = Table::parse("0x499 2x500").unwrap();
+        assert!(t.validate_saved().is_err(), "{}", t.rtp_permille());
+        assert!(Table::parse("0x500 2x499").unwrap().validate_saved().is_ok(), "99.9% is fine");
+        assert!(Table::parse("0x1 2x1").unwrap().validate_saved().is_ok(), "exactly 100% stays allowed");
     }
 }

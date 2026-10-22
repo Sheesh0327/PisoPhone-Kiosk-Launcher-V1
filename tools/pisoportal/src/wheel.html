@@ -90,7 +90,8 @@ function spread(counts,n){var order=[],out=[],used=[],i,k,m;
    out[p]=c;used[p]=true}});
  return out}
 /* one slice per slot (at most `maxs`): a row index for each slice, clockwise from the top; wins spread between the losses, bigger prizes spread among the wins */
-function layout(segs,maxs){var cnt=scale(segs.map(function(s){return s.weight}),maxs),n=cnt.reduce(function(a,b){return a+b},0),
+function sizes(segs){var unit=segs.some(function(s){return s.thin})?2:1;return segs.map(function(s){return s.weight*(s.thin?1:unit)})}
+function layout(segs,maxs){var tw=segs.reduce(function(a,s){return a+s.weight},0),cnt=tw<=maxs?segs.map(function(s){return s.weight}):scale(sizes(segs),maxs),n=cnt.reduce(function(a,b){return a+b},0),
  lose=[],win=[],i,L=0,W=0;
  for(i=0;i<segs.length;i++){if(cnt[i]>0){if(segs[i].mult===0){lose.push(i);L+=cnt[i]}else{win.push(i);W+=cnt[i]}}}
  win.sort(function(a,b){return cnt[a]-cnt[b]||segs[b].mult-segs[a].mult});
@@ -100,8 +101,13 @@ function layout(segs,maxs){var cnt=scale(segs.map(function(s){return s.weight}),
  for(i=0;i<n;i++)slots.push(0);
  lp.forEach(function(p,j){slots[p]=lose[lseq[j]]});wp.forEach(function(p,j){slots[p]=win[wseq[j]]});
  return slots}
-/* the new total turn so that slice i ends under the pointer at the top, inside its middle 80% (r from 0 to 1 picks where), after five full turns */
-function landTurn(turn,i,step,r){var inside=i*step+step*(.1+.8*r),cur=((turn%360)+360)%360,d=(360-inside)%360-cur;if(d<=0)d+=360;return turn+d+1800}
+/* where each slice starts and ends, in degrees clockwise from the top: a row's share of the circle is its units of chance over all of them (a thin slot is half a normal one), shared evenly by its slices, so a slice's width is its chance */
+function angles(segs,slots){var sz=sizes(segs),tot=sz.reduce(function(a,b){return a+b},0),cnt=segs.map(function(){return 0}),a=0,out=[],i;
+ slots.forEach(function(r){cnt[r]++});
+ for(i=0;i<slots.length;i++){var w=sz[slots[i]]/tot*360/cnt[slots[i]];out.push({a0:a,a1:a+w});a+=w}
+ return out}
+/* the new total turn so that the slice from a0 to a1 ends under the pointer at the top, inside its middle 80% (r from 0 to 1 picks where), after five full turns */
+function landTurn(turn,a0,a1,r){var inside=a0+(a1-a0)*(.1+.8*r),cur=((turn%360)+360)%360,d=(360-inside)%360-cur;if(d<=0)d+=360;return turn+d+1800}
 /*LAYOUT-END*/
 (function(){
 function $(i){return document.getElementById(i)}
