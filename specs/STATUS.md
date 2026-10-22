@@ -1,18 +1,21 @@
 # Status board
 
-Updated: 2026-10-21 (replan `specs/replans/2026-10-21.md`). `beta` is at `b76f909`. Live (`main`): router 1.5.12, firmware 3.10.0. On `beta`, not released: router 1.5.13, firmware 3.11.0, the feature 003 app change.
+Updated: 2026-10-22 (replan `specs/replans/2026-10-22.md`). Live (`main`, all at 100%): router 1.5.14 (the wheel, off by default), firmware 3.11.1, app build 495. Owner report: the wheel button is hidden from visitors who have not paid; fix planned as feature 006 (router 1.5.15). Nothing has run on real hardware yet: RS28 to RS34 are owed, and the wheel's warning text needs a legal review before anyone turns it on.
 
 ## Features
 
 | # | Feature | State | Notes |
 |---|---|---|---|
-| 005 | Spinning wheel on the PisoWiFi portal (replaces the free mini-game) | **built on the computer (tasks 1 to 8); not on a real router.** Branch `feat/005-spinning-wheel`; waits for the owner: PR into `beta`, router 1.5.14 release at 0%, legal review of the warning text | Odds table, responsibility gate, journalled spin, limits, routes, wheel page, console switch with the blocking warning. Wheel is off everywhere until the owner confirms. `validation.md` written; hardware check RS34 (not run). Landing on `main`: held by the owner until the wheel was finished; it now ships as one router release 1.5.14 (publishes at 0%, widened only by the owner). |
-| 004 | Firmware money rows FW-01, 02, 03, 05, 06 (firmware 3.11.1) | **implemented on `feat/004-firmware-money`; host tests green; CI not run yet** | `specs/features/004-firmware-money/`. Not compiled with PlatformIO (CI does it), not tried on a box: RS28 to RS31. |
-| 003 | Tablet game touch (APP-27) | **merged to `beta`** (PR #96) | Unit tests, lint, APK build green on the PR. Cause is a hypothesis: **owner runs RS33 on the tablet**; if touch is still dead the adb output decides the next spec edit. |
-| 002 | Restore firmware 3.11.0 (product images, USB Wi-Fi setup, coin-counter hardening) + ST-1 | **merged to `beta`** (`60c8eaf`) | Code quality green after one re-run (flake). Not tried on a box. |
-| 001 | Router money and time (RT-01 to 07, 14) | **merged to `beta`** | Router 1.5.13. Not tried on a router: RS32. |
+| 008 | The wheel as an install option on routers with more than 16 MB of flash (owner request 2026-10-22) | **parked: the owner will write a separate spec** (my draft with the facts is in `specs/features/008-wheel-install-option/`, not approved) | Facts found: the wheel's code is about 64 KB in every install since 1.5.14; the installer has no flash-size rule; `/proc/mtd` holds the chip size, `df /overlay` does not. The size budgets were raised instead (see 006). |
+| 007 | The wheel looks like a real spinning-wheel game (many equal slices, rim and pointer, odds explanation) (owner request 2026-10-22) | **built on the computer, PR into `beta` opened** (`specs/features/007-wheel-graphics/`) | Looks only: odds, limits and money path unchanged. One labelled slice per slot with wins spread between losses, a cap of 24 slots, bright arcade look, odds explainer, sound (off by default), celebration on a win, recent spins in the browser. `validation.md` written; RS34 not run. Ships as router 1.5.15 with 006. |
+| 006 | The wheel button for everyone (owner error report 2026-10-22: no button on a page that has not paid) | **planned, waits for the owner's approval** (`specs/features/006-wheel-button/`) | With the wheel on, every visitor sees Spin the wheel (also on the "You are online" screen) and the odds; spinning still needs paid time. Router 1.5.15. Cause: 005's rule "before payment shows no wheel"; replan `specs/replans/2026-10-22.md`. |
+| 005 | Spinning wheel on the PisoWiFi portal (replaces the free mini-game) | **released: router 1.5.14 at 100% (PR #98 merged to `beta`, `main` published 2026-10-22); the wheel is OFF everywhere** | Needs the owner's typed confirmation in the console to turn on. `validation.md` written; hardware check **RS34** not run; **legal review of the warning text owed** (roadmap 8.3). Later: remove the old mini-game code (owner answer 3). |
+| 004 | Firmware money rows FW-01, 02, 03, 05, 06 (firmware 3.11.1) | **released: firmware 3.11.1 (PR #97)** | `specs/features/004-firmware-money/`. Not tried on a box: RS28 to RS31. |
+| 003 | Tablet game touch (APP-27) | **released: app stable build 495** (PR #96) | Cause is a hypothesis: **owner runs RS33 on the tablet**; if touch is still dead the adb output decides the next spec edit. |
+| 002 | Restore firmware 3.11.0 (product images, USB Wi-Fi setup, coin-counter hardening) + ST-1 | **released with firmware 3.11.1** (PR #94) | Not tried on a box. |
+| 001 | Router money and time (RT-01 to 07, 14) | **released: router 1.5.13, now inside 1.5.14** | Not tried on a router: RS32. |
 
-## Backlog: Spec 01 (`specs/spec_01_findings.json`, 106 rows, 10 `fixed` (15 once 004 is merged), 92 `open` (87), 5 `owner-decision`)
+## Backlog: Spec 01 (`specs/spec_01_findings.json`, 107 rows: 15 `fixed`, 87 `open`, 5 `owner-decision`)
 
 Earlier work exists on branch `claude/sleepy-gauss-rn31gl` (tip `748add9`) with tests that failed first. It is **not on `beta`**. 38 rows carry `prior_work`; bring each back through its own feature spec by cherry-picking, not rewriting. Nothing from it has run on real hardware.
 
@@ -33,5 +36,5 @@ Earlier work exists on branch `claude/sleepy-gauss-rn31gl` (tip `748add9`) with 
 ST-2 (signed flash manifest), SC-4 (`scripts/apk_production_cert.txt` empty), ST-8 (card and slot limits), DEAD-1 (root `package.json`), APP-04 (refuse coins until restore), roadmap 0.1 (any boxes in legacy mode?).
 
 ## Next step
-Feature 004 waits for CI and owner review (a pull request into `beta` runs Code quality and the firmware image build; open it when the owner asks). Then feature 005: R1 app rows or R2 signing.
-Handoff note: `specs/notes/2026-10-21_feature-004-firmware.md`.
+Feature 006 waits for the owner's approval (`/sdd-implement` after the yes). Owner-side meanwhile: run the hardware checks RS28 to RS34 (RS33 on the tablet with `adb`), get the wheel's warning text read by a lawyer, answer the open decisions above. Then R1 app rows or R2 signing and CI fixes.
+Handoff notes: `specs/notes/2026-10-21_feature-005-wheel-2.md` (written before the wheel was finished; `specs/features/005-spinning-wheel/plan.md` and `validation.md` are current).

@@ -24,7 +24,7 @@ Unresolved ledger entries: none. Playwright and Chromium are needed for the brow
 - [x] 6. **Responsibility gate (router side), test first**: the confirmation record (file written only by the turn-on request), exact phrase and warning-version check, refusal messages, off by hand-edited setting without a record, record cleared on turn off and on a new warning version, log rows. Tests in `cargo test` and `test_flow.py`.
 - [x] 7. **Console and defaults** (`console.html`, `console-ui.js` v9, `/api/wheel`): the blocking warning dialog (the switch stays disabled until the exact phrase is typed; browser test), limits, table (with the refusal and the warning); every router, new or updated, starts with the wheel off; updated routers keep the mini-game; wheel-spin log file separate from `revenue.csv`; owner sees net minutes given away and "Wheel on since ..., responsibility confirmed".
 - [x] 8. **Docs and release** (`setup/RELEASE` 1.5.14, CHANGELOG, manual, RS34, `validation.md`): raise `setup/RELEASE`, `build_piso_setup.py`, `CHANGELOG.md` in owner terms, hardware check (not run), `validation.md`.
-- [ ] 9. **Pull request into `beta`** (when the owner asks), read Code quality. Merge and rollout are the owner's.
+- [x] 9. **Pull request into `beta`** (PR #98, Code quality green, merged 2026-10-22; released to `main` and 100% by the owner's order) (when the owner asks), read Code quality. Merge and rollout are the owner's.
 
 ## Release
 Router only (`setup/RELEASE` next number after 1.5.13). Every router (new or updated): wheel **off**. Nothing reaches shops' customers until the owner has read the responsibility warning, typed the confirmation and switched it on.

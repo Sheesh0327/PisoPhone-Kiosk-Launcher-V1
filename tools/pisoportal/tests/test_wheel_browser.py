@@ -3,7 +3,15 @@
 disabled until the exact phrase is typed (lower case, an extra space or half the phrase do not count), Cancel leaves the wheel off, a wheel that pays
 back more than 100% is refused with its reason. Customer side: the wheel page shows the odds before any spin, a spin ends with the result in words and the
 router's time left, a double tap spends one spin, the wait between spins shows, and nothing spins by itself."""
-import glob, json, os, re, shutil, sys, time
+import glob
+import json
+import os
+import re
+import shutil
+import sys
+import time
+from pathlib import Path
+
 from harness import *
 
 try:
@@ -15,9 +23,9 @@ except ImportError:
 CP = 18420
 env = Env(offset=105)
 tmp = env.tmp
-open(f"{tmp}/ubus", "w").write('#!/bin/sh\ncase "$4" in *\\"password\\":\\"router-pass\\"*) echo \'{ "ubus_rpc_session": "abc" }\';; *) echo \'{}\';; esac\n')
+Path(f"{tmp}/ubus").write_text('#!/bin/sh\ncase "$4" in *\\"password\\":\\"router-pass\\"*) echo \'{ "ubus_rpc_session": "abc" }\';; *) echo \'{}\';; esac\n')
 os.chmod(f"{tmp}/ubus", 0o755)
-open(f"{tmp}/setup.conf", "w").write("BOX_ADMIN_PASS='box-pass-123'\n")
+Path(f"{tmp}/setup.conf").write_text("BOX_ADMIN_PASS='box-pass-123'\n")
 env.extra.update(CONSOLE_PORT=CP, CONSOLE_BIND="127.0.0.1", UBUS=f"{tmp}/ubus", PISO_SETUP_CONF=f"{tmp}/setup.conf")
 MAC = "aa:bb:cc:00:00:01"
 PHRASE = "I TAKE RESPONSIBILITY"
@@ -27,6 +35,10 @@ def bought():
     return int(env.roll()[MAC][5])
 
 
+def bought_rows():
+    return env.roll()
+
+
 def wheel_state():
     return env.get("/wheel/state")
 
@@ -34,7 +46,6 @@ def wheel_state():
 try:
     check(env.start(), "the portal starts")
     now = int(time.time())
-    open(f"{env.data}/vouchers.txt", "w").write(f"c1,0,0,0,0,60,{now},{MAC},0,0,0,hyper,w1,10,60,10,1\n")
     chrome = os.environ.get("CHROME") or next((c for c in [shutil.which(x) for x in ("google-chrome", "chromium", "chromium-browser")] + glob.glob("/opt/pw-browsers/chromium-*/chrome-linux/chrome") if c), None)
     with sync_playwright() as pw:
         br = pw.chromium.launch(executable_path=chrome, args=["--no-sandbox"])
@@ -54,6 +65,7 @@ try:
         check(pg.input_value("#wtb") == "0x13 2x5 3x1 5x1" and pg.input_value("#wmb") == "10" and pg.input_value("#wsp") == "10", "the default wheel and limits are listed")
         check("90.0%" in pg.text_content("#wav") and "35.0%" in pg.text_content("#wav"), "and its average return and win chance: " + pg.text_content("#wav"))
         check(not pg.is_visible("#whoff") and pg.is_visible("#whon"), "only Turn on... is offered")
+        check("every visitor" in pg.text_content("#whc") and "spinning needs paid time" in pg.text_content("#whc"), "the console says what visitors see while the wheel is on")
 
         pg.click("#whon")
         check(pg.is_visible("#wdlg") and "Responsibility warning" in pg.text_content("#wdt"), "Turn on... opens the responsibility warning")
@@ -93,8 +105,39 @@ try:
         check("responsibility confirmed" in pg.text_content("#whs") and not pg.is_visible("#wdlg") and pg.is_visible("#whoff") and not pg.is_visible("#whon"),
               "the exact phrase turns it on: " + pg.text_content("#whs"))
 
-        # ---- a customer ----------------------------------------------------------------------------------------------------------
+        # ---- a visitor who has paid nothing (feature 006): the button, the odds, a Spin that cannot be pressed ------------------------
         ctx = br.new_context(viewport={"width": 390, "height": 780}, has_touch=True)
+        cp = ctx.new_page()
+        cp.on("pageerror", lambda e: errors.append(str(e)))
+        cp.goto(f"http://127.0.0.1:{env.PP}/")
+        cp.wait_for_selector("#v-idle", state="visible", timeout=8000)
+        cp.wait_for_selector("#wh", state="visible", timeout=5000)
+        check("Spin the wheel" in cp.text_content("#wh") and not cp.is_visible("#gm"), "the coin page offers the wheel to a visitor who has paid nothing, and not the mini-game")
+        cp.click("#wh")
+        cp.wait_for_url("**/wheel")
+        cp.wait_for_function("document.querySelectorAll('#odds tr').length > 1", timeout=8000)
+        check(cp.locator("#odds tr").count() == 3 and "100%" in cp.text_content("#avg"), "the unpaid visitor reads the odds: " + cp.text_content("#avg"))
+        check(cp.is_disabled("#go") and "Buy Wi-Fi time first" in cp.text_content("#res"), "Spin cannot be pressed and the page says why: " + cp.text_content("#res"))
+        check(cp.is_disabled("#p") and cp.is_disabled("#m"), "and the bet buttons are disabled")
+        check(bought_rows() == {}, "nothing was spent")
+
+        # the same visitor pays with real coins: the 'You are online' screen offers the wheel too
+        env.nds_client(MAC)
+        env.set_box(busy=False, coins_at=[0.4, 0.8, 1.2])
+        cp.goto(f"http://127.0.0.1:{env.PP}/")
+        cp.wait_for_selector("#v-idle", state="visible", timeout=8000)
+        cp.click(".coin")
+        cp.wait_for_selector("#ldone", state="visible", timeout=10000)
+        cp.wait_for_function("document.getElementById('lpes').textContent.indexOf('3')>=0", timeout=10000)
+        cp.click("#ldone")
+        cp.wait_for_selector("#v-final", state="visible", timeout=10000)
+        check("You are online" in cp.text_content("#fon"), "the visitor paid and is online")
+        cp.wait_for_selector("#wh", state="visible", timeout=5000)
+        check("Spin the wheel" in cp.text_content("#wh"), "and the 'You are online' screen has the Spin the wheel button")
+
+        # ---- a customer ----------------------------------------------------------------------------------------------------------
+        Path(f"{env.data}/vouchers.txt").write_text(f"c1,0,0,0,0,60,{now},{MAC},0,0,0,hyper,w1,10,60,10,1\n")
+        cp.close()
         cp = ctx.new_page()
         cp.on("pageerror", lambda e: errors.append(str(e)))
         cp.goto(f"http://127.0.0.1:{env.PP}/wheel")
@@ -115,19 +158,18 @@ try:
         check(bool(m), "the result is in words: " + res)
         now_bought = bought()
         check(now_bought == (65 if m and m.group(1) == "won" else 55), f"the router's time changed by exactly the bet: {now_bought}")
-        check(open(f"{env.data}/wheel.log").read().count(",spin,") == 1, "a double tap made one spin")
+        check(Path(f"{env.data}/wheel.log").read_text().count(",spin,") == 1, "a double tap made one spin")
         left = int(cp.text_content("#left"))
         check(abs(left - now_bought) <= 1 and left == int(m.group(2)), f"the page's time left matches the router's: {left} / {now_bought}")
         check(cp.text_content("#spl") == "9", "spins left went down by one")
         check(cp.is_disabled("#go") and "Wait" in cp.text_content("#go"), "the wait between spins shows on the button: " + cp.text_content("#go"))
         cp.wait_for_function("!document.getElementById('go').disabled", timeout=14000)
-        check(cp.text_content("#go").strip() == "Spin", "and the button comes back after the wait")
+        check(cp.text_content("#go").strip() == "SPIN", "and the button comes back after the wait")
         check(cp.evaluate("document.getElementById('wheel').style.transform").startswith("rotate("), "the wheel was turned")
 
         # the coin page: the wheel button, no mini-game
         cp.goto(f"http://127.0.0.1:{env.PP}/")
-        cp.wait_for_selector("#v-idle", state="visible", timeout=8000)
-        cp.wait_for_selector("#wh", state="visible", timeout=5000)
+        cp.wait_for_selector("#wh", state="visible", timeout=8000)   # (the purchase above still shows as the 'You are online' screen for two minutes)
         check("Spin the wheel" in cp.text_content("#wh") and not cp.is_visible("#gm"), "the coin page offers the wheel and not the mini-game")
 
         # ---- turned off from the console ----------------------------------------------------------------------------------------------------
