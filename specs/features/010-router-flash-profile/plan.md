@@ -27,7 +27,7 @@ Context manifest (constitution rule 1). Unresolved ledger entries loaded: read `
 Each group names the spec criteria it proves.
 
 - [x] 0. **Owner gate.** Rounds 1 to 7 approved (2026-10-22). Nothing open.
-- [ ] 1. **Baseline, no code change** (criterion 1). Run every command of criterion 1; counts and last lines in `validation.md`. If anything fails, stop and report it.
+- [x] 1. **Baseline, no code change** (criterion 1). Run every command of criterion 1; counts and last lines in `validation.md`. If anything fails, stop and report it.
 - [ ] 2. **Does the full install fit?** (criterion 10). No product code. The estimate table of criterion 10 in `validation.md`; use the 360 T6GS readings if the owner has sent them. Report the result to the owner and continue (this feature ships either way).
 - [ ] 3. **Installer copy in RAM, and none left behind, tests first** (criteria 2, 3). `setup/install.sh` saves to `/tmp` or `/root` by `MemAvailable` (its own copy of the 24000 KB rule, honouring `PISO_MEM_KB` and `PISO_INSTALL_DIR`), with the new messages; the setup deletes the copy it was started from after success (`$0` made absolute). Then the four docs of fact 4. This is the first change under `setup/src/`: raise `setup/RELEASE` to 1.5.17 here. Regenerate (`website/install.sh` and the installers); `--check` passes.
 - [ ] 4. **`flash_class` and the free-space lines, tests first** (criteria 4, 5). `setup/src/15-flash.sh`; the summary and `piso-setup space` lines and both warnings. Regenerate; `--check` passes.
