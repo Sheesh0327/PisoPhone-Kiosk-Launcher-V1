@@ -1,6 +1,6 @@
 # Feature 010: check the setup, and a smaller PisoWiFi router image for 16 MB flash
 
-Status: **spec approved by the owner (2026-10-22); plan.md still needs approval before code**   Branch: `feat/010-router-flash-profile` (based on `main`'s code; `beta` does not exist in this repository).   Area: router, setup   Release: `setup/RELEASE` raised at approval; the small image rolls out at 0% first.
+Status: **spec approved by the owner (2026-10-22), then corrected after review (2026-10-22, section "Corrections after review"); the owner must answer the open questions there and re-approve before code**   Branch: `feat/010-router-flash-profile` (from `beta`; `beta` and `main` held the same code when it was made; the pull request goes into `beta`, `CLAUDE.md` section 5).   Area: router, setup   Release: `setup/RELEASE` raised once, by the first change under `setup/src/` or `tools/pisoportal/`; the small image rolls out at 0% first.
 Backlog rows: none matches this request. Closest: feature 008 (`specs/features/008-wheel-install-option/`, parked: the flash-size rule and the 16 MiB threshold), and `specs/spec_01_findings.json` rows RT-22 and RT-08 to RT-26 (space checks in the installer), not directly about flash size.
 
 ## Intent
@@ -16,9 +16,12 @@ A shop owner runs PisoWiFi on a cheap router. Some of these routers have 16 MB o
   - **Pause**: `PAUSE_MAX`, `PAUSE_MIN_PESOS`, `PAUSE_KBPS` (`tools/pisoportal/src/config.rs:24-40`).
   - **Endurance**: time tiers with speed limits, `ENDURANCE_TIERS`, `ENDURANCE_DOWN_KBPS`, `ENDURANCE_UP_KBPS` (`config.rs:174-176`).
   - **HyperSpeed**: a plan (`Plan::Hyper`, `pricing.rs:131`) with fair-use slowdown after a traffic limit (`fair.rs:1`).
-  - **Device memory across power cuts**: the box-signing answer is remembered in a file so a restart keeps it (`boxlink.rs:13`). The session timing survives restarts, and the wall-clock jump rule is in `core.rs:256`. **Whether every paid session is kept across a power cut is not yet confirmed.** Paid sessions appear to be held in memory; a read of `core.rs` session handling is the first check (plan step 3).
+  - **Device memory across power cuts**: paid sessions are kept in a file, not only in memory: the roll (`roll.rs:1-4`, one line per device with paid time, in the data folder `/etc/coinslot.d`), written to a temporary file and renamed, under the process-wide lock; it is read back at start (`core.rs`, `roll::load`). A session paid before a power cut is covered by a unit test (`roll.rs:422`) and by feature 001 (RT-01 to 07: the clock jump after a power cut moves sessions, `core.rs:256`). The box-signing answer is also remembered in a file (`boxlink.rs:13`). Proven on a computer only; the hardware check is RS32 (not run).
+  - **The wheel's spin journal**: a spin is written to `<data folder>/wheel/<id>.spin` before the session changes and finished or voided after a restart by `recover` (`wheel_spin.rs:1-4`, `:218`). This code lives only in the wheel files that the small image leaves out (see open question 3).
 - Baseline: `cargo test` in `tools/pisoportal` passes, 141 tests, 0 failed (run on `main`'s code, 2026-10-22).
-- PisoPhone is the Android kiosk app (`app/`). Its setup is the setup program on a computer (`setup/pisophone_setup.py`) and needs no router image. "Both" means a router with PisoWiFi plus phones on the same coin box.
+- PisoPhone is the Android kiosk app (`app/`). Its setup is the setup program on a computer (`setup/pisophone_setup.py`) and needs no router image. "Both" means a router with PisoWiFi plus phones on the same coin box. A PisoPhone-only shop is already supported: `pisophone_setup.py --phone-only` sets up the coin box on the shop's normal router over USB, with no router software (`setup/pisophone_setup.py:10`, `:3461`).
+- How a router program reaches a router today: each CPU family has one installer file with one program embedded (`tools/build_piso_setup.py`; `setup/piso-setup.sh` for mipsel, `piso-setup-<family>.sh` for the others), and one signed feed entry per family (`website/update/<family>/router.json`: one `sha256`, one `size`, one `sig`). The programs are built by `router-program.yml`, signed and published by `publish-router.yml`, checked by `scripts/verify_release.py`, and their sizes are held by `router/tests/test_footprint.py` (programs 1200 KB, installer 1700 KB). There is no second program per family yet.
+- Size of what the small image removes: the wheel is about 64 KB; the mini-game and the coin-box view are smaller. Against a program of about 1 MB and 8 to 10 MB of writable flash, of which the packages above take most, the saving is likely well under 10% of the program. Not yet measured.
 
 ## Owner answers (2026-10-22)
 Round 1 (interview):
@@ -51,22 +54,40 @@ Round 3 (build and release):
 
 ## Constraints
 - No code before the owner approves this spec and `plan.md` (constitution rule 8).
-- Work is based on `main`'s code. Nothing is merged to `main` and nothing is released without the owner's order.
+- Work is on a branch from `beta`, and goes into `beta` by pull request. Nothing is merged to `main` and nothing is released without the owner's order.
 - Generated router files (`tools/pisoportal/bin/*`, `setup/piso-setup*.sh`) are never edited by hand; regenerate with the tooling.
-- Any change under `setup/src/` or `tools/pisoportal/` raises `setup/RELEASE` (`CLAUDE.md` section 4). The current value is `1.5.16`.
+- Any change under `setup/src/` or `tools/pisoportal/` raises `setup/RELEASE` once for this feature (`CLAUDE.md` section 4). The current value is `1.5.16`.
 - The box <-> phone message contract is not touched by this feature.
-- Real routers run this now. A router that is already installed must keep working through an update; the small image is for new installs and for routers that choose it.
+- Real routers run this now. A router that is already installed must keep working through an update. Whether an installed 16 MB router moves to the small image by itself is open question 2; until it is answered, the small image is for new installs only.
 
 ## Success criteria (planned; each becomes a line in `validation.md`)
 1. **Setup check (computer):** `router/tests/test_setup.py`, `test_pisophone_setup.py`, `test_setup_web.py`, `test_setup_tools.py`, `setup/test_setup_phone_web.py` and `test_phone_only.py` all pass on the current branch before any change (baseline recorded).
-2. **Flash measurement:** a pure function reads `/proc/mtd` sizes and classes the router as small (16 MiB or less) or large; tested with 8 MB, 16 MiB, 32 MB, 128 MB, no file, unreadable file (feature 008 criteria 1 and 2 are reused, not repeated).
-3. **Power-cut check:** a paid session survives a router restart on both the full and the small image (a test in `tools/pisoportal`, plus a hardware check added to `docs/REAL_WORLD_TESTING.md`). If the code does not keep the paid session across a restart, that is reported first. A small fix goes in this feature; a large fix waits for owner approval.
-4. **Size budget on the small image:** the installed size of the small image is measured on a real 16 MB build in CI before any release, and written in `validation.md` with the free space left after install.
+2. **Flash measurement:** a pure function reads `/proc/mtd` and classes the router as small (16 MiB or less) or large. The chip size is **not** the sum of all partitions: on many boards they overlap (`firmware` covers `kernel` and `rootfs`; some list a whole-chip `fullflash`), so a sum can make a 16 MB chip look like 32 MB or more and give it the full image. The rule (open question 4 confirms it): the size of a whole-chip partition when one is listed, otherwise the largest end offset the partitions reach, which never exceeds the chip. Expected answers: 8 MB, 16 MiB: small; 32 MB, 128 MB: large; a 16 MB sample with overlapping `firmware`/`kernel`/`rootfs`: small; no `/proc/mtd` (x86, virtual machines) and a root or overlay disk over 128 MiB: large; no `/proc/mtd` and a smaller disk, an unreadable or odd file: small (feature 008 criteria 1 and 2, with the partition rule corrected). Tests use `PISO_MTD_FILE`.
+3. **Power-cut check:** the existing roll tests (a session paid before a power cut, the clock jump) pass on both builds: `cargo test` and `cargo test --features small`. A router moving from the full to the small image never leaves a wheel spin half done: the rule chosen in open question 3 is tested (a `.spin` journal left behind is finished or voided exactly once, never dropped). A hardware check is added to `docs/REAL_WORLD_TESTING.md` as not run.
+4. **Size budget on the small image:** before any release, CI measures what it can build: the small program per CPU family against the full one (the saving in KB), and the installer that carries it against the 1700 KB budget. The free space left on a real 16 MB router (packages plus program in the writable flash) is measured on hardware (criterion 8), or with an OpenWrt image builder if the owner chooses (open question 5). Both are written in `validation.md`. If the saving is too small to matter, that is reported to the owner before the build and feed work (open question 6).
 5. **Kept features work on the small image:** a coin credits time once and a payment is recorded before the credit (`cargo test` and `tests/test_flow.py`); pause, endurance and HyperSpeed still work; the isolation tables load (`router/piso_isolation.sh`, needs `kmod-nft-bridge`).
 6. **Removed features are really gone:** on the small image no wheel code, no Rental phones page in the console, no recent-spins view, no free mini-game, and no file for them exists (a listing check, not only a setting).
-7. **Setup choice:** the installer offers PisoWiFi, PisoPhone or both, with no fixed default; a non-interactive run needs an explicit choice. A PisoPhone-only shop skips the router install.
+7. **Setup choice:** the setup program on the computer (`pisophone_setup.py`, not the router installer, which a PisoPhone-only shop never runs) asks PisoWiFi, PisoPhone or both, with no fixed default; a non-interactive run needs an explicit choice. PisoPhone only reuses the existing `--phone-only` path and installs nothing on a router (`test_phone_only.py`, `test_setup_phone_web.py`).
 8. **Hardware:** not run (no 16 MB router yet). Added to `docs/REAL_WORLD_TESTING.md` as a new check, marked "not run".
 9. **Gates:** `bash scripts/check_security_rules.sh`, `cargo test`, the router and setup Python tests, `ruff`, `mypy`, `pytest -x` on touched Python files.
+10. **Delivery and signing:** the small program is built by `router-program.yml`, signed and published in the same feed by `publish-router.yml` in the way open question 1 decides, checked by `verify_release.py` (0 FAIL) and held by a size budget in `test_footprint.py`; a router never installs an unsigned or wrong-size program.
+
+## Corrections after review (2026-10-22)
+The review compared this spec with the code; the facts above are corrected. What changed:
+- Paid sessions are kept in a file across a power cut (the roll); the earlier text said they appeared to be held in memory. The owner's power-cut answer (round 3) stays: it now applies to the small image's own risk, the wheel's spin journal (open question 3).
+- `beta` exists; the branch comes from `beta` and goes back into it.
+- The product choice belongs in the setup program on the computer, and PisoPhone only is already there (`--phone-only`).
+- Measuring the chip as the sum of the `/proc/mtd` partitions over-counts on many boards; criterion 2 now names a rule and the expected answers.
+- Delivery (criterion 10) and the spin journal (criterion 3) were missing from the criteria.
+- `plan.md` was written before the owner's answers and must be brought in line before code (it still asks for decisions 1 to 6, makes the stripped build conditional, and has no tasks for the `small` Cargo feature, the feed and signing, the CI size check or the setup program's choice).
+
+## Open questions for the owner (answer before code)
+1. **How the small program is delivered.** (a) Both programs inside each installer: one file per family, but each installer grows by about 1 MB, over the 1700 KB budget. (b) A second signed file per family in the same feed (for example `website/update/<family>/router-small.json` and its installer): the installer stays small, but CI builds, signs and checks ten programs instead of five. Proposed: (b).
+2. **Routers already installed.** Does an installed router with 16 MB or less move to the small image by itself at the next update (it loses the wheel, the Rental phones page and the mini-game without being asked), or only new installs and routers whose owner runs `piso-setup` again? Proposed: only new installs and an explicit re-run.
+3. **A wheel spin cut short by the switch.** The small image has no code to finish a `.spin` journal. Proposed: the switch to the small image is refused while the wheel is on or a `.spin` file is not marked done; the full program turns the wheel off, finishes or voids every open spin (the existing `recover`), and only then installs the small image.
+4. **The chip-size rule** in criterion 2 (whole-chip partition, else the largest end offset). Proposed: yes.
+5. **The size proof.** CI can measure the program and the installer, not the free flash on a router. Is a measurement on a real 16 MB router (when one is available) enough, or should CI also build an OpenWrt image with the image builder? Proposed: the router, with CI numbers before.
+6. **Is the small image worth it?** The parts it removes are likely well under 10% of a 1 MB program. Proposed first step: measure whether the full install already fits on 16 MB with room for records and updates; if it does, ship only the flash check and the setup choice, and park the small build.
 
 ## Out of scope
 - Measuring a real router's free flash (needs the owner's hardware).
