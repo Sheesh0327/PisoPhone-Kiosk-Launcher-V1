@@ -29,8 +29,8 @@ Each group names the spec criteria it proves.
 - [x] 0. **Owner gate.** Rounds 1 to 7 approved (2026-10-22). Nothing open.
 - [ ] 1. **Baseline, no code change** (criterion 1). Run every command of criterion 1; counts and last lines in `validation.md`. If anything fails, stop and report it.
 - [ ] 2. **Does the full install fit?** (criterion 10). No product code. The estimate table of criterion 10 in `validation.md`; use the 360 T6GS readings if the owner has sent them. Report the result to the owner and continue (this feature ships either way).
-- [ ] 3. **Installer copy in RAM, and none left behind, tests first** (criteria 2, 3). `setup/install.sh` saves to `/tmp` or `/root` by `MemAvailable` (its own copy of the 24000 KB rule, honouring `PISO_MEM_KB` and `PISO_INSTALL_DIR`), with the new messages; the setup deletes the copy it was started from after success. Then the four docs of fact 4. Regenerate `website/install.sh`.
-- [ ] 4. **`flash_class` and the free-space lines, tests first** (criteria 4, 5). `setup/src/15-flash.sh`; the summary and `piso-setup space` lines and both warnings. Raise `setup/RELEASE` to 1.5.17 here. Regenerate; `--check` passes.
+- [ ] 3. **Installer copy in RAM, and none left behind, tests first** (criteria 2, 3). `setup/install.sh` saves to `/tmp` or `/root` by `MemAvailable` (its own copy of the 24000 KB rule, honouring `PISO_MEM_KB` and `PISO_INSTALL_DIR`), with the new messages; the setup deletes the copy it was started from after success (`$0` made absolute). Then the four docs of fact 4. This is the first change under `setup/src/`: raise `setup/RELEASE` to 1.5.17 here. Regenerate (`website/install.sh` and the installers); `--check` passes.
+- [ ] 4. **`flash_class` and the free-space lines, tests first** (criteria 4, 5). `setup/src/15-flash.sh`; the summary and `piso-setup space` lines and both warnings. Regenerate; `--check` passes.
 - [ ] 5. **A PisoWiFi-only router, tests first** (criterion 7). `SHOP_PRODUCT` read from the environment and `/etc/piso-setup.conf` (missing: `both`), written to both settings files; every place of fact 6 skips the kiosk Wi-Fi when it is `wifi`; the console tab label from `SHOP_PRODUCT` in `/etc/coinslot.conf`. The existing tests pass unchanged for `both` and missing.
 - [ ] 6. **Switching the product keeps everything else, tests first** (criterion 8). Re-run with `wifi`, with `both`, and without; an update; the data-folder and settings comparisons. If a test shows a loss: a small fix here, a large one stops for the owner.
 - [ ] 7. **The setup program's product choice, tests first** (criterion 6). `--product`, the web page and `--cli` question, the `--yes` refusal, `--phone-only` kept, the kiosk password only for `both`. Regenerate `website/pisophone_setup.py`.
@@ -38,6 +38,6 @@ Each group names the spec criteria it proves.
 - [ ] 9. **Validate** (criteria 9, 12). Every criterion in `validation.md` with its evidence, the gates, "Not tested" (at least: all hardware, the T6GS, the jffs2 sizes), "Money and time"; update `specs/STATUS.md`. Pull request into `beta` only when the owner asks.
 
 ## Release
-- Router: `setup/RELEASE` 1.5.16 -> 1.5.17, once, in group 4 (the program changes only the console's tab label).
+- Router: `setup/RELEASE` 1.5.16 -> 1.5.17, once, in group 3 (the program changes only the console's tab label).
 - Firmware, phone app: not touched.
 - Publishing: after the owner's order, the merge to `main` makes CI publish at 0%; the owner raises it to 100% (`CLAUDE.md` section 5); `verify_release.py` 0 FAIL.
