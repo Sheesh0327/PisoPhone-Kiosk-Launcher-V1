@@ -1,6 +1,6 @@
 # Feature 010: check the setup, and a smaller PisoWiFi router image for 16 MB flash
 
-Status: **spec approved by the owner (2026-10-22), then corrected after review (2026-10-22, section "Corrections after review"); the owner must answer the open questions there and re-approve before code**   Branch: `feat/010-router-flash-profile` (from `beta`; `beta` and `main` held the same code when it was made; the pull request goes into `beta`, `CLAUDE.md` section 5).   Area: router, setup   Release: `setup/RELEASE` raised once, by the first change under `setup/src/` or `tools/pisoportal/`; the small image rolls out at 0% first.
+Status: **spec approved by the owner (2026-10-22), then corrected after review (2026-10-22, section "Corrections after review"); the owner accepted every proposed answer to the open questions (2026-10-22, round 4); spec and plan still need the owner's re-approval before code**   Branch: `feat/010-router-flash-profile` (from `beta`; `beta` and `main` held the same code when it was made; the pull request goes into `beta`, `CLAUDE.md` section 5).   Area: router, setup   Release: `setup/RELEASE` raised once, by the first change under `setup/src/` or `tools/pisoportal/`; the small image rolls out at 0% first.
 Backlog rows: none matches this request. Closest: feature 008 (`specs/features/008-wheel-install-option/`, parked: the flash-size rule and the 16 MiB threshold), and `specs/spec_01_findings.json` rows RT-22 and RT-08 to RT-26 (space checks in the installer), not directly about flash size.
 
 ## Intent
@@ -58,7 +58,7 @@ Round 3 (build and release):
 - Generated router files (`tools/pisoportal/bin/*`, `setup/piso-setup*.sh`) are never edited by hand; regenerate with the tooling.
 - Any change under `setup/src/` or `tools/pisoportal/` raises `setup/RELEASE` once for this feature (`CLAUDE.md` section 4). The current value is `1.5.16`.
 - The box <-> phone message contract is not touched by this feature.
-- Real routers run this now. A router that is already installed must keep working through an update. Whether an installed 16 MB router moves to the small image by itself is open question 2; until it is answered, the small image is for new installs only.
+- Real routers run this now. A router that is already installed must keep working through an update. An installed router never moves to the small image by itself at an update: only a new install, or the owner running `piso-setup` again, can switch it (round 4, answer 2).
 
 ## Success criteria (planned; each becomes a line in `validation.md`)
 1. **Setup check (computer):** `router/tests/test_setup.py`, `test_pisophone_setup.py`, `test_setup_web.py`, `test_setup_tools.py`, `setup/test_setup_phone_web.py` and `test_phone_only.py` all pass on the current branch before any change (baseline recorded).
@@ -81,7 +81,16 @@ The review compared this spec with the code; the facts above are corrected. What
 - Delivery (criterion 10) and the spin journal (criterion 3) were missing from the criteria.
 - `plan.md` was written before the owner's answers and must be brought in line before code (it still asks for decisions 1 to 6, makes the stripped build conditional, and has no tasks for the `small` Cargo feature, the feed and signing, the CI size check or the setup program's choice).
 
-## Open questions for the owner (answer before code)
+Round 4 (2026-10-22, after review: "accept all proposed answers to the open questions"):
+- **Delivery:** (b), a second signed file per CPU family in the same feed (for example `website/update/<family>/router-small.json` and its installer).
+- **Routers already installed:** they stay on the full image through updates; only a new install or an explicit `piso-setup` re-run switches a 16 MB router to the small image.
+- **A spin cut short by the switch:** the switch is refused while the wheel is on or a `.spin` file is not marked done; the full program turns the wheel off and finishes or voids every open spin with `recover` first.
+- **Chip-size rule:** a whole-chip partition when listed, otherwise the largest end offset the partitions reach.
+- **Size proof:** a measurement on a real 16 MB router when one is available, with the CI numbers (program and installer sizes) before.
+- **Worth it:** measure first; if the full install already fits on 16 MB with room for records and updates, ship only the flash check and the setup choice, and park the small build.
+- **Note on answers 5 and 6 together:** there is no 16 MB router yet, so "does the full install fit" can only be estimated at first: from the program size (CI), the package sizes `opkg` reports and the 8 to 10 MB writable flash of a typical 16 MB router. Plan group 2 writes that estimate and brings it to the owner, who decides whether to build the small image on the estimate or wait for a router.
+
+## Open questions for the owner (answered in round 4 above; kept for the reasoning)
 1. **How the small program is delivered.** (a) Both programs inside each installer: one file per family, but each installer grows by about 1 MB, over the 1700 KB budget. (b) A second signed file per family in the same feed (for example `website/update/<family>/router-small.json` and its installer): the installer stays small, but CI builds, signs and checks ten programs instead of five. Proposed: (b).
 2. **Routers already installed.** Does an installed router with 16 MB or less move to the small image by itself at the next update (it loses the wheel, the Rental phones page and the mini-game without being asked), or only new installs and routers whose owner runs `piso-setup` again? Proposed: only new installs and an explicit re-run.
 3. **A wheel spin cut short by the switch.** The small image has no code to finish a `.spin` journal. Proposed: the switch to the small image is refused while the wheel is on or a `.spin` file is not marked done; the full program turns the wheel off, finishes or voids every open spin (the existing `recover`), and only then installs the small image.
