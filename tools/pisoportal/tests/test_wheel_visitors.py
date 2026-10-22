@@ -38,7 +38,7 @@ try:
     check(idle is not None and idle["left"] == 0 and idle["wh"] is True and idle["gm"] == -1, f"an unpaid visitor is offered the wheel and not the mini-game: {idle and (idle.get('wh'), idle.get('gm'))}")
     code, body, _ = env.get("/wheel/state")
     st = json.loads(body)
-    check(code == 200 and st["can_spin"] is False and st["reason"] == "NO_SESSION" and st["max_bet"] == 0 and st["rtp"] == 900 and len(st["segments"]) == 4,
+    check(code == 200 and st["can_spin"] is False and st["reason"] == "NO_SESSION" and st["max_bet"] == 0 and st["rtp"] == 897 and len(st["segments"]) == 4,
           f"the odds can be read without paying, spinning is not possible: {body[:120]}")
     check(env.get("/wheel")[0] == 200, "the wheel page is served to an unpaid visitor")
     code, r = spin("0123456789abcdef", 5)
