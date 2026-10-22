@@ -191,22 +191,35 @@ impl Wheel {
                 _ => (0, false),
             }
         };
-        if left_min == 0 {
-            return err(403, "NO_SESSION", "Buy Wi-Fi time first, then the wheel opens.");
-        }
+        // a device with no paid time still gets the table and the odds (anyone may read them); only spinning needs time
+        let spins_left = self.days.spins_left(mac, day, &l);
+        let max_bet = if paused || left_min == 0 { 0 } else { Self::most_bet(&l, left_min) };
+        let reason = if left_min == 0 {
+            "NO_SESSION"
+        } else if paused {
+            "PAUSED"
+        } else if spins_left == 0 {
+            "NO_SPINS"
+        } else if max_bet == 0 {
+            "TOO_LITTLE"
+        } else {
+            ""
+        };
         let segs: Vec<String> = t.segs.iter().map(|s| format!("{{\"mult\":{},\"weight\":{}}}", s.mult, s.weight)).collect();
         let json = format!(
-            "{{\"ok\":true,\"segments\":[{}],\"total\":{},\"rtp\":{},\"win\":{},\"left_min\":{},\"paused\":{},\"max_bet\":{},\"limit_max_bet\":{},\"floor\":{},\"spins_left\":{},\"wait\":{},\"win_room\":{}}}",
+            "{{\"ok\":true,\"segments\":[{}],\"total\":{},\"rtp\":{},\"win\":{},\"left_min\":{},\"paused\":{},\"can_spin\":{},\"reason\":\"{}\",\"max_bet\":{},\"limit_max_bet\":{},\"floor\":{},\"spins_left\":{},\"wait\":{},\"win_room\":{}}}",
             segs.join(","),
             t.total_weight(),
             t.rtp_permille(),
             t.win_permille(),
             left_min,
             paused,
-            if paused { 0 } else { Self::most_bet(&l, left_min) },
+            reason.is_empty(),
+            reason,
+            max_bet,
             l.max_bet,
             l.floor,
-            self.days.spins_left(mac, day, &l),
+            spins_left,
             self.days.wait_left(mac, now, &l),
             self.days.win_room(mac, day, &l)
         );
@@ -423,8 +436,22 @@ mod tests {
     fn rt_no_paid_time_or_a_paused_session_cannot_spin_and_the_page_is_told() {
         let (w, files, dir) = world("session");
         on(&w);
-        assert_eq!(w.state(&files, "aa:bb:cc:00:00:99", 5, NOW).0, 403);
+        // a device with no paid time still gets the odds (feature 006) but cannot spin, and a spin charges nothing
+        let (code, st) = w.state(&files, "aa:bb:cc:00:00:99", 5, NOW);
+        assert_eq!(code, 200, "{}", st);
+        assert_eq!(
+            (
+                field(&st, "can_spin").as_str(),
+                field(&st, "reason").as_str(),
+                field(&st, "max_bet").as_str(),
+                field(&st, "left_min").as_str()
+            ),
+            ("false", "NO_SESSION", "0", "0")
+        );
+        assert_eq!((field(&st, "rtp").as_str(), field(&st, "total").as_str()), ("900", "20"));
+        assert!(st.contains("{\"mult\":5,\"weight\":1}"));
         assert_eq!(w.spin(&files, "aa:bb:cc:00:00:99", ID1, 5, 5, NOW, 0).0, 403);
+        assert_eq!(left_min(&dir), 60, "a refused spin charges nothing");
         let roll = format!("{}/roll.csv", dir);
         let mut e = load(&roll);
         e[0].pa = NOW - 10;
@@ -432,7 +459,24 @@ mod tests {
         save(&roll, &e).unwrap();
         let (code, body) = w.spin(&files, MAC, ID1, 5, 5, NOW, 0);
         assert_eq!((code, field(&body, "error").as_str()), (403, "PAUSED"));
-        assert_eq!(field(&w.state(&files, MAC, 5, NOW).1, "max_bet"), "0");
+        let st = w.state(&files, MAC, 5, NOW).1;
+        assert_eq!(
+            (field(&st, "max_bet").as_str(), field(&st, "can_spin").as_str(), field(&st, "reason").as_str()),
+            ("0", "false", "PAUSED")
+        );
+    }
+
+    #[test]
+    fn rt_the_state_says_can_spin_for_a_paying_device_and_why_not_otherwise() {
+        let (w, files, _dir) = world("canspin");
+        on(&w);
+        w.set_limits(Limits { spins_per_day: 1, wait_secs: 0, ..Limits::default_limits() }).unwrap();
+        let st = w.state(&files, MAC, 5, NOW).1;
+        assert_eq!((field(&st, "can_spin").as_str(), field(&st, "reason").as_str()), ("true", ""));
+        w.set_table("0x1").unwrap();
+        assert_eq!(w.spin(&files, MAC, ID1, 5, 5, NOW, 0).0, 200);
+        let st = w.state(&files, MAC, 5, NOW).1;
+        assert_eq!((field(&st, "can_spin").as_str(), field(&st, "reason").as_str()), ("false", "NO_SPINS"));
     }
 
     #[test]

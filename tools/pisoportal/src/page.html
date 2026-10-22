@@ -109,6 +109,7 @@ details .btn{margin:8px 0 12px}
 </div>
 <div class="msg w" id="foff" style="display:none"></div>
 <a class="btn" id="fcont" style="display:none">Continue browsing</a>
+<a class="btn alt" id="fwh" href="/wheel" style="display:none">Spin the wheel</a>
 <button class="btn alt" id="fagain" type="button">Add more time</button>
 </div>
 <div id="v-msg" class="v card" role="alert">
@@ -205,7 +206,7 @@ function vsave(c){try{var a=document.createElement("a");a.href=URL.createObjectU
 function vcopy(b){var ok=0;try{var r=document.createRange();r.selectNodeContents(el("vcode"));var g=getSelection();g.removeAllRanges();g.addRange(r);ok=document.execCommand("copy")}catch(e){}
  b.textContent=ok?"Copied":"Press and hold the code to copy it"}
 function vshow(j){show("final");pes=0;tt=0;pj=false;tstop();foff(false);var c=j.vcode;
- el("fn").style.display="none";el("fv").style.display="block";el("fcont").style.display="none";put("fagain","Back to start");
+ el("fn").style.display="none";el("fv").style.display="block";el("fcont").style.display="none";el("fwh").style.display="none";put("fagain","Back to start");
  put("vcode",c);put("fmin","₱"+j.pulses+" = "+fmt(j.minutes)+" voucher");
  try{put("vexp",new Date(j.vexp*1e3).toLocaleDateString([],{day:"numeric",month:"short",year:"numeric"}))}catch(e){}
  el("vcopy").onclick=function(){vcopy(this)};
@@ -248,7 +249,7 @@ if(s==="closing"){show("live");el("lcd").style.display="none";el("ldone").style.
 if(s==="final"){
  if(j.vcode){vshow(j);return}
  show("final");el("fn").style.display="block";el("fv").style.display="none";put("fagain","Add more time");pes=0;tt=0;pj=false;tstart(j.left);put("fmin","time left · ₱"+j.pulses+" = "+fmt(j.minutes)+" bought");
- el("ck").style.display=j.online?"block":"none";put("fon",j.online?"✓ You are online":"");foff(!j.online);
+ el("fwh").style.display=j.wh?"block":"none";el("ck").style.display=j.online?"block":"none";put("fon",j.online?"✓ You are online":"");foff(!j.online);
  var c=el("fcont");if(cont){c.href=cont;c.style.display="block"}else c.style.display="none";
  if(j.online&&!woke&&!wk){setTimeout(function(){say("You are online",function(){ding(2)})},900);wk=setTimeout(wake,2500);try{navigator.vibrate&&navigator.vibrate([100,60,100])}catch(e){}}return}
 if(s==="empty"){msg("No coins detected, you were not charged.",[["Try again",again]]);return}

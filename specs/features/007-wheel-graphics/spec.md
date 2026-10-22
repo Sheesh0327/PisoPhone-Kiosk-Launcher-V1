@@ -1,6 +1,6 @@
 # Feature 007: the wheel looks like a real spinning-wheel game (slices, design, odds explanation)
 
-Status: **draft, answers recorded 2026-10-22; waits for the owner's approval**   Branch: `feat/007-wheel-graphics` (made from `beta` when work starts)   Area: router (the wheel page only)
+Status: **approved** (owner, 2026-10-22; 006 first, then 007)   Branch: `feat/007-wheel-graphics` (made from `beta` when work starts)   Area: router (the wheel page only)
 Backlog rows: none (owner request 2026-10-22)   Release: router (raise `setup/RELEASE`; best released together with 006 as 1.5.15)   Depends on: 006 (it changes the same page: odds for everyone, disabled Spin without time)
 
 ## Intent
