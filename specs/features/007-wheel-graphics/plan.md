@@ -21,11 +21,11 @@ Small, ordered, test first (red result in `ledger/negative-constraints.md`). Sta
 - [ ] 2. **Table cap** (`wheel.rs::validate`, console message): refuse a table above N total slots; saved larger tables still draw N proportional slices with a note. Rust tests first.
 - [ ] 3. **The wheel picture** (inline SVG): rim with lights/pegs, labelled slices (two lose shades alternating, bright win colours by multiplier), pointer with flick, centre hub, the game look at 360 px. Browser test: slice counts and labels equal the odds (criterion 2).
 - [ ] 4. **The spin** (animation): same duration and easing for every result; stop inside the middle 80% of a slice of the result's row; reduced-motion and no-script behaviour. Landing test over simulated results (criteria 2, 3, 5).
-- [ ] 5. **Odds explanation + bet chips + result card**: table with chances, the plain-English summary, the worked example for the current bet, the limits in force, header with time and spins left; accessibility (aria-live, labels, contrast). Browser test and screenshot (criteria 4, 7).
+- [ ] 5. **Odds explanation + bet chips + result card + extras (answers 3 and 4)**: also the tick sound (browser audio, off by default), the win-only celebration, the last 5 spins in the browser: table with chances, the plain-English summary, the worked example for the current bet, the limits in force, header with time and spins left; accessibility (aria-live, labels, contrast). Browser test and screenshot (criteria 4, 7).
 - [ ] 6. **Docs and release**: `setup/RELEASE` (1.5.15 with 006), CHANGELOG, manual, RS34 wording, `validation.md`; page size check (at most 30 KB squeezed).
 - [ ] 7. **Pull request into `beta`** (when the owner asks), read Code quality. Merge and rollout are the owner's.
 
-## Review questions (asked with this draft; answers go into `spec.md` before approval)
+## Review questions (asked 2026-10-22; answers: 1 one slice per slot with wins spread evenly, 2 cap 24, 3 bright arcade, 4 explainer + tick sound (off by default) + win celebration + recent spins; recorded in `spec.md`)
 1. How should the slices relate to the odds? (a) one slice per table slot, wins spread evenly between losses (35% win, 90% back: honest, recommended); (b) strictly alternating lose/win 50/50 paying 2x (no house edge); (c) strictly alternating with payouts below 2x (needs fractional multipliers: a change to the money model, out of scope here).
 2. How many slices, and what cap? Default table is 20 slots. Cap N for tables the owner can save: 24, 36 or 48?
 3. Which look? Bright arcade/casino (lights, gold rim) or clean flat in the TechNet colours?

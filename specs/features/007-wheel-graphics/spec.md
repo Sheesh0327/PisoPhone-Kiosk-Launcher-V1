@@ -1,6 +1,6 @@
 # Feature 007: the wheel looks like a real spinning-wheel game (slices, design, odds explanation)
 
-Status: **draft** (waits for the owner's answers to the review questions, then approval)   Branch: `feat/007-wheel-graphics` (made from `beta` when work starts)   Area: router (the wheel page only)
+Status: **draft, answers recorded 2026-10-22; waits for the owner's approval**   Branch: `feat/007-wheel-graphics` (made from `beta` when work starts)   Area: router (the wheel page only)
 Backlog rows: none (owner request 2026-10-22)   Release: router (raise `setup/RELEASE`; best released together with 006 as 1.5.15)   Depends on: 006 (it changes the same page: odds for everyone, disabled Spin without time)
 
 ## Intent
@@ -26,12 +26,12 @@ A wheel whose slices alternate lose, win, lose, win would show a 50% win chance.
 1. **One slice per slot.** The wheel has as many slices as the table has slots (total weight), all the same width. A slice shows its label (LOSE, x2, x3, x5 for the default table). The count of each label on the wheel equals its weight, so the picture and the odds panel always agree. The page builds the wheel from `/wheel/state`, never from fixed numbers.
 2. **Spread, not clumped.** The slices are laid out so the win slices (and, among them, the bigger multipliers) are spread as evenly as possible around the wheel; losses fill the gaps. The layout is deterministic (the same table gives the same wheel on every phone) and needs no randomness.
 3. **Honest animation (005 "Not built" still holds).** Spin time and easing are the same for a win and a loss; the stop position is chosen inside the middle 80% of a slice of the result's row; no deliberate stop next to a bigger prize ("near miss"), no slow-down trick, no result before the spin is answered by the router, no auto-spin. Reduced-motion: the wheel jumps to the result.
-4. **Readable table cap.** A wheel with more than N slices cannot be drawn evenly on a phone, so the router refuses a table above N total slots in the console (today up to 1000). N is decided by the owner (question 2). Tables already saved above N keep working; the page then draws N proportional slices and says so ("each slice is about k slots").
+4. **Readable table cap.** A wheel with more than N slices cannot be drawn evenly on a phone, so the router refuses a table above N total slots in the console (today up to 1000). **N = 24** (owner answer 2). Tables already saved above N keep working; the page then draws N proportional slices and says so ("each slice is about k slots").
 5. **Odds explanation (always visible, plain English):** the table (slice label, pays, slots, chance), the chance to win and the average return in words ("win about 7 of every 20 spins; over many spins you get back about 90 of every 100 minutes you bet"), one worked example for the current bet ("bet 5: lose = -5, x2 = +5, x3 = +10, x5 = +20 minutes"), the limits in force (most to bet, minutes kept, spins a day, wait, win cap), and the sentence that the router decides before the wheel moves and everyone has the same odds. All numbers come from `/wheel/state`.
 6. **Design:** a game look that works at 360 px width in a captive-portal browser: a wheel with a rim and pegs/lights, slices in two lose shades alternating with bright win colours by multiplier (colour is never the only cue: every slice has its label), a pointer that flicks when the wheel passes a peg, bet chips (1, 2, 5, 10 within the limit) beside the +/-, a result card with the plain-English line from 005, the time left and spins left in a header. Own offline code only: **no library, no font download, no image beyond what the router already serves**, one page, drawn with inline SVG or canvas.
 7. **Weight of the page:** the wheel page stays small (squeezed HTML at most 30 KB; today 8 KB) because it is read once over the shop Wi-Fi.
 8. Accessibility: the result is announced in text (`aria-live`), buttons are real buttons with labels, contrast of labels against slices meets 4.5:1, the whole thing works with the wheel picture hidden.
-9. Router program keeps using only `sha2`, `hmac`, `p256`. No change to the coin box, app or protocol. Anything with sound is off until the customer turns it on (question 4).
+9. Router program keeps using only `sha2`, `hmac`, `p256`. No change to the coin box, app or protocol. The tick sound is off until the customer turns it on and is made with the browser's own audio (no sound file); the win celebration plays on a win only; recent spins are kept in the browser only.
 
 ## Success criteria
 1. Layout function (pure, unit-tested in a browser-less JS test run by `node` or Python): for several tables (default, 2 slots, 1000 capped, all-loss-but-one, many multipliers) it returns exactly `weight` slices per row, equal widths, wins spread so that no two win slices are adjacent when the table allows it (maximum gap difference of 1), and is deterministic.
@@ -40,11 +40,15 @@ A wheel whose slices alternate lose, win, lose, win would show a 50% win chance.
 4. Unpaid visitor (006): wheel, odds and explanation shown, Spin disabled; paused and no-spins cases show the reason.
 5. Reduced motion and no-script: result shown without animation; plain odds table present.
 6. Table cap: the console refuses a table above N slots with the reason; a saved table above N still draws (N proportional slices, with the note); `cargo test` for the cap in `wheel.rs`.
-7. Page size, contrast and a screenshot at 360 x 740 (kept as evidence in `validation.md`); no console errors; no network request except `/wheel/state` and `/wheel/spin`.
+7. Extras: sound is silent until the speaker button is pressed (tested), the celebration runs on a win and not on a loss (tested), recent spins show the last 5 after reloads and nothing breaks when storage is blocked (tested). Page size, contrast and a screenshot at 360 x 740 (kept as evidence in `validation.md`); no console errors; no network request except `/wheel/state` and `/wheel/spin`.
 8. Existing tests green (`test_wheel.py`, `test_wheel_browser.py` updated where they counted table rows), `cargo fmt --check`, `clippy`, `cargo test`, router setup tests, `check_security_rules.sh`, `build_piso_setup.py --check`; `setup/RELEASE` raised once (with 006: 1.5.15), CHANGELOG, manual, RS34 wording (hardware check not run).
 
 ## Out of scope
 Changing the odds, limits, gate, journal or ledger; fractional multipliers (a payout like 1.5x); new prizes; leaderboards; real-money anything; a different wheel per customer; sound that starts on its own.
 
-## Owner decisions
-See the review questions asked with this draft (`specs/features/007-wheel-graphics/plan.md`, "Review questions"): 1 how the slices relate to the odds, 2 the number of slices and the cap, 3 the look, 4 the extras. Then: approve the spec and plan; release together with 006 as 1.5.15 (merge to `beta`, then `main` at 0%, your 100% order as before).
+## Owner answers (2026-10-22, to the review questions in `plan.md`)
+1. **Slices:** one slice per slot of the table, wins spread evenly between losses (35% win, 90% back for the default table). Not a strict 50/50 alternation, and no fractional payouts.
+2. **Cap:** a table may have at most **24 slots**; the console refuses more. A saved larger table keeps working and is drawn as 24 proportional slices with a note.
+3. **Look:** bright arcade (gold rim with chasing lights, glossy slices, flicking pointer, result card with a pop). Constraint 6 is read that way; the chasing lights stop under reduced motion.
+4. **Extras in 007:** the odds explainer with the worked example (always shown); tick sound (off until the customer turns it on, speaker button, never starts by itself); win celebration (a short burst **on a win only**; a loss gets the same plain result card as before, no "almost" effect; skipped under reduced motion); recent spins on this phone (last 5, kept only in the browser with a try/catch around storage, nothing on the router; a phone that blocks storage simply shows none).
+5. Still to confirm at approval: the spec and plan; release together with 006 as router 1.5.15 (merge to `beta`, then `main` at 0%, your 100% order as before).
