@@ -113,6 +113,7 @@ stage1() {
 
 main() {
 	CMD=""
+	SELF_COPY=$(abs_path "$0")
 	while [ $# -gt 0 ]; do
 		case "$1" in
 			--dry-run) DRY=1 ;;

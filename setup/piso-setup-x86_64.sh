@@ -29,7 +29,7 @@
 
 VERSION="dev"
 # the release of this file (setup/RELEASE): routers install only a higher release that the owner signed
-PISO_RELEASE='1.5.16'
+PISO_RELEASE='1.5.17'
 # the CPU family the portal program in this file is built for (router_family below names the family of the router it runs on)
 PISO_ARCH='x86_64'
 
@@ -628,6 +628,22 @@ EOT
 	apply_isolation   # (the coin box's address is in it: the rules for the rental phones name it)
 }
 
+# abs_path <file>: the file's absolute path (install.sh starts the setup as ./piso-setup.sh from inside its folder)
+abs_path() {
+	case "$1" in
+		/*) echo "$1" ;;
+		*) echo "$(cd "$(dirname "$1")" 2> /dev/null && pwd)/$(basename "$1")" ;;
+	esac
+}
+
+# drop_installer_copy: after a good install, delete the copy the one-line installer saved (about 1.6 MB; the installed command
+# /usr/sbin/piso-setup has no payload). Only those two paths: a copied file or a branch test is never touched.
+drop_installer_copy() {
+	case "$SELF_COPY" in
+		"$PISO_ROOT/tmp/piso-setup.sh" | "$PISO_ROOT/root/piso-setup.sh") rm -f "$SELF_COPY"; log "removed the installer copy $SELF_COPY (the installed command is $SELF_PATH)" ;;
+	esac
+	return 0
+}
 # ---------------------------------------------------------------------------------------------------------------------
 # Coin box: pairing and first setup
 # ---------------------------------------------------------------------------------------------------------------------
@@ -1010,6 +1026,7 @@ stage2() {
 	[ "$(conf_get ROOT_PASS_SET)" = 1 ] || { log "INCOMPLETE: the router password was not set. Run: piso-setup set-password"; _f=$((_f + 1)); }
 	if [ "$_f" = 0 ]; then
 		echo "DONE all checks passed" > "$STATE"; log ""; log "SETUP COMPLETE. Read $SUMMARY (ssh root@$LAN_IP)."
+		drop_installer_copy
 		tip "next: open the coin box page at http://$BOX_IP/ and use Install & Provision for each rental phone."
 		tip "keep the printed setup sheet (or the summary) somewhere safe: it has every password. The router's admin ports can be limited to your own computer with: piso-setup lock-admin"
 		tip "to check the system later, run: piso-setup status (a quick health check) or piso-setup diag (everything needed to report a problem)."
@@ -2054,6 +2071,7 @@ stage1() {
 
 main() {
 	CMD=""
+	SELF_COPY=$(abs_path "$0")
 	while [ $# -gt 0 ]; do
 		case "$1" in
 			--dry-run) DRY=1 ;;

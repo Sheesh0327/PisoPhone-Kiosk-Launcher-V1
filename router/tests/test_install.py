@@ -21,7 +21,8 @@ def check(cond, msg):
 
 
 bindir, site, home = f"{tmp}/bin", f"{tmp}/site", f"{tmp}/root"
-for d in (bindir, site, home):
+fakeroot = f"{tmp}/fakeroot"
+for d in (bindir, site, home, f"{fakeroot}/tmp", f"{fakeroot}/root"):
     os.makedirs(d)
 
 
@@ -64,7 +65,7 @@ def publish(branch, data, sha=None):
     open(f"{d}/piso-setup.sh.sha256", "w").write((sha or hashlib.sha256(data).hexdigest()) + "  piso-setup.sh\n")
 
 
-def run(*args, lan="10.0.0.1", wan="192.168.1.50", answer="y", stdin_script=None, self_path=None):
+def run(*args, lan="10.0.0.1", wan="192.168.1.50", answer="y", stdin_script=None, self_path=None, mem=None, install_dir=True):
     for f in ("wget.log", "uci.log", "network.log"):
         if os.path.exists(f"{tmp}/{f}"):
             os.remove(f"{tmp}/{f}")
@@ -72,6 +73,11 @@ def run(*args, lan="10.0.0.1", wan="192.168.1.50", answer="y", stdin_script=None
     env = dict(os.environ, PATH=f"{bindir}:" + os.environ["PATH"], PISO_SITE_HOST="fake.test", PISO_INSTALL_DIR=home,
                PISO_TTY=f"{tmp}/tty", PISO_TEST_NONROOT="1", PISO_NETWORK_INIT=f"{bindir}/netinit", FAKE_LAN=lan, FAKE_WAN=wan,
                PISO_SELF_PATH=self_path or f"{tmp}/no-such-piso-setup")
+    if mem is not None:
+        env["PISO_MEM_KB"] = str(mem)
+    if not install_dir:   # the default places /tmp and /root, under a fake root
+        del env["PISO_INSTALL_DIR"]
+        env["PISO_ROOT"] = fakeroot
     # as on the router: the installer arrives on sh's standard input
     body = stdin_script if stdin_script is not None else open(INSTALL).read()
     if SH != "sh":
@@ -143,11 +149,46 @@ r = run(lan="192.168.1.1", answer="y")
 time.sleep(3.6)
 check(r.returncode == 0 and "set network.lan.ipaddr=10.0.0.1" in log("uci.log") and "commit network" in log("uci.log"), "answered yes: the router is moved to 10.0.0.1: " + log("uci.log"))
 check(log("network.log") == "restart\n", "the network is restarted (after the message is shown)")
-check("ssh root@10.0.0.1" in r.stdout and "./piso-setup.sh" in r.stdout and "SETUP-RAN" not in r.stdout, "it says how to log in again and continue, and does not run the setup yet")
+check("ssh root@10.0.0.1" in r.stdout and f"sh {home}/piso-setup.sh" in r.stdout and "SETUP-RAN" not in r.stdout, "it says how to log in again and continue with sh <the saved path>, and does not run the setup yet")
 r = run(lan="192.168.1.1", wan="10.0.0.23", answer="y")
 check(r.returncode != 0 and "192.168.100.1" in r.stdout and "network.lan.ipaddr=10.0.0.1" not in log("uci.log"), "a modem on 10.0.0.x: it stops and says what to change")
 r = run("update", lan="192.168.1.1")
 check("SETUP-RAN args=[update]" in r.stdout and "set network.lan.ipaddr" not in log("uci.log"), "update never moves the router")
+
+# ---- feature 010: the installer copy lives in RAM (/tmp) unless memory is short (then /root); PISO_INSTALL_DIR overrides both ---------
+publish("main", FAKE_SETUP.encode())
+for mem, where, other in ((24000, "tmp", "root"), (500000, "tmp", "root"), (23999, "root", "tmp")):
+    r = run(mem=mem, install_dir=False)
+    saved = f"{fakeroot}/{where}/piso-setup.sh"
+    check(r.returncode == 0 and os.path.exists(saved) and not os.path.exists(f"{fakeroot}/{other}/piso-setup.sh") and f"cwd={fakeroot}/{where}" in r.stdout,
+          f"{mem} KB free: the installer copy is saved in /{where}, not in /{other}: " + r.stdout + r.stderr)
+    for f in ("tmp", "root"):
+        for g in os.listdir(f"{fakeroot}/{f}"):
+            os.remove(f"{fakeroot}/{f}/{g}")
+r = run(mem=100, install_dir=True)
+check(os.path.exists(f"{home}/piso-setup.sh") and not os.path.exists(f"{fakeroot}/root/piso-setup.sh"), "PISO_INSTALL_DIR overrides the memory rule")
+r = run(mem=None, install_dir=False)
+check(os.path.exists(f"{fakeroot}/tmp/piso-setup.sh") or os.path.exists(f"{fakeroot}/root/piso-setup.sh"), "memory unknown: the copy is saved somewhere")
+for f in ("tmp", "root"):
+    for g in os.listdir(f"{fakeroot}/{f}"):
+        os.remove(f"{fakeroot}/{f}/{g}")
+publish("main", FAKE_SETUP.encode(), sha="0" * 64)
+r = run(mem=500000, install_dir=False)
+check(r.returncode != 0 and "checksum differs" in r.stdout and not os.path.exists(f"{fakeroot}/tmp/piso-setup.sh"), "the sha256 check is unchanged: a bad download is not saved in /tmp")
+publish("main", FAKE_SETUP.encode())
+r = run(lan="192.168.1.1", answer="y", mem=500000, install_dir=False)
+time.sleep(3.6)
+check(f"sh {fakeroot}/tmp/piso-setup.sh" in r.stdout and "run the one-line installer again" in r.stdout and "log in again" in r.stdout,
+      "factory address, copy in /tmp: it says to run sh <path> and to run the one-line installer again if the router restarts: " + r.stdout)
+r = run(lan="192.168.1.1", answer="y", mem=1000, install_dir=False)
+time.sleep(3.6)
+check(f"sh {fakeroot}/root/piso-setup.sh" in r.stdout and "run the one-line installer again" not in r.stdout,
+      "factory address, copy in /root (flash): no 'run the one-line installer again' sentence: " + r.stdout)
+r = run("--", "--yes", mem=500000, install_dir=False)
+check("SETUP-RAN args=[--yes] answer=[]" in r.stdout and f"cwd={fakeroot}/tmp" in r.stdout, "--yes runs the copy in /tmp at once: " + r.stdout)
+for f in ("tmp", "root"):
+    for g in os.listdir(f"{fakeroot}/{f}"):
+        os.remove(f"{fakeroot}/{f}/{g}")
 
 # ---- --yes (setup/pisophone_setup.py): nothing is asked, the setup runs unattended -------------------------------------------
 r = run("--", "--yes", lan="192.168.1.1", answer="n")
