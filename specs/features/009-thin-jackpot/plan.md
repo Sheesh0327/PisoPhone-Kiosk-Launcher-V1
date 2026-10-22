@@ -20,7 +20,7 @@ Small, ordered, test first (red result in `ledger/negative-constraints.md`). Sta
 - [x] 3. **The layout** (`wheel.html` pure functions): slice angles by size, wins spread and the thin jackpot apart over sizes, landing inside the middle 80% of the slice's own width. `test_wheel_layout.py` first (criterion 3).
 - [x] 4. **The picture and the odds on the page** (`wheel.html`): half-width jackpot slice, odds table and explainer with the real chances. Browser tests first (criterion 4).
 - [x] 5. **The console** (`console-ui.js`, `console.html`): chances over sizes, the `t` help text, refusals (criterion 5).
-- [ ] 6. **Docs and release**: `setup/RELEASE`, `build_piso_setup.py`, CHANGELOG (the default changed), manual, RS34 wording, `validation.md`, footprint check.
+- [x] 6. **Docs and release**: `setup/RELEASE`, `build_piso_setup.py`, CHANGELOG (the default changed), manual, RS34 wording, `validation.md`, footprint check.
 - [ ] 7. **Pull request into `beta`** (when the owner asks), read Code quality. Merge and rollout are the owner's.
 
 ## Release
