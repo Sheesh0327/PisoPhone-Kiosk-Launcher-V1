@@ -1,6 +1,6 @@
 # Feature 010: check the setup, and a smaller PisoWiFi router image for 16 MB flash
 
-Status: **draft, owner answers in (2026-10-22); awaiting final approval**   Branch: `claude/piso-wifi-setup-verify-ikeqrm` (the designated branch for this session; `beta` does not exist in this repository, so `feat/010-...` was not created). Work is based on `main`'s code, which matches this branch.   Area: router, setup   Release: `setup/RELEASE` raised at approval; the small image rolls out at 0% first.
+Status: **spec approved by the owner (2026-10-22); plan.md still needs approval before code**   Branch: `feat/010-router-flash-profile` (based on `main`'s code; `beta` does not exist in this repository).   Area: router, setup   Release: `setup/RELEASE` raised at approval; the small image rolls out at 0% first.
 Backlog rows: none matches this request. Closest: feature 008 (`specs/features/008-wheel-install-option/`, parked: the flash-size rule and the 16 MiB threshold), and `specs/spec_01_findings.json` rows RT-22 and RT-08 to RT-26 (space checks in the installer), not directly about flash size.
 
 ## Intent
