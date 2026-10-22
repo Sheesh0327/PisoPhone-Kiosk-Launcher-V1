@@ -90,7 +90,10 @@ PASSWORDS = [  # (environment name read by the setup, what it is, min, max, gene
     ("KIOSK_PASSWORD", f"{KIOSK_SSID} Wi-Fi password (for the rental phones' setup)", 8, 63, 12),
     ("BOX_NEW_ADMIN_PASSWORD", "coin box admin password (the box's page; also the phones' admin PIN)", 8, 32, 16),
 ]
-ANSWER_ORDER = [env for env, *_ in PASSWORDS] + ["GUEST_SSID", "SITE_NAME", "COUNTRY"]
+ANSWER_ORDER = [env for env, *_ in PASSWORDS] + ["GUEST_SSID", "SITE_NAME", "COUNTRY", "SHOP_PRODUCT"]
+PRODUCTS = [("wifi", "PisoWiFi", "customer Wi-Fi sold by the coin (an OpenWrt router and the coin box; no rental phones)"),
+            ("phone", "PisoPhone", "rental phones with the coin box on your shop's normal router (nothing is installed on the router)"),
+            ("both", "both", "PisoWiFi and PisoPhone (an OpenWrt router, the coin box and the rental phones)")]
 COUNTRIES = [  # the Wi-Fi regulatory country (which channels and power the router may use)
     ("PH", "Philippines"), ("ID", "Indonesia"), ("MY", "Malaysia"), ("SG", "Singapore"), ("TH", "Thailand"),
     ("VN", "Vietnam"), ("KH", "Cambodia"), ("MM", "Myanmar"), ("JP", "Japan"), ("KR", "South Korea"), ("TW", "Taiwan"),
@@ -183,6 +186,8 @@ def ask_password(label, lo, hi, length, read=getpass.getpass):
 def check_answers(answers):
     """Raises SetupError when an answer would be refused by the router setup."""
     for env, label, lo, hi, _length in PASSWORDS:
+        if env == "KIOSK_PASSWORD" and answers.get("SHOP_PRODUCT") == "wifi":
+            continue   # (a PisoWiFi-only router has no rental-phone Wi-Fi)
         problem = password_problem(answers[env], lo, hi)
         if problem:
             raise SetupError(f"the {label}: {problem}")
@@ -195,14 +200,39 @@ def check_answers(answers):
         raise SetupError(f"country: {problem}")
 
 
+def product_choice(args, read=input):
+    """The product of this run: "wifi", "phone" or "both". From --product (or --phone-only, which means phone); with --yes there is
+    no one to ask, so a missing choice stops the setup before anything is changed; otherwise asked, with nothing preselected."""
+    chosen = getattr(args, "product", None)
+    if getattr(args, "phone_only", False):
+        if chosen not in (None, "phone"):
+            raise SetupError("--phone-only means --product phone: it cannot be combined with --product " + chosen)
+        return "phone"
+    if chosen:
+        return chosen
+    if getattr(args, "yes", False):
+        raise SetupError("choose the product: --product wifi, phone or both")
+    say()
+    say("What are you setting up?")
+    for n, (_key, name, what) in enumerate(PRODUCTS, 1):
+        say(f"  {n}) {name}: {what}")
+    while True:
+        answer = read("Type 1, 2 or 3 (or wifi, phone, both): ").strip().lower()
+        for n, (key, name, _what) in enumerate(PRODUCTS, 1):
+            if answer in (str(n), key, name.lower()):
+                return key
+        say("  Please choose one of the three.")
+
+
 def collect_answers(args, read=input, read_secret=getpass.getpass):
     """The answers the setup needs (environment name -> value), asked here or taken from the options."""
-    answers = {"COUNTRY": (getattr(args, "country", None) or "PH").upper()}
+    answers = {"COUNTRY": (getattr(args, "country", None) or "PH").upper(), "SHOP_PRODUCT": getattr(args, "product", None) or "both"}
+    wifi_only = answers["SHOP_PRODUCT"] == "wifi"
     if args.yes:
         answers["GUEST_SSID"] = args.guest_ssid or "PisoWiFi"
         answers["SITE_NAME"] = args.site_name or answers["GUEST_SSID"]
         for env, _label, _lo, _hi, length in PASSWORDS:
-            answers[env] = generate(length)
+            answers[env] = "" if wifi_only and env == "KIOSK_PASSWORD" else generate(length)
     else:
         say()
         say("A few questions first. Nothing on the router is changed until you have reviewed your answers.")
@@ -211,15 +241,17 @@ def collect_answers(args, read=input, read_secret=getpass.getpass):
         answers["SITE_NAME"] = ask_text("Name of the shop / site (on the setup sheet and in alerts)",
                                         args.site_name or answers["GUEST_SSID"], "site", read)
         for env, label, lo, hi, length in PASSWORDS:
-            answers[env] = ask_password(label, lo, hi, length, read_secret)
+            answers[env] = "" if wifi_only and env == "KIOSK_PASSWORD" else ask_password(label, lo, hi, length, read_secret)
     check_answers(answers)
     return answers
 
 
-def kept_answers(country="PH"):
-    """The answers sent to a router that was set up before: none (it keeps its own), except the Wi-Fi country."""
+def kept_answers(country="PH", product=""):
+    """The answers sent to a router that was set up before: none (it keeps its own), except the Wi-Fi country and the product
+    when one was chosen (the router asks before it removes the rental phones' Wi-Fi)."""
     answers = {key: "" for key in ANSWER_ORDER}
     answers["COUNTRY"] = country
+    answers["SHOP_PRODUCT"] = product
     return answers
 
 
@@ -227,11 +259,13 @@ def review(answers):
     say()
     say("================ PLEASE REVIEW (write the passwords down now) ================")
     say(f"  Public Wi-Fi (customers):  {answers['GUEST_SSID']}  (open, behind the coin payment page)")
-    say(f"  Rental-phone Wi-Fi:        {KIOSK_SSID}-xxxx  (hidden; xxxx is this router's own ending, shown at the end)")
+    if answers.get("SHOP_PRODUCT") != "wifi":
+        say(f"  Rental-phone Wi-Fi:        {KIOSK_SSID}-xxxx  (hidden; xxxx is this router's own ending, shown at the end)")
     say(f"  Site name:                 {answers['SITE_NAME']}")
     say(f"  Router address:            {TARGET_IP}   Country: {answers.get('COUNTRY', 'PH')}")
     say(f"  Router password:           {answers['ROOT_PASSWORD']}")
-    say(f"  {KIOSK_SSID} Wi-Fi password:  {answers['KIOSK_PASSWORD']}")
+    if answers.get("SHOP_PRODUCT") != "wifi":
+        say(f"  {KIOSK_SSID} Wi-Fi password:  {answers['KIOSK_PASSWORD']}")
     say(f"  Coin box admin password:   {answers['BOX_NEW_ADMIN_PASSWORD']}")
     say("  The router's Wi-Fi networks are replaced and the coin box is paired and set up.")
     say("  (A router that was set up before keeps the names and passwords it already has.)")
@@ -2484,7 +2518,7 @@ def run_setup(args, ssh, read=input, read_secret=getpass.getpass, probe=port_ope
               board_finder=usb_boards, flasher=None):
     if flasher is None:
         def flasher(port, emit):
-            return flash_box(args.branch, port, emit, flash_cache_dir())
+            return flash_box(args.branch, port, emit, flash_cache_dir(), product="wifi" if getattr(args, "product", None) == "wifi" else "full")
     host = args.router or find_router(probe)
     if not host:
         raise SetupError(
@@ -2513,7 +2547,7 @@ def run_setup(args, ssh, read=input, read_secret=getpass.getpass, probe=port_ope
         if not args.yes and read("Continue? [y/N] ").strip().lower() not in ("y", "yes"):
             say("Cancelled. Nothing was changed.")
             return 1
-        answers = kept_answers((getattr(args, "country", None) or "PH").upper())
+        answers = kept_answers((getattr(args, "country", None) or "PH").upper(), getattr(args, "product", None) or "")
     else:
         answers = collect_answers(args, read, read_secret)
         review(answers)
@@ -4197,13 +4231,24 @@ class Session:
         problems = {"GUEST_SSID": name_problem(v["GUEST_SSID"], "wifi"), "SITE_NAME": name_problem(v["SITE_NAME"], "site"),
                     "COUNTRY": country_problem(self.country)}
         for env, _label, lo, hi, _length in PASSWORDS:
-            problems[env] = password_problem(v[env], lo, hi)
+            if not (env == "KIOSK_PASSWORD" and self.mode == "wifi"):
+                problems[env] = password_problem(v[env], lo, hi)
         return problems
+
+    def product(self):
+        return "wifi" if self.mode == "wifi" else "both"
 
     def answers(self):
         a = {k: v.strip() if k in ("GUEST_SSID", "SITE_NAME") else v for k, v in self.values.items()}
         a["COUNTRY"] = self.country
+        a["SHOP_PRODUCT"] = self.product()
+        if self.mode == "wifi":
+            a["KIOSK_PASSWORD"] = ""   # (a PisoWiFi-only router has no rental-phone Wi-Fi)
         return a
+
+    def install_answers(self):
+        """What the router setup is sent: the new answers, or (a router set up before) only the country and the product."""
+        return kept_answers(self.country, self.product()) if self.kept() else self.answers()
 
     def do_set(self, a):
         with self.lock:
@@ -4347,7 +4392,7 @@ class Session:
                 return
             self.install.update(running=True, stage=0, activity="Starting...", error=None, banner=None, ok=False, lines=[])
             self.result = None
-            answers = kept_answers(self.country) if self.kept() else self.answers()
+            answers = self.install_answers()
             write_box = not (self.skip_flash or self.flashed)
             host_hint = self.router["host"]
 
@@ -5136,7 +5181,7 @@ a{color:var(--acc)}.hide{display:none!important}
   <p class="mut small" style="margin-top:0">They are saved on this computer and printed on the setup sheet at the end. Nothing to type here.</p>
   <details id="pwOwn"><summary class="mut small">Advanced: type my own passwords</summary>
   <label for="ROOT_PASSWORD">Router password <span class="hint">SSH and the router's web page</span></label><input id="ROOT_PASSWORD" data-k="1" autocomplete="off"><div class="err" data-e="ROOT_PASSWORD"></div>
-  <label for="KIOSK_PASSWORD">PisoKiosk Wi-Fi password <span class="hint">the hidden network of the rental phones</span></label><input id="KIOSK_PASSWORD" data-k="1" autocomplete="off"><div class="err" data-e="KIOSK_PASSWORD"></div>
+  <div id="kioskPw"><label for="KIOSK_PASSWORD">PisoKiosk Wi-Fi password <span class="hint">the hidden network of the rental phones</span></label><input id="KIOSK_PASSWORD" data-k="1" autocomplete="off"><div class="err" data-e="KIOSK_PASSWORD"></div></div>
   <label for="BOX_NEW_ADMIN_PASSWORD">Coin box admin password <span class="hint">the box's admin page; also the phones' admin PIN</span></label><input id="BOX_NEW_ADMIN_PASSWORD" data-k="1" autocomplete="off"><div class="err" data-e="BOX_NEW_ADMIN_PASSWORD"></div>
   </details></div>
 </section>
@@ -5273,7 +5318,7 @@ function fillSettingsOnce(){
 }
 function paint2(){
  const st=S.settings,kept=st.kept;
- $('#namesCard').classList.toggle('hide',kept);$('#pwCard').classList.toggle('hide',kept);
+ $('#kioskPw').classList.toggle('hide',S.mode==='wifi');$('#namesCard').classList.toggle('hide',kept);$('#pwCard').classList.toggle('hide',kept);
  $('#setTitle').textContent=kept?'This router keeps its settings':'This customer\'s names and passwords';
  $('#setSub').textContent=kept?'It was set up before, so its Wi-Fi names and passwords stay as they are (they are in the summary the earlier setup saved). The installation finishes or repairs it.':'Type the shop name and public Wi-Fi name for this customer (asked every time). The passwords were made for you, new ones for every unit. They are saved on this computer at the end and printed on the setup sheet.';
  $$('.err[data-e]').forEach(e=>{const k=e.dataset.e,p=st.problems[k];const input=document.getElementById(k);const typed=input&&(input.value||k==='COUNTRY');e.textContent=p&&typed?p[0].toUpperCase()+p.slice(1):'';if(input)input.classList.toggle('bad',!!(p&&typed));if(p&&typed&&input&&input.closest('#pwOwn'))$('#pwOwn').open=true});
@@ -5447,6 +5492,8 @@ def main(argv=None):
                                               "the setup page uses Documents/PisoPhone)")
     p.add_argument("--no-browser", action="store_true", help="do not open the setup sheet when done (terminal)")
     p.add_argument("--no-flash", action="store_true", help="do not write the coin box software over USB (terminal; it has it already)")
+    p.add_argument("--product", choices=[key for key, _n, _w in PRODUCTS],
+                   help="terminal: what to set up: wifi (PisoWiFi only), phone (same as --phone-only) or both. Asked when missing; required with --yes")
     p.add_argument("--phone-only", action="store_true", help="terminal: set up a PisoPhone-only coin box (the shop's normal router, no router software, no SSH)")
     p.add_argument("--check-box", action="store_true", help="look at the coin box on USB (set up? online? its address) and stop")
     p.add_argument("--serial", help="PisoPhone-only terminal mode: the board's serial port, e.g. COM3 or /dev/ttyACM0 (default: found by itself)")
@@ -5503,6 +5550,9 @@ def main(argv=None):
             for text in (reissue_slot_licenses(args.box) if args.reissue else make_slot_licenses(args.box, args.count, args.note)["keys"]):
                 say(text)
             return 0
+        if not (args.check_box or args.update) and (args.cli or args.yes or args.router or args.phone_only or args.product):
+            args.product = product_choice(args)
+            args.phone_only = args.product == "phone"
         if args.check_box or args.phone_only:
             if not args.no_install:
                 ensure_dependencies(say, detect_system())
@@ -5511,7 +5561,7 @@ def main(argv=None):
             else:
                 run_phone_setup(args)
             return 0
-        if not (args.cli or args.update or args.yes or args.router):
+        if not (args.cli or args.update or args.yes or args.router or args.product):
             return run_web(args)
     except (SetupError, ToolError) as e:
         say(f"ERROR: {e}")
