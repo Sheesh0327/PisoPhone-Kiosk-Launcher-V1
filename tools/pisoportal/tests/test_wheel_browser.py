@@ -62,8 +62,8 @@ try:
         pg.click('#tabs button[data-t="set"]')
         pg.wait_for_function("document.getElementById('whs').textContent.length > 0", timeout=8000)
         check("off" in pg.text_content("#whs"), "Settings says the wheel is off: " + pg.text_content("#whs"))
-        check(pg.input_value("#wtb") == "0x13 2x5 3x1 5x1" and pg.input_value("#wmb") == "10" and pg.input_value("#wsp") == "10", "the default wheel and limits are listed")
-        check("90.0%" in pg.text_content("#wav") and "35.0%" in pg.text_content("#wav"), "and its average return and win chance: " + pg.text_content("#wav"))
+        check(pg.input_value("#wtb") == "0x12 2x6 3x1 5x1t" and pg.input_value("#wmb") == "10" and pg.input_value("#wsp") == "10", "the default wheel and limits are listed")
+        check("89.7%" in pg.text_content("#wav") and "38.5%" in pg.text_content("#wav"), "and its average return and win chance: " + pg.text_content("#wav"))
         check(not pg.is_visible("#whoff") and pg.is_visible("#whon"), "only Turn on... is offered")
         check("every visitor" in pg.text_content("#whc") and "spinning needs paid time" in pg.text_content("#whc"), "the console says what visitors see while the wheel is on")
 
@@ -85,6 +85,14 @@ try:
         check(pg.input_value("#wcf") == "" and pg.is_disabled("#wdyes"), "opened again, the box is empty and the button disabled")
         pg.keyboard.press("Escape")
         check(not pg.is_visible("#wdlg") and wheel_state()[0] == 404, "Escape also leaves it off")
+
+        # the thin mark: the console works the chances out over sizes, as the router does, and the help says what t means
+        check("thin" in pg.text_content("#whset") and "5x1t" in pg.text_content("#whset"), "the console explains the t mark (thin: half as likely, drawn half as wide)")
+        pg.fill("#wtb", "0x13 2x5 3x1 5x1")
+        check("90.0%" in pg.text_content("#wav") and "35.0%" in pg.text_content("#wav"), "a wheel without a t mark is worked out as before: " + pg.text_content("#wav"))
+        pg.fill("#wtb", "0x1 5x1t")
+        check("above 100%" in pg.text_content("#wav"), "a thin x5 against one normal loss is flagged above 100%: " + pg.text_content("#wav"))
+        pg.fill("#wtb", "0x12 2x6 3x1 5x1t")
 
         # a bad wheel is refused with its reason; a fair one and short waits are saved while it is off
         pg.fill("#wtb", "2x3 0x1")

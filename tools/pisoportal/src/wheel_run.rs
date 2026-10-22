@@ -205,11 +205,14 @@ impl Wheel {
         } else {
             ""
         };
-        let segs: Vec<String> = t.segs.iter().map(|s| format!("{{\"mult\":{},\"weight\":{}}}", s.mult, s.weight)).collect();
+        let segs: Vec<String> =
+            t.segs.iter().map(|s| format!("{{\"mult\":{},\"weight\":{},\"thin\":{}}}", s.mult, s.weight, s.thin)).collect();
         let json = format!(
-            "{{\"ok\":true,\"segments\":[{}],\"total\":{},\"rtp\":{},\"win\":{},\"left_min\":{},\"paused\":{},\"can_spin\":{},\"reason\":\"{}\",\"max_bet\":{},\"limit_max_bet\":{},\"floor\":{},\"spins_left\":{},\"wait\":{},\"win_room\":{},\"max_slices\":{},\"spins_per_day\":{},\"wait_secs\":{},\"win_cap\":{}}}",
+            "{{\"ok\":true,\"segments\":[{}],\"total\":{},\"total_size\":{},\"unit\":{},\"rtp\":{},\"win\":{},\"left_min\":{},\"paused\":{},\"can_spin\":{},\"reason\":\"{}\",\"max_bet\":{},\"limit_max_bet\":{},\"floor\":{},\"spins_left\":{},\"wait\":{},\"win_room\":{},\"max_slices\":{},\"spins_per_day\":{},\"wait_secs\":{},\"win_cap\":{}}}",
             segs.join(","),
             t.total_weight(),
+            t.total_size(),
+            t.unit(),
             t.rtp_permille(),
             t.win_permille(),
             left_min,
@@ -296,17 +299,19 @@ impl Wheel {
 
 /// The odds table as plain HTML rows (the page fills them in again from `/wheel/state`; a browser without script still reads the odds).
 pub fn odds_rows(t: &Table) -> String {
-    let n = t.total_weight().max(1);
+    // a row's chance is its units of chance over all the units (a thin slot is half a normal one)
+    let n = t.total_size().max(1);
     t.segs
         .iter()
         .map(|s| {
-            let pct = (s.weight as f64 * 1000.0 / n as f64).round() / 10.0;
+            let size = t.row_size(s);
+            let pct = (size as f64 * 1000.0 / n as f64).round() / 10.0;
             let (label, pays) = if s.mult == 0 {
                 ("LOSE".to_string(), "your bet is lost".to_string())
             } else {
                 (format!("x{}", s.mult), format!("your bet x{}", s.mult))
             };
-            format!("<tr><td>{}</td><td>{}</td><td>{} of {} ({}%)</td></tr>", label, pays, s.weight, n, pct)
+            format!("<tr><td>{}</td><td>{}</td><td>{} of {} ({}%)</td></tr>", label, pays, size, n, pct)
         })
         .collect()
 }
@@ -469,8 +474,8 @@ mod tests {
             ),
             ("false", "NO_SESSION", "0", "0")
         );
-        assert_eq!((field(&st, "rtp").as_str(), field(&st, "total").as_str()), ("900", "20"));
-        assert!(st.contains("{\"mult\":5,\"weight\":1}"));
+        assert_eq!((field(&st, "rtp").as_str(), field(&st, "total").as_str()), ("897", "20"));
+        assert!(st.contains("{\"mult\":5,\"weight\":1,\"thin\":true}"));
         assert_eq!(w.spin(&files, "aa:bb:cc:00:00:99", ID1, 5, 5, NOW, 0).0, 403);
         assert_eq!(left_min(&dir), 60, "a refused spin charges nothing");
         let roll = format!("{}/roll.csv", dir);
@@ -506,10 +511,19 @@ mod tests {
         on(&w);
         let (code, s) = w.state(&files, MAC, 5, NOW);
         assert_eq!(code, 200);
-        assert_eq!((field(&s, "rtp").as_str(), field(&s, "win").as_str(), field(&s, "total").as_str()), ("900", "350", "20"));
+        assert_eq!((field(&s, "rtp").as_str(), field(&s, "win").as_str(), field(&s, "total").as_str()), ("897", "385", "20"));
+        // the slices are drawn by size: 39 units of chance, a normal slot is 2 and a thin one 1
+        assert_eq!((field(&s, "total_size").as_str(), field(&s, "unit").as_str()), ("39", "2"));
         // 60 minutes left: bet at most 10 (the limit), not more than half (30), 5 must stay (55)
         assert_eq!((field(&s, "max_bet").as_str(), field(&s, "spins_left").as_str(), field(&s, "wait").as_str()), ("10", "10", "0"));
-        assert!(s.contains("{\"mult\":0,\"weight\":13}") && s.contains("{\"mult\":5,\"weight\":1}"));
+        assert!(s.contains("{\"mult\":0,\"weight\":12,\"thin\":false}") && s.contains("{\"mult\":5,\"weight\":1,\"thin\":true}"));
+        // a table saved by an earlier release (no thin slots) is still described as before: unit 1, the same chances
+        assert!(w.set_table("0x13 2x5 3x1 5x1").is_ok());
+        let s = w.state(&files, MAC, 5, NOW).1;
+        assert_eq!(
+            (field(&s, "rtp").as_str(), field(&s, "win").as_str(), field(&s, "total_size").as_str(), field(&s, "unit").as_str()),
+            ("900", "350", "20", "1")
+        );
     }
 
     #[test]
@@ -581,8 +595,18 @@ mod tests {
     fn rt_the_odds_table_is_in_the_page_itself_for_a_browser_without_script() {
         let rows = odds_rows(&Table::default_table());
         assert_eq!(rows.matches("<tr>").count(), 4);
-        assert!(rows.contains("<td>LOSE</td><td>your bet is lost</td><td>13 of 20 (65%)</td>"), "{}", rows);
-        assert!(rows.contains("<td>x5</td><td>your bet x5</td><td>1 of 20 (5%)</td>"), "{}", rows);
+        // chances are units of chance: a thin jackpot is 1 of 39 (2.6%), not rounded to 1 in 40
+        assert!(rows.contains("<td>LOSE</td><td>your bet is lost</td><td>24 of 39 (61.5%)</td>"), "{}", rows);
+        assert!(rows.contains("<td>x2</td><td>your bet x2</td><td>12 of 39 (30.8%)</td>"), "{}", rows);
+        assert!(rows.contains("<td>x5</td><td>your bet x5</td><td>1 of 39 (2.6%)</td>"), "{}", rows);
         assert!(!rows.contains("%ODDS%"));
+        // a table without thin slots reads exactly as before
+        let old = odds_rows(&Table::parse("0x13 2x5 3x1 5x1").unwrap());
+        assert!(
+            old.contains("<td>LOSE</td><td>your bet is lost</td><td>13 of 20 (65%)</td>")
+                && old.contains("<td>x5</td><td>your bet x5</td><td>1 of 20 (5%)</td>"),
+            "{}",
+            old
+        );
     }
 }
