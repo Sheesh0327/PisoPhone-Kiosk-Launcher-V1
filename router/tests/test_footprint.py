@@ -14,7 +14,8 @@ BUDGET_KB = {
     "setup/piso-setup.sh": 1600,                      # the one-file installer / update (it is downloaded, not kept)
     "setup/piso-setup.sh.in": 150,                    # the installed command (the file without its payload)
     "tools/pisoportal/src/game.html": 10,             # the mini-game page (1.3.6: Coin Catch, one file, no libraries)
-    "tools/pisoportal/src/page.html": 28,             # the customer page (1.3.4: voucher choice and code view, speech with a fallback, heartbeat)
+    "tools/pisoportal/src/page.html": 28,
+    "tools/pisoportal/src/wheel.html": 30,            # the wheel page (1.5.15: one labelled slice per slot, the odds explained, no library)             # the customer page (1.3.4: voucher choice and code view, speech with a fallback, heartbeat)
 }
 bad = 0
 for path, limit in BUDGET_KB.items():

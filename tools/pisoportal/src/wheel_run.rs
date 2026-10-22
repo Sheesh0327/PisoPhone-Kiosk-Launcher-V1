@@ -294,6 +294,23 @@ impl Wheel {
     }
 }
 
+/// The odds table as plain HTML rows (the page fills them in again from `/wheel/state`; a browser without script still reads the odds).
+pub fn odds_rows(t: &Table) -> String {
+    let n = t.total_weight().max(1);
+    t.segs
+        .iter()
+        .map(|s| {
+            let pct = (s.weight as f64 * 1000.0 / n as f64).round() / 10.0;
+            let (label, pays) = if s.mult == 0 {
+                ("LOSE".to_string(), "your bet is lost".to_string())
+            } else {
+                (format!("x{}", s.mult), format!("your bet x{}", s.mult))
+            };
+            format!("<tr><td>{}</td><td>{}</td><td>{} of {} ({}%)</td></tr>", label, pays, s.weight, n, pct)
+        })
+        .collect()
+}
+
 fn bet_words(b: &wheel::BetError) -> &'static str {
     use wheel::BetError::*;
     match b {
@@ -558,5 +575,14 @@ mod tests {
             ("10", "10", "60")
         );
         drop(w);
+    }
+
+    #[test]
+    fn rt_the_odds_table_is_in_the_page_itself_for_a_browser_without_script() {
+        let rows = odds_rows(&Table::default_table());
+        assert_eq!(rows.matches("<tr>").count(), 4);
+        assert!(rows.contains("<td>LOSE</td><td>your bet is lost</td><td>13 of 20 (65%)</td>"), "{}", rows);
+        assert!(rows.contains("<td>x5</td><td>your bet x5</td><td>1 of 20 (5%)</td>"), "{}", rows);
+        assert!(!rows.contains("%ODDS%"));
     }
 }
