@@ -125,6 +125,13 @@ conf_set() {  # conf_set NAME VALUE
 		rm -f "$_ct"; log "could not save the setting $1 (is the router's flash full? piso-setup space)"; return 1
 	fi
 }
+conf_del() {  # conf_del NAME: take a setting out (the rest stays; the file is replaced by a complete new copy, like conf_set)
+	[ "$DRY" = 1 ] && return 0
+	[ -f "$CONF" ] && grep -q "^$1=" "$CONF" || return 0
+	_ct="$CONF.tmp.$$"
+	if (umask 077; grep -v "^$1=" "$CONF" > "$_ct") 2> /dev/null; then mv "$_ct" "$CONF"; chmod 600 "$CONF"
+	else rm -f "$_ct"; log "could not remove the setting $1 (is the router's flash full? piso-setup space)"; return 1; fi
+}
 rand() {  # rand <length> [hex]: random characters (letters and digits, no look-alikes; or hex)
 	if [ "$2" = hex ]; then head -c 8192 /dev/urandom | tr -dc '0-9a-f' | cut -c1-"$1"     # (only tools every BusyBox has)
 	else head -c 512 /dev/urandom | tr -dc 'a-hjkmnp-zA-HJ-NP-Z2-9' | cut -c1-"$1"; fi
@@ -2151,6 +2158,24 @@ review_choices() {
 	case "$_a" in y | Y | yes) ;; *) echo "Cancelled. Nothing was changed (answers kept: run the setup again to change them)."; exit 1 ;; esac
 }
 
+# choose_product: store the product of this run. Switching an installed both router to PisoWiFi only removes the rental phones' Wi-Fi
+# and its password, so it is said first and asked (a terminal) or accepted with --yes. Nothing else is touched.
+choose_product() {
+	if wifi_only && [ -n "$(conf_get KIOSK_PASS)" ]; then
+		echo
+		echo "This router is set up for rental phones. As PisoWiFi only, the hidden Wi-Fi $KIOSK_SSID is removed: rental phones on $KIOSK_SSID will lose their Wi-Fi."
+		echo "Customer Wi-Fi, the coin box, vouchers, sales and paid time are not touched."
+		if [ "$DRY" = 1 ]; then echo "(dry run: nothing is changed)"
+		elif [ "$ASSUME_YES" != 1 ]; then
+			[ -t 0 ] || die "this needs your answer: run it at a terminal, or add --yes. Nothing was changed."
+			printf 'Remove it and continue? [y/N] '; read -r _a
+			case "$_a" in y | Y | yes) ;; *) echo "Cancelled. Nothing was changed."; exit 1 ;; esac
+		fi
+	fi
+	store_product
+	if wifi_only; then conf_del KIOSK_PASS; fi
+}
+
 # kiosk_pass: the rental phones' Wi-Fi password (made once); a PisoWiFi-only router has none
 kiosk_pass() { wifi_only && return 0; secret KIOSK_PASS 12; }
 
@@ -2163,7 +2188,7 @@ stage1() {
 		echo "First a few questions; nothing is changed until you have reviewed your answers."
 	fi
 	choose_names
-	store_product
+	choose_product
 	ask_name SITE_NAME "shop / site (printed on the setup sheet, shown in Telegram messages)" "$GUEST_NAME" "$SITE_NAME"
 	valid_plain "$ASKED" || die "the site name may not contain quotes, backslashes, \$ or backticks"
 	choose_passwords
@@ -2196,6 +2221,7 @@ main() {
 		esac
 		shift
 	done
+	[ -z "$CMD" ] || unset SHOP_PRODUCT   # (the product is chosen by the installer only: no other command, an update included, changes it)
 	case "$CMD" in
 		status) cmd_status ;;
 		wifi-name) cmd_wifi_name "$ARG" ;;
