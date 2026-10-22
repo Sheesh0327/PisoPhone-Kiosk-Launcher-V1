@@ -45,11 +45,13 @@ def angle(pg):
 
 def under_pointer(pg):
     """The slice under the pointer: (its mult, how far into the slice the pointer is, 0 to 1)."""
-    n = pg.locator("#wheel path.sl").count()
-    step = 360 / n
+    sl = pg.locator("#wheel path.sl")
     under = (-angle(pg)) % 360
-    i = int(under // step)
-    return int(pg.locator("#wheel path.sl").nth(i).get_attribute("data-mult")), (under - i * step) / step
+    for i in range(sl.count()):
+        a0, a1 = float(sl.nth(i).get_attribute("data-a0")), float(sl.nth(i).get_attribute("data-a1"))
+        if a0 <= under < a1:
+            return int(sl.nth(i).get_attribute("data-mult")), (under - a0) / (a1 - a0)
+    return -1, 0
 
 
 try:
@@ -71,19 +73,24 @@ try:
         pg = page(ctx)
         pg.goto(f"http://127.0.0.1:{env.PP}/wheel")
         pg.wait_for_function("document.querySelectorAll('#wheel path.sl').length > 0", timeout=8000)
-        check(pg.locator("#wheel path.sl").count() == 20, "the default table is drawn as 20 equal slices")
+        check(pg.locator("#wheel path.sl").count() == 20, "the default table is drawn as 20 slices")
         mults = pg.evaluate("Array.from(document.querySelectorAll('#wheel path.sl')).map(function(p){return +p.getAttribute('data-mult')})")
         labels = pg.evaluate("Array.from(document.querySelectorAll('#wheel text')).map(function(t){return t.textContent})")
-        check(sorted(mults) == [0] * 13 + [2] * 5 + [3, 5], f"13 lose, 5 x2, 1 x3, 1 x5 on the wheel: {sorted(mults)}")
-        check(labels.count("LOSE") == 13 and labels.count("x2") == 5 and labels.count("x3") == 1 and labels.count("x5") == 1, "every slice is labelled with what it pays")
+        check(sorted(mults) == [0] * 12 + [2] * 6 + [3, 5], f"12 lose, 6 x2, 1 x3, 1 x5 on the wheel: {sorted(mults)}")
+        check(labels.count("LOSE") == 12 and labels.count("x2") == 6 and labels.count("x3") == 1 and labels.count("x5") == 1, "every slice is labelled with what it pays")
         wins = [i for i, m in enumerate(mults) if m]
         gaps = [(wins[(j + 1) % len(wins)] - wins[j]) % 20 for j in range(len(wins))]
         check(min(gaps) >= 2 and max(gaps) - min(gaps) <= 1, f"the wins are spread between the losses: {gaps}")
+        wd = pg.evaluate("Array.from(document.querySelectorAll('#wheel path.sl')).map(function(p){return [+p.getAttribute('data-mult'),+p.getAttribute('data-a1')-+p.getAttribute('data-a0')]})")
+        jack = [w for m, w in wd if m == 5]
+        norm = [w for m, w in wd if m != 5]
+        check(len(jack) == 1 and abs(jack[0] * 2 - norm[0]) < 0.01 and all(abs(w - norm[0]) < 0.01 for w in norm) and abs(sum(w for _, w in wd) - 360) < 0.01,
+              f"the thin jackpot slice is half as wide as the others and together they fill the circle: {jack} / {norm[0]:.2f}")
         check(pg.evaluate("document.querySelectorAll('#rim circle').length") > 20, "the rim has its lights")
         rows = pg.evaluate("Array.from(document.querySelectorAll('#odds tr')).map(function(r){return r.textContent})")
-        check(len(rows) == 5 and "LOSEyour bet is lost13 of 20 (65%)" in rows[1].replace(" ", "") or "13 of 20 (65%)" in rows[1], f"the odds table lists every row with its chance: {rows[1]}")
-        check("Chance to win: 35%" in pg.text_content("#avg") and "90%" in pg.text_content("#avg"), "the odds in one line: " + pg.text_content("#avg"))
-        check("about 7 win and 13 lose" in pg.text_content("#why") and "90 minutes of every 100" in pg.text_content("#why"), "the odds in words: " + pg.text_content("#why"))
+        check(len(rows) == 5 and "24 of 39 (61.5%)" in rows[1], f"the odds table lists every row with its chance: {rows[1]}")
+        check("Chance to win: 38.5%" in pg.text_content("#avg") and "89.7%" in pg.text_content("#avg"), "the odds in one line: " + pg.text_content("#avg"))
+        check("about 15 win and 24 lose" in pg.text_content("#why") and "89.7 minutes of every 100" in pg.text_content("#why"), "the odds in words: " + pg.text_content("#why"))
         check("bet 1 min: lose -1, x2 +1, x3 +2, x5 +4" in pg.text_content("#ex"), "the worked example for the current bet: " + pg.text_content("#ex"))
         pg.click("#chips button[data-b='5']")
         check("bet 5 min: lose -5, x2 +5, x3 +10, x5 +20" in pg.text_content("#ex") and pg.text_content("#bv").strip() == "5 min", "a quick-bet chip sets the bet and the example follows: " + pg.text_content("#ex"))
@@ -106,7 +113,7 @@ try:
         nj = br.new_context(java_script_enabled=False)
         npg = nj.new_page()
         npg.goto(f"http://127.0.0.1:{env.PP}/wheel")
-        check(npg.locator("#odds tr").count() == 5 and "13 of 20 (65%)" in npg.text_content("#odds") and "1 of 20 (5%)" in npg.text_content("#odds"), "without script the odds table is still in the page")
+        check(npg.locator("#odds tr").count() == 5 and "24 of 39 (61.5%)" in npg.text_content("#odds") and "1 of 39 (2.6%)" in npg.text_content("#odds"), "without script the odds table is still in the page")
         nj.close()
 
         # ---- a fair coin wheel: landing, the same spin for a win and a loss, the celebration, the recent spins ---------------------------------------
