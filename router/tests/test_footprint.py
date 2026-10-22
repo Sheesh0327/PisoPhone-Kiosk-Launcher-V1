@@ -3,13 +3,15 @@ import os
 import sys
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
+# 2026-10-22: raised from 1000/1500 KB to 1100/1600 KB by the owner. The spinning wheel (router 1.5.14, live) made the programs 962 -> 1026 KB and the
+# installer 1443 -> 1529 KB; the program is already built with opt-level z, LTO and strip. The room is for the wheel's graphics (feature 007).
 BUDGET_KB = {
-    "tools/pisoportal/bin/pisoportal-mipsel": 1000,   # the portal program (what runs)
-    "tools/pisoportal/bin/pisoportal-mips": 1000,
-    "tools/pisoportal/bin/pisoportal-aarch64": 1000,
-    "tools/pisoportal/bin/pisoportal-armv7": 1000,
-    "tools/pisoportal/bin/pisoportal-x86_64": 1000,
-    "setup/piso-setup.sh": 1500,                      # the one-file installer / update (it is downloaded, not kept)
+    "tools/pisoportal/bin/pisoportal-mipsel": 1100,   # the portal program (what runs)
+    "tools/pisoportal/bin/pisoportal-mips": 1100,
+    "tools/pisoportal/bin/pisoportal-aarch64": 1100,
+    "tools/pisoportal/bin/pisoportal-armv7": 1100,
+    "tools/pisoportal/bin/pisoportal-x86_64": 1100,
+    "setup/piso-setup.sh": 1600,                      # the one-file installer / update (it is downloaded, not kept)
     "setup/piso-setup.sh.in": 150,                    # the installed command (the file without its payload)
     "tools/pisoportal/src/game.html": 10,             # the mini-game page (1.3.6: Coin Catch, one file, no libraries)
     "tools/pisoportal/src/page.html": 28,             # the customer page (1.3.4: voucher choice and code view, speech with a fallback, heartbeat)

@@ -35,6 +35,10 @@ def bought():
     return int(env.roll()[MAC][5])
 
 
+def bought_rows():
+    return env.roll()
+
+
 def wheel_state():
     return env.get("/wheel/state")
 
@@ -42,7 +46,6 @@ def wheel_state():
 try:
     check(env.start(), "the portal starts")
     now = int(time.time())
-    Path(f"{env.data}/vouchers.txt").write_text(f"c1,0,0,0,0,60,{now},{MAC},0,0,0,hyper,w1,10,60,10,1\n")
     chrome = os.environ.get("CHROME") or next((c for c in [shutil.which(x) for x in ("google-chrome", "chromium", "chromium-browser")] + glob.glob("/opt/pw-browsers/chromium-*/chrome-linux/chrome") if c), None)
     with sync_playwright() as pw:
         br = pw.chromium.launch(executable_path=chrome, args=["--no-sandbox"])
@@ -62,6 +65,7 @@ try:
         check(pg.input_value("#wtb") == "0x13 2x5 3x1 5x1" and pg.input_value("#wmb") == "10" and pg.input_value("#wsp") == "10", "the default wheel and limits are listed")
         check("90.0%" in pg.text_content("#wav") and "35.0%" in pg.text_content("#wav"), "and its average return and win chance: " + pg.text_content("#wav"))
         check(not pg.is_visible("#whoff") and pg.is_visible("#whon"), "only Turn on... is offered")
+        check("every visitor" in pg.text_content("#whc") and "spinning needs paid time" in pg.text_content("#whc"), "the console says what visitors see while the wheel is on")
 
         pg.click("#whon")
         check(pg.is_visible("#wdlg") and "Responsibility warning" in pg.text_content("#wdt"), "Turn on... opens the responsibility warning")
@@ -101,8 +105,39 @@ try:
         check("responsibility confirmed" in pg.text_content("#whs") and not pg.is_visible("#wdlg") and pg.is_visible("#whoff") and not pg.is_visible("#whon"),
               "the exact phrase turns it on: " + pg.text_content("#whs"))
 
-        # ---- a customer ----------------------------------------------------------------------------------------------------------
+        # ---- a visitor who has paid nothing (feature 006): the button, the odds, a Spin that cannot be pressed ------------------------
         ctx = br.new_context(viewport={"width": 390, "height": 780}, has_touch=True)
+        cp = ctx.new_page()
+        cp.on("pageerror", lambda e: errors.append(str(e)))
+        cp.goto(f"http://127.0.0.1:{env.PP}/")
+        cp.wait_for_selector("#v-idle", state="visible", timeout=8000)
+        cp.wait_for_selector("#wh", state="visible", timeout=5000)
+        check("Spin the wheel" in cp.text_content("#wh") and not cp.is_visible("#gm"), "the coin page offers the wheel to a visitor who has paid nothing, and not the mini-game")
+        cp.click("#wh")
+        cp.wait_for_url("**/wheel")
+        cp.wait_for_function("document.querySelectorAll('#odds tr').length > 1", timeout=8000)
+        check(cp.locator("#odds tr").count() == 3 and "100%" in cp.text_content("#avg"), "the unpaid visitor reads the odds: " + cp.text_content("#avg"))
+        check(cp.is_disabled("#go") and "Buy Wi-Fi time first" in cp.text_content("#res"), "Spin cannot be pressed and the page says why: " + cp.text_content("#res"))
+        check(cp.is_disabled("#p") and cp.is_disabled("#m"), "and the bet buttons are disabled")
+        check(bought_rows() == {}, "nothing was spent")
+
+        # the same visitor pays with real coins: the 'You are online' screen offers the wheel too
+        env.nds_client(MAC)
+        env.set_box(busy=False, coins_at=[0.4, 0.8, 1.2])
+        cp.goto(f"http://127.0.0.1:{env.PP}/")
+        cp.wait_for_selector("#v-idle", state="visible", timeout=8000)
+        cp.click(".coin")
+        cp.wait_for_selector("#ldone", state="visible", timeout=10000)
+        cp.wait_for_function("document.getElementById('lpes').textContent.indexOf('3')>=0", timeout=10000)
+        cp.click("#ldone")
+        cp.wait_for_selector("#v-final", state="visible", timeout=10000)
+        check("You are online" in cp.text_content("#fon"), "the visitor paid and is online")
+        cp.wait_for_selector("#wh", state="visible", timeout=5000)
+        check("Spin the wheel" in cp.text_content("#wh"), "and the 'You are online' screen has the Spin the wheel button")
+
+        # ---- a customer ----------------------------------------------------------------------------------------------------------
+        Path(f"{env.data}/vouchers.txt").write_text(f"c1,0,0,0,0,60,{now},{MAC},0,0,0,hyper,w1,10,60,10,1\n")
+        cp.close()
         cp = ctx.new_page()
         cp.on("pageerror", lambda e: errors.append(str(e)))
         cp.goto(f"http://127.0.0.1:{env.PP}/wheel")
@@ -134,8 +169,7 @@ try:
 
         # the coin page: the wheel button, no mini-game
         cp.goto(f"http://127.0.0.1:{env.PP}/")
-        cp.wait_for_selector("#v-idle", state="visible", timeout=8000)
-        cp.wait_for_selector("#wh", state="visible", timeout=5000)
+        cp.wait_for_selector("#wh", state="visible", timeout=8000)   # (the purchase above still shows as the 'You are online' screen for two minutes)
         check("Spin the wheel" in cp.text_content("#wh") and not cp.is_visible("#gm"), "the coin page offers the wheel and not the mini-game")
 
         # ---- turned off from the console ----------------------------------------------------------------------------------------------------

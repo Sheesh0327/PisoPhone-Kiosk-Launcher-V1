@@ -81,6 +81,8 @@ pub enum View {
         online: bool,
         /// a window paid for a voucher code: (the code as ABCDE-FGHJK, when it expires). Nothing was connected.
         voucher: Option<(String, u64)>,
+        /// the wheel is on: the Spin the wheel button is offered here too (set when the view is read, never stored)
+        wh: bool,
     },
     Empty,
     Error(String),
@@ -155,13 +157,14 @@ impl View {
                     vflag(*voucher)
                 )
             }
-            View::Final { plan, pulses, minutes, left, online, voucher } => format!(
-                "{{\"t\":\"state\",\"s\":\"final\",\"plan\":\"{}\",\"pulses\":{},\"minutes\":{},\"left\":{},\"online\":{}{}}}",
+            View::Final { plan, pulses, minutes, left, online, voucher, wh } => format!(
+                "{{\"t\":\"state\",\"s\":\"final\",\"plan\":\"{}\",\"pulses\":{},\"minutes\":{},\"left\":{},\"online\":{},\"wh\":{}{}}}",
                 plan.as_str(),
                 pulses,
                 minutes,
                 left,
                 online,
+                wh,
                 match voucher {
                     Some((code, exp)) => format!(",\"vcode\":\"{}\",\"vexp\":{}", json_esc(code), exp),
                     None => String::new(),
@@ -447,7 +450,8 @@ impl Core {
         View::Idle {
             // (with the wheel on, it replaces the free mini-game)
             gm: if self.wheel.enabled() { -1 } else { self.games.left(mac, now) },
-            wh: self.wheel.enabled() && left > 0,
+            // (everyone is offered the wheel while it is on, paid or not; spinning needs paid time, which the router checks)
+            wh: self.wheel.enabled(),
             sd: self.send.enabled(),
             pn,
             left,
@@ -472,7 +476,11 @@ impl Core {
             // (a window that bought a voucher code connected nothing: its result stays as it was)
             View::Final { plan, pulses, minutes, online, voucher: None, .. } => {
                 let left = roll::peek(&self.cfg.roll_path(), now, mac).map(|(_, l)| l).unwrap_or(0);
-                View::Final { plan, pulses, minutes, left, online: online && left > 0, voucher: None }
+                View::Final { plan, pulses, minutes, left, online: online && left > 0, voucher: None, wh: self.wheel.enabled() }
+            }
+            // (a voucher result never carries the button; whatever flag was stored is cleared)
+            View::Final { plan, pulses, minutes, left, online, voucher, .. } => {
+                View::Final { plan, pulses, minutes, left, online, voucher, wh: false }
             }
             other => other,
         }
@@ -1211,7 +1219,7 @@ impl Core {
             log!("window {} recorded but openNDS refused the grant for {}", &sid[..8], mac);
         }
         let t_grant = t0.elapsed().as_millis();
-        let result = View::Final { plan: s.plan, pulses, minutes, left: s.left_secs, online, voucher: None };
+        let result = View::Final { plan: s.plan, pulses, minutes, left: s.left_secs, online, voucher: None, wh: false };
         self.publish_early(sid, result.clone()); // the customer is online: the page says so now, not after the box answers
         let ack_ok = ack_now && self.ack_and_clear(sid);
         log!(
@@ -1239,7 +1247,7 @@ impl Core {
             Ok(v) => v,
             Err(e) => return e,
         };
-        let result = View::Final { plan, pulses, minutes, left: 0, online: false, voucher: Some(v) };
+        let result = View::Final { plan, pulses, minutes, left: 0, online: false, voucher: Some(v), wh: false };
         self.publish_early(sid, result.clone());
         let ack_ok = ack_now && self.ack_and_clear(sid);
         log!("timing {} settled pulses={} min={} voucher issued acked={}", &sid[..8], pulses, minutes, ack_ok);
@@ -1661,6 +1669,50 @@ mod tests {
     const MAC_A: &str = "aa:aa:aa:aa:aa:01";
     const MAC_B: &str = "aa:aa:aa:aa:aa:02";
     const MAC_C: &str = "aa:aa:aa:aa:aa:03";
+
+    /// A core whose wheel is switched on the way the console does it (the switch and the owner's record), or left off.
+    fn core_with_wheel(name: &str, on: bool) -> Arc<Core> {
+        let d = std::env::temp_dir().join(format!("pisoportal-corewheel-{}-{}", name, std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        let dir = d.to_string_lossy().into_owned();
+        if on {
+            fs::write(format!("{}/settings.txt", dir), "WHEEL=on\n").unwrap();
+            fs::write(format!("{}/wheel-confirm.txt", dir), format!("v=1\nversion=1\nat={}\nsession=t\n", now_secs())).unwrap();
+        }
+        let mut cfg = Config::from_map(std::collections::HashMap::new());
+        cfg.data_dir = dir;
+        cfg.ndsctl = "/nonexistent/ndsctl".into();
+        Core::new(cfg)
+    }
+
+    #[test]
+    fn rt_with_the_wheel_on_every_device_is_offered_it_paid_or_not_and_the_mini_game_gives_way() {
+        let core = core_with_wheel("views", true);
+        // nobody has paid: the idle view still carries the wheel button (feature 006) and no mini-game
+        let idle = core.view_for(MAC_A);
+        assert!(matches!(idle, View::Idle { wh: true, gm: -1, left: 0, .. }), "{:?}", idle);
+        assert!(idle.to_json().contains("\"wh\":true"));
+        // the "You are online" screen after paying carries it too
+        let fin = View::Final { plan: Plan::Hyper, pulses: 5, minutes: 30, left: 1800, online: true, voucher: None, wh: false };
+        core.st.lock().unwrap().results.insert(MAC_B.to_string(), (now_secs(), fin));
+        let v = core.view_for(MAC_B);
+        assert!(matches!(v, View::Final { wh: true, .. }), "{:?}", v);
+        assert!(v.to_json().contains("\"wh\":true"), "{}", v.to_json());
+    }
+
+    #[test]
+    fn rt_with_the_wheel_off_no_view_mentions_a_wheel_and_the_mini_game_stays() {
+        let core = core_with_wheel("viewsoff", false);
+        let idle = core.view_for(MAC_A);
+        assert!(matches!(idle, View::Idle { wh: false, .. }), "{:?}", idle);
+        assert!(!matches!(idle, View::Idle { gm: -1, .. }), "the mini-game is still offered");
+        let fin = View::Final { plan: Plan::Hyper, pulses: 5, minutes: 30, left: 1800, online: true, voucher: None, wh: true };
+        core.st.lock().unwrap().results.insert(MAC_B.to_string(), (now_secs(), fin));
+        let v = core.view_for(MAC_B);
+        assert!(matches!(v, View::Final { wh: false, .. }), "a stored flag never outlives the switch: {:?}", v);
+        assert!(v.to_json().contains("\"wh\":false"));
+    }
 
     #[test]
     fn rt01_rt02_the_fair_use_tick_applies_the_clock_jump_before_it_looks_at_any_session() {

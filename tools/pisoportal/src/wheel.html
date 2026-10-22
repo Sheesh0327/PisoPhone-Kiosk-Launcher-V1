@@ -64,18 +64,17 @@ function fresh(j){
  if(bet>S.max_bet)bet=S.max_bet;if(bet<1&&S.max_bet>0)bet=1;if(S.wait>0&&!wt)countdown(S.wait);showbet();
 }
 function showbet(){
- var can=S&&S.max_bet>0&&S.spins_left>0&&!S.paused;
+ var can=S&&S.can_spin;
  $("bv").textContent=can?bet+" min":"-";
  $("m").disabled=!can||busy||bet<=1;$("p").disabled=!can||busy||bet>=S.max_bet;
  $("go").disabled=!can||busy||wt>0;
  $("what").textContent=can?"Win: up to +"+(bet*(maxm()-1))+" min. Lose: -"+bet+" min.":"";
- if(S&&!busy){if(S.paused)say("Your time is paused. Resume it on the Wi-Fi page to spin.","err");else if(S.spins_left<1)say("No spins left today. Come back tomorrow.","err");else if(S.max_bet<1&&!$("res").textContent)say("You need a few more minutes of time before you can bet.","err")}
+ if(S&&!busy&&!can){var why={NO_SESSION:"Buy Wi-Fi time first, then you can spin.",PAUSED:"Your time is paused. Resume it on the Wi-Fi page to spin.",NO_SPINS:"No spins left today. Come back tomorrow.",TOO_LITTLE:"You need a few more minutes of time before you can bet."};say(why[S.reason]||"You cannot spin right now.","err")}
 }
 function maxm(){var m=0,i;for(i=0;i<S.segments.length;i++)if(S.segments[i].mult>m)m=S.segments[i].mult;return m}
 function load(){
  get("/wheel/state",function(c,j){
   if(c===404){document.body.innerHTML="<main><h1>The wheel is not open</h1><p>Come back to the Wi-Fi page.</p><a class=\"b\" href=\"/\">Back to the Wi-Fi page</a></main>";return}
-  if(c===403){say((j&&j.why)||"Buy Wi-Fi time first, then the wheel opens.","err");$("go").disabled=true;return}
   if(j&&j.ok)fresh(j)
  },function(){say("Cannot reach the router. Check your Wi-Fi.","err")})
 }

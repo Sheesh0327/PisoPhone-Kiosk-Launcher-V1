@@ -1,6 +1,6 @@
 # Feature 006: the wheel button for everyone (visitors who have not paid see it and the odds)
 
-Status: **draft** (waits for the owner's approval)   Branch: `feat/006-wheel-button`   Area: router (portal program, wheel page)
+Status: **done on the computer** (all criteria passed, see `validation.md`; open: PR #, CI, release 1.5.15, hardware check RS34). Approved by the owner 2026-10-22   Branch: `feat/006-wheel-button`   Area: router (portal program, wheel page)
 Backlog rows: none (owner error report 2026-10-22, `specs/replans/2026-10-22.md`)   Release: router (raise `setup/RELEASE` to 1.5.15)
 
 ## Intent
