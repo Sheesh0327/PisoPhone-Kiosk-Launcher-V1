@@ -1,11 +1,12 @@
 # Status board
 
-Updated: 2026-10-22. Live (`main`, all at 100%): router 1.5.14 (the wheel, off by default), firmware 3.11.1, app build 495. `beta` and `main` hold the same features 001 to 005. Nothing has run on real hardware yet: RS28 to RS34 are owed, and the wheel's warning text needs a legal review before anyone turns it on.
+Updated: 2026-10-22 (replan `specs/replans/2026-10-22.md`). Live (`main`, all at 100%): router 1.5.14 (the wheel, off by default), firmware 3.11.1, app build 495. Owner report: the wheel button is hidden from visitors who have not paid; fix planned as feature 006 (router 1.5.15). Nothing has run on real hardware yet: RS28 to RS34 are owed, and the wheel's warning text needs a legal review before anyone turns it on.
 
 ## Features
 
 | # | Feature | State | Notes |
 |---|---|---|---|
+| 006 | The wheel button for everyone (owner error report 2026-10-22: no button on a page that has not paid) | **planned, waits for the owner's approval** (`specs/features/006-wheel-button/`) | With the wheel on, every visitor sees Spin the wheel (also on the "You are online" screen) and the odds; spinning still needs paid time. Router 1.5.15. Cause: 005's rule "before payment shows no wheel"; replan `specs/replans/2026-10-22.md`. |
 | 005 | Spinning wheel on the PisoWiFi portal (replaces the free mini-game) | **released: router 1.5.14 at 100% (PR #98 merged to `beta`, `main` published 2026-10-22); the wheel is OFF everywhere** | Needs the owner's typed confirmation in the console to turn on. `validation.md` written; hardware check **RS34** not run; **legal review of the warning text owed** (roadmap 8.3). Later: remove the old mini-game code (owner answer 3). |
 | 004 | Firmware money rows FW-01, 02, 03, 05, 06 (firmware 3.11.1) | **released: firmware 3.11.1 (PR #97)** | `specs/features/004-firmware-money/`. Not tried on a box: RS28 to RS31. |
 | 003 | Tablet game touch (APP-27) | **released: app stable build 495** (PR #96) | Cause is a hypothesis: **owner runs RS33 on the tablet**; if touch is still dead the adb output decides the next spec edit. |
@@ -33,5 +34,5 @@ Earlier work exists on branch `claude/sleepy-gauss-rn31gl` (tip `748add9`) with 
 ST-2 (signed flash manifest), SC-4 (`scripts/apk_production_cert.txt` empty), ST-8 (card and slot limits), DEAD-1 (root `package.json`), APP-04 (refuse coins until restore), roadmap 0.1 (any boxes in legacy mode?).
 
 ## Next step
-Owner-side first: run the hardware checks RS28 to RS34 (RS33 on the tablet with `adb`), get the wheel's warning text read by a lawyer, answer the open decisions above. Then the next feature is R1 app rows (needs the Android SDK) or R2 signing and CI fixes; start it with `/sdd-plan`.
+Feature 006 waits for the owner's approval (`/sdd-implement` after the yes). Owner-side meanwhile: run the hardware checks RS28 to RS34 (RS33 on the tablet with `adb`), get the wheel's warning text read by a lawyer, answer the open decisions above. Then R1 app rows or R2 signing and CI fixes.
 Handoff notes: `specs/notes/2026-10-21_feature-005-wheel-2.md` (written before the wheel was finished; `specs/features/005-spinning-wheel/plan.md` and `validation.md` are current).

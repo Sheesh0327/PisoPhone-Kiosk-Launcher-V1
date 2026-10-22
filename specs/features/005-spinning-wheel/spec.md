@@ -31,7 +31,7 @@ Reason: a customer staking paid minutes must be able to rely on the odds they ar
 3. Win means the bet comes back multiplied: net gain = (multiplier - 1) x bet minutes; loss = the bet. Session time never goes above the existing cap.
 4. Safeguards as chosen above, enforced on the router, not in the page. No spin while the session is paused, expired, or in a plan that cannot take it.
 5. The page shows, before the spin, every segment with its chance and payout and the average return, and after the spin the exact result in words ("You bet 5 min and lost 5 min. Time left: 42 min").
-6. The wheel works without the internet (served by the router, as the mini-game is) and before payment shows no wheel.
+6. The wheel works without the internet (served by the router, as the mini-game is) and before payment shows no wheel. *(Changed 2026-10-22 by feature 006: before payment the button and the odds are shown to everyone; only spinning needs paid time.)*
 7. Router program keeps using only `sha2`, `hmac`, `p256`; no new library. No change to the coin box, the phone app, or the box protocol.
 8. **Responsibility warning (hard gate).** The wheel cannot be switched on until the owner has read a full-screen warning in the router console and typed a confirmation. Enforced **on the router**, not only in the page:
    - The console shows the warning (text below) as a blocking dialog with no "OK" button: the on switch stays disabled until the owner types the exact phrase `I TAKE RESPONSIBILITY` (case as written) into a box, then presses Turn on.
