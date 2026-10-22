@@ -1004,5 +1004,66 @@ check("drop_installer_copy" in ok_branch and "drop_installer_copy" not in bad_br
 main_body = text.split("\nmain() {")[1].split("\n}\n")[0]
 check("SELF_COPY=$(abs_path \"$0\")" in main_body, "main makes $0 absolute before anything changes directory")
 check("/usr/sbin/piso-setup" in text and "extract_payload \"$0\"" in text, "the installed /usr/sbin/piso-setup is still written from the running file before the copy goes")
+# ---- feature 010: flash_class (the chip that holds the writable data) and the free-space lines ---------------------------------------
+MiB = 1024 * 1024
+
+
+def fake_mtd(name, parts, drop=(), garble=False):
+    """parts: [(partition name, offset, size, type)]. Writes a /proc/mtd stand-in and a sysfs tree; returns the env for lib()."""
+    d = f"{tmp}/mtd-{name}"
+    shutil.rmtree(d, ignore_errors=True)
+    os.makedirs(f"{d}/sys")
+    lines = ["dev:    size   erasesize  name"]
+    for i, (pn, off, size, typ) in enumerate(parts):
+        lines.append(f'mtd{i}: {size:08x} 00010000 "{pn}"')
+        os.makedirs(f"{d}/sys/mtd{i}")
+        for fn, val in (("type", typ), ("offset", off), ("size", size)):
+            if fn not in drop:
+                open(f"{d}/sys/mtd{i}/{fn}", "w").write(f"{val}\n")
+    open(f"{d}/proc", "w").write("\n".join(lines) + "\n" + ("this is not a partition table\n" if garble else ""))
+    return {"PISO_MTD_FILE": f"{d}/proc", "PISO_MTD_SYSFS": f"{d}/sys"}
+
+
+def flash_of(env, overlay_kb=None):
+    e = dict(env)
+    if overlay_kb is not None:
+        e["PISO_OVERLAY_KB"] = str(overlay_kb)
+    return lib("flash_class", env=e).stdout.strip()
+
+
+boot = [("u-boot", 0, 0x30000, "nor"), ("config", 0x30000, 0x10000, "nor"), ("factory", 0x40000, 0x10000, "nor")]
+nor16 = boot + [("firmware", 0x50000, 16 * MiB - 0x50000, "nor"), ("kernel", 0x50000, 0x200000, "nor"), ("rootfs", 0x250000, 0x600000, "nor"),
+                ("rootfs_data", 0x850000, 16 * MiB - 0x850000, "nor")]
+cases = [
+    ("8 MiB NOR", fake_mtd("nor8", [("u-boot", 0, 0x30000, "nor"), ("firmware", 0x50000, 8 * MiB - 0x50000, "nor"), ("rootfs_data", 0x450000, 8 * MiB - 0x450000, "nor")]), None, f"small {8 * MiB} nor"),
+    ("16 MiB NOR", fake_mtd("nor16a", [("u-boot", 0, 0x30000, "nor"), ("firmware", 0x50000, 16 * MiB - 0x50000, "nor"), ("rootfs_data", 0x850000, 16 * MiB - 0x850000, "nor")]), None, f"small {16 * MiB} nor"),
+    ("32 MiB NOR", fake_mtd("nor32", [("u-boot", 0, 0x30000, "nor"), ("firmware", 0x50000, 32 * MiB - 0x50000, "nor"), ("rootfs_data", 0x850000, 32 * MiB - 0x850000, "nor")]), None, f"large {32 * MiB} nor"),
+    ("16 MiB NOR, overlapping firmware / kernel / rootfs / rootfs_data", fake_mtd("nor16b", nor16), None, f"small {16 * MiB} nor"),
+    ("a fullflash of 16 MiB", fake_mtd("nor16full", [("fullflash", 0, 16 * MiB, "nor")] + nor16), None, f"small {16 * MiB} nor"),
+    ("360 T6GS from NAND", fake_mtd("t6gs", boot + [("ubi", 0, 128 * MiB, "nand")]), None, f"large {128 * MiB} nand"),
+    ("360 T6GS NOR-only build", fake_mtd("t6gsnor", nor16), None, f"small {16 * MiB} nor"),
+    ("128 MiB NAND-only board", fake_mtd("nand", [("bootloader", 0, 0x100000, "nand"), ("rootfs_data", 0x100000, 100 * MiB, "nand")]), None, f"large {100 * MiB} nand"),
+    ("no MTD and a 4 GB disk", {"PISO_MTD_FILE": f"{tmp}/no-such-mtd"}, 4 * 1024 * 1024, f"large {4 * 1024 * 1024 * 1024} disk"),
+    ("eMMC with a bootloader-only MTD and a 4 GB root", fake_mtd("emmc", boot), 4 * 1024 * 1024, f"large {4 * 1024 * 1024 * 1024} disk"),
+    ("a NAND board whose UBI partition is named UBI_DEV, 90 MiB overlay", fake_mtd("ubidev", [("UBI_DEV", 0, 128 * MiB, "nand")]), 90 * 1024, f"large {90 * MiB} disk"),
+    ("no MTD and a 12 MiB disk", {"PISO_MTD_FILE": f"{tmp}/no-such-mtd"}, 12 * 1024, f"small {12 * MiB} disk"),
+    ("a missing offset file", fake_mtd("nooff", nor16, drop=("offset",)), None, "small - odd"),
+    ("a garbled /proc/mtd", fake_mtd("garbled", nor16, garble=True), None, "small - odd"),
+]
+for label, env, okb, want in cases:
+    got = flash_of(env, okb)
+    check(got == want, f"flash_class: {label}: want '{want}', got '{got}'")
+
+fake_df = lambda free, total=7000: open(f"{bindir}/df", "w").write(f"#!/bin/sh\necho 'Filesystem 1K-blocks Used Available Use% Mounted on'\necho 'overlayfs:/overlay {total} {total - free} {free} 10% /overlay'\n")
+for free, mem, want_low, want_upd in ((1500, 64000, True, False), (3000, 64000, False, False), (3000, 20000, False, True), (5000, 20000, False, False), (1500, 20000, True, True)):
+    fake_df(free)
+    os.chmod(f"{bindir}/df", 0o755)
+    env = dict(fake_mtd("space", nor16), PISO_MEM_KB=str(mem))
+    for what, code in (("space", "cmd_space"), ("summary", 'write_summary; cat "$SUMMARY"')):
+        out = lib(code, env=env).stdout
+        check(f"flash chip:   small {16 * MiB} nor" in out and f"{free} KB" in out, f"{what}: the flash_class line and the free KB are printed ({free} KB free): " + out[:300])
+        check(("less than 2 MB free: records and updates may not fit" in out) == want_low, f"{what}: low-space warning is {want_low} at {free} KB free")
+        check(("too little free flash to download an update" in out) == want_upd, f"{what}: update-room warning is {want_upd} at {free} KB free, {mem} KB memory")
+os.remove(f"{bindir}/df")
 print(f"{checks} checks, {failures} failures")
 sys.exit(1 if failures else 0)
