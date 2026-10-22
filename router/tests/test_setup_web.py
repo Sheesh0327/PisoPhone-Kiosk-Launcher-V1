@@ -665,5 +665,26 @@ if sync_playwright:
         browser.close()
     server.shutdown()
 
+# ---- feature 010: the page's three choices send the product to the router ------------------------------------------------------------
+for mode, product in (("full", "both"), ("wifi", "wifi")):
+    core, session, server = start(mode=mode)
+    a = session.install_answers()
+    check(a["SHOP_PRODUCT"] == product, f"the {mode!r} choice sends SHOP_PRODUCT={product}: {a}")
+    if mode == "wifi":
+        session.values["KIOSK_PASSWORD"] = ""
+        check(a["KIOSK_PASSWORD"] == "" and not session.settings_problems().get("KIOSK_PASSWORD"), "wifi: no rental-phone password is sent or required")
+    else:
+        check(len(a["KIOSK_PASSWORD"]) == 12 and a["KIOSK_PASSWORD"] == session.values["KIOSK_PASSWORD"], "both: the rental-phone password is sent")
+    session.router["state"] = "configured"
+    k = session.install_answers()
+    check(k["SHOP_PRODUCT"] == product and k["KIOSK_PASSWORD"] == "" and k["GUEST_SSID"] == "", f"a router set up before is sent the product ({product}) and nothing else")
+    server.shutdown()
+core, session, server = start(mode=None)
+check(session.mode is None and not session.can_next(), "nothing is preselected: the first step waits for the choice")
+status, page, _r = Client(server).call("GET", "/", login=False)
+page = page.decode() if isinstance(page, bytes) else page
+check('id="kioskPw"' in page and "S.mode==='wifi'" in page and page.count('name="mode"') == 3 and "checked" not in page.split('name="mode"')[1].split(">")[0],
+      "the page has the three choices, none checked, and hides the rental-phone password for PisoWiFi only")
+server.shutdown()
 print(f"{checks} checks, {failures} failures")
 sys.exit(1 if failures else 0)
