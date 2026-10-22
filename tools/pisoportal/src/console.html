@@ -44,6 +44,7 @@ canvas{width:100%;height:80px;display:block}
 .err{color:var(--bad);min-height:20px}.hide{display:none!important}
 #login{max-width:380px;margin:64px auto;padding:24px;background:var(--s1);border:1px solid var(--ln);border-radius:12px}#login img{width:72px}#login h1{font-size:18px;margin:8px 0}
 dialog{border:1px solid var(--ln);border-radius:12px;background:var(--s1);color:var(--tx);padding:20px;max-width:420px;box-shadow:0 8px 24px rgba(0,0,0,.45)}dialog::backdrop{background:rgba(0,0,0,.7)}
+#wdlg{max-width:min(600px,94vw);max-height:92vh;overflow:auto}#wdlg input{width:100%;box-sizing:border-box;margin-top:6px}#wdlg li,#wdlg p{font-size:14px;line-height:20px}
 dialog h3{margin:0 0 8px;font-size:16px}dialog .row{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
 .pg{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:24px}.pg h3{font-size:13px;font-weight:650;margin:0 0 4px}
 .tr{display:grid;grid-template-columns:auto minmax(56px,1fr) auto minmax(64px,1fr) 5em auto;gap:8px;align-items:center;margin:6px 0}.tr input{height:36px;padding:0 8px}.tr .s{white-space:nowrap}
@@ -77,6 +78,19 @@ footer{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;paddin
 <div><label for="gmi">Mini-game: minutes per device per day (0 = off)</label><input id="gmi" type="number" min="0" max="120" step="1"></div>
 <div><label for="fss">Send a file to the owner (print inbox)</label><select id="fss"><option value="on">On: customers see the Send a file button</option><option value="off">Off: the button is hidden (for sites without printing)</option></select><div class="s" id="fsk"></div></div></div>
 <p class="s" id="setm" role="status"></p><p class="s">Takes effect at once. A payment already started keeps the choice it began with. The mini-game is a small offline game the router serves on the coin page; each device gets these minutes a day (a soft limit, counted by the router). The same setting on the router: <b>piso-setup voucher-choice on|off</b>.</p></div>
+<h2>Spinning wheel</h2><div class="card" id="whc"><p class="s" id="whs" role="status"></p>
+<p class="s">Customers bet minutes they paid for on a wheel; a win gives more time, a loss takes the bet. It replaces the free mini-game while it is on. It stays off until you have read the responsibility warning and typed the confirmation.</p>
+<div class="acts"><button class="go" id="whon">Turn on...</button><button class="b" id="whoff">Turn off</button></div>
+<div id="whset"><div class="f" style="max-width:520px"><div><label for="wtb">The wheel: multiplier x slots, for example 2x5 means 5 slots that pay double. 0x13 means 13 slots that lose.</label><input id="wtb" type="text" autocomplete="off" spellcheck="false"></div>
+<div class="s" id="wav"></div>
+<div><label for="wmb">Most minutes to bet on one spin</label><input id="wmb" type="number" min="1" max="120" step="1"></div>
+<div><label for="wfl">Minutes a customer always keeps after a loss</label><input id="wfl" type="number" min="0" max="600" step="1"></div>
+<div><label for="wsp">Spins per device per day</label><input id="wsp" type="number" min="1" max="1000" step="1"></div>
+<div><label for="wwt">Seconds to wait between spins</label><input id="wwt" type="number" min="0" max="3600" step="1"></div>
+<div><label for="wwc">Most minutes one device may win in a day</label><input id="wwc" type="number" min="0" max="100000" step="1"></div></div>
+<p class="err" id="whm" role="status"></p><div class="acts"><button class="go" id="whsv">Save the wheel</button></div>
+<p class="s" id="whst"></p></div>
+<p class="s">The odds are shown to every customer. A wheel that pays back more than 100% is refused. The wheel log is on the router: wheel.log in the data folder.</p></div>
 <h2>Prices</h2><div class="card" id="prc"><p class="s">Pesos to minutes. The best mix of lines is used for any amount, so &#8369;17 can be 10 + 5 + 1 + 1. Each plan needs a 1-peso line, so every coin counts. A payment already started keeps the prices it began with.</p>
 <div class="pg"><div><h3>HyperSpeed</h3><div id="rows-h"></div><button class="b" id="add-h">Add a line</button>
 <div class="f" style="margin-top:12px;max-width:240px"><div><label for="pro">Minutes for each extra peso</label><input id="pro" type="number" min="0" max="120" step="1"></div></div></div>
@@ -87,6 +101,14 @@ footer{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;paddin
 <p class="s">Takes effect at once; the customer page shows the new list on its next visit. Starting prices come from the router's settings file (HYPER_TIERS, ENDURANCE_TIERS).</p></div></section>
 </main></div>
 <footer><span>TechNet PisoHub Console</span><span><a href="https://pisophone.pages.dev/manual.html" target="_blank" rel="noopener">Owner manual</a></span></footer></div>
+<dialog id="wdlg" aria-labelledby="wdt"><h3 id="wdt">Responsibility warning. Read this before turning on the spinning wheel.</h3>
+<p>Customers will bet minutes they paid for. A win gives them more time; a loss takes the minutes away.</p>
+<p>In many places a game of chance played for something of value is regulated, needs a licence, has age limits or is not allowed at all. This software cannot know the rules where you work.</p>
+<p>By turning the wheel on you confirm that:</p>
+<ol><li>You have checked the rules where your shop operates, and you are allowed to run this.</li><li>You are responsible for who plays, children included, and for every complaint, refund, tax or penalty that comes from it.</li><li>The odds are shown to every customer and are the same for everyone; you will not change the program to hide them.</li><li>You can turn the wheel off at any time. Minutes already won or lost stay as they are.</li></ol>
+<p>To go on, type: <b id="wph">I TAKE RESPONSIBILITY</b></p>
+<input id="wcf" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Type the confirmation">
+<p class="err" id="wdm" role="status"></p><div class="row"><button class="b" id="wdno">Cancel</button><button class="go" id="wdyes" disabled>Turn on</button></div></dialog>
 <dialog id="dlg"><h3 id="dt"></h3><p id="dp" class="s"></p><div class="row"><button class="b" id="dno">Cancel</button><button class="go" id="dyes"></button></div></dialog>
 <script src="/verify.js"></script>
 <script>
