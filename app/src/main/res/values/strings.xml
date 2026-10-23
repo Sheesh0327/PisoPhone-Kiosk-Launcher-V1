@@ -25,6 +25,26 @@
     <string name="lock_cd_backdrop">Change backdrop colour</string>
     <string name="lock_cd_admin">Owner settings</string>
     <string name="lock_cd_mascot">TechNet mascot</string>
+    <!-- The maker's credit at the bottom of the lock and home screens (feature 013). Not configurable. -->
+    <string name="maker_credit">by TechNet Solutions</string>
+
+    <!-- Owner vault: what the coin box told this phone about the shop's look (feature 013). Read-only. -->
+    <string name="vault_branding_title">Shop branding</string>
+    <string name="vault_branding_help">The colours, shop name and title come from the coin box. Change them on the box\'s admin page; this phone only shows what it last received.</string>
+    <string name="vault_branding_palette">Colour palette</string>
+    <string name="vault_branding_name">Shop name</string>
+    <string name="vault_branding_headline">Title</string>
+    <string name="vault_branding_density">Background animation</string>
+    <string name="vault_branding_heard">Last from the box</string>
+    <string name="vault_branding_default_palette">TechNet (default)</string>
+    <string name="vault_branding_default_title">PisoPhone (default)</string>
+    <string name="vault_branding_default_density">Normal (default)</string>
+    <string name="vault_branding_not_set">not set</string>
+    <string name="vault_branding_never">never</string>
+    <string name="vault_branding_just_now">just now</string>
+    <string name="vault_branding_min_ago">%1$d min ago</string>
+    <string name="vault_branding_hours_ago">%1$d h ago</string>
+    <string name="vault_branding_days_ago">%1$d d ago</string>
 
     <!-- Banners -->
     <string name="banner_low_battery">Low battery (%1$d%%)</string>

@@ -151,6 +151,8 @@ fun SecurityVaultView(
 
             VaultUpdateCard(context = context, onShowHelp = showHelp)
 
+            VaultBrandingCard(context = context, onShowHelp = showHelp)
+
             VaultDiagnosticsSection(context = context, onShowHelp = showHelp)
 
             PisoButton(text = stringResource(R.string.ui_exit_owner_settings), onClick = onClose, style = PisoButtonStyle.Primary, size = PisoButtonSize.Medium)

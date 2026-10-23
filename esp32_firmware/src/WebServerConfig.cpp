@@ -17,6 +17,7 @@
 #include "Config.h"
 #if PISO_HAS_PHONES
 #include "PhoneProfileStore.h"
+#include "ShopBrandingStore.h"
 #endif
 #include "PulseGuard.h"
 #include "PinRules.h"
@@ -380,6 +381,7 @@ void handleSave() {
         }
         return true;
     });
+    pushBrandingToPhones(); // so a phone that missed a branding push catches up; nothing is sent while none was saved
 #else
     Serial.println("\n[+] Config updated and saved.");
 #endif

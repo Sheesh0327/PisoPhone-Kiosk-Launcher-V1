@@ -24,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -34,6 +35,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.pisophone.kiosk.R
 import com.pisophone.kiosk.model.AppInfo
+import com.pisophone.kiosk.ui.theme.BrandPalette
 import com.pisophone.kiosk.util.PinnedSlotsManager
 
 class LauncherThemeColors(
@@ -47,7 +49,24 @@ class LauncherThemeColors(
     val textMuted: Color = Color(0xFF64748B),
     val border: Color = Color(0xFF1E293B),
     val borderEmerald: Color = Color(0x4010B981),
-)
+) {
+    companion object {
+        /**
+         * The home screen's colours for the shop's palette (feature 013): only the background and the accent follow it; the text,
+         * the surfaces and the cards stay. A shop with no palette gets today's colours exactly.
+         */
+        fun forBranding(paletteId: String?): LauncherThemeColors {
+            if (paletteId == null) return LauncherThemeColors()
+            val palette = BrandPalette.of(paletteId)
+            return LauncherThemeColors(
+                bg = palette.top,
+                primary = palette.accent,
+                primaryLight = lerp(palette.accent, Color.White, 0.25f),
+                borderEmerald = palette.accent.copy(alpha = 0.25f),
+            )
+        }
+    }
+}
 
 @Composable
 fun PinAppPickerModal(

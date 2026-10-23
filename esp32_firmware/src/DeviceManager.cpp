@@ -7,6 +7,7 @@
 #include "Diagnostics.h"
 #include "ReplayCheck.h"
 #include "SecretMode.h"
+#include "ShopBrandingStore.h"
 #include "CoinSlotManager.h"
 #include "HardwareManager.h"
 #include "Security.h"
@@ -90,6 +91,7 @@ bool pairDeviceToSlot(int slotNum, String devId, String ip, String name) {
         if (secretmode::mayPushAdminPassword(isLegacyKeyMode(), webPassword.c_str()))
             pushParams += "&admin_pin=" + webPassword;
         sendAuthenticated(ip, targetPort, "/config", "/challenge", pushParams, 1000);
+        pushBrandingToIp(ip); // the shop's look in a push of its own, if the owner set one
     }
     return true;
 }

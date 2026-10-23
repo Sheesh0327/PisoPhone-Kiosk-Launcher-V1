@@ -13,6 +13,7 @@ import com.pisophone.kiosk.security.KioskActivationManager
 import com.pisophone.kiosk.security.KioskSecurity
 import com.pisophone.kiosk.server.KioskServerDelegate
 import com.pisophone.kiosk.util.HardwareFeedback
+import com.pisophone.kiosk.util.ShopBranding
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -156,6 +157,12 @@ class KioskServerCoordinator(
         Handler(Looper.getMainLooper()).post {
             Toast.makeText(context, "Config Synced: $currentName", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    override fun onBrandingUpdated(palette: String?, shopName: String?, title: String?, density: String?) {
+        // stored in the device-protected preferences so the lock screen shows it before unlock; nothing here touches money or time
+        val stored = ShopBranding.applyFromBox(context, palette, shopName, title, density)
+        Log.d(TAG, "Master pushed branding: stored=$stored")
     }
 
     override fun onTriggerAction(action: String, slotNum: Int?, extra: Map<String, String>?) {

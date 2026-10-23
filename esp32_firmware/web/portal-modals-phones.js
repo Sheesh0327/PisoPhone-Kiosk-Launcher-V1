@@ -348,6 +348,54 @@ window.addEventListener('load', function() {
 });
 
 
+// ---- Shop branding (Settings): the palette, the shop name, the title and the animation, handed to every paired phone ---------------
+function brandingFail(data) {
+    const why = {
+        BAD_PALETTE: 'That colour palette is not one of the list.',
+        BAD_DENSITY: 'That animation setting is not one of the list.',
+        BAD_NAME: 'The shop name must be up to 32 characters, with no | ; " \\ < > & and no line breaks, and no space at either end.',
+        BAD_TITLE: 'The title must be up to 20 characters, with no | ; " \\ < > & and no line breaks, and no space at either end.',
+        TOO_LONG_FOR_PUSH: 'The name and title are too long to send to the phones. Use fewer accented characters or shorter words.',
+        NO_BRANDING: 'The form was incomplete. Reload the page and try again.'
+    };
+    notify((data && why[data.error]) || 'Could not save the branding.', 'bad');
+}
+
+function showBranding(data) {
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v || ''; };
+    set('brand_palette', data.palette);
+    set('brand_density', data.density);
+    set('brand_name', data.name);
+    set('brand_title', data.title);
+}
+
+window.loadBranding = function() {
+    fetch('/api/branding')
+        .then(res => res.json())
+        .then(data => { if (data.success) showBranding(data); })
+        .catch(() => {});
+};
+
+window.saveBranding = function() {
+    const val = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+    const body = 'palette=' + encodeURIComponent(val('brand_palette')) + '&density=' + encodeURIComponent(val('brand_density')) +
+        '&name=' + encodeURIComponent(val('brand_name')) + '&title=' + encodeURIComponent(val('brand_title'));
+    const btn = document.getElementById('brand_save');
+    if (btn) btn.disabled = true;
+    fetch('/api/branding', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body })
+        .then(res => res.json())
+        .then(data => {
+            if (!data.success) { brandingFail(data); return; }
+            showBranding(data);
+            notify('Branding saved. Phones were told.', 'ok');
+        })
+        .catch(() => notify('Could not reach the box.', 'bad'))
+        .finally(() => { if (btn) btn.disabled = false; });
+};
+
+window.addEventListener('load', function() { window.loadBranding(); });
+
+
 // ---- Slot licenses (Phone slots): a key the owner made for this box opens one more slot -----------------------------------------
 window.focusSlotLicense = function() {
     const box = document.getElementById('licensebox');
