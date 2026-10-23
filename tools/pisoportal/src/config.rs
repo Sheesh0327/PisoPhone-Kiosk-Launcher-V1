@@ -12,6 +12,8 @@ pub struct Config {
     pub gw_box: String,
     pub gw_key: String,
     pub data_dir: String,
+    /// "wifi" (PisoWiFi only) or "both"; anything else, or nothing, means "both". Only the console tab label depends on it.
+    pub shop_product: String,
     pub ndsctl: String,
     pub arp_file: String,
     pub first_wait: u64,
@@ -162,6 +164,7 @@ impl Config {
             gw_box: get("GW_BOX", "10.0.0.10"),
             gw_key: get("GW_KEY", ""),
             data_dir: get("DATA_DIR", "/etc/coinslot.d"),
+            shop_product: if get("SHOP_PRODUCT", "") == "wifi" { "wifi".to_string() } else { "both".to_string() },
             ndsctl: get("NDSCTL", "ndsctl"),
             arp_file: get("ARP_FILE", "/proc/net/arp"),
             first_wait: num("COIN_FIRST_WAIT_SECONDS", 30),
@@ -225,6 +228,19 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_product_is_wifi_or_both_and_missing_means_both() {
+        let one = |v: &str| {
+            let mut m = HashMap::new();
+            m.insert("SHOP_PRODUCT".to_string(), v.to_string());
+            Config::from_map(m).shop_product
+        };
+        assert_eq!(one("wifi"), "wifi");
+        assert_eq!(one("both"), "both");
+        assert_eq!(one("something else"), "both");
+        assert_eq!(Config::from_map(HashMap::new()).shop_product, "both");
+    }
 
     #[test]
     fn on_and_off_settings() {

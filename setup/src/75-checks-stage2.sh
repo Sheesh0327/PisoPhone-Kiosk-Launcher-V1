@@ -3,7 +3,7 @@ check_all() {  # prints PASS/FAIL lines, returns the number of failures
 	_ck() { if eval "$2" > /dev/null 2>&1; then log "PASS  $1"; else log "FAIL  $1"; _bad=$((_bad + 1)); fi; }
 	_ck "LAN address is $LAN_IP" "ip -4 addr show br-lan | grep -q 'inet $LAN_IP/'"
 	_ck "guest network is up" "ip -4 addr show br-guest | grep -q 'inet $GUEST_IP/'"
-	_ck "hidden Wi-Fi $KIOSK_SSID is on" "iwinfo | grep -q 'ESSID: \"$KIOSK_SSID\"' || wifi status 2> /dev/null | grep -q '\"ssid\": \"$KIOSK_SSID\"'"
+	wifi_only || _ck "hidden Wi-Fi $KIOSK_SSID is on" "iwinfo | grep -q 'ESSID: \"$KIOSK_SSID\"' || wifi status 2> /dev/null | grep -q '\"ssid\": \"$KIOSK_SSID\"'"
 	_ck "Wi-Fi $(conf_get GUEST_NAME) is broadcasting" "iwinfo | grep -q 'ESSID: \"$(conf_get GUEST_NAME)\"'"
 	_ck "the coin box has its own Wi-Fi password (not the published default)" "[ \"\$(uci -q get wireless.box_ap.key)\" != '$BOX_DEFAULT_WIFI' ]"
 	_ck "hidden Wi-Fi $BOX_SSID is on and locked to the box" "[ \"\$(uci -q get wireless.box_ap.macfilter)\" = allow ] && [ -n \"\$(uci -q get wireless.box_ap.maclist)\" ]"
@@ -84,6 +84,7 @@ stage2() {
 	[ "$(conf_get ROOT_PASS_SET)" = 1 ] || { log "INCOMPLETE: the router password was not set. Run: piso-setup set-password"; _f=$((_f + 1)); }
 	if [ "$_f" = 0 ]; then
 		echo "DONE all checks passed" > "$STATE"; log ""; log "SETUP COMPLETE. Read $SUMMARY (ssh root@$LAN_IP)."
+		drop_installer_copy
 		tip "next: open the coin box page at http://$BOX_IP/ and use Install & Provision for each rental phone."
 		tip "keep the printed setup sheet (or the summary) somewhere safe: it has every password. The router's admin ports can be limited to your own computer with: piso-setup lock-admin"
 		tip "to check the system later, run: piso-setup status (a quick health check) or piso-setup diag (everything needed to report a problem)."

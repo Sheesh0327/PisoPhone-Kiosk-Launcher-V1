@@ -63,6 +63,9 @@ write_handout() {
 	_f="${HANDOUT:-/root/piso-handout.html}"
 	_site=$(html_esc "$(conf_get SITE_NAME)"); _guest=$(html_esc "$(conf_get GUEST_NAME)"); _kp=$(html_esc "$(conf_get KIOSK_PASS)")
 	_bp=$(html_esc "$(conf_get BOX_ADMIN_PASS)"); _rp=$(html_esc "$(if [ "$(conf_get ROOT_PASS_SET)" = 1 ]; then conf_get ROOT_PASS; else echo "(not set by the setup: run piso-setup set-password)"; fi)")
+	# where the owner reaches the coin box and the router: the rental phones' Wi-Fi exists only when there are rental phones
+	if wifi_only; then _where_box="on the router's LAN"; _where_router="on a LAN cable"; _pin_note=""
+	else _where_box="on the PisoKiosk network"; _where_router="on the PisoKiosk network or a LAN cable"; _pin_note="<br>This password is also the admin PIN of the rental phones."; fi
 	umask 077
 	cat > "$_f" << EOT
 <!doctype html><html><head><meta charset="utf-8"><title>${_site:-PisoPhone} setup sheet</title>
@@ -73,11 +76,23 @@ code{font:1.05em monospace}.warn{border:2px solid #b00;padding:.6rem 1rem;margin
 <div class="warn"><b>Keep this page private.</b> It holds the passwords for the whole system. Store it safely and do not post it.</div>
 <table>
 <tr><th>Customer Wi-Fi (public)</th><td><code>${_guest}</code> &middot; open, customers pay by coin</td></tr>
+EOT
+	if ! wifi_only; then
+		cat >> "$_f" << EOT
 <tr><th>Rental-phone Wi-Fi (hidden)</th><td>name <code>${KIOSK_SSID}</code><br>password <code>${_kp}</code><br>Not shown in any Wi-Fi list. Only used when setting up a phone.</td></tr>
-<tr><th>Coin box admin page</th><td>address <code>http://${BOX_IP}</code> (on the PisoKiosk network)<br>user <code>admin</code><br>password <code>${_bp}</code><br>This password is also the admin PIN of the rental phones.</td></tr>
-<tr><th>Router login (SSH / LuCI)</th><td>address <code>${LAN_IP}</code> (on the PisoKiosk network or a LAN cable)<br>user <code>root</code><br>password <code>${_rp}</code></td></tr>
+EOT
+	fi
+	cat >> "$_f" << EOT
+<tr><th>Coin box admin page</th><td>address <code>http://${BOX_IP}</code> (${_where_box})<br>user <code>admin</code><br>password <code>${_bp}</code>${_pin_note}</td></tr>
+<tr><th>Router login (SSH / LuCI)</th><td>address <code>${LAN_IP}</code> (${_where_router})<br>user <code>root</code><br>password <code>${_rp}</code></td></tr>
 </table>
+EOT
+	if ! wifi_only; then
+		cat >> "$_f" << EOT
 <p><b>Setting up a new rental phone:</b> open the coin box admin page and tap <i>Set up a phone</i>. The page already has the PisoKiosk password above (the box holds it for the link); type it only if the page asks. Then scan the QR code on the factory-reset phone, or plug it in by USB.</p>
+EOT
+	fi
+	cat >> "$_f" << EOT
 </body></html>
 EOT
 	umask 022

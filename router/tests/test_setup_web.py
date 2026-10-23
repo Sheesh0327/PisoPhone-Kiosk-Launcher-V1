@@ -662,8 +662,51 @@ if sync_playwright:
         check(not problems, f"no script error on the page: {problems}")
         overflow = page.evaluate("document.documentElement.scrollWidth > window.innerWidth")
         check(not overflow, "no sideways scrolling on a phone screen")
+        # feature 010: PisoWiFi only hides the rental-phone password, the full system shows it
+        for mode_value, kiosk_visible in (("wifi", False), ("full", True)):
+            core2, session2, server2 = start(mode=None)
+            page2 = browser.new_page(viewport={"width": 390, "height": 800})
+            page2.goto(f"http://127.0.0.1:{server2.server_address[1]}")
+            page2.fill("#pin", "123456")
+            page2.click("#pinBtn")
+            page2.wait_for_selector("#login", state="hidden")
+            page2.wait_for_selector("#checks .kv")
+            check(page2.is_disabled("#btnNextStep") and not page2.is_checked("input[name=mode][value=wifi]") and not page2.is_checked("input[name=mode][value=full]") and not page2.is_checked("input[name=mode][value=phone]"), "nothing is chosen at the start")
+            page2.check(f"input[name=mode][value={mode_value}]")
+            until(lambda: not page2.is_disabled("#btnNextStep"), "Next opens")
+            page2.click("#btnNextStep")
+            page2.wait_for_selector("#s1", state="visible")
+            until(lambda: "192.168.1.1" in page2.inner_text("#routerBox"), "the router is found")
+            page2.click("#btnNextStep")
+            page2.wait_for_selector("#s2", state="visible")
+            page2.click("#pwOwn summary")
+            check(page2.is_visible("#KIOSK_PASSWORD") == kiosk_visible and page2.is_visible("#ROOT_PASSWORD"),
+                  f"{mode_value}: the rental-phone password field is {'shown' if kiosk_visible else 'hidden'} in the page")
+            page2.close()
+            server2.shutdown()
         browser.close()
     server.shutdown()
 
+# ---- feature 010: the page's three choices send the product to the router ------------------------------------------------------------
+for mode, product in (("full", "both"), ("wifi", "wifi")):
+    core, session, server = start(mode=mode)
+    a = session.install_answers()
+    check(a["SHOP_PRODUCT"] == product, f"the {mode!r} choice sends SHOP_PRODUCT={product}: {a}")
+    if mode == "wifi":
+        session.values["KIOSK_PASSWORD"] = ""
+        check(a["KIOSK_PASSWORD"] == "" and not session.settings_problems().get("KIOSK_PASSWORD"), "wifi: no rental-phone password is sent or required")
+    else:
+        check(len(a["KIOSK_PASSWORD"]) == 12 and a["KIOSK_PASSWORD"] == session.values["KIOSK_PASSWORD"], "both: the rental-phone password is sent")
+    session.router["state"] = "configured"
+    k = session.install_answers()
+    check(k["SHOP_PRODUCT"] == product and k["KIOSK_PASSWORD"] == "" and k["GUEST_SSID"] == "", f"a router set up before is sent the product ({product}) and nothing else")
+    server.shutdown()
+core, session, server = start(mode=None)
+check(session.mode is None and not session.can_next(), "nothing is preselected: the first step waits for the choice")
+status, page, _r = Client(server).call("GET", "/", login=False)
+page = page.decode() if isinstance(page, bytes) else page
+check('id="kioskPw"' in page and "S.mode==='wifi'" in page and page.count('name="mode"') == 3 and "checked" not in page.split('name="mode"')[1].split(">")[0],
+      "the page has the three choices, none checked, and hides the rental-phone password for PisoWiFi only")
+server.shutdown()
 print(f"{checks} checks, {failures} failures")
 sys.exit(1 if failures else 0)

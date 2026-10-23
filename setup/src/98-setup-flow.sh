@@ -60,7 +60,7 @@ ask_password() {
 # Every password the system needs is chosen here, once. Super admin has no password: the owner opens it with the admin QR code.
 choose_passwords() {
 	ask_password ROOT_PASS "router password (SSH and LuCI login)" 8 63 "$ROOT_PASSWORD"
-	ask_password KIOSK_PASS "PisoKiosk Wi-Fi password (typed once into each rental phone's setup page)" 8 63 "$KIOSK_PASSWORD"
+	wifi_only || ask_password KIOSK_PASS "PisoKiosk Wi-Fi password (typed once into each rental phone's setup page)" 8 63 "$KIOSK_PASSWORD"
 	ask_password BOX_ADMIN_PASS_NEW "coin box admin password (the box's web page; also the phones' admin PIN)" 8 32 "$BOX_NEW_ADMIN_PASSWORD"
 }
 
@@ -71,12 +71,12 @@ review_choices() {
 	echo
 	echo "================ PLEASE REVIEW ================"
 	echo "  Public Wi-Fi (customers):  $GUEST_NAME  (open, behind the coin payment page)"
-	echo "  Rental-phone Wi-Fi:        $KIOSK_SSID  (hidden, 2.4 + 5 GHz)"
+	wifi_only || echo "  Rental-phone Wi-Fi:        $KIOSK_SSID  (hidden, 2.4 + 5 GHz)"
 	echo "  Coin box network:          $BOX_SSID  (hidden, only the box)"
 	echo "  Site name:                 $(conf_get SITE_NAME)"
 	echo "  Router address:            $LAN_IP   Country: ${COUNTRY:-PH}"
 	echo "  Router password:           $(_pw ROOT_PASS)"
-	echo "  Kiosk Wi-Fi password:      $(_pw KIOSK_PASS)"
+	wifi_only || echo "  Kiosk Wi-Fi password:      $(_pw KIOSK_PASS)"
 	echo "  Coin box admin password:   $(_pw BOX_ADMIN_PASS_NEW)"
 	echo "  The Wi-Fi networks of this router are replaced; the coin box is paired and set up; SSH stays open."
 	echo "==============================================="
@@ -84,7 +84,35 @@ review_choices() {
 	case "$_a" in y | Y | yes) ;; *) echo "Cancelled. Nothing was changed (answers kept: run the setup again to change them)."; exit 1 ;; esac
 }
 
+# confirm_product: switching an installed both router to PisoWiFi only removes the rental phones' Wi-Fi and its password, so it is said
+# first and asked (a terminal) or accepted with --yes. It changes nothing: the product is stored by apply_product, once the new Wi-Fi is
+# written (a cancel at the review, or an install that stops early, leaves the router and its settings as they were).
+confirm_product() {
+	if wifi_only && [ -n "$(conf_get KIOSK_PASS)" ]; then
+		echo
+		echo "This router is set up for rental phones. As PisoWiFi only, the hidden Wi-Fi $KIOSK_SSID is removed: rental phones on $KIOSK_SSID will lose their Wi-Fi."
+		echo "Customer Wi-Fi, the coin box, vouchers, sales and paid time are not touched."
+		if [ "$DRY" = 1 ]; then echo "(dry run: nothing is changed)"
+		elif [ "$ASSUME_YES" != 1 ]; then
+			[ -t 0 ] || die "this needs your answer: run it at a terminal, or add --yes. Nothing was changed."
+			printf 'Remove it and continue? [y/N] '; read -r _a
+			case "$_a" in y | Y | yes) ;; *) echo "Cancelled. Nothing was changed."; exit 1 ;; esac
+		fi
+	fi
+}
+
+# apply_product: after apply_batch has written the router's Wi-Fi: keep the product, and on a PisoWiFi-only router forget the rental
+# phones' password (their Wi-Fi is gone). The environment's SHOP_PRODUCT decides until then.
+apply_product() {
+	store_product
+	if wifi_only; then conf_del KIOSK_PASS; fi
+}
+
+# kiosk_pass: the rental phones' Wi-Fi password (made once); a PisoWiFi-only router has none
+kiosk_pass() { wifi_only && return 0; secret KIOSK_PASS 12; }
+
 stage1() {
+	check_product
 	preflight
 	if [ "$DRY" != 1 ] && [ "$ASSUME_YES" != 1 ] && [ -t 0 ]; then
 		echo
@@ -92,12 +120,13 @@ stage1() {
 		echo "First a few questions; nothing is changed until you have reviewed your answers."
 	fi
 	choose_names
+	confirm_product
 	ask_name SITE_NAME "shop / site (printed on the setup sheet, shown in Telegram messages)" "$GUEST_NAME" "$SITE_NAME"
 	valid_plain "$ASKED" || die "the site name may not contain quotes, backslashes, \$ or backticks"
 	choose_passwords
 	review_choices
 	ask_telegram
-	KIOSK_PASS=$(secret KIOSK_PASS 12)
+	KIOSK_PASS=$(kiosk_pass)
 	secret ROOT_PASS 14 > /dev/null; secret GW_KEY 64 hex > /dev/null; secret BOX_ADMIN_PASS_NEW 16 > /dev/null
 	BOX_MAC=$(conf_get BOX_MAC)
 	if [ "$DRY" = 1 ]; then uci_batch "<kiosk password>" "$GUEST_NAME" "$BOX_MAC"; return 0; fi
@@ -108,11 +137,13 @@ stage1() {
 	step "Writing the router settings"
 	[ -n "$(conf_get CONSOLE_MODE)" ] || conf_set CONSOLE_MODE front   # (the console is the front page, http://admin.hub; LuCI is on 8080)
 	apply_batch "$KIOSK_PASS" "$GUEST_NAME" "$BOX_MAC"
+	apply_product
 	stage2
 }
 
 main() {
 	CMD=""
+	SELF_COPY=$(abs_path "$0")
 	while [ $# -gt 0 ]; do
 		case "$1" in
 			--dry-run) DRY=1 ;;
@@ -123,6 +154,7 @@ main() {
 		esac
 		shift
 	done
+	[ -z "$CMD" ] || unset SHOP_PRODUCT   # (the product is chosen by the installer only: no other command, an update included, changes it)
 	case "$CMD" in
 		status) cmd_status ;;
 		wifi-name) cmd_wifi_name "$ARG" ;;
@@ -154,6 +186,7 @@ main() {
 		wifi-admin) cmd_wifi_admin "$ARG" ;;
 		verify) cmd_verify ;;
 		kiosk-wifi)
+			if wifi_only; then echo "this shop has no rental phones (PisoWiFi only)"; return 0; fi
 			DRY=0; [ "$(id -u)" = 0 ] || die "run as root"
 			push_kiosk_wifi
 			if kiosk_wifi_on_box; then log "checked: the box's \"Set up a phone\" link carries the password"

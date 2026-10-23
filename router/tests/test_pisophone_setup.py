@@ -140,7 +140,7 @@ script("netinit", f'echo "$1" >> {tmp_p}/network.log\n')
 FAKE_SETUP = f"""#!/bin/sh
 PISO_RELEASE='9.9.9'
 echo "  TIP: fake advice"
-echo "SETUP-RAN args=[$*] root=[$ROOT_PASSWORD] kiosk=[$KIOSK_PASSWORD] box=[$BOX_NEW_ADMIN_PASSWORD] guest=[$GUEST_SSID] site=[$SITE_NAME]"
+echo "SETUP-RAN args=[$*] root=[$ROOT_PASSWORD] kiosk=[$KIOSK_PASSWORD] box=[$BOX_NEW_ADMIN_PASSWORD] guest=[$GUEST_SSID] site=[$SITE_NAME] product=[$SHOP_PRODUCT]"
 R={fake_root_p}
 case "$(cat {tmp_p}/result 2>/dev/null)" in
   fail) echo "ERROR: the coin box did not join"; echo "FAILED the coin box did not join the hidden PisoCoinBox network" > $R/tmp/piso-setup.state; exit 1 ;;
@@ -250,7 +250,7 @@ check("set network.lan.ipaddr=10.0.0.1" in r.uci and open(f"{tmp}/lan").read().s
 check("SETUP-RAN args=[--yes] root=[routerpass1] kiosk=[kioskpass1] box=[boxadmin99] guest=[Tindahan WiFi] site=[Aling Nena]" in r.out,
       "the setup got every answer, unattended: " + r.out[-600:])
 check("routerpass1" not in r.ssh and "kioskpass1" not in r.ssh and "boxadmin99" not in r.ssh, "no password on any command line")
-check(r.input == "routerpass1\nkioskpass1\nboxadmin99\nTindahan WiFi\nAling Nena\nPH\n", "the answers went over the connection's input: " + repr(r.input))
+check(r.input == "routerpass1\nkioskpass1\nboxadmin99\nTindahan WiFi\nAling Nena\nPH\nboth\n", "the answers went over the connection's input: " + repr(r.input))
 check(r.ssh.count("root@192.168.1.1") == 2 and r.ssh.count("root@10.0.0.1") == 1, "probe and installer at 192.168.1.1, setup at 10.0.0.1: " + r.ssh)
 check("HostKeyAlias=pisophone-router" in r.ssh and "StrictHostKeyChecking=accept-new" in r.ssh, "one pinned host key for both addresses")
 check("https://pisophone.pages.dev/install.sh" in r.wget and "https://pisophone.pages.dev/setup/piso-setup.sh" in r.wget, "main's installer and setup file")
@@ -327,9 +327,9 @@ check(r.err and "not been set up yet" in r.err, "--update on a router that was n
 
 # --country, and a configured router still gets the country
 r = e2e(lan="10.0.0.1", yes=True, country="SG", no_browser=True)
-check(r.rc == 0 and r.input.endswith("\nSG\n"), "--country SG is sent: " + repr(r.input))
+check(r.rc == 0 and r.input.endswith("\nSG\nboth\n"), "--country SG is sent: " + repr(r.input))
 r = e2e(answers=("y", "n"), lan="10.0.0.1", probe="configured", country="JP")
-check(r.input == "\n\n\n\n\nJP\n", "a configured router: only the country is sent: " + repr(r.input))
+check(r.input == "\n\n\n\n\nJP\n\n", "a configured router: only the country is sent (no product was chosen): " + repr(r.input))
 
 # Telegram: the router waits for a message to the bot, the owner confirms the chat
 script("piso-setup", f"""[ "$1" = telegram ] || exit 9
@@ -489,6 +489,84 @@ check(pf4[1][1] is False and "CERTIFICATE_VERIFY_FAILED" in pf4[1][2] and "inspe
 pf5 = ps.preflight("main", opener=lambda req, timeout=0: (_ for _ in ()).throw(urllib.error.HTTPError(req.full_url, 403, "Forbidden", {}, None)), tool=lambda: object(), which=lambda n: "/usr/bin/ssh")
 check("HTTP 403" in pf5[1][2], "preflight: an HTTP error is named: " + pf5[1][2])
 check(ps.box_online("10.0.0.10", probe=lambda h, p: (h, p) == ("10.0.0.10", 80)) is True, "the box is online when its page port answers")
+
+# ---- feature 010: the product choice (PisoWiFi, PisoPhone or both), nothing preselected --------------------------------------------
+check("SHOP_PRODUCT" in ps.ANSWER_ORDER, "SHOP_PRODUCT travels to the router with the other answers (ANSWER_ORDER)")
+check("IFS= read -r SHOP_PRODUCT" in ps.setup_command("main") and "export " in ps.setup_command("main") and "SHOP_PRODUCT" in ps.setup_command("main").split("export ")[1].split(";")[0],
+      "the router command reads and exports SHOP_PRODUCT")
+ns = lambda **k: types.SimpleNamespace(**dict(dict(product=None, phone_only=False, yes=False), **k))
+check(ps.product_choice(ns(product="wifi")) == "wifi" and ps.product_choice(ns(product="both")) == "both" and ps.product_choice(ns(product="phone")) == "phone", "--product wifi, phone, both")
+check(ps.product_choice(ns(phone_only=True)) == "phone", "--phone-only stays and means --product phone")
+for bad in (ns(product="wifi", phone_only=True), ns(product="both", phone_only=True)):
+    try:
+        ps.product_choice(bad)
+        check(False, "--phone-only with another product is refused")
+    except ps.SetupError:
+        check(True, "")
+try:
+    ps.product_choice(ns(yes=True))
+    check(False, "--yes without a product is refused")
+except ps.SetupError as e:
+    check("choose the product: --product wifi, phone or both" in str(e), "--yes without a product stops and says what to choose: " + str(e))
+asked = []
+sys.stdout = io.StringIO()
+try:
+    got = ps.product_choice(ns(), lambda prompt="": (asked.append(prompt), ["", "9", "tea", "3"][len(asked) - 1])[1])
+finally:
+    shown, sys.stdout = sys.stdout.getvalue(), sys.__stdout__
+check(got == "both" and len(asked) == 4, "terminal: nothing preselected (Enter and nonsense ask again), 3 is both: " + str(asked))
+check("PisoWiFi" in shown and "PisoPhone" in shown and "both" in shown.lower() and "[" not in "".join(asked), "the three products are listed; the prompt shows no default")
+for word, want in (("1", "wifi"), ("wifi", "wifi"), ("2", "phone"), ("phone", "phone"), ("both", "both")):
+    sys.stdout = io.StringIO()
+    try:
+        check(ps.product_choice(ns(), reader(word)) == want, f"typing {word!r} chooses {want}")
+    finally:
+        sys.stdout = sys.__stdout__
+# answers: the rental-phone Wi-Fi password only for both
+a = ps.collect_answers(types.SimpleNamespace(yes=True, guest_ssid="Cafe", site_name=None, product="wifi"))
+check(a["SHOP_PRODUCT"] == "wifi" and a["KIOSK_PASSWORD"] == "" and len(a["ROOT_PASSWORD"]) == 14, "--yes, wifi: no rental-phone password is made; SHOP_PRODUCT=wifi")
+ps.check_answers(a)
+a = ps.collect_answers(types.SimpleNamespace(yes=True, guest_ssid="Cafe", site_name=None, product="both"))
+check(a["SHOP_PRODUCT"] == "both" and len(a["KIOSK_PASSWORD"]) == 12, "--yes, both: the password is made")
+sys.stdout = io.StringIO()
+try:
+    a = ps.collect_answers(types.SimpleNamespace(yes=False, guest_ssid=None, site_name=None, product="wifi"), reader("", ""),
+                           reader("routerpass1", "routerpass1", "boxadmin99", "boxadmin99"))
+finally:
+    sys.stdout = sys.__stdout__
+check(a["KIOSK_PASSWORD"] == "" and a["ROOT_PASSWORD"] == "routerpass1" and a["BOX_NEW_ADMIN_PASSWORD"] == "boxadmin99", "terminal, wifi: the rental-phone password is not asked")
+sys.stdout = io.StringIO()
+try:
+    ps.review(a)
+finally:
+    shown, sys.stdout = sys.stdout.getvalue(), sys.__stdout__
+check("Rental-phone" not in shown and "PisoKiosk" not in shown and "Public Wi-Fi" in shown, "the review of a wifi setup has no rental-phone lines: " + shown)
+k = ps.kept_answers("PH", "wifi")
+check(k["SHOP_PRODUCT"] == "wifi" and ps.kept_answers("PH")["SHOP_PRODUCT"] == "", "a router that is set up already is sent the product only when one was chosen")
+# main: --product phone runs the PisoPhone-only path; --yes without a product changes nothing
+called = []
+saved_run, saved_dep = ps.run_phone_setup, ps.ensure_dependencies
+ps.run_phone_setup = lambda args, *x, **y: called.append(args.phone_only)
+ps.ensure_dependencies = lambda *x, **y: None
+sys.stdout, sys.stderr = io.StringIO(), io.StringIO()
+try:
+    rc_phone = ps.main(["--product", "phone", "--no-install"])
+    rc_yes = ps.main(["--yes", "--no-install"])
+    out_yes = sys.stdout.getvalue()
+finally:
+    sys.stdout, sys.stderr = sys.__stdout__, sys.__stderr__
+    ps.run_phone_setup, ps.ensure_dependencies = saved_run, saved_dep
+check(rc_phone == 0 and called == [True], "--product phone runs the --phone-only path: " + str(called))
+check(rc_yes == 1 and "choose the product: --product wifi, phone or both" in out_yes and called == [True], "--yes without --product: stops, nothing runs: " + out_yes)
+# the router setup carries the product
+for prod, kiosk_secrets in (("wifi", ()), ("both", ("kioskpass1", "kioskpass1"))):
+    secrets_ = ("routerpass1", "routerpass1") + kiosk_secrets + ("boxadmin99", "boxadmin99")
+    r = e2e(answers=("Tindahan WiFi", "Aling Nena", "y", "n"), secrets_=secrets_, product=prod)
+    check(r.rc == 0 and f"product=[{prod}]" in r.out, f"{prod}: the router setup gets SHOP_PRODUCT={prod}: " + r.out[-400:])
+    if prod == "wifi":
+        check("kiosk=[]" in r.out and "Rental-phone" not in r.out, "wifi: the router gets no rental-phone password")
+    else:
+        check("kiosk=[kioskpass1]" in r.out, "both: the router gets the rental-phone password")
 
 # ---- QR codes and the Wi-Fi join card -------------------------------------------------------------------------------------------
 check(ps.wifi_qr_text("PisoKiosk", "3hC4RATnpQMJ") == "WIFI:T:WPA;S:PisoKiosk;P:3hC4RATnpQMJ;H:true;;", "the Wi-Fi QR text: " + ps.wifi_qr_text("PisoKiosk", "3hC4RATnpQMJ"))
@@ -711,7 +789,7 @@ try:
     os.environ.pop("PISO_SSH")
     path = os.environ["PATH"]
     os.environ["PATH"] = tmp
-    nossh = ps.main(["--yes", "--no-install"])
+    nossh = ps.main(["--yes", "--product", "both", "--no-install"])
     os.environ["PATH"] = path
 finally:
     sys.stdout, sys.stderr = sys.__stdout__, sys.__stderr__

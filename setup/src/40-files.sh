@@ -116,11 +116,12 @@ PORTAL_PORT='$PORTAL_PORT'
 GATEWAY_NAME='$(conf_get GUEST_NAME)'
 CONSOLE_BIND='$LAN_IP'
 CONSOLE_PORT='$(console_port)'
+SHOP_PRODUCT='$(shop_product)'
 EOT
 		# the voucher choice on the coin page (piso-setup voucher-choice on|off); nothing is written until it is set: the portal's default is on
 		[ -z "$(conf_get VOUCHER_CHOICE)" ] || printf "VOUCHER_CHOICE='%s'\n" "$(conf_get VOUCHER_CHOICE)"
 		# every other line is the owner's own (prices, SEND_HOST, PAUSE_*, ...): kept as it was, the setup only owns the keys above
-		[ -r "$_cf" ] && grep -v -E '^(GW_BOX|GW_KEY|GW_BOX_MAC|PORTAL_BIND|PORTAL_PORT|GATEWAY_NAME|CONSOLE_BIND|CONSOLE_PORT|VOUCHER_CHOICE)=' "$_cf"
+		[ -r "$_cf" ] && grep -v -E '^(GW_BOX|GW_KEY|GW_BOX_MAC|PORTAL_BIND|PORTAL_PORT|GATEWAY_NAME|CONSOLE_BIND|CONSOLE_PORT|SHOP_PRODUCT|VOUCHER_CHOICE)=' "$_cf"
 		:
 	} > "$_cf.new"
 	if grep -q '^GW_KEY=' "$_cf.new"; then mv "$_cf.new" "$_cf"; else rm -f "$_cf.new"; umask 022; die "could not write $_cf (is the router's flash full? piso-setup space)"; fi
@@ -129,3 +130,19 @@ EOT
 	apply_isolation   # (the coin box's address is in it: the rules for the rental phones name it)
 }
 
+# abs_path <file>: the file's absolute path (install.sh starts the setup as ./piso-setup.sh from inside its folder)
+abs_path() {
+	case "$1" in
+		/*) echo "$1" ;;
+		*) echo "$(cd "$(dirname "$1")" 2> /dev/null && pwd)/$(basename "$1")" ;;
+	esac
+}
+
+# drop_installer_copy: after a good install, delete the copy the one-line installer saved (about 1.6 MB; the installed command
+# /usr/sbin/piso-setup has no payload). Only those two paths: a copied file or a branch test is never touched.
+drop_installer_copy() {
+	case "$SELF_COPY" in
+		"$PISO_ROOT/tmp/piso-setup.sh" | "$PISO_ROOT/root/piso-setup.sh") rm -f "$SELF_COPY"; log "removed the installer copy $SELF_COPY (the installed command is $SELF_PATH)" ;;
+	esac
+	return 0
+}

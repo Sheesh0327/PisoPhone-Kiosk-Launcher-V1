@@ -982,5 +982,293 @@ check("OTHER=1" in r.stdout.split("SETTINGS")[1].split("STATUS")[0] and "VOUCHER
       "a choice the owner made in the console is replaced (other console settings stay): " + r.stdout)
 check("voucher choice is off" in r.stdout and "VOUCHER_CHOICE='on'" in r.stdout and "usage: piso-setup voucher-choice" in r.stderr and "rc=1" in r.stdout,
       "voucher-choice shows its state, turns on again, and refuses anything else: " + r.stdout + r.stderr)
+# ---- feature 010: no installer copy is left behind after a good install ------------------------------------------------------------
+croot = f"{tmp}/copyroot"
+for d in ("tmp", "root", "other"):
+    os.makedirs(f"{croot}/{d}", exist_ok=True)
+for name in ("tmp/piso-setup.sh", "root/piso-setup.sh", "other/piso-setup.sh", "tmp/piso-setup.sh.bak"):
+    open(f"{croot}/{name}", "w").write("installer copy\n")
+r = lib(f"cd {croot}/tmp && echo REL=$(abs_path ./piso-setup.sh) && echo ABS=$(abs_path {croot}/other/piso-setup.sh)", env={"PISO_ROOT": croot})
+check(f"REL={croot}/tmp/piso-setup.sh" in r.stdout and f"ABS={croot}/other/piso-setup.sh" in r.stdout,
+      "abs_path turns ./piso-setup.sh (as install.sh starts it from inside its folder) into an absolute path: " + r.stdout + r.stderr)
+for name, gone in (("tmp/piso-setup.sh", True), ("root/piso-setup.sh", True), ("other/piso-setup.sh", False)):
+    r = lib(f'SELF_COPY={croot}/{name}; drop_installer_copy', env={"PISO_ROOT": croot})
+    check(os.path.exists(f"{croot}/{name}") != gone, f"drop_installer_copy: {name} is {'deleted' if gone else 'left alone (a copied file or a branch test)'}: " + r.stderr)
+    open(f"{croot}/{name}", "w").write("installer copy\n")
+check(os.path.exists(f"{croot}/tmp/piso-setup.sh.bak"), "drop_installer_copy deletes only the file it was started from")
+r = lib("SELF_COPY=; drop_installer_copy; echo rc=$?", env={"PISO_ROOT": croot})
+check("rc=0" in r.stdout, "drop_installer_copy with no copy known does nothing")
+s2 = text.split("stage2() {")[1].split("\n}\n")[0]
+ok_branch, bad_branch = s2.split('if [ "$_f" = 0 ]; then')[1].split("\telse\n")
+check("drop_installer_copy" in ok_branch and "drop_installer_copy" not in bad_branch, "stage 2 deletes the copy only when every check passed; a failed install keeps it for the next run")
+main_body = text.split("\nmain() {")[1].split("\n}\n")[0]
+check("SELF_COPY=$(abs_path \"$0\")" in main_body, "main makes $0 absolute before anything changes directory")
+check("/usr/sbin/piso-setup" in text and "extract_payload \"$0\"" in text, "the installed /usr/sbin/piso-setup is still written from the running file before the copy goes")
+# ---- feature 010: flash_class (the chip that holds the writable data) and the free-space lines ---------------------------------------
+MiB = 1024 * 1024
+
+
+def fake_mtd(name, parts, drop=(), garble=False):
+    """parts: [(partition name, offset, size, type)]. Writes a /proc/mtd stand-in and a sysfs tree; returns the env for lib()."""
+    d = f"{tmp}/mtd-{name}"
+    shutil.rmtree(d, ignore_errors=True)
+    os.makedirs(f"{d}/sys")
+    lines = ["dev:    size   erasesize  name"]
+    for i, (pn, off, size, typ) in enumerate(parts):
+        lines.append(f'mtd{i}: {size:08x} 00010000 "{pn}"')
+        os.makedirs(f"{d}/sys/mtd{i}")
+        for fn, val in (("type", typ), ("offset", off), ("size", size)):
+            if fn not in drop:
+                open(f"{d}/sys/mtd{i}/{fn}", "w").write(f"{val}\n")
+    open(f"{d}/proc", "w").write("\n".join(lines) + "\n" + ("this is not a partition table\n" if garble else ""))
+    return {"PISO_MTD_FILE": f"{d}/proc", "PISO_MTD_SYSFS": f"{d}/sys"}
+
+
+def flash_of(env, overlay_kb=None):
+    e = dict(env)
+    if overlay_kb is not None:
+        e["PISO_OVERLAY_KB"] = str(overlay_kb)
+    return lib("flash_class", env=e).stdout.strip()
+
+
+boot = [("u-boot", 0, 0x30000, "nor"), ("config", 0x30000, 0x10000, "nor"), ("factory", 0x40000, 0x10000, "nor")]
+nor16 = boot + [("firmware", 0x50000, 16 * MiB - 0x50000, "nor"), ("kernel", 0x50000, 0x200000, "nor"), ("rootfs", 0x250000, 0x600000, "nor"),
+                ("rootfs_data", 0x850000, 16 * MiB - 0x850000, "nor")]
+cases = [
+    ("8 MiB NOR", fake_mtd("nor8", [("u-boot", 0, 0x30000, "nor"), ("firmware", 0x50000, 8 * MiB - 0x50000, "nor"), ("rootfs_data", 0x450000, 8 * MiB - 0x450000, "nor")]), None, f"small {8 * MiB} nor"),
+    ("16 MiB NOR", fake_mtd("nor16a", [("u-boot", 0, 0x30000, "nor"), ("firmware", 0x50000, 16 * MiB - 0x50000, "nor"), ("rootfs_data", 0x850000, 16 * MiB - 0x850000, "nor")]), None, f"small {16 * MiB} nor"),
+    ("32 MiB NOR", fake_mtd("nor32", [("u-boot", 0, 0x30000, "nor"), ("firmware", 0x50000, 32 * MiB - 0x50000, "nor"), ("rootfs_data", 0x850000, 32 * MiB - 0x850000, "nor")]), None, f"large {32 * MiB} nor"),
+    ("16 MiB NOR, overlapping firmware / kernel / rootfs / rootfs_data", fake_mtd("nor16b", nor16), None, f"small {16 * MiB} nor"),
+    ("a fullflash of 16 MiB", fake_mtd("nor16full", [("fullflash", 0, 16 * MiB, "nor")] + nor16), None, f"small {16 * MiB} nor"),
+    ("360 T6GS from NAND", fake_mtd("t6gs", boot + [("ubi", 0, 128 * MiB, "nand")]), None, f"large {128 * MiB} nand"),
+    ("360 T6GS NOR-only build", fake_mtd("t6gsnor", nor16), None, f"small {16 * MiB} nor"),
+    ("128 MiB NAND-only board", fake_mtd("nand", [("bootloader", 0, 0x100000, "nand"), ("rootfs_data", 0x100000, 100 * MiB, "nand")]), None, f"large {100 * MiB} nand"),
+    ("no MTD and a 4 GB disk", {"PISO_MTD_FILE": f"{tmp}/no-such-mtd"}, 4 * 1024 * 1024, f"large {4 * 1024 * 1024 * 1024} disk"),
+    ("eMMC with a bootloader-only MTD and a 4 GB root", fake_mtd("emmc", boot), 4 * 1024 * 1024, f"large {4 * 1024 * 1024 * 1024} disk"),
+    ("a NAND board whose UBI partition is named UBI_DEV, 90 MiB overlay", fake_mtd("ubidev", [("UBI_DEV", 0, 128 * MiB, "nand")]), 90 * 1024, f"large {90 * MiB} disk"),
+    ("no MTD and a 12 MiB disk", {"PISO_MTD_FILE": f"{tmp}/no-such-mtd"}, 12 * 1024, f"small {12 * MiB} disk"),
+    ("a missing offset file", fake_mtd("nooff", nor16, drop=("offset",)), None, "small - odd"),
+    ("a garbled /proc/mtd", fake_mtd("garbled", nor16, garble=True), None, "small - odd"),
+]
+for label, env, okb, want in cases:
+    got = flash_of(env, okb)
+    check(got == want, f"flash_class: {label}: want '{want}', got '{got}'")
+
+fake_df = lambda free, total=7000: open(f"{bindir}/df", "w").write(f"#!/bin/sh\necho 'Filesystem 1K-blocks Used Available Use% Mounted on'\necho 'overlayfs:/overlay {total} {total - free} {free} 10% /overlay'\n")
+for free, mem, want_low, want_upd in ((1500, 64000, True, False), (3000, 64000, False, False), (3000, 20000, False, True), (5000, 20000, False, False), (1500, 20000, True, True)):
+    fake_df(free)
+    os.chmod(f"{bindir}/df", 0o755)
+    env = dict(fake_mtd("space", nor16), PISO_MEM_KB=str(mem))
+    for what, code in (("space", "cmd_space"), ("summary", 'write_summary; cat "$SUMMARY"')):
+        out = lib(code, env=env).stdout
+        check(f"flash chip:   small {16 * MiB} nor" in out and f"{free} KB" in out, f"{what}: the flash_class line and the free KB are printed ({free} KB free): " + out[:300])
+        check(("less than 2 MB free: records and updates may not fit" in out) == want_low, f"{what}: low-space warning is {want_low} at {free} KB free")
+        check(("too little free flash to download an update" in out) == want_upd, f"{what}: update-room warning is {want_upd} at {free} KB free, {mem} KB memory")
+os.remove(f"{bindir}/df")
+# ---- feature 010 group 5: a PisoWiFi-only router (SHOP_PRODUCT=wifi) has no rental-phone Wi-Fi --------------------------------------
+fake_uci({"radio0": "2g", "radio1": "5g"})
+both_batch = run("--dry-run").stdout
+wifi_batch = run("--dry-run", env={"SHOP_PRODUCT": "wifi"}).stdout
+check("wireless.kiosk_radio0" in both_batch and "wireless.kiosk_radio1" in both_batch, "SHOP_PRODUCT missing: the kiosk Wi-Fi is set up as before")
+check(run("--dry-run", env={"SHOP_PRODUCT": "both"}).stdout == both_batch, "SHOP_PRODUCT=both gives exactly the batch of a missing SHOP_PRODUCT")
+check("kiosk_" not in wifi_batch and "wireless.guest_radio0" in wifi_batch and "wireless.box_ap" in wifi_batch,
+      "SHOP_PRODUCT=wifi: no wireless.kiosk_* section; guest Wi-Fi and the coin box Wi-Fi are still there")
+r = run("--dry-run", env={"SHOP_PRODUCT": "phone"})
+check(r.returncode != 0 and "SHOP_PRODUCT must be wifi or both" in r.stdout + r.stderr, "any other SHOP_PRODUCT stops the setup: " + r.stdout + r.stderr)
+r = lib("shop_product; echo ---; conf_set SHOP_PRODUCT wifi; shop_product; echo ---; SHOP_PRODUCT=both shop_product")
+check(r.stdout.split() == ["both", "---", "wifi", "---", "both"], "shop_product: missing is both; the settings file is read; the environment wins: " + r.stdout)
+r = lib("DRY=0; SHOP_PRODUCT=wifi store_product; grep SHOP_PRODUCT $CONF")
+check("SHOP_PRODUCT='wifi'" in r.stdout, "the product is stored in /etc/piso-setup.conf: " + r.stdout + r.stderr)
+# no KIOSK_PASS asked, made or stored
+r = lib("rm -f $CONF; SHOP_PRODUCT=wifi; ASSUME_YES=1; KIOSK_PASSWORD=Chosen12345; choose_passwords; echo K=[$(kiosk_pass)]; echo N=$(cat $CONF 2>/dev/null | grep -c KIOSK_PASS)")
+check("K=[]" in r.stdout and "N=0" in r.stdout, "wifi: KIOSK_PASS is not taken from the environment, made or stored: " + r.stdout + r.stderr)
+r = lib("rm -f $CONF; ASSUME_YES=1; KIOSK_PASSWORD=Chosen12345; choose_passwords; K=$(kiosk_pass); echo ${#K}; grep KIOSK_PASS $CONF")
+check("KIOSK_PASS='Chosen12345'" in r.stdout and r.stdout.split()[0] == "11", "both: the password is chosen and kept as before: " + r.stdout + r.stderr)
+# the coin box is not given a kiosk name or password
+pre_wifi = "conf_set BOX_ADMIN_PASS x; conf_set KIOSK_PASS stale-old; SHOP_PRODUCT=wifi; curl() { echo CURL; }; "
+r = lib(pre_wifi + "push_kiosk_wifi; echo rc=$?; sync_kiosk_wifi; echo rc=$?; kiosk_wifi_on_box; echo rc=$?", env={"BOX_IP": "127.0.0.1:9"})
+check("CURL" not in r.stdout and r.stdout.count("rc=0") == 3 and "PisoKiosk" not in r.stdout, "wifi: the coin box is never given a kiosk name or password; the box-link check reports no problem: " + r.stdout + r.stderr)
+# the agreement checks skip the kiosk Wi-Fi
+r = agree(env={"SHOP_PRODUCT": "wifi", "T_KIOSK": "an-old-password"})
+check("rc=0" in r.stdout and "kiosk" not in r.stdout.lower().replace("fails=", ""), "wifi: the agreement skips the kiosk Wi-Fi and the PisoKiosk link, and reports no problem: " + r.stdout[-400:] + r.stderr)
+r = agree(env={"SHOP_PRODUCT": "wifi"}, extra="conf_set KIOSK_PASS ''; echo old > \"$SUMMARY\"; echo \"$(conf_get BOX_ADMIN_PASS)\" > \"$SUMMARY\"")
+check("rc=0" in r.stdout, "wifi: the summary check needs only the coin box password: " + r.stdout[-300:])
+r = agree(env={"SHOP_PRODUCT": "both", "T_KIOSK": "an-old-password"})
+check("rc=1" in r.stdout and "kiosk network" in r.stdout, "both: the kiosk check is still there")
+check("wifi_only ||" in text.split("check_all() {")[1].split("\n}\n")[0] and "hidden Wi-Fi $KIOSK_SSID" in text.split("check_all() {")[1], "the stage-2 checks skip the kiosk Wi-Fi on a wifi router")
+# summary, handout, plan
+r = lib('rm -f $CONF; SHOP_PRODUCT=wifi; conf_set ROOT_PASS_SET 1; write_summary; cat "$SUMMARY"; HANDOUT=' + tmp + '/h-wifi.html write_handout > /dev/null; cat ' + tmp + '/h-wifi.html')
+check("Kiosk Wi-Fi" not in r.stdout and "Rental-phone Wi-Fi" not in r.stdout and "rental phone" not in r.stdout.lower() and "PisoKiosk" not in r.stdout.split("<html")[1] and "Customer Wi-Fi" in r.stdout and "Coin box" in r.stdout,
+      "wifi: the summary and the handout have no rental-phone Wi-Fi lines: " + r.stdout[:600])
+r = lib('rm -f $CONF; conf_set ROOT_PASS_SET 1; write_summary; cat "$SUMMARY"; HANDOUT=' + tmp + '/h-both.html write_handout > /dev/null; cat ' + tmp + '/h-both.html')
+check("Kiosk Wi-Fi:" in r.stdout and "Rental-phone Wi-Fi (hidden)" in r.stdout and "Setting up a new rental phone" in r.stdout, "both: the summary and the handout keep their rental-phone lines")
+plan = text.split("review_choices() {")[1].split("\n}\n")[0]
+check("wifi_only ||" in plan and "Rental-phone Wi-Fi" in plan and "Kiosk Wi-Fi password" in plan, "the plan screen skips the rental-phone lines on a wifi router")
+# piso-setup kiosk-wifi
+open(f"{tmp}/conf", "a").write("SHOP_PRODUCT='wifi'\n")
+r = run("kiosk-wifi")
+os.remove(f"{tmp}/conf")
+check(r.returncode == 0 and "this shop has no rental phones (PisoWiFi only)" in r.stdout + r.stderr, "wifi: piso-setup kiosk-wifi says there are no rental phones: " + r.stdout + r.stderr)
+# the program's settings
+r = lib("SHOP_PRODUCT=wifi; rm -f $PISO_ROOT/etc/coinslot.conf; write_coinslot_conf k1 aa; cat $PISO_ROOT/etc/coinslot.conf; SHOP_PRODUCT=both; write_coinslot_conf k1 aa; grep -c SHOP_PRODUCT $PISO_ROOT/etc/coinslot.conf; grep SHOP_PRODUCT $PISO_ROOT/etc/coinslot.conf",
+        env={"PISO_ROOT": f"{tmp}/prodroot"})
+check("SHOP_PRODUCT='wifi'" in r.stdout and r.stdout.count("SHOP_PRODUCT='both'") == 1 and "\n1\n" in r.stdout, "SHOP_PRODUCT is written to /etc/coinslot.conf, once: " + r.stdout + r.stderr)
+# ---- feature 010 group 6: switching the product keeps everything else ---------------------------------------------------------------
+import hashlib, pty, select
+sroot = f"{tmp}/switchroot"
+shutil.rmtree(sroot, ignore_errors=True)
+os.makedirs(f"{sroot}/etc/coinslot.d")
+for name, body in (("sessions.csv", "aa:bb,paid,1800\n"), ("revenue.csv", "2026-10-22,5\n"), ("ledger.txt", "coin 1\ncoin 2\n"), ("vouchers.txt", "CODE1 30 unused\n"), ("sales.log", "sale 5\n")):
+    open(f"{sroot}/etc/coinslot.d/{name}", "w").write(body)
+open(f"{sroot}/etc/coinslot.conf", "w").write("GW_BOX='10.0.0.10'\nPRICE_NOTE='mine'\nSEND_HOST='owner.example'\n")
+
+
+def data_hash():
+    h = hashlib.sha256()
+    for n in sorted(os.listdir(f"{sroot}/etc/coinslot.d")):
+        h.update(n.encode() + open(f"{sroot}/etc/coinslot.d/{n}", "rb").read())
+    return h.hexdigest()
+
+
+def conf_without(path, *drop):
+    return sorted(l for l in open(path).read().splitlines() if not any(l.startswith(d + "=") for d in drop))
+
+
+BOTHCONF = "KIOSK_PASS='oldKioskPw1'\nKIOSK_SSID_NAME='PisoKiosk-a1b2'\nBOX_SSID_NAME='PisoCoinBox-a1b2'\nBOX_MAC='AA:BB:CC:00:00:01'\nGW_KEY='k1'\nGUEST_NAME='ShopWiFi'\nROOT_PASS='rootpw12345'\n"
+senv = {"PISO_ROOT": sroot, "PISO_CONF": f"{tmp}/swconf"}
+
+
+def sw(code, env=None, conf=BOTHCONF):
+    open(f"{tmp}/swconf", "w").write(conf)
+    return lib(code, env=dict(senv, **(env or {})))
+
+
+before = data_hash()
+# both -> wifi, accepted with --yes: warns, drops the kiosk password, keeps every other setting and the data
+r = sw("ASSUME_YES=1; resolve_wifi_names; confirm_product; apply_product; write_coinslot_conf k1 aa; echo rc=$?", env={"SHOP_PRODUCT": "wifi"})
+check("rental phones on PisoKiosk-a1b2 will lose their Wi-Fi" in r.stdout + r.stderr and "rc=0" in r.stdout, "both -> wifi: the warning names the Wi-Fi: " + r.stdout + r.stderr)
+after = open(f"{tmp}/swconf").read()
+check("KIOSK_PASS" not in after and "SHOP_PRODUCT='wifi'" in after, "both -> wifi: KIOSK_PASS is deleted, SHOP_PRODUCT=wifi is stored: " + after)
+check(sorted(after.splitlines()) == sorted([l for l in BOTHCONF.splitlines() if not l.startswith("KIOSK_PASS=")] + ["SHOP_PRODUCT='wifi'"]),
+      "every other setting of /etc/piso-setup.conf is kept, nothing else is added: " + after)
+cs = open(f"{sroot}/etc/coinslot.conf").read()
+check("PRICE_NOTE='mine'" in cs and "SEND_HOST='owner.example'" in cs and "SHOP_PRODUCT='wifi'" in cs, "the portal's own settings are kept and the product is written: " + cs)
+check(data_hash() == before, "the data folder is byte for byte the same after the switch to wifi")
+# the batch of the switched router has no kiosk Wi-Fi
+fake_uci({"radio0": "2g", "radio1": "5g"})
+r = run("--dry-run", env={"PISO_CONF": f"{tmp}/swconf"})
+check("kiosk_" not in r.stdout and "wireless.guest_radio0" in r.stdout, "the next run of a wifi router writes no kiosk Wi-Fi (the product comes from the settings): " + r.stdout[:200])
+# no SHOP_PRODUCT: the product stays
+r = sw("ASSUME_YES=1; confirm_product; apply_product; shop_product", conf="SHOP_PRODUCT='wifi'\nBOX_MAC='x'\n")
+check(r.stdout.split()[-1] == "wifi" and "lose their Wi-Fi" not in r.stdout + r.stderr, "without SHOP_PRODUCT a wifi router stays wifi, with no warning: " + r.stdout + r.stderr)
+r = sw("ASSUME_YES=1; confirm_product; apply_product; shop_product; grep -c KIOSK_PASS $CONF", conf=BOTHCONF)
+check(r.stdout.split()[-2] == "both" and r.stdout.split()[-1] == "1" and "lose their Wi-Fi" not in r.stdout + r.stderr, "without SHOP_PRODUCT an installed router (no product stored) stays both and keeps its kiosk password: " + r.stdout + r.stderr)
+# wifi -> both: the kiosk Wi-Fi comes back with a new password
+r = sw("rm -f /dev/null; ASSUME_YES=1; confirm_product; apply_product; choose_passwords; K=$(kiosk_pass); echo LEN=${#K}; grep SHOP_PRODUCT $CONF", env={"SHOP_PRODUCT": "both"},
+       conf="SHOP_PRODUCT='wifi'\nBOX_MAC='x'\nKIOSK_SSID_NAME='PisoKiosk-a1b2'\nBOX_SSID_NAME='PisoCoinBox-a1b2'\n")
+check("LEN=12" in r.stdout and "SHOP_PRODUCT='both'" in r.stdout and "KIOSK_PASS='" in open(f"{tmp}/swconf").read(), "wifi -> both: a new kiosk password is made and stored: " + r.stdout + r.stderr)
+check(data_hash() == before, "the data folder is byte for byte the same after the switch back")
+# a dry run only warns
+r = sw("DRY=1; confirm_product; apply_product; echo rc=$?", env={"SHOP_PRODUCT": "wifi"})
+check("lose their Wi-Fi" in r.stdout and "KIOSK_PASS='oldKioskPw1'" in open(f"{tmp}/swconf").read() and "SHOP_PRODUCT" not in open(f"{tmp}/swconf").read(), "--dry-run warns and changes nothing")
+# no terminal and no --yes: refused, nothing changed
+r = sw("confirm_product < /dev/null; echo rc=$?", env={"SHOP_PRODUCT": "wifi"})
+check("rc=" not in r.stdout and "KIOSK_PASS='oldKioskPw1'" in open(f"{tmp}/swconf").read() and "--yes" in r.stdout + r.stderr, "no terminal and no --yes: it stops, nothing is changed: " + r.stdout + r.stderr)
+
+
+def at_terminal(code, answer):
+    """Run shell code with a real terminal on stdin (the question is only asked at a terminal) and type an answer."""
+    open(f"{tmp}/swconf", "w").write(BOTHCONF)
+    env = dict(os.environ, PATH=f"{bindir}:" + os.environ["PATH"], PISO_SETUP_SOURCE_ONLY="1", PISO_LOG=f"{tmp}/log2", PISO_STATE=f"{tmp}/state2",
+               PISO_ROUTER_ID="a1b2", SHOP_PRODUCT="wifi", **senv)
+    pid, fd = pty.fork()
+    if pid == 0:
+        os.execvpe("sh", ["sh", "-c", f". {SCRIPT}; {code}"], env)
+    out = b""
+    sent = False
+    while True:
+        ready, _, _ = select.select([fd], [], [], 15)
+        if not ready:
+            break
+        try:
+            chunk = os.read(fd, 4096)
+        except OSError:
+            break
+        if not chunk:
+            break
+        out += chunk
+        if not sent and b"[y/N]" in out:
+            os.write(fd, (answer + "\n").encode())
+            sent = True
+    os.waitpid(pid, 0)
+    return out.decode(errors="replace")
+
+
+out = at_terminal("confirm_product; apply_product; echo DONE", "n")
+check("lose their Wi-Fi" in out and "DONE" not in out and "KIOSK_PASS='oldKioskPw1'" in open(f"{tmp}/swconf").read(), "asked at a terminal, answered no: cancelled, nothing changed: " + out[-300:])
+out = at_terminal("confirm_product; apply_product; echo DONE", "y")
+check("DONE" in out and "KIOSK_PASS" not in open(f"{tmp}/swconf").read(), "asked at a terminal, answered yes: switched: " + out[-300:])
+# an update never changes the product: the environment applies only to the installer
+open(f"{tmp}/swconf", "w").write(BOTHCONF)
+r = run("kiosk-wifi", env={"SHOP_PRODUCT": "wifi", "PISO_CONF": f"{tmp}/swconf"})
+check("no rental phones" not in r.stdout + r.stderr, "SHOP_PRODUCT in the environment is ignored by every command except the install: " + r.stdout + r.stderr)
+main_body = text.split("\nmain() {")[1].split("\n}\n")[0]
+check('unset SHOP_PRODUCT' in main_body and main_body.index("unset SHOP_PRODUCT") < main_body.index('case "$CMD" in'), "main drops SHOP_PRODUCT before running any command but the install")
+st1 = text.split("\nstage1() {")[1].split("\n}\n")[0]
+check(st1.index("confirm_product") < st1.index("choose_passwords") and "store_product" not in st1 and st1.index("apply_batch") < st1.index("apply_product") < st1.index("stage2"),
+      "stage 1 asks about the product before any password, and stores it (and drops the kiosk password) only after apply_batch")
+# ---- feature 010 review fix: the kiosk password goes only after the new Wi-Fi is written -------------------------------------------
+def stage1_at_terminal(answers, fail_install=False):
+    """Runs the real stage1 of an installed both router switched to wifi, at a terminal, with the router-changing steps stubbed
+    (preflight, packages, files, the uci write, stage 2). `answers` are typed at each [y/N] question in turn."""
+    open(f"{tmp}/swconf", "w").write(BOTHCONF + "SITE_NAME='Shop'\nBOX_ADMIN_PASS_NEW='boxadmin12345'\n")   # (everything stage 1 would ask is answered)
+    stubs = ("preflight() { R24=radio0; R5=radio1; }; ask_telegram() { :; }; extract_payload() { :; }; stage2() { echo STAGE2-RAN; }; box_up() { return 1; }; "
+             + ('install_packages() { die "no internet"; }; ' if fail_install else "install_packages() { echo PACKAGES; }; ")
+             + f'apply_batch() {{ echo APPLY-RAN; uci_batch "$@" > {tmp}/applied.uci; }}; ')
+    env = dict(os.environ, PATH=f"{bindir}:" + os.environ["PATH"], PISO_SETUP_SOURCE_ONLY="1", PISO_LOG=f"{tmp}/log2", PISO_STATE=f"{tmp}/state2",
+               PISO_SUMMARY=f"{tmp}/sum2", PISO_ROUTER_ID="a1b2", SHOP_PRODUCT="wifi", **senv)
+    if os.path.exists(f"{tmp}/applied.uci"):
+        os.remove(f"{tmp}/applied.uci")
+    pid, fd = pty.fork()
+    if pid == 0:
+        os.execvpe("sh", ["sh", "-c", f". {SCRIPT}; {stubs} resolve_wifi_names; LOG={tmp}/log2; stage1; echo STAGE1-END"], env)
+    out, todo = b"", list(answers)
+    seen = 0
+    while True:
+        ready, _, _ = select.select([fd], [], [], 15)
+        if not ready:
+            break
+        try:
+            chunk = os.read(fd, 4096)
+        except OSError:
+            break
+        if not chunk:
+            break
+        out += chunk
+        while todo and out.count(b"[y/N]") > seen:
+            seen += 1
+            os.write(fd, (todo.pop(0) + "\n").encode())
+    os.waitpid(pid, 0)
+    return out.decode(errors="replace")
+
+
+fake_uci({"radio0": "2g", "radio1": "5g"})
+# (a) cancelled at the review screen: nothing is changed
+out = stage1_at_terminal(["y", "n"])
+conf_now = open(f"{tmp}/swconf").read()
+check("KIOSK_PASS='oldKioskPw1'" in conf_now and "SHOP_PRODUCT='wifi'" not in conf_now and "APPLY-RAN" not in out and "STAGE1-END" not in out,
+      "wifi switch cancelled at the review: KIOSK_PASS and the product are as they were, nothing was written: " + out[-500:] + conf_now)
+# (b) the install fails before the new Wi-Fi is written: the old Wi-Fi is still there, so its password is too
+out = stage1_at_terminal(["y", "y"], fail_install=True)
+conf_now = open(f"{tmp}/swconf").read()
+check("KIOSK_PASS='oldKioskPw1'" in conf_now and "SHOP_PRODUCT='wifi'" not in conf_now and "APPLY-RAN" not in out,
+      "wifi switch, install stops before the Wi-Fi is written: KIOSK_PASS and the product are unchanged: " + out[-500:] + conf_now)
+# (c) the run completes: the password is gone, the product is wifi, the batch has no kiosk Wi-Fi
+out = stage1_at_terminal(["y", "y"])
+conf_now = open(f"{tmp}/swconf").read()
+applied = open(f"{tmp}/applied.uci").read() if os.path.exists(f"{tmp}/applied.uci") else ""
+parts = ("STAGE2-RAN" in out, "KIOSK_PASS" not in conf_now, "SHOP_PRODUCT='wifi'" in conf_now, bool(applied), "wireless.kiosk_" not in applied, "wireless.guest_radio0" in applied)
+check(all(parts),
+      "wifi switch completed: KIOSK_PASS deleted, product wifi stored, no kiosk Wi-Fi written: " + out[-300:] + conf_now + " parts=" + str(parts))
 print(f"{checks} checks, {failures} failures")
 sys.exit(1 if failures else 0)

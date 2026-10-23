@@ -50,7 +50,7 @@ dir_kb() { du -sk "$1" 2> /dev/null | cut -f1; }
 # piso-setup space: what PisoPhone keeps on this router, what is free, and what can go
 cmd_space() {
 	echo "=== piso-setup space ($(date '+%F %T')) ==="
-	echo "flash free:   $(df -k /overlay 2> /dev/null | awk 'NR==2 {printf "%d KB of %d KB", $4, $2}')"
+	flash_report
 	echo "memory free:  $(mem_available_kb) KB"
 	for _f in /usr/bin/pisoportal /usr/sbin/piso-setup /usr/bin/piso-monitor.sh "$CONF" "$LOG" "$SUMMARY"; do
 		[ -e "$_f" ] && printf '  %-34s %6s KB\n' "$_f" "$(( ($(wc -c < "$_f") + 1023) / 1024 ))"
