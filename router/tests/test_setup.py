@@ -400,6 +400,7 @@ class Box(http.server.BaseHTTPRequestHandler):
     kiosk = None
     kiosk_ssid = None
     wifi_ssid = None
+    refuse_wifi = False   # a box that answers the box-network request with an error
     kiosk_support = True
     ssid_support = True   # firmware 3.6.0 and newer carries the kiosk network's name in the link
     log = []
@@ -420,6 +421,8 @@ class Box(http.server.BaseHTTPRequestHandler):
         if self.path == "/save" and "admin_pw" in body:
             Box.admin = body["admin_pw"]
             self.send_response(200); self.end_headers(); self.wfile.write(b"{}"); return
+        if self.path == "/save" and "wifi_pass" in body and Box.refuse_wifi:
+            self.send_response(500); self.end_headers(); return
         if self.path == "/save" and "wifi_pass" in body:
             Box.wifi = body["wifi_pass"]
             Box.wifi_ssid = urllib.parse.unquote_plus(body.get("wifi_ssid", "")) or None
@@ -658,6 +661,296 @@ r = lib('sleep() { :; }; box_station() { :; }; box_ifname() { :; }; pair_box; ec
 check("rc=0" not in r.stdout and "not on the air" in r.stderr + r.stdout, "a missing box network is reported as such: " + r.stdout + r.stderr)
 r = lib('sleep() { :; }; box_station() { :; }; box_ifname() { echo wlan0-3; }; pair_box; echo rc=$?', env={"PAIR_WAIT": "10"})
 check("rc=0" not in r.stdout and "did not join" in r.stderr + r.stdout, "a network that is up but never joined keeps the original message: " + r.stdout + r.stderr)
+
+# ---- feature 011 part B: a box that refuses its new Wi-Fi changes nothing; one that does not come back is told how to recover ----
+def _conf_value(path, name):
+    for ln in open(path).read().splitlines():
+        if ln.startswith(name + "="):
+            return ln.split("=", 1)[1].strip("'")
+    return ""
+
+
+NAMES2 = NAMES + "conf_set BOX_ADMIN_PASS NewPassw0rdXYZ; "
+Box.admin = "NewPassw0rdXYZ"; Box.wifi = None; Box.wifi_ssid = None; Box.refuse_wifi = True
+# (1) a router whose box still has the built-in password: the box says no
+cf = f"{tmp}/conf_refuse1"
+open(f"{tmp}/uci.log", "w").close()
+r = lib(NAMES2 + 'conf_set BOX_WIFI_ROTATED 0; rotate_box_wifi; echo "rc=$?"; echo "ROT=$(conf_get BOX_WIFI_ROTATED) NEW=$(conf_get BOX_WIFI_PASS_NEW)"',
+        env={"BOX_IP": addr, "ROTATE_SETTLE": "0", "PISO_CONF": cf})
+ul = open(f"{tmp}/uci.log").read()
+check("ROT=0 NEW=" in r.stdout and "ROT=0 NEW=\n" in r.stdout + "\n", "a box that refuses leaves BOX_WIFI_ROTATED 0 and no new password stored: " + r.stdout + r.stderr)
+check("set wireless.box_ap" not in ul and "wifi reload" not in ul, "and the router's box network is not touched: " + ul)
+check("rc=1" in r.stdout and "did not take" in r.stdout and "HTTP 500" in r.stdout, "and it says so and fails, so a command can tell: " + r.stdout)
+check(_conf_value(cf, "BOX_SSID_NAME") == "PisoCoinBox-a1b2", "and the stored network name is as it was")
+# (2) a router whose box already has its own password and name: the command to do it again must not lose that
+cf = f"{tmp}/conf_refuse2"
+open(f"{tmp}/uci.log", "w").close()
+r = lib(NAMES2 + 'conf_set BOX_WIFI_ROTATED 1; conf_set BOX_WIFI_PASS_NEW OwnPassw0rd1234567; rotate_box_wifi force; echo "rc=$?"; '
+        'echo "ROT=$(conf_get BOX_WIFI_ROTATED) NEW=$(conf_get BOX_WIFI_PASS_NEW) KEY=$(box_wifi_key)"',
+        env={"BOX_IP": addr, "ROTATE_SETTLE": "0", "PISO_CONF": cf})
+check("rc=1" in r.stdout and "ROT=1 NEW=OwnPassw0rd1234567 KEY=OwnPassw0rd1234567" in r.stdout,
+      "a forced run that the box refuses keeps BOX_WIFI_ROTATED 1 and the box's own password (fact B7): " + r.stdout + r.stderr)
+check("set wireless.box_ap" not in open(f"{tmp}/uci.log").read(), "and does not touch the router's box network")
+# (3) the piso-setup command itself (it used to set BOX_WIFI_ROTATED 0 before asking, and leave it there)
+open(f"{bindir}/id", "w").write("#!/bin/sh\necho 0\n"); os.chmod(f"{bindir}/id", 0o755)
+open(f"{tmp}/conf", "w").write("")
+for _k, _v in (("BOX_ADMIN_PASS", "NewPassw0rdXYZ"), ("BOX_WIFI_ROTATED", "1"), ("BOX_WIFI_PASS_NEW", "OwnPassw0rd1234567"), ("KIOSK_SSID_NAME", "PisoKiosk-a1b2"), ("BOX_SSID_NAME", "PisoCoinBox-a1b2")):
+    open(f"{tmp}/conf", "a").write(f"{_k}='{_v}'\n")
+r = run("rotate-box-wifi", env={"BOX_IP": addr, "ROTATE_SETTLE": "0"})
+check(_conf_value(f"{tmp}/conf", "BOX_WIFI_ROTATED") == "1" and _conf_value(f"{tmp}/conf", "BOX_WIFI_PASS_NEW") == "OwnPassw0rd1234567",
+      "piso-setup rotate-box-wifi against a refusing box leaves BOX_WIFI_ROTATED 1 (fact B7): " + r.stdout + r.stderr)
+os.remove(f"{bindir}/id")
+# (4) the box takes it but never comes back: the router keeps the new name and key, the message says what to do
+Box.refuse_wifi = False; Box.wifi = None
+cf = f"{tmp}/conf_noreturn"
+open(f"{tmp}/uci.log", "w").close()
+r = lib(NAMES2 + 'conf_set BOX_WIFI_ROTATED 0; box_up() { return 1; }; cmd_box_diag() { echo DIAG; }; (rotate_box_wifi); echo "rc=$?"; '
+        'echo "ROT=$(conf_get BOX_WIFI_ROTATED) NEW=$(conf_get BOX_WIFI_PASS_NEW)"',
+        env={"BOX_IP": addr, "ROTATE_SETTLE": "0", "ROTATE_WAIT": "0", "PISO_CONF": cf})
+ul = open(f"{tmp}/uci.log").read()
+out = r.stdout + r.stderr
+check("rc=0" not in r.stdout and "Power-cycle" in out and "piso-setup status" in out, "a box that does not come back: the message says power-cycle it and run piso-setup status: " + out)
+check(Box.wifi and "ROT=1 NEW=" + Box.wifi in r.stdout and f"set wireless.box_ap.key={Box.wifi}" in ul and "set wireless.box_ap.ssid=PisoCoinBox-a1b2" in ul,
+      "and the router keeps the new name and key (the box has them): " + out)
+
+# ---- feature 011 part B: piso-setup box-wifi-name gives the box network the router's own name ----------------------------------
+def _bwn_conf(name, **kv):
+    path = f"{tmp}/conf_{name}"
+    open(path, "w").write("".join(f"{k}='{v}'\n" for k, v in kv.items()))
+    return path
+
+
+def _bwn(path, code="own_box_wifi_name", env=None, ok=True):
+    open(f"{tmp}/uci.log", "w").close()
+    n0 = len(Box.log)
+    r = lib("ASSUME_YES=1; " * ok + "(" + code + '); echo "rc=$?"; echo "ROT=$(conf_get BOX_WIFI_ROTATED) BN=$(conf_get BOX_SSID_NAME) KN=$(conf_get KIOSK_SSID_NAME) KP=$(conf_get KIOSK_PASS) NEW=$(conf_get BOX_WIFI_PASS_NEW)"',
+            env=dict({"BOX_IP": addr, "ROTATE_SETTLE": "0", "PISO_CONF": path}, **(env or {})))
+    changes = "".join(ln + "\n" for ln in open(f"{tmp}/uci.log").read().splitlines() if not ln.startswith(("get ", "-q get ", "show ")))   # (reading is not changing)
+    return r, changes, len(Box.log) - n0
+
+
+def _cv(path, name):
+    return _conf_value(path, name)
+
+
+MAC = "AA:BB:CC:DD:EE:01"
+Box.admin = "NewPassw0rdXYZ"; Box.refuse_wifi = False; Box.wifi = None; Box.wifi_ssid = None
+# an older router: shared names (it has a stored phone password and no stored names)
+cf = _bwn_conf("old", KIOSK_PASS="kp-old-1", BOX_MAC=MAC, BOX_ADMIN_PASS="NewPassw0rdXYZ", BOX_WIFI_ROTATED="1", BOX_WIFI_PASS_NEW="OwnPassw0rd1234567")
+r, ul, sent = _bwn(cf)
+out = r.stdout + r.stderr
+check("four minutes" in out and "kept" in out, "it says the box is off its network for up to four minutes and that coins are kept: " + out)
+check("rc=0" in r.stdout and Box.wifi_ssid == "PisoCoinBox-a1b2" and Box.wifi and len(Box.wifi) >= 16,
+      f"an older router: the box is sent wifi_ssid=PisoCoinBox-<id> and a password in one request: {Box.wifi_ssid!r} {Box.wifi!r} " + out)
+check("set wireless.box_ap.ssid=PisoCoinBox-a1b2" in ul and f"set wireless.box_ap.key={Box.wifi}" in ul and "ROT=1 BN=PisoCoinBox-a1b2" in r.stdout,
+      "and the router's box network takes both, and stores BOX_SSID_NAME and BOX_WIFI_ROTATED 1: " + ul + r.stdout)
+check("maclist" not in ul and "macfilter" not in ul, "and the MAC lock is not touched: " + ul)
+check("kiosk" not in ul.lower() and " KN= KP=kp-old-1 " in r.stdout, "the rental phones' network, KIOSK_SSID_NAME and KIOSK_PASS are not touched: " + ul + r.stdout)
+check(Box.wifi != "OwnPassw0rd1234567" and _cv(cf, "BOX_WIFI_PASS_NEW") == Box.wifi, "and the password is a new one (the old router had one already): " + Box.wifi)
+r2 = lib('echo "$BOX_SSID $KIOSK_SSID"', env={"PISO_CONF": cf})
+check(r2.stdout.strip() == "PisoCoinBox-a1b2 PisoKiosk", "and the next time the router loads its names the box network keeps the new one, the phones the shared one: " + r2.stdout)
+# a newer router whose password change failed once (names stored, BOX_WIFI_ROTATED 0)
+cf = _bwn_conf("new", KIOSK_SSID_NAME="PisoKiosk-a1b2", BOX_SSID_NAME="PisoCoinBox-a1b2", BOX_MAC=MAC, BOX_ADMIN_PASS="NewPassw0rdXYZ", BOX_WIFI_ROTATED="0")
+Box.wifi = None; Box.wifi_ssid = None
+r, ul, sent = _bwn(cf)
+check("rc=0" in r.stdout and "ROT=1" in r.stdout and Box.wifi_ssid == "PisoCoinBox-a1b2" and "set wireless.box_ap.ssid=PisoCoinBox-a1b2" in ul,
+      "a newer router with BOX_WIFI_ROTATED 0 works the same: " + r.stdout + r.stderr)
+# already has its own name: nothing changes
+cf = _bwn_conf("own", KIOSK_SSID_NAME="PisoKiosk-a1b2", BOX_SSID_NAME="PisoCoinBox-a1b2", BOX_MAC=MAC, BOX_ADMIN_PASS="NewPassw0rdXYZ", BOX_WIFI_ROTATED="1", BOX_WIFI_PASS_NEW="OwnPassw0rd1234567")
+before = open(cf).read()
+r, ul, sent = _bwn(cf)
+check("already has its own name" in r.stdout + r.stderr and sent == 0 and ul == "" and open(cf).read() == before,
+      "a router whose box network already has its own name: says so and changes nothing: " + r.stdout + r.stderr)
+# cannot start: no paired box, box silent, a name the box could not use
+cf = _bwn_conf("nomac", KIOSK_PASS="kp-old-1", BOX_ADMIN_PASS="NewPassw0rdXYZ")
+before = open(cf).read()
+r, ul, sent = _bwn(cf)
+check("rc=0" not in r.stdout and "pair" in r.stdout + r.stderr and sent == 0 and ul == "" and open(cf).read() == before,
+      "without a paired box it stops with the reason and changes nothing: " + r.stdout + r.stderr)
+cf = _bwn_conf("silent", KIOSK_PASS="kp-old-1", BOX_MAC=MAC, BOX_ADMIN_PASS="NewPassw0rdXYZ")
+before = open(cf).read()
+r, ul, sent = _bwn(cf, env={"BOX_IP": "127.0.0.1:1"})
+check("rc=0" not in r.stdout and "answer" in r.stdout + r.stderr and ul == "" and open(cf).read() == before,
+      "with the box not answering it stops with the reason and changes nothing: " + r.stdout + r.stderr)
+for _bad in ("a b;x", "x" * 40, ""):
+    cf = _bwn_conf("badname", KIOSK_PASS="kp-old-1", BOX_MAC=MAC, BOX_ADMIN_PASS="NewPassw0rdXYZ")
+    before = open(cf).read()
+    r, ul, sent = _bwn(cf, env={"PISO_ROUTER_ID": _bad} if _bad else {"PISO_ROUTER_ID": "x/y"})
+    check("rc=0" not in r.stdout and "name" in r.stdout + r.stderr and sent == 0 and ul == "" and open(cf).read() == before,
+          f"a name the box could not use ({_bad!r}) is refused before anything is sent: " + r.stdout + r.stderr)
+# the question: no answer means no change; yes goes ahead
+cf = _bwn_conf("ask", KIOSK_PASS="kp-old-1", BOX_MAC=MAC, BOX_ADMIN_PASS="NewPassw0rdXYZ")
+before = open(cf).read()
+r, ul, sent = _bwn(cf, code="echo n | own_box_wifi_name", ok=False)
+check("rc=0" in r.stdout and sent == 0 and ul == "" and open(cf).read() == before, "answering no changes nothing: " + r.stdout + r.stderr)
+r, ul, sent = _bwn(cf, code="echo y | own_box_wifi_name", ok=False)
+check("ROT=1 BN=PisoCoinBox-a1b2" in r.stdout and sent >= 1, "answering yes goes ahead: " + r.stdout + r.stderr)
+# the box says no: the router is exactly as before (an older router has no stored box name again)
+cf = _bwn_conf("refused", KIOSK_PASS="kp-old-1", BOX_MAC=MAC, BOX_ADMIN_PASS="NewPassw0rdXYZ")
+before = open(cf).read()
+Box.refuse_wifi = True
+r, ul, sent = _bwn(cf)
+check("rc=0" not in r.stdout and "set wireless.box_ap" not in ul and open(cf).read() == before,
+      "a box that refuses: BOX_SSID_NAME, BOX_WIFI_ROTATED, BOX_WIFI_PASS_NEW and the box network are as before: " + r.stdout + r.stderr + open(cf).read())
+Box.refuse_wifi = False
+# the command exists and runs as root only
+open(f"{bindir}/id", "w").write("#!/bin/sh\necho 0\n"); os.chmod(f"{bindir}/id", 0o755)
+open(f"{tmp}/conf", "w").write(f"KIOSK_PASS='kp-old-1'\nBOX_MAC='{MAC}'\nBOX_ADMIN_PASS='NewPassw0rdXYZ'\n")
+Box.wifi_ssid = None
+r = run("--yes", "box-wifi-name", env={"BOX_IP": addr, "ROTATE_SETTLE": "0"})
+check(Box.wifi_ssid == "PisoCoinBox-a1b2" and _cv(f"{tmp}/conf", "BOX_SSID_NAME") == "PisoCoinBox-a1b2",
+      "piso-setup --yes box-wifi-name runs the command: " + r.stdout + r.stderr)
+os.remove(f"{bindir}/id")
+check("box-wifi-name" in text.split("main() {")[1].split("case \"$CMD\" in")[0], "and it is in the list of commands")
+
+# ---- feature 011 part B: status and the summary tell the owner when the box network is still called PisoCoinBox ---------------
+NOTICE = "Coin box network: PisoCoinBox (the shared setup name: a second router being set up nearby can take this box's place). Fix: piso-setup box-wifi-name"
+for _label, _kv, _want in (
+    ("an older router (shared names)", dict(KIOSK_PASS="kp-old-1", BOX_MAC=MAC), True),
+    ("a newer router whose box password change failed (BOX_WIFI_ROTATED 0)", dict(KIOSK_SSID_NAME="PisoKiosk-a1b2", BOX_SSID_NAME="PisoCoinBox-a1b2", BOX_MAC=MAC, BOX_WIFI_ROTATED="0"), True),
+    ("a router whose box network has its own name", dict(KIOSK_SSID_NAME="PisoKiosk-a1b2", BOX_SSID_NAME="PisoCoinBox-a1b2", BOX_MAC=MAC, BOX_WIFI_ROTATED="1", BOX_WIFI_PASS_NEW="OwnPassw0rd1234567"), False),
+    ("a router with no paired box yet", dict(KIOSK_PASS="kp-old-1"), False),
+):
+    cf = _bwn_conf("notice", **_kv)
+    sm = f"{tmp}/summary_notice"
+    r = lib('check_all() { echo CHECKS; return 0; }; cmd_status; echo "rc=$?"; write_summary; cat "$SUMMARY"', env={"PISO_CONF": cf, "PISO_SUMMARY": sm, "BOX_IP": addr})
+    status_part, _, summary_part = r.stdout.partition("rc=0")
+    check((NOTICE in status_part) == _want, f"piso-setup status {'shows' if _want else 'does not show'} the box network line for {_label}: " + r.stdout[-400:] + r.stderr[-300:])
+    check((NOTICE in summary_part) == _want, f"and the summary {'shows' if _want else 'does not show'} it: " + summary_part[-400:])
+    check("rc=0" in r.stdout, "and the line does not make status fail")
+
+# ---- feature 011 part B: the pairing tips say that another router nearby may answer the setup name ----------------------------
+PAIR_TIP = "another PisoHub router nearby may answer the setup name PisoCoinBox: switch it off for a few minutes, or run piso-setup box-wifi-name on it"
+cf = _bwn_conf("pairtips", KIOSK_PASS="kp-old-1")
+open(f"{tmp}/uci.log", "w").close()
+r = lib('PAIR_WAIT=160; sleep() { :; }; box_station() { :; }; box_ifname() { echo wlan0-3; }; cmd_box_diag() { :; }; (pair_box); echo "rc=$?"', env={"PISO_CONF": cf})
+out = r.stdout + r.stderr
+tips = [ln for ln in out.splitlines() if PAIR_TIP in ln]
+check(len(tips) >= 3, f"the 60 s tip, the 150 s tip and the failure message each carry the nearby-router tip (found {len(tips)}): " + out[-900:])
+check("no box yet after a minute" in out and "still nothing" in out and "last try" not in out, "and the tips that were there are still there")
+check(out.rstrip().splitlines()[-2:] and PAIR_TIP in "\n".join(out.rstrip().splitlines()[-3:]) and "did not join" in out, "the 'did not join' message ends with it: " + out[-500:])
+ul = open(f"{tmp}/uci.log").read()
+check("set wireless.box_ap.ssid=PisoCoinBox\n" in ul and "box_ap.ssid=PisoCoinBox-" not in ul.split("macfilter")[0], "pairing still opens the box network as PisoCoinBox, the name new boxes know: " + ul[:400])
+r = lib('PAIR_WAIT=70; sleep() { :; }; box_station() { :; }; box_ifname() { :; }; cmd_box_diag() { :; }; (pair_box); echo "rc=$?"', env={"PISO_CONF": cf})
+check("not broadcasting" in r.stdout and PAIR_TIP not in r.stdout, "with no box network on the air the tip stays about the radio (another router is not the cause): " + r.stdout[-400:])
+
+# ---- feature 011 part A: the router checks what the setup program copied here before it installs anything -----------------------
+bin6 = f"{tmp}/bin6"
+os.makedirs(bin6, exist_ok=True)
+open(f"{bin6}/usign", "w").write(f"""#!/bin/sh
+# stub: a signature file holds "signed:<sha256 of the signed file>"
+echo "usign $*" >> {tmp}/offline.log
+while [ $# -gt 0 ]; do case "$1" in -m) m="$2"; shift ;; -P) P="$2"; shift ;; -x) x="$2"; shift ;; esac; shift; done
+[ -d "$P" ] || exit 1
+[ -f "$x" ] || exit 1
+[ "$(cat "$x")" = "signed:$(sha256sum "$m" | cut -d' ' -f1)" ]
+""")
+open(f"{bin6}/opkg", "w").write(f"""#!/bin/sh
+echo "opkg $*" >> {tmp}/offline.log
+[ -z "$OPKG_FAIL" ]
+""")
+for _f in ("usign", "opkg"):
+    os.chmod(f"{bin6}/{_f}", 0o755)
+
+
+def make_bundle(name, sources, order, tamper=None):
+    """sources: {source name: [(file, bytes, size_override or None)]}; every Packages is signed (the stub's way) unless tamper says otherwise."""
+    root = f"{tmp}/bundle_{name}"
+    shutil.rmtree(root, ignore_errors=True)
+    os.makedirs(root + "/pkgs")
+    keys = f"{root}/root/etc/opkg/keys"
+    os.makedirs(keys)
+    open(f"{keys}/abcd1234", "w").write("key")
+    for src, files in sources.items():
+        os.makedirs(f"{root}/pkgs/{src}")
+        stanzas = ""
+        for fname, data, size in files:
+            open(f"{root}/pkgs/{fname}", "wb").write(data)
+            stanzas += f"Package: {fname.split('_')[0]}\nVersion: 1\nFilename: {fname}\nSize: {size if size is not None else len(data)}\nSHA256sum: {hashlib.sha256(data).hexdigest()}\n\n"
+        pk = f"{root}/pkgs/{src}/Packages"
+        open(pk, "w").write(stanzas)
+        open(pk + ".sig", "w").write("signed:" + hashlib.sha256(open(pk, "rb").read()).hexdigest())
+    open(f"{root}/pkgs/order.txt", "w").write("".join(f + "\n" for f in order))
+    if tamper:
+        tamper(root)
+    return root
+
+
+def install_local(root, extra=""):
+    open(f"{tmp}/offline.log", "w").close()
+    r = lib(f'{extra}(install_local_packages "{root}/pkgs"); echo "rc=$?"', env={"PATH": f"{bin6}:" + os.environ["PATH"], "PISO_ROOT": f"{root}/root"})
+    return r, open(f"{tmp}/offline.log").read()
+
+
+import hashlib, shutil  # noqa: E402  (this part of the file is read top to bottom: these were not needed before)
+GOOD = {"base": [("libfoo_1_mips.ipk", b"libfoo bytes", None), ("opennds_9_mips.ipk", b"opennds bytes", None)], "packages": [("curl_8_mips.ipk", b"curl bytes", None)]}
+ORDER = ["libfoo_1_mips.ipk", "curl_8_mips.ipk", "opennds_9_mips.ipk"]
+root = make_bundle("good", GOOD, ORDER)
+r, ol = install_local(root)
+inst = [ln for ln in ol.splitlines() if ln.startswith("opkg install")]
+check("rc=0" in r.stdout and len(inst) == 1 and inst[0] == "opkg install " + " ".join(f"{root}/pkgs/{f}" for f in ORDER),
+      "a signed bundle: one opkg install with every file, in order.txt order: " + ol + r.stdout + r.stderr)
+check(ol.count("usign -V") == 2 and all(f"-P {root}/root/etc/opkg/keys" in ln for ln in ol.splitlines() if ln.startswith("usign")) and "Packages.sig" in ol,
+      "and each source's Packages was checked with usign -V against the router's keys first: " + ol)
+check(0 <= ol.find("usign") < ol.find("opkg install"), "the signatures are checked before anything is installed")
+
+
+def refuses(label, root, why, extra=""):
+    r, ol = install_local(root, extra)
+    check("rc=0" not in r.stdout and "opkg install" not in ol and why in (r.stdout + r.stderr).lower(), f"{label}: nothing is installed and the reason is given ({why}): " + ol + r.stdout + r.stderr)
+
+
+refuses("a tampered package", make_bundle("t_ipk", GOOD, ORDER, lambda d: open(f"{d}/pkgs/curl_8_mips.ipk", "wb").write(b"evil")), "curl_8_mips.ipk")
+refuses("a tampered Packages index", make_bundle("t_idx", GOOD, ORDER, lambda d: open(f"{d}/pkgs/base/Packages", "a").write("Package: x\n")), "signature")
+refuses("a missing signature", make_bundle("t_nosig", GOOD, ORDER, lambda d: os.remove(f"{d}/pkgs/packages/Packages.sig")), "signature")
+refuses("a package no signed index lists", make_bundle("t_unk", GOOD, ORDER + ["extra_1_mips.ipk"], lambda d: open(f"{d}/pkgs/extra_1_mips.ipk", "wb").write(b"x")), "extra_1_mips.ipk")
+refuses("a listed package that was not copied", make_bundle("t_miss", GOOD, ORDER, lambda d: os.remove(f"{d}/pkgs/libfoo_1_mips.ipk")), "libfoo_1_mips.ipk")
+refuses("a package whose size differs from the signed list", make_bundle("t_size", {"base": [("libfoo_1_mips.ipk", b"libfoo bytes", 99)]}, ["libfoo_1_mips.ipk"]), "size")
+refuses("a path in order.txt", make_bundle("t_path", GOOD, ["../../etc/passwd"]), "order.txt")
+refuses("a name that is not a package file", make_bundle("t_name", GOOD, ["libfoo_1_mips.ipk; reboot"]), "order.txt")
+refuses("no keys on the router", make_bundle("t_keys", GOOD, ORDER, lambda d: shutil.rmtree(f"{d}/root/etc/opkg/keys")), "key")
+refuses("no order.txt", make_bundle("t_order", GOOD, ORDER, lambda d: os.remove(f"{d}/pkgs/order.txt")), "order.txt")
+refuses("no signed index at all", make_bundle("t_none", {}, ORDER), "signature")
+r, ol = install_local(make_bundle("t_inst", GOOD, ORDER), "")
+check("rc=0" in r.stdout, "(control: the same bundle installs)")
+open(f"{tmp}/offline.log", "w").close()
+root = make_bundle("t_fail", GOOD, ORDER)
+r = lib(f'(install_local_packages "{root}/pkgs"); echo "rc=$?"', env={"PATH": f"{bin6}:" + os.environ["PATH"], "PISO_ROOT": f"{root}/root", "OPKG_FAIL": "1"})
+check("rc=0" not in r.stdout and "could not install" in (r.stdout + r.stderr), "opkg failing stops the setup with a reason: " + r.stdout + r.stderr)
+root = make_bundle("t_empty", {"base": []}, [])
+r, ol = install_local(root)
+check("rc=0" in r.stdout and "opkg install" not in ol, "an empty order.txt (everything is installed already) installs nothing and is not an error: " + r.stdout + r.stderr)
+
+# ---- feature 011 part A: the setup without the router's internet (PISO_LOCAL_PKGS) -------------------------------------------------
+NONET = (f'ping() {{ echo PING >> {tmp}/nonet.log; return 1; }}; wget() {{ echo WGET >> {tmp}/nonet.log; return 1; }}; curl() {{ echo CURL >> {tmp}/nonet.log; return 1; }}; '
+         f'nslookup() {{ echo DNS >> {tmp}/nonet.log; return 1; }}; ')
+open(f"{tmp}/nonet.log", "w").close()
+# the network part of the preflight: today's rules without the setting, no WAN address and no ping needed with it
+r = lib(NONET + 'wan_ip() { :; }; (preflight_network); echo "rc=$?"')
+check("rc=0" not in r.stdout and "no WAN address" in r.stdout + r.stderr, "online path: a router with no WAN address is stopped, as always: " + r.stdout + r.stderr)
+r = lib(NONET + 'wan_ip() { echo 192.168.1.50; }; (preflight_network); echo "rc=$?"')
+check("rc=0" not in r.stdout and "no internet through the WAN port" in r.stdout + r.stderr and "PING" in open(f"{tmp}/nonet.log").read(), "online path: no ping answer stops it, as always: " + r.stdout + r.stderr)
+open(f"{tmp}/nonet.log", "w").close()
+r = lib(NONET + 'wan_ip() { :; }; (preflight_network); echo "rc=$?"', env={"PISO_LOCAL_PKGS": "/tmp/piso-offline/pkgs"})
+check("rc=0" in r.stdout and open(f"{tmp}/nonet.log").read() == "", "with PISO_LOCAL_PKGS: no WAN address and no internet are fine and nothing is pinged or downloaded: " + r.stdout + r.stderr + open(f"{tmp}/nonet.log").read())
+r = lib(NONET + 'wan_ip() { echo 10.0.0.77; }; (preflight_network); echo "rc=$?"', env={"PISO_LOCAL_PKGS": "/tmp/piso-offline/pkgs"})
+check("rc=0" not in r.stdout and "same range" in r.stdout + r.stderr, "and a WAN address that clashes with the LAN is still refused: " + r.stdout + r.stderr)
+# the packages: no opkg update, the copied files through install_local_packages, openNDS stopped, the four needed packages checked
+ostub = (f'opkg() {{ echo "opkg $*" >> {tmp}/nonet.log; case "$1" in update) return 1 ;; list-installed) printf "%s\\n" "$HAVE" ;; esac; return 0; }}; '
+         f'install_local_packages() {{ echo "LOCAL $1" >> {tmp}/nonet.log; }}; stop_opennds() {{ echo STOPPED >> {tmp}/nonet.log; }}; ')
+HAVE4 = "opennds - 1\ncurl - 1\nca-bundle - 1\njsonfilter - 1\nlibmicrohttpd-no-ssl - 1"
+open(f"{tmp}/nonet.log", "w").close()
+r = lib(NONET + ostub + '(install_packages); echo "rc=$?"', env={"PISO_LOCAL_PKGS": "/tmp/piso-offline/pkgs", "HAVE": HAVE4})
+nl = open(f"{tmp}/nonet.log").read()
+check("rc=0" in r.stdout and "LOCAL /tmp/piso-offline/pkgs" in nl and "STOPPED" in nl and "opkg update" not in nl and "opkg install" not in nl and "PING" not in nl and "WGET" not in nl and "CURL" not in nl,
+      "install_packages with PISO_LOCAL_PKGS: the copied files, openNDS stopped, no opkg update, no single installs, no network: " + nl + r.stdout + r.stderr)
+r = lib(NONET + ostub + '(install_packages); echo "rc=$?"', env={"PISO_LOCAL_PKGS": "/tmp/piso-offline/pkgs", "HAVE": HAVE4.replace("curl - 1\n", "")})
+check("rc=0" not in r.stdout and "curl" in r.stdout + r.stderr and "not installed" in r.stdout + r.stderr, "a needed package still missing afterwards stops the setup, naming it: " + r.stdout + r.stderr)
+open(f"{tmp}/nonet.log", "w").close()
+r = lib(NONET + ostub + '(install_packages); echo "rc=$?"', env={"HAVE": ""})
+nl = open(f"{tmp}/nonet.log").read()
+check("opkg update" in nl and "opkg install" not in nl.split("opkg update")[0] and "LOCAL" not in nl, "without the setting install_packages still starts with opkg update (the online path is as before): " + nl)
+check("unset SHOP_PRODUCT PISO_LOCAL_PKGS" in text.split("main() {")[1], "a command other than the first setup (an update included) never uses PISO_LOCAL_PKGS")
 # ---- box-diag: where the router <-> box link breaks -----------------------------------------------------------------------------
 def box_diag(setup_code):
     return lib(setup_code + "; cmd_box_diag", env={"BOX_IP": "127.0.0.1:1"})   # nothing listens there: the box does not answer

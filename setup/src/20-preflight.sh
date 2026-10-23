@@ -27,21 +27,43 @@ preflight() {
 	log "Wi-Fi radios: 2.4 GHz = $R24, 5 GHz = ${R5:-none (the 5 GHz networks are skipped)}"
 	[ -n "$R5" ] || tip "this router has no 5 GHz radio: everything runs on 2.4 GHz, which works, but a dual-band router carries more customers at once."
 	[ "$DRY" = 1 ] && return 0
+	preflight_network
+}
+
+# preflight_network: the router's WAN address and internet, and that its LAN and WAN ranges do not clash. With PISO_LOCAL_PKGS (a first setup
+# whose packages the setup program copied here) the router needs no internet: no WAN address and no ping are required, but a
+# WAN address that is there must still not clash.
+preflight_network() {
 	WAN=$(wan_ip)
-	[ -n "$WAN" ] || die "the router has no WAN address: plug the modem into the WAN port and wait a minute, then run this again"
+	[ -n "$WAN" ] || [ -n "$PISO_LOCAL_PKGS" ] || die "the router has no WAN address: plug the modem into the WAN port and wait a minute, then run this again"
 	[ "$LAN_IP" = 10.0.0.1 ] || die "the router's LAN address is $LAN_IP, but this setup expects 10.0.0.1. Run the installer, which moves it for you: wget -qO- https://pisophone.pages.dev/install.sh | sh   (or by hand: uci set network.lan.ipaddr=10.0.0.1 && uci commit network && reboot), then log in again at 10.0.0.1 and re-run. See setup/README.md."
 	case "$WAN" in
+		"") ;;
 		"${LAN_IP%.*}".*) die "the modem's network ($WAN) is in the same range as the router's LAN ($LAN_IP). Change the modem's own LAN address (for example to 192.168.100.1) and run this again" ;;
 		"${GUEST_IP%.*}".*) die "the modem's network ($WAN) uses ${GUEST_IP%.*}.x, the same as the guest network. Run with GUEST_IP=10.0.31.1 (or another free range)" ;;
 	esac
-	log "WAN address: $WAN"
-	if ! ping -c 1 -W 3 1.1.1.1 > /dev/null 2>&1 && ! ping -c 1 -W 3 8.8.8.8 > /dev/null 2>&1; then die "no internet through the WAN port"; fi
-	log "Internet: ok"
+	if [ -n "$PISO_LOCAL_PKGS" ]; then
+		log "WAN address: ${WAN:-none yet}. Internet: not needed for this setup (the packages were copied from the computer)"
+	else
+		log "WAN address: $WAN"
+		if ! ping -c 1 -W 3 1.1.1.1 > /dev/null 2>&1 && ! ping -c 1 -W 3 8.8.8.8 > /dev/null 2>&1; then die "no internet through the WAN port"; fi
+		log "Internet: ok"
+	fi
 	tip "the setup takes about 3 to 8 minutes. Keep this window open, the coin box powered on near the router, and the network cable plugged in."
 }
 
 install_packages() {
 	step "Installing packages"
+	if [ -n "$PISO_LOCAL_PKGS" ]; then
+		# the setup program copied the packages here and the router checks them itself (21-local-packages.sh): no opkg update, no internet
+		install_local_packages "$PISO_LOCAL_PKGS"
+		stop_opennds   # (as in the loop below: installing opennds starts it with its default settings)
+		for p in opennds curl ca-bundle jsonfilter; do
+			opkg list-installed 2> /dev/null | grep -q "^$p " || die "$p is not installed after the copied packages were installed. Nothing else was changed. Run the setup program again, or run it with --router-online while the router has internet."
+		done
+		opkg list-installed 2> /dev/null | grep -qi '^libmicrohttpd' || die "libmicrohttpd is not installed after the copied packages were installed. Run the setup program again, or run it with --router-online while the router has internet."
+		return 0
+	fi
 	opkg update > /dev/null 2>&1 || opkg update || die "opkg update failed (no internet or DNS?)"
 	for p in opennds curl ca-bundle jsonfilter; do
 		if ! opkg list-installed 2> /dev/null | grep -q "^$p "; then

@@ -4,6 +4,7 @@
 cmd_status() {
 	[ -r "$STATE" ] && echo "setup: $(cat "$STATE")"
 	DRY=1; check_all; _f=$?
+	box_name_notice   # (information only: it does not count as a failed check)
 	[ "$_f" = 0 ] && echo "All checks passed." || echo "$_f check(s) failed. Log: $LOG"
 	return "$_f"
 }

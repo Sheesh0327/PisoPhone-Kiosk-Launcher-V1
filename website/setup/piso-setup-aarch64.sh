@@ -21,7 +21,7 @@
 # Everything is generated here (Wi-Fi password, box admin password, gateway key) and printed once at the end and saved in
 # /root/piso-setup-summary.txt. Running the file again is safe: it keeps what it already made.
 #
-# Other commands (after setup): piso-setup status | wifi-name "<name>" | guest-port [lanN|off] | voucher-choice [on|off] | pair | summary | test-coin | diag | box-diag | set-password | reconcile [rebase] | telegram | rotate-box-wifi | export [file] | import <file> | space | forget-summary | kiosk-wifi | verify | handout | lock-admin | unlock-admin | wifi-admin [on|off] | update [check] (installs the newest release from the website; same as self-update) | self-update [check] | box-update [check] (installs the coin box's newest firmware) | auto-update on|off
+# Other commands (after setup): piso-setup status | wifi-name "<name>" | guest-port [lanN|off] | voucher-choice [on|off] | pair | summary | test-coin | diag | box-diag | set-password | box-wifi-name | reconcile [rebase] | telegram | rotate-box-wifi | export [file] | import <file> | space | forget-summary | kiosk-wifi | verify | handout | lock-admin | unlock-admin | wifi-admin [on|off] | update [check] (installs the newest release from the website; same as self-update) | self-update [check] | box-update [check] (installs the coin box's newest firmware) | auto-update on|off
 #
 # Options:  --dry-run  print the router settings instead of applying them (needs nothing but the uci command)
 #           --yes      do not ask for confirmation
@@ -29,7 +29,7 @@
 
 VERSION="dev"
 # the release of this file (setup/RELEASE): routers install only a higher release that the owner signed
-PISO_RELEASE='1.5.17'
+PISO_RELEASE='1.5.18'
 # the CPU family the portal program in this file is built for (router_family below names the family of the router it runs on)
 PISO_ARCH='aarch64'
 
@@ -178,7 +178,8 @@ router_id() {
 resolve_wifi_names() {
 	_kn=$(conf_get KIOSK_SSID_NAME); _bn=$(conf_get BOX_SSID_NAME)
 	if [ -n "$_kn" ] && [ -n "$_bn" ]; then KIOSK_SSID="$_kn"; BOX_SSID="$_bn"; return 0; fi
-	if [ -n "$(conf_get KIOSK_PASS)" ]; then KIOSK_SSID="$KIOSK_BASE"; BOX_SSID="$BOX_PAIR_SSID"; return 0; fi
+	# (a box name stored alone is the one piso-setup box-wifi-name gave an older router: only the box network is renamed, never the phones')
+	if [ -n "$(conf_get KIOSK_PASS)" ]; then KIOSK_SSID="$KIOSK_BASE"; BOX_SSID="${_bn:-$BOX_PAIR_SSID}"; return 0; fi
 	_id=$(router_id)
 	KIOSK_SSID="$KIOSK_BASE-$_id"; BOX_SSID="$BOX_PAIR_SSID-$_id"
 }
@@ -287,21 +288,43 @@ preflight() {
 	log "Wi-Fi radios: 2.4 GHz = $R24, 5 GHz = ${R5:-none (the 5 GHz networks are skipped)}"
 	[ -n "$R5" ] || tip "this router has no 5 GHz radio: everything runs on 2.4 GHz, which works, but a dual-band router carries more customers at once."
 	[ "$DRY" = 1 ] && return 0
+	preflight_network
+}
+
+# preflight_network: the router's WAN address and internet, and that its LAN and WAN ranges do not clash. With PISO_LOCAL_PKGS (a first setup
+# whose packages the setup program copied here) the router needs no internet: no WAN address and no ping are required, but a
+# WAN address that is there must still not clash.
+preflight_network() {
 	WAN=$(wan_ip)
-	[ -n "$WAN" ] || die "the router has no WAN address: plug the modem into the WAN port and wait a minute, then run this again"
+	[ -n "$WAN" ] || [ -n "$PISO_LOCAL_PKGS" ] || die "the router has no WAN address: plug the modem into the WAN port and wait a minute, then run this again"
 	[ "$LAN_IP" = 10.0.0.1 ] || die "the router's LAN address is $LAN_IP, but this setup expects 10.0.0.1. Run the installer, which moves it for you: wget -qO- https://pisophone.pages.dev/install.sh | sh   (or by hand: uci set network.lan.ipaddr=10.0.0.1 && uci commit network && reboot), then log in again at 10.0.0.1 and re-run. See setup/README.md."
 	case "$WAN" in
+		"") ;;
 		"${LAN_IP%.*}".*) die "the modem's network ($WAN) is in the same range as the router's LAN ($LAN_IP). Change the modem's own LAN address (for example to 192.168.100.1) and run this again" ;;
 		"${GUEST_IP%.*}".*) die "the modem's network ($WAN) uses ${GUEST_IP%.*}.x, the same as the guest network. Run with GUEST_IP=10.0.31.1 (or another free range)" ;;
 	esac
-	log "WAN address: $WAN"
-	if ! ping -c 1 -W 3 1.1.1.1 > /dev/null 2>&1 && ! ping -c 1 -W 3 8.8.8.8 > /dev/null 2>&1; then die "no internet through the WAN port"; fi
-	log "Internet: ok"
+	if [ -n "$PISO_LOCAL_PKGS" ]; then
+		log "WAN address: ${WAN:-none yet}. Internet: not needed for this setup (the packages were copied from the computer)"
+	else
+		log "WAN address: $WAN"
+		if ! ping -c 1 -W 3 1.1.1.1 > /dev/null 2>&1 && ! ping -c 1 -W 3 8.8.8.8 > /dev/null 2>&1; then die "no internet through the WAN port"; fi
+		log "Internet: ok"
+	fi
 	tip "the setup takes about 3 to 8 minutes. Keep this window open, the coin box powered on near the router, and the network cable plugged in."
 }
 
 install_packages() {
 	step "Installing packages"
+	if [ -n "$PISO_LOCAL_PKGS" ]; then
+		# the setup program copied the packages here and the router checks them itself (21-local-packages.sh): no opkg update, no internet
+		install_local_packages "$PISO_LOCAL_PKGS"
+		stop_opennds   # (as in the loop below: installing opennds starts it with its default settings)
+		for p in opennds curl ca-bundle jsonfilter; do
+			opkg list-installed 2> /dev/null | grep -q "^$p " || die "$p is not installed after the copied packages were installed. Nothing else was changed. Run the setup program again, or run it with --router-online while the router has internet."
+		done
+		opkg list-installed 2> /dev/null | grep -qi '^libmicrohttpd' || die "libmicrohttpd is not installed after the copied packages were installed. Run the setup program again, or run it with --router-online while the router has internet."
+		return 0
+	fi
 	opkg update > /dev/null 2>&1 || opkg update || die "opkg update failed (no internet or DNS?)"
 	for p in opennds curl ca-bundle jsonfilter; do
 		if ! opkg list-installed 2> /dev/null | grep -q "^$p "; then
@@ -315,6 +338,61 @@ install_packages() {
 	opkg list-installed 2> /dev/null | grep -qi '^libmicrohttpd' || opkg install libmicrohttpd-no-ssl > /dev/null 2>&1
 }
 
+# ---------------------------------------------------------------------------------------------------------------------
+# Packages from files (a first setup without the router's internet)
+# ---------------------------------------------------------------------------------------------------------------------
+# The setup program on the computer downloads the OpenWrt packages the setup needs and copies them to the router's RAM (the folder
+# PISO_LOCAL_PKGS). The router does not trust them because they came from the computer: it checks them itself, the way "opkg update"
+# does for a download: every package list ("Packages") against its signature with the router's own usign and keys, then every
+# package file against the size and sha256 that signed list gives for it. Only then are they installed. Anything wrong: nothing
+# is installed.
+
+# local_pkg_index <Packages file>: one line per package, "<file name> <sha256> <size>" (the file name without its folder)
+local_pkg_index() {
+	awk '
+		/^Filename:/ { f = $2; sub(".*/", "", f) }
+		/^SHA256sum:/ { h = $2 }
+		/^Size:/ { z = $2 }
+		/^$/ { if (f != "") print f, h, z; f = ""; h = ""; z = "" }
+		END { if (f != "") print f, h, z }
+	' "$1"
+}
+
+# install_local_packages <folder>: the folder holds <source>/Packages + Packages.sig, the .ipk files and order.txt (one file name
+# per line, dependencies first). Checks everything, then installs all of them with one opkg command.
+install_local_packages() {
+	_ld="$1"; _lkeys="$PISO_ROOT/etc/opkg/keys"
+	step "Installing packages from the files copied to this router (it does not need the internet for this)"
+	[ -f "$_ld/order.txt" ] || die "the package list order.txt is missing from $_ld: the copy from the computer is incomplete. Nothing was installed."
+	[ -n "$(ls "$_lkeys" 2> /dev/null)" ] || die "this router has no package signing keys in /etc/opkg/keys, so the copied packages cannot be checked. Nothing was installed."
+	_lidx="$_ld/.index.$$"; : > "$_lidx"
+	for _lp in "$_ld"/*/Packages; do
+		[ -f "$_lp" ] || continue
+		[ -f "$_lp.sig" ] || { rm -f "$_lidx"; die "the signature of $_lp is missing. Nothing was installed."; }
+		usign -V -m "$_lp" -P "$_lkeys" -x "$_lp.sig" > /dev/null 2>&1 || { rm -f "$_lidx"; die "the signature of the package list $_lp is not valid. Nothing was installed."; }
+		local_pkg_index "$_lp" >> "$_lidx"
+	done
+	[ -s "$_lidx" ] || { rm -f "$_lidx"; if [ -s "$_ld/order.txt" ]; then die "no package list with a valid signature was copied. Nothing was installed."; fi; log "nothing to install: every package is there already"; return 0; }
+	set --
+	while IFS= read -r _lf; do
+		[ -n "$_lf" ] || continue
+		case "$_lf" in
+			*/* | .* | *[!A-Za-z0-9._+-]*) rm -f "$_lidx"; die "order.txt names \"$_lf\", which is not a package file name. Nothing was installed." ;;
+			*.ipk) ;;
+			*) rm -f "$_lidx"; die "order.txt names \"$_lf\", which is not a package file name. Nothing was installed." ;;
+		esac
+		[ -f "$_ld/$_lf" ] || { rm -f "$_lidx"; die "$_lf is listed in order.txt but was not copied. Nothing was installed."; }
+		_lwant=$(awk -v f="$_lf" '$1 == f { print $2, $3; exit }' "$_lidx")
+		[ -n "$_lwant" ] || { rm -f "$_lidx"; die "$_lf is not in any signed package list. Nothing was installed."; }
+		[ "$(sha256sum "$_ld/$_lf" | cut -d' ' -f1)" = "${_lwant%% *}" ] || { rm -f "$_lidx"; die "$_lf does not match the sha256 in the signed package list. Nothing was installed."; }
+		[ "$(wc -c < "$_ld/$_lf" | tr -d ' ')" = "${_lwant##* }" ] || { rm -f "$_lidx"; die "$_lf has a different size than the signed package list says. Nothing was installed."; }
+		set -- "$@" "$_ld/$_lf"
+	done < "$_ld/order.txt"
+	rm -f "$_lidx"
+	if [ "$#" -eq 0 ]; then log "nothing to install: every package is there already"; return 0; fi
+	log "checked: $# packages match the signed lists; installing"
+	opkg install "$@" || die "could not install the copied packages"
+}
 # ---------------------------------------------------------------------------------------------------------------------
 # Router settings (one uci batch, printed by --dry-run)
 # ---------------------------------------------------------------------------------------------------------------------
@@ -748,6 +826,8 @@ box_station() {  # MAC of a station joined to the box network
 # only the station list is read.
 psk_mismatches() { logread 2> /dev/null | grep -c 'POSSIBLE-PSK-MISMATCH'; }
 # the words for a box that is refused (shown while pairing, in the failure message and by box-diag)
+# the tip for a pairing that does not finish: a second router set up nearby (or an older one on the shared name) answers the name every new box knows
+PAIR_NEARBY_TIP="another PisoHub router nearby may answer the setup name $BOX_PAIR_SSID: switch it off for a few minutes, or run piso-setup box-wifi-name on it"
 PSK_HINT="the box is trying to join but the router refuses its Wi-Fi password: it remembers one from an earlier setup. Factory reset the box (touch the wire on GPIO 2 to ground for 5 seconds, or flash it again with an erase), then run: piso-setup pair"
 box_up() { curl -s -m 4 "http://$BOX_IP/api/gateway/challenge" 2> /dev/null | grep -q '{'; }
 
@@ -790,9 +870,9 @@ pair_box() {
 			log "  still waiting for the coin box ($_t of $PAIR_WAIT s): $_net, nobody has joined it yet"
 		fi
 		case "$_t" in
-			60) if [ -n "$(box_ifname)" ]; then tip "no box yet after a minute. Check that the ESP32 has power (its light should blink) and that it runs this project's firmware: write it again with the setup program (https://pisophone.pages.dev/pisophone_setup.py, it does this over USB)"
+			60) if [ -n "$(box_ifname)" ]; then tip "no box yet after a minute. Check that the ESP32 has power (its light should blink) and that it runs this project's firmware: write it again with the setup program (https://pisophone.pages.dev/pisophone_setup.py, it does this over USB). Also: $PAIR_NEARBY_TIP"
 				else tip "the router is not broadcasting the box network. Check that its 2.4 GHz radio is on (Network > Wireless in the router's web page)."; fi ;;
-			150) tip "still nothing. A box that was set up before remembers its old Wi-Fi: factory reset it (touch the wire on GPIO 2 to ground for 5 seconds, or flash it again with 'erase all') so that it tries $BOX_PAIR_SSID." ;;
+			150) tip "still nothing. A box that was set up before remembers its old Wi-Fi: factory reset it (touch the wire on GPIO 2 to ground for 5 seconds, or flash it again with 'erase all') so that it tries $BOX_PAIR_SSID. If the box was never set up before: $PAIR_NEARBY_TIP." ;;
 			300) tip "last try: put the box right next to the router, and use a phone charger that gives at least 1 A (a weak supply makes the ESP32 restart when it uses Wi-Fi). If it still fails, run: piso-setup box-diag" ;;
 		esac
 		if [ "$_old" != "$BOX_DEFAULT_WIFI" ] && [ $((_t % PAIR_SWAP)) -eq 0 ]; then
@@ -811,7 +891,7 @@ pair_box() {
 		lock_box_network ""
 		[ -n "$_up" ] || die "the hidden coin box network is not on the air (check the router's 2.4 GHz radio: iwinfo), so the coin box could not join it. Then run: piso-setup pair"
 		[ -z "$_refused" ] || die "$PSK_HINT"
-		die "the coin box did not join the hidden $BOX_PAIR_SSID network. Check that it is powered and has the current firmware (or factory reset it: it must try $BOX_PAIR_SSID), then run: piso-setup pair"
+		die "the coin box did not join the hidden $BOX_PAIR_SSID network. Check that it is powered and has the current firmware (or factory reset it: it must try $BOX_PAIR_SSID), then run: piso-setup pair. Also: $PAIR_NEARBY_TIP"
 	fi
 	UNDO=""
 	if [ "$_key" = "$_old" ] && [ "$_old" != "$BOX_DEFAULT_WIFI" ]; then conf_set BOX_WIFI_ROTATED 1; fi   # it joined with its own password
@@ -911,15 +991,23 @@ sync_kiosk_wifi() {
 # rotate_box_wifi: the firmware's built-in Wi-Fi password is public, so once the box is paired (and only its MAC is admitted)
 # it is given a random one of its own, and this router's own network name (BOX_SSID: the built-in name is shared by every router):
 # stored on the box through its admin API, then set on the router's hidden box network. The box loses the network for a moment and rejoins with the new password (within about a minute).
-rotate_box_wifi() {
-	[ "$(conf_get BOX_WIFI_ROTATED)" = 1 ] && return 0
+rotate_box_wifi() {  # rotate_box_wifi [force]: "force" does it again even when the box already has its own password
+	[ "$1" = force ] || [ "$(conf_get BOX_WIFI_ROTATED)" != 1 ] || return 0
 	step "Giving the coin box its own Wi-Fi password"
 	tip "the box's light will blink for up to a minute while it moves to the new password. That is normal: wait."
-	_new=$(secret BOX_WIFI_PASS_NEW 20)
+	_had=$(conf_get BOX_WIFI_PASS_NEW)
+	if [ "$1" = force ]; then   # asked for again: a new password, not the stored one
+		_new=$(rand 20); [ "${#_new}" -eq 20 ] || die "could not generate a random value for BOX_WIFI_PASS_NEW"
+		conf_set BOX_WIFI_PASS_NEW "$_new"
+	else _new=$(secret BOX_WIFI_PASS_NEW 20); fi
 	box_curl "$(conf_get BOX_ADMIN_PASS)" /save --data-urlencode "wifi_pass=$_new" --data-urlencode "wifi_ssid=$BOX_SSID"
 	case "$BOXCODE" in
 		200 | 302 | 303) ;;
-		*) log "the box did not take its own Wi-Fi password (HTTP ${BOXCODE:-none}); it keeps the built-in one for now (still locked to its MAC). Run again: piso-setup rotate-box-wifi"; return 0 ;;
+		*)
+			# the box said no: nothing on the router changes (a new password stored now would be named by box_wifi_key for a box that never got it)
+			if [ -n "$_had" ]; then conf_set BOX_WIFI_PASS_NEW "$_had"; else conf_del BOX_WIFI_PASS_NEW; fi
+			log "the box did not take its own Wi-Fi password (HTTP ${BOXCODE:-none}); nothing was changed on the router, the box keeps the Wi-Fi password and name it had. Run again: piso-setup rotate-box-wifi"
+			return 1 ;;
 	esac
 	uci set wireless.box_ap.key="$_new"; uci set wireless.box_ap.ssid="$BOX_SSID"; uci commit wireless
 	conf_set BOX_WIFI_ROTATED 1
@@ -930,6 +1018,50 @@ rotate_box_wifi() {
 	log "the coin box rejoined with its own Wi-Fi password"
 }
 
+# own_box_wifi_name: piso-setup box-wifi-name. A router whose box network is still called PisoCoinBox (the name every new box
+# knows, so a second router being set up nearby can answer a new box in its place) gives it the router's own name
+# PisoCoinBox-<id>, and a new password, the way rotate_box_wifi does: the box is told first, then the router switches.
+# The phones' network, its name and password are not touched. The box is off its network for up to four minutes; its coins
+# wait in its own memory and are credited once afterwards.
+own_box_wifi_name() {
+	if [ "$(box_net_ssid)" != "$BOX_PAIR_SSID" ]; then
+		log "the coin box network already has its own name ($(box_net_ssid)). Nothing was changed."
+		return 0
+	fi
+	[ -n "$(conf_get BOX_MAC)" ] || die "no coin box is paired with this router yet, so there is no box network to rename. Nothing was changed. Run: piso-setup pair"
+	box_up || die "the coin box does not answer at $BOX_IP (is it powered and joined? check: piso-setup status). Nothing was changed."
+	# The box stores the name it is given without checking it, and a name it cannot use would leave it unable to join: check it here.
+	_name="$BOX_PAIR_SSID-$(router_id)"
+	case "$_name" in
+		"$BOX_PAIR_SSID"-?*) ;;
+		*) die "the new coin box network name \"$_name\" is not usable. Nothing was changed." ;;
+	esac
+	case "$_name" in
+		*[!A-Za-z0-9-]*) die "the new coin box network name \"$_name\" has characters the box cannot use. Nothing was changed." ;;
+	esac
+	[ "${#_name}" -le 32 ] || die "the new coin box network name \"$_name\" is longer than a Wi-Fi name may be. Nothing was changed."
+	log "The coin box network will be called $_name from now on, with a new password (now it is $BOX_PAIR_SSID, a name every new box knows)."
+	log "The coin box is off its network for up to four minutes while it switches. Coins put in meanwhile are kept in the box and credited once it is back; Wi-Fi customers cannot pay by coin until then."
+	if [ "$ASSUME_YES" != 1 ]; then
+		printf 'Go ahead? [y/N] '; read -r _a
+		case "$_a" in y | Y) ;; *) echo "Cancelled. Nothing was changed."; return 0 ;; esac
+	fi
+	_old_bn=$(conf_get BOX_SSID_NAME); _old_ssid="$BOX_SSID"
+	conf_set BOX_SSID_NAME "$_name"; BOX_SSID="$_name"
+	if ! rotate_box_wifi force; then
+		if [ -n "$_old_bn" ]; then conf_set BOX_SSID_NAME "$_old_bn"; else conf_del BOX_SSID_NAME; fi
+		BOX_SSID="$_old_ssid"
+		die "the coin box did not take its new network name. Nothing was changed on the router; the box keeps working as before. Run again: piso-setup box-wifi-name"
+	fi
+	log "the coin box network is now called $_name"
+}
+
+# box_name_notice: one line, only when a coin box is paired and its network still has the shared setup name PisoCoinBox
+# (status and the summary print it; nothing here changes anything)
+box_name_notice() {
+	[ -n "$(conf_get BOX_MAC)" ] && [ "$(box_net_ssid)" = "$BOX_PAIR_SSID" ] || return 0
+	echo "Coin box network: $BOX_PAIR_SSID (the shared setup name: a second router being set up nearby can take this box's place). Fix: piso-setup box-wifi-name"
+}
 # ---------------------------------------------------------------------------------------------------------------------
 # Stage 2: pairing the box, services, checks
 # ---------------------------------------------------------------------------------------------------------------------
@@ -947,9 +1079,11 @@ EOT
 Kiosk Wi-Fi:           $KIOSK_SSID (HIDDEN)   password: $(conf_get KIOSK_PASS)    (rental phones only; the coin box's "Set up a phone" link carries it, nobody types it)
 EOT
 	fi
+	_bnn=$(box_name_notice)   # (a line only when the coin box network still has the shared setup name)
 	cat >> "$SUMMARY" << EOT
 PisoWiFi (customers):  $(conf_get GUEST_NAME)   (open; rename with: piso-setup wifi-name "New Name")
-Coin box:              http://$BOX_IP      admin password: $(conf_get BOX_ADMIN_PASS)    hidden Wi-Fi: $BOX_SSID (only MAC $(conf_get BOX_MAC))
+Coin box:              http://$BOX_IP      admin password: $(conf_get BOX_ADMIN_PASS)    hidden Wi-Fi: $BOX_SSID (only MAC $(conf_get BOX_MAC))${_bnn:+
+$_bnn}
 
 $(flash_report)
 
@@ -1143,6 +1277,7 @@ stage2() {
 cmd_status() {
 	[ -r "$STATE" ] && echo "setup: $(cat "$STATE")"
 	DRY=1; check_all; _f=$?
+	box_name_notice   # (information only: it does not count as a failed check)
 	[ "$_f" = 0 ] && echo "All checks passed." || echo "$_f check(s) failed. Log: $LOG"
 	return "$_f"
 }
@@ -2222,13 +2357,13 @@ main() {
 		case "$1" in
 			--dry-run) DRY=1 ;;
 			--yes | -y) ASSUME_YES=1 ;;
-			status | pair | summary | wifi-name | guest-port | kiosk-wifi | verify | uninstall-info | test-coin | diag | box-diag | set-password | reconcile | telegram | rotate-box-wifi | handout | console | export | import | space | forget-summary | lock-admin | lock-admin-confirm | unlock-admin | wifi-admin | update | self-update | box-update | auto-update | voucher-choice) CMD="$1"; shift; ARG="$1"; ARGS="$*"; break ;;
+			status | pair | summary | wifi-name | guest-port | kiosk-wifi | verify | uninstall-info | test-coin | diag | box-diag | set-password | reconcile | telegram | rotate-box-wifi | box-wifi-name | handout | console | export | import | space | forget-summary | lock-admin | lock-admin-confirm | unlock-admin | wifi-admin | update | self-update | box-update | auto-update | voucher-choice) CMD="$1"; shift; ARG="$1"; ARGS="$*"; break ;;
 			-h | --help) sed -n '2,/^# Options:/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 			*) echo "unknown option: $1 (try --help)" >&2; exit 1 ;;
 		esac
 		shift
 	done
-	[ -z "$CMD" ] || unset SHOP_PRODUCT   # (the product is chosen by the installer only: no other command, an update included, changes it)
+	[ -z "$CMD" ] || unset SHOP_PRODUCT PISO_LOCAL_PKGS   # (the product is chosen by the installer only: no other command, an update included, changes it; the copied packages are for a first setup only)
 	case "$CMD" in
 		status) cmd_status ;;
 		wifi-name) cmd_wifi_name "$ARG" ;;
@@ -2265,7 +2400,8 @@ main() {
 			push_kiosk_wifi
 			if kiosk_wifi_on_box; then log "checked: the box's \"Set up a phone\" link carries the password"
 			else log "the box's link does not show it yet (a box with firmware before 3.3.3 cannot: it updates itself, then run this again)"; fi ;;
-		rotate-box-wifi) DRY=0; [ "$(id -u)" = 0 ] || die "run as root"; conf_set BOX_WIFI_ROTATED 0; rotate_box_wifi ;;
+		box-wifi-name) DRY=0; [ "$(id -u)" = 0 ] || die "run as root"; own_box_wifi_name ;;
+		rotate-box-wifi) DRY=0; [ "$(id -u)" = 0 ] || die "run as root"; rotate_box_wifi force ;;
 		set-password) cmd_set_password ;;
 		summary) cat "$SUMMARY" ;;
 		uninstall-info) echo "To undo: sysupgrade -n (factory reset) the router. Nothing else is changed outside the files listed in $0." ;;

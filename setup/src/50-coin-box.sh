@@ -14,6 +14,8 @@ box_station() {  # MAC of a station joined to the box network
 # only the station list is read.
 psk_mismatches() { logread 2> /dev/null | grep -c 'POSSIBLE-PSK-MISMATCH'; }
 # the words for a box that is refused (shown while pairing, in the failure message and by box-diag)
+# the tip for a pairing that does not finish: a second router set up nearby (or an older one on the shared name) answers the name every new box knows
+PAIR_NEARBY_TIP="another PisoHub router nearby may answer the setup name $BOX_PAIR_SSID: switch it off for a few minutes, or run piso-setup box-wifi-name on it"
 PSK_HINT="the box is trying to join but the router refuses its Wi-Fi password: it remembers one from an earlier setup. Factory reset the box (touch the wire on GPIO 2 to ground for 5 seconds, or flash it again with an erase), then run: piso-setup pair"
 box_up() { curl -s -m 4 "http://$BOX_IP/api/gateway/challenge" 2> /dev/null | grep -q '{'; }
 
@@ -56,9 +58,9 @@ pair_box() {
 			log "  still waiting for the coin box ($_t of $PAIR_WAIT s): $_net, nobody has joined it yet"
 		fi
 		case "$_t" in
-			60) if [ -n "$(box_ifname)" ]; then tip "no box yet after a minute. Check that the ESP32 has power (its light should blink) and that it runs this project's firmware: write it again with the setup program (https://pisophone.pages.dev/pisophone_setup.py, it does this over USB)"
+			60) if [ -n "$(box_ifname)" ]; then tip "no box yet after a minute. Check that the ESP32 has power (its light should blink) and that it runs this project's firmware: write it again with the setup program (https://pisophone.pages.dev/pisophone_setup.py, it does this over USB). Also: $PAIR_NEARBY_TIP"
 				else tip "the router is not broadcasting the box network. Check that its 2.4 GHz radio is on (Network > Wireless in the router's web page)."; fi ;;
-			150) tip "still nothing. A box that was set up before remembers its old Wi-Fi: factory reset it (touch the wire on GPIO 2 to ground for 5 seconds, or flash it again with 'erase all') so that it tries $BOX_PAIR_SSID." ;;
+			150) tip "still nothing. A box that was set up before remembers its old Wi-Fi: factory reset it (touch the wire on GPIO 2 to ground for 5 seconds, or flash it again with 'erase all') so that it tries $BOX_PAIR_SSID. If the box was never set up before: $PAIR_NEARBY_TIP." ;;
 			300) tip "last try: put the box right next to the router, and use a phone charger that gives at least 1 A (a weak supply makes the ESP32 restart when it uses Wi-Fi). If it still fails, run: piso-setup box-diag" ;;
 		esac
 		if [ "$_old" != "$BOX_DEFAULT_WIFI" ] && [ $((_t % PAIR_SWAP)) -eq 0 ]; then
@@ -77,7 +79,7 @@ pair_box() {
 		lock_box_network ""
 		[ -n "$_up" ] || die "the hidden coin box network is not on the air (check the router's 2.4 GHz radio: iwinfo), so the coin box could not join it. Then run: piso-setup pair"
 		[ -z "$_refused" ] || die "$PSK_HINT"
-		die "the coin box did not join the hidden $BOX_PAIR_SSID network. Check that it is powered and has the current firmware (or factory reset it: it must try $BOX_PAIR_SSID), then run: piso-setup pair"
+		die "the coin box did not join the hidden $BOX_PAIR_SSID network. Check that it is powered and has the current firmware (or factory reset it: it must try $BOX_PAIR_SSID), then run: piso-setup pair. Also: $PAIR_NEARBY_TIP"
 	fi
 	UNDO=""
 	if [ "$_key" = "$_old" ] && [ "$_old" != "$BOX_DEFAULT_WIFI" ]; then conf_set BOX_WIFI_ROTATED 1; fi   # it joined with its own password
@@ -177,15 +179,23 @@ sync_kiosk_wifi() {
 # rotate_box_wifi: the firmware's built-in Wi-Fi password is public, so once the box is paired (and only its MAC is admitted)
 # it is given a random one of its own, and this router's own network name (BOX_SSID: the built-in name is shared by every router):
 # stored on the box through its admin API, then set on the router's hidden box network. The box loses the network for a moment and rejoins with the new password (within about a minute).
-rotate_box_wifi() {
-	[ "$(conf_get BOX_WIFI_ROTATED)" = 1 ] && return 0
+rotate_box_wifi() {  # rotate_box_wifi [force]: "force" does it again even when the box already has its own password
+	[ "$1" = force ] || [ "$(conf_get BOX_WIFI_ROTATED)" != 1 ] || return 0
 	step "Giving the coin box its own Wi-Fi password"
 	tip "the box's light will blink for up to a minute while it moves to the new password. That is normal: wait."
-	_new=$(secret BOX_WIFI_PASS_NEW 20)
+	_had=$(conf_get BOX_WIFI_PASS_NEW)
+	if [ "$1" = force ]; then   # asked for again: a new password, not the stored one
+		_new=$(rand 20); [ "${#_new}" -eq 20 ] || die "could not generate a random value for BOX_WIFI_PASS_NEW"
+		conf_set BOX_WIFI_PASS_NEW "$_new"
+	else _new=$(secret BOX_WIFI_PASS_NEW 20); fi
 	box_curl "$(conf_get BOX_ADMIN_PASS)" /save --data-urlencode "wifi_pass=$_new" --data-urlencode "wifi_ssid=$BOX_SSID"
 	case "$BOXCODE" in
 		200 | 302 | 303) ;;
-		*) log "the box did not take its own Wi-Fi password (HTTP ${BOXCODE:-none}); it keeps the built-in one for now (still locked to its MAC). Run again: piso-setup rotate-box-wifi"; return 0 ;;
+		*)
+			# the box said no: nothing on the router changes (a new password stored now would be named by box_wifi_key for a box that never got it)
+			if [ -n "$_had" ]; then conf_set BOX_WIFI_PASS_NEW "$_had"; else conf_del BOX_WIFI_PASS_NEW; fi
+			log "the box did not take its own Wi-Fi password (HTTP ${BOXCODE:-none}); nothing was changed on the router, the box keeps the Wi-Fi password and name it had. Run again: piso-setup rotate-box-wifi"
+			return 1 ;;
 	esac
 	uci set wireless.box_ap.key="$_new"; uci set wireless.box_ap.ssid="$BOX_SSID"; uci commit wireless
 	conf_set BOX_WIFI_ROTATED 1
@@ -196,3 +206,47 @@ rotate_box_wifi() {
 	log "the coin box rejoined with its own Wi-Fi password"
 }
 
+# own_box_wifi_name: piso-setup box-wifi-name. A router whose box network is still called PisoCoinBox (the name every new box
+# knows, so a second router being set up nearby can answer a new box in its place) gives it the router's own name
+# PisoCoinBox-<id>, and a new password, the way rotate_box_wifi does: the box is told first, then the router switches.
+# The phones' network, its name and password are not touched. The box is off its network for up to four minutes; its coins
+# wait in its own memory and are credited once afterwards.
+own_box_wifi_name() {
+	if [ "$(box_net_ssid)" != "$BOX_PAIR_SSID" ]; then
+		log "the coin box network already has its own name ($(box_net_ssid)). Nothing was changed."
+		return 0
+	fi
+	[ -n "$(conf_get BOX_MAC)" ] || die "no coin box is paired with this router yet, so there is no box network to rename. Nothing was changed. Run: piso-setup pair"
+	box_up || die "the coin box does not answer at $BOX_IP (is it powered and joined? check: piso-setup status). Nothing was changed."
+	# The box stores the name it is given without checking it, and a name it cannot use would leave it unable to join: check it here.
+	_name="$BOX_PAIR_SSID-$(router_id)"
+	case "$_name" in
+		"$BOX_PAIR_SSID"-?*) ;;
+		*) die "the new coin box network name \"$_name\" is not usable. Nothing was changed." ;;
+	esac
+	case "$_name" in
+		*[!A-Za-z0-9-]*) die "the new coin box network name \"$_name\" has characters the box cannot use. Nothing was changed." ;;
+	esac
+	[ "${#_name}" -le 32 ] || die "the new coin box network name \"$_name\" is longer than a Wi-Fi name may be. Nothing was changed."
+	log "The coin box network will be called $_name from now on, with a new password (now it is $BOX_PAIR_SSID, a name every new box knows)."
+	log "The coin box is off its network for up to four minutes while it switches. Coins put in meanwhile are kept in the box and credited once it is back; Wi-Fi customers cannot pay by coin until then."
+	if [ "$ASSUME_YES" != 1 ]; then
+		printf 'Go ahead? [y/N] '; read -r _a
+		case "$_a" in y | Y) ;; *) echo "Cancelled. Nothing was changed."; return 0 ;; esac
+	fi
+	_old_bn=$(conf_get BOX_SSID_NAME); _old_ssid="$BOX_SSID"
+	conf_set BOX_SSID_NAME "$_name"; BOX_SSID="$_name"
+	if ! rotate_box_wifi force; then
+		if [ -n "$_old_bn" ]; then conf_set BOX_SSID_NAME "$_old_bn"; else conf_del BOX_SSID_NAME; fi
+		BOX_SSID="$_old_ssid"
+		die "the coin box did not take its new network name. Nothing was changed on the router; the box keeps working as before. Run again: piso-setup box-wifi-name"
+	fi
+	log "the coin box network is now called $_name"
+}
+
+# box_name_notice: one line, only when a coin box is paired and its network still has the shared setup name PisoCoinBox
+# (status and the summary print it; nothing here changes anything)
+box_name_notice() {
+	[ -n "$(conf_get BOX_MAC)" ] && [ "$(box_net_ssid)" = "$BOX_PAIR_SSID" ] || return 0
+	echo "Coin box network: $BOX_PAIR_SSID (the shared setup name: a second router being set up nearby can take this box's place). Fix: piso-setup box-wifi-name"
+}

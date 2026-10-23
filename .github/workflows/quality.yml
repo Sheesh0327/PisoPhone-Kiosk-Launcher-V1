@@ -350,6 +350,8 @@ jobs:
         run: python3 router/tests/test_install.py
       - name: Check the router setup run from a computer (setup/pisophone_setup.py, against a fake ssh and router)
         run: python3 router/tests/test_pisophone_setup.py
+      - name: Check the first setup without the router's internet (reading the router, choosing and downloading packages, copying them to its memory)
+        run: python3 router/tests/test_offline_setup.py
       - name: Check the setup page (this computer and what it installs, the PIN and the server, every step in a phone-sized browser)
         run: |
           CHROME=$(ls ~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome | head -1) python3 router/tests/test_setup_web.py

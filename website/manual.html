@@ -113,7 +113,7 @@ ol.steps>li::before{content:counter(s);position:absolute;left:0;top:2px;width:30
 <h2 id="need">2. What you need</h2>
 <ul>
 <li>The ESP32 coin box board, and a USB <b>data</b> cable (charge-only cables do not work).</li>
-<li>An OpenWrt router, factory reset (for example the 360T6M), and a modem with internet.</li>
+<li>An OpenWrt router, factory reset (for example the 360T6M), and a modem with internet. The router itself does not need the internet during the setup (your computer downloads and copies what it needs); customers do.</li>
 <li>A computer to run the setup program (Windows, macOS, Linux, Armbian, Parrot, Raspberry Pi OS), with a network cable to the router. A small Armbian PC with no screen works too.</li>
 <li>Your own phone or laptop to open the setup page.</li>
 <li>The rental phones, factory reset.</li>
@@ -336,6 +336,7 @@ ol.steps>li::before{content:counter(s);position:absolute;left:0;top:2px;width:30
 <tr><td><code>piso-setup set-password</code></td><td>Change the router password</td></tr>
 <tr><td><code>piso-setup lock-admin</code></td><td>Lock down router administration</td></tr>
 <tr><td><code>piso-setup rotate-box-wifi</code></td><td>New password for PisoCoinBox</td></tr>
+<tr><td><code>piso-setup box-wifi-name</code></td><td>Give the coin box network the router's own name (when status says it is still <code>PisoCoinBox</code>); the box is off its network up to four minutes, coins are kept</td></tr>
 <tr><td><code>piso-setup self-update</code>, <code>update</code>, <code>auto-update</code></td><td>Update the router software (see chapter 12)</td></tr>
 </table>
 <p>Telegram alerts message you when the unit needs attention. Set them up once with <code>piso-setup telegram</code>.</p>
