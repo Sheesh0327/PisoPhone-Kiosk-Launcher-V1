@@ -50,6 +50,9 @@ class KioskHttpServer(
         private const val MAX_REQUESTS_PER_WINDOW = 60
         private const val MAX_TRACKED_IPS = 256
 
+        /** The params of the box's config push before feature 012. */
+        private val CONFIG_PARAMS = listOf("price", "minutes", "device_name", "admin_pin", "slot", "slot_num")
+
         /** The optional branding params of the box's /config push (feature 012). */
         internal val BRANDING_PARAMS = listOf("palette", "shop_name", "brand_title", "anim_density")
 
@@ -335,9 +338,13 @@ class KioskHttpServer(
                 val devName = decryptedParams["device_name"]?.trim()
                 val pin = decryptedParams["admin_pin"]
                 val slot = decryptedParams["slot"]?.toIntOrNull() ?: decryptedParams["slot_num"]?.toIntOrNull()
-                delegate.onConfigUpdated(price, minutes, devName, pin, slot)
+                // the box sends the branding in a push of its own (its params buffer is small): such a push is not a config update, so
+                // it does not rewrite the slot or show the "Config Synced" toast. Any other push is handled exactly as before.
+                val brandingSent = BRANDING_PARAMS.any { decryptedParams.containsKey(it) }
+                val configSent = CONFIG_PARAMS.any { decryptedParams.containsKey(it) }
+                if (configSent || !brandingSent) delegate.onConfigUpdated(price, minutes, devName, pin, slot)
                 // the four branding settings are optional: a box that does not know them sends none and nothing changes
-                if (BRANDING_PARAMS.any { decryptedParams.containsKey(it) }) {
+                if (brandingSent) {
                     delegate.onBrandingUpdated(
                         palette = decodeBrandingValue(decryptedParams["palette"]),
                         shopName = decodeBrandingValue(decryptedParams["shop_name"]),

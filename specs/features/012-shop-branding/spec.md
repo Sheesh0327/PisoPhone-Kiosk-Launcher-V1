@@ -45,7 +45,11 @@ box stores only short settings, so nothing new is ever downloaded or installed o
    phone profiles and the rate are today. The phone's owner vault shows what the phone received, read-only, and never edits it:
    one source of truth for a shop, and no way for a customer-facing phone to disagree with the box.
 2. **Both sides change in one change** (`CLAUDE.md` section 6). Only *optional* url-encoded params are added to the existing
-   `/config` push (`esp32_firmware/src/DeviceManager.cpp:88`, `WebServerConfig.cpp:377` → `KioskHttpServer.kt:306`). A live box
+   authenticated `/config` route (`KioskHttpServer.kt:306`), carried by a `/config` push of their own: the box's push params
+   buffer is 256 bytes (`AuthRequest` in `Config.h`) and the old push already carries the name, slot and PIN in it, so the old
+   push at `DeviceManager.cpp:88` and `WebServerConfig.cpp:377` is left byte-for-byte as it is and the branding follows it in a
+   second push (on pairing, on a branding save, and after a config save). *Corrected 2026-10-23: the first wording appended the
+   params to the old push, where a long name would have been cut in the middle of an escape.* A live box
    with a new app, and a new box with a live app, both keep working: the phone reads the params with `has`/`optString` as it
    already does for `device_name`, `price` and `minutes`, and an old box simply sends none.
 3. **`docs/design/GUI_SPEC_PISOPHONE_KIDS.md` section 10 (performance).** 0 fps at rest, no `Modifier.blur`, no alpha panels

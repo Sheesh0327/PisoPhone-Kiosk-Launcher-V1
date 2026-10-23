@@ -5,6 +5,7 @@
 #if PISO_HAS_PHONES
 #include "WebServerAccounts.h"
 #include "WebServerProfiles.h"
+#include "WebServerBranding.h"
 #endif
 #include "CoinSlotManager.h"
 #include "PaymentQueueManager.h"
@@ -85,6 +86,7 @@ void setupWebServer() {
     webServer.on("/api/slots/unpair", HTTP_ANY, handleApiSlotUnpair);
     webServer.on("/api/slots/profile", HTTP_ANY, handleApiSlotProfile);
     webServer.on("/api/profiles", HTTP_ANY, handleApiProfiles);
+    webServer.on("/api/branding", HTTP_ANY, handleApiBranding);
     webServer.on("/api/slots/cloud_sync", HTTP_POST, handleApiSlotCloudSync);
     webServer.on("/api/security/switch_key", HTTP_POST, handleApiSecuritySwitchKey);
     webServer.on("/api/license", HTTP_GET, handleApiLicense);

@@ -516,4 +516,21 @@ class KioskHttpServerUnitTest {
         assertEquals(401, response.status.requestStatus)
         assertTrue(brandingPushes.isEmpty())
     }
+
+    @Test
+    fun aBrandingOnlyPushIsNotAConfigUpdate() {
+        // the box sends the branding in a push of its own: no slot rewrite, no "Config Synced" toast on the phone
+        val response = pushConfig("palette=rosas&shop_name=Tindahan&brand_title=Piso&anim_density=low")
+        assertEquals(200, response.status.requestStatus)
+        assertEquals(0, configPushes)
+        assertEquals(listOf(listOf("rosas", "Tindahan", "Piso", "low")), brandingPushes)
+    }
+
+    @Test
+    fun aPushWithNeitherKindOfParamIsStillHandledAsBefore() {
+        val response = pushConfig("nothing=here")
+        assertEquals(200, response.status.requestStatus)
+        assertEquals("the old behaviour stays for a push that carries no branding", 1, configPushes)
+        assertTrue(brandingPushes.isEmpty())
+    }
 }

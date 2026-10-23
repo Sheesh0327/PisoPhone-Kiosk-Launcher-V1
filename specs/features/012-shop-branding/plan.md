@@ -69,7 +69,7 @@ group. Groups 1 to 6 are app-only and need no board; groups 7 and 8 are firmware
       its poster and `VideoBackgroundPolicy` untouched.
       (test: a launcher Roborazzi golden, default differing from today only by the credit line, plus one branded, and one at density `off` showing the credit
       present; red result logged: yes.)
-- [ ] 7. **The box stores the settings.** NVS keys `brand_pal`, `shop_name`, `brand_title`, `anim_dens` beside the existing
+- [x] 7. **The box stores the settings.** NVS keys `brand_pal`, `shop_name`, `brand_title`, `anim_dens` beside the existing
       `ph_profiles`/`slot_prof` pattern (`src/PhoneProfileStore.cpp`), loaded on boot, with the same caps and sanitising as
       group 2. (test: a host test under `esp32_firmware/host_tests/` — store, reload, caps, bad palette id, bad density word,
       and the four together under 512 bytes with the measured sizes printed; red result logged: yes.)
@@ -79,8 +79,9 @@ group. Groups 1 to 6 are app-only and need no board; groups 7 and 8 are firmware
       (test: the existing dashboard/config host tests extended over the new form fields and the refusals; red result logged:
       yes.) If the page lives under `esp32_firmware/web/`, regenerate `include/WebAssets.h` with
       `python3 scripts/embed_web.py` — never hand-edited.
-- [ ] 8. **The box pushes the settings.** Add the four optional params to the push built in `DeviceManager.cpp:88` and to the
-      params in `WebServerConfig.cpp:377`, so pairing and every save reach the paired phones. (test: host test asserting the
+- [x] 8. **The box pushes the settings.** A `/config` push of its own with the four optional params (the old pushes at
+      `DeviceManager.cpp:88` and `WebServerConfig.cpp:377` are left as they are; the params buffer is 256 bytes), sent on pairing,
+      on a branding save and after a config save, so every paired phone follows the box. (test: host test asserting the
       pushed parameter string with and without branding set, and that `protocol/gen_vectors.py` output and
       `host_tests/protocol_contract_test.cpp` are unchanged; red result logged: yes.)
 - [ ] 8b. **The vault shows what arrived, read-only.** One line in the owner vault: the palette, the shop name, the title, the
