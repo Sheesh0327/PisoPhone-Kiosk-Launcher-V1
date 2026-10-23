@@ -1,6 +1,6 @@
 # Feature 012: Shop branding on the phone screens (colours, shop name, title)
 
-Status: **draft**   Branch: `feat/012-shop-branding`   Area: app, firmware
+Status: **approved** (owner, 2026-10-23)   Branch: `feat/012-shop-branding`   Area: app, firmware
 Backlog rows: none (owner request 2026-10-23)   Release: app + firmware
 
 > Branch note: `beta` is not present in the session that wrote this, so the work sits on `claude/serene-feynman-ycyr6r`
@@ -151,7 +151,10 @@ Answered by the owner on 2026-10-23 (interview in session `session_01PnBTKntvzuD
 - Fallback: last known branding from direct-boot storage, today's TechNet look when nothing was ever set.
 - Verification: spec, plan and code written here; the owner (or a session with the Android SDK) compiles and runs the gates.
 
-Still open, needed before the UI groups (4 to 6) are built:
+**All six proposals below were approved as written by the owner on 2026-10-23** ("your proposals, approved"), including
+question 5's reading of `normal` (today's screen stays the default) and question 6's three details: the credit is text, its
+sheen sweeps about every 6 seconds, and its motion — not the words — pauses with everything else on a hot or nearly flat phone.
+They are kept here in full as the record of what was approved:
 1. **The palette list.** I propose six: `technet` (today's Dagat blue, the default), `dagat`, `tropiko`, `ginto` (the two other
    tints today), plus `rosas` (pink) and `berde` (green). Each is a backdrop pair, three cloud colours and one accent. Approve
    the names and the count, or give me the client colours you actually need.
