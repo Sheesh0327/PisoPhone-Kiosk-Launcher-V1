@@ -24,7 +24,7 @@ Not opened (constitution rule 1 / `CLAUDE.md` section 4): `esp32_firmware/includ
 Test first: write the test, run it, log the red result in `ledger/negative-constraints.md`, then write the code. One commit per
 group. Groups 1 to 6 are app-only and need no board; groups 7 and 8 are firmware-only and need no phone.
 
-- [ ] 1. **The palettes, as data with a contrast gate.** `ui/theme/BrandPalette.kt`: an id, a backdrop pair, three cloud
+- [x] 1. **The palettes, as data with a contrast gate.** `ui/theme/BrandPalette.kt`: an id, a backdrop pair, three cloud
       colours and one accent per palette, `technet` first and default, plus `of(id)` falling back to `technet` on an unknown id.
       (test: `BrandPaletteContrastUnitTest` over every palette — text ≥ 4.5:1 on both backdrop colours, icons and outlines ≥
       3:1, the maker's credit colour ≥ 4.5:1 on both, and `of("nonsense") == technet`; red result logged: yes.) No UI touched
