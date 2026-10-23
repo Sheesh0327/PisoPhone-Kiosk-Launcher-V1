@@ -61,12 +61,18 @@ import com.pisophone.kiosk.model.BatteryAlertState
 import com.pisophone.kiosk.model.BatteryStatus
 import com.pisophone.kiosk.network.Esp32Responses
 import com.pisophone.kiosk.service.AccountController
+import com.pisophone.kiosk.ui.theme.BrandPalette
 import com.pisophone.kiosk.ui.theme.TechNet
 import com.pisophone.kiosk.ui.video.LockScreenPresence
+import com.pisophone.kiosk.util.Branding
+import com.pisophone.kiosk.util.ShopBranding
 import kotlin.math.roundToInt
 
 /** "COINSLOT BUSY" as the box names it, said the way the screen says everything else: "Coinslot busy". */
 private const val PANEL_ALPHA = 0.55f
+
+/** The height the shop-name row takes in the header band; the sticker band starts below it. */
+private val MARQUEE_ROW_HEIGHT = 24.dp
 
 private fun sentenceCase(text: String): String = text.lowercase().replaceFirstChar { it.uppercase() }
 
@@ -98,11 +104,17 @@ fun BlockScreen(
     isArenaMode: Boolean = false,
     arenaRole: Int = 0,
     arenaStakeMinutes: Int = 15,
+    /** The shop's look from the coin box (feature 012); nothing set is today's TechNet screen. */
+    branding: Branding = Branding(),
     modifier: Modifier = Modifier.fillMaxSize(),
 ) {
     val context = LocalContext.current
-    val tint = BackdropTint.of(themeIndex)
+    // a shop palette wins; with none set the child's palette button still cycles the three tints it always did
+    val palette = if (branding.palette != null) BrandPalette.of(branding.palette) else BrandPalette.forTheme(themeIndex)
     val effects = rememberEffectsLevel()
+    val budget = AmbientBudget.of(AnimationDensity.of(branding.density), effects)
+    val marqueeScrolls = rememberMarqueeScrolls()
+    val shopName = branding.shopName
     val slot = rememberAssignedSlot(deviceIp, slotNumber)
     val haptic = LocalHapticFeedback.current
 
@@ -148,8 +160,17 @@ fun BlockScreen(
         else -> MascotState.Idle
     }
 
-    Box(modifier = modifier.background(tint.bottom)) {
-        if (effects.art) LockScreenArt(modifier = Modifier.fillMaxSize(), tint = tint, landscape = isLandscape, effects = effects)
+    Box(modifier = modifier.background(palette.bottom)) {
+        if (effects.art) {
+            LockScreenArt(
+                modifier = Modifier.fillMaxSize(),
+                palette = palette,
+                landscape = isLandscape,
+                effects = effects,
+                budget = budget,
+                bandTopExtra = if (shopName != null) MARQUEE_ROW_HEIGHT else 0.dp,
+            )
+        }
         Column(modifier = Modifier.fillMaxSize().systemBarsPadding()) {
             BlockScreenTimeHeader(batteryStatus = batteryStatus)
 
@@ -226,7 +247,8 @@ fun BlockScreen(
                         Box(modifier = Modifier.weight(0.4f).fillMaxHeight(), contentAlignment = Alignment.Center) { halo() }
                         Column(modifier = Modifier.weight(0.6f).fillMaxHeight().verticalScroll(rememberScrollState())) {
                             LockPanel {
-                                LockUpHeader(slot)
+                                LockUpHeader(slot, title = branding.title ?: ShopBranding.DEFAULT_TITLE, titleColor = palette.accent)
+                                if (shopName != null) BrandMarquee(shopName, palette.accent, marqueeScrolls)
                                 Spacer(Modifier.height(8.dp))
                                 body()
                             }
@@ -237,7 +259,11 @@ fun BlockScreen(
                         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        LockUpHeader(slot, modifier = Modifier.widthIn(max = 420.dp))
+                        LockUpHeader(slot, modifier = Modifier.widthIn(max = 420.dp), title = branding.title ?: ShopBranding.DEFAULT_TITLE, titleColor = palette.accent)
+                        // the shop name runs under the title, in the header band the stickers keep out of
+                        if (shopName != null) {
+                            BrandMarquee(shopName, palette.accent, marqueeScrolls, modifier = Modifier.widthIn(max = 420.dp).height(MARQUEE_ROW_HEIGHT))
+                        }
                         // the mascot hangs over the top edge of the panel: the panel itself starts halfway down his halo
                         Box(modifier = Modifier.widthIn(max = 420.dp).fillMaxWidth()) {
                             LockPanel(modifier = Modifier.padding(top = stage / 2)) {
@@ -251,6 +277,10 @@ fun BlockScreen(
             }
 
             StatusFooter(isOnline = isEsp32Online, onBackdropClick = onThemeChange, onAdminClick = { showPinDialog = true })
+            // the maker's credit sits under the footer and takes nothing from the branding: it cannot be set, hidden or still
+            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                MakerCredit(color = palette.credit, effects = effects)
+            }
 
             if (showPinDialog) {
                 AdminAuthenticationDialog(

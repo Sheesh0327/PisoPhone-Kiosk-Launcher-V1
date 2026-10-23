@@ -53,6 +53,17 @@ class BrandPaletteContrastUnitTest {
     }
 
     @Test
+    fun theAccentCarriesTextSoItIsReadableOnEveryBackdrop() {
+        // the header title and the shop-name marquee are drawn in the accent: text, so 4.5:1 rather than the 3:1 of an icon
+        for (p in BrandPalette.all) {
+            for (bg in listOf(p.top, p.bottom)) {
+                val ratio = contrast(p.accent, bg)
+                assertTrue("${p.id}: the accent on the backdrop is $ratio, needs 4.5 for text", ratio >= 4.5)
+            }
+        }
+    }
+
+    @Test
     fun theMakersCreditIsReadableOnEveryBackdrop() {
         for (p in BrandPalette.all) {
             for (bg in listOf(p.top, p.bottom)) {

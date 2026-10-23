@@ -57,14 +57,14 @@ private fun policyAllowsMotion(context: Context): Boolean {
     )
 }
 
-private fun animationsAreOff(context: Context): Boolean =
+internal fun animationsAreOff(context: Context): Boolean =
     try {
         Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
     } catch (e: Exception) {
         false
     }
 
-private fun thermalNow(context: Context): Int {
+internal fun thermalNow(context: Context): Int {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return 0
     return try {
         context.getSystemService(PowerManager::class.java)?.currentThermalStatus ?: 0
@@ -73,13 +73,11 @@ private fun thermalNow(context: Context): Int {
     }
 }
 
-/** The effects level for this moment; it follows the phone's temperature while the lock screen is up. */
+/** The phone's thermal status now (0 when it reports none); it follows the temperature while the screen is up. */
 @Composable
-fun rememberEffectsLevel(): EffectsLevel {
+fun rememberThermalStatus(): Int {
     val context = LocalContext.current
     val thermal = remember { mutableIntStateOf(thermalNow(context)) }
-    val motionAllowed = remember { policyAllowsMotion(context) }
-    val animationsOff = remember { animationsAreOff(context) }
     DisposableEffect(context) {
         val pm = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) context.getSystemService(PowerManager::class.java) else null
         val listener = if (pm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -92,5 +90,32 @@ fun rememberEffectsLevel(): EffectsLevel {
             if (pm != null && listener != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) pm.removeThermalStatusListener(listener)
         }
     }
-    return EffectsLevel.of(thermal.intValue, motionAllowed, animationsOff)
+    return thermal.intValue
+}
+
+/** The effects level for this moment; it follows the phone's temperature while the lock screen is up. */
+@Composable
+fun rememberEffectsLevel(): EffectsLevel {
+    val context = LocalContext.current
+    val thermal = rememberThermalStatus()
+    val motionAllowed = remember { policyAllowsMotion(context) }
+    val animationsOff = remember { animationsAreOff(context) }
+    return EffectsLevel.of(thermal, motionAllowed, animationsOff)
+}
+
+/** Whether the shop-name marquee may scroll right now, by [MarqueeRule] on this phone's temperature, battery and settings. */
+@Composable
+fun rememberMarqueeScrolls(): Boolean {
+    val context = LocalContext.current
+    val thermal = rememberThermalStatus()
+    val facts = remember { VideoBackgroundPolicy.readDeviceFacts(context) }
+    val animationsOff = remember { animationsAreOff(context) }
+    return MarqueeRule.shouldScroll(
+        thermalStatus = thermal,
+        powerSaveMode = facts.powerSaveMode,
+        batteryPercent = facts.batteryPercent,
+        charging = facts.charging,
+        animationsOn = !animationsOff,
+        screenInFront = true,
+    )
 }

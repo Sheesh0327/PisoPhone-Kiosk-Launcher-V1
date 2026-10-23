@@ -100,8 +100,10 @@ box stores only short settings, so nothing new is ever downloaded or installed o
    LIGHT, with the screen RESUMED and in front, animations on, not in power save, and not below 15% battery while draining.
    Otherwise the shop name stands still, centred, and stays fully readable. Unit test over the cases.
 6. **An unbranded phone looks exactly like today.** With nothing ever set (and with the box offline before the first push):
-   palette `technet`, title "PisoPhone", no marquee row at all. The existing lock-screen and launcher Roborazzi goldens are
-   unchanged — byte-identical, no re-record.
+   palette `technet`, title "PisoPhone", no marquee row at all. The existing lock-screen and launcher Roborazzi goldens differ
+   from today only by the credit line at the bottom (the footer and everything above it sit one line higher, nothing else
+   changes); they are re-recorded once with that change and the owner looks at the difference pictures. *Corrected 2026-10-23:
+   the first wording, "byte-identical, no re-record", could not hold together with a credit that is always on screen.*
 7. **Money and time screens are untouched.** `./gradlew testDebugUnitTest` passes with no changes to the tests that pin
    `TimeLevel`, `VideoBackgroundPolicy`, `LockScreenPresence`, the toast and speech strings, or the payment paths.
 8. **The box stays a money device, not a file store.** No new upload endpoint, no file written to spiffs, no rendering done on

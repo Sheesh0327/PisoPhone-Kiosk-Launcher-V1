@@ -149,4 +149,15 @@ class ShopBrandingUnitTest {
         assertNull(b.palette)
         assertNull(b.density)
     }
+
+    @Test
+    fun aLockScreenAlreadyUpFollowsWhatTheBoxPushes() {
+        val flow = ShopBranding.observe(context)
+        push(palette = "berde", name = "Tindahan", now = 5L)
+        assertEquals("berde", flow.value.palette)
+        assertEquals("Tindahan", flow.value.shopName)
+        push(name = "")
+        assertNull("a blank name clears it on the screen too", flow.value.shopName)
+        assertEquals("berde", flow.value.palette)
+    }
 }
