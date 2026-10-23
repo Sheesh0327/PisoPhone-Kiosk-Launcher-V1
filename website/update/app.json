@@ -1,10 +1,10 @@
 {
-  "versionCode": 518,
-  "versionName": "5.1.8",
+  "versionCode": 519,
+  "versionName": "5.1.9",
   "channel": "stable",
   
   "signatureChecksum": "Un0usqLMwnmeaowrY2g21EgRVWe4bTRDLUi2RH12WbE",
-  "sha256": "836274d5ed3a5c2257bcbd8da5dd0a3f7c277f5dce3c40c7016295d9d9984c1c",
+  "sha256": "b278e71905ad96b1407e7e0234c8579df999fcceccc58dc26ff9204380d25187",
   "size": 3549182,
   "releaseDate": "2026-10-23"
 }
