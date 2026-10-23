@@ -100,6 +100,36 @@ int main() {
     CHECK(!fitsInPush(accents), "but too long once encoded: refused at save, never cut in the middle of an escape");
     CHECK(pushBody(longest).size() <= (size_t)MAX_PUSH_CHARS && MAX_PUSH_CHARS < 255, "and it is under the 256-byte buffer");
 
+    // the admin page's refusals: which setting, and why, with nothing saved. The first problem found is the one reported.
+    Branding ok;
+    ok.palette = "dagat";
+    ok.name = "Tindahan";
+    ok.title = "Piso";
+    ok.density = "high";
+    CHECK(std::string(refusalFor(ok)).empty(), "a good branding has no refusal");
+    Branding bad = ok;
+    bad.palette = "pink";
+    CHECK(std::string(refusalFor(bad)) == "BAD_PALETTE", "an unknown palette is named");
+    bad = ok;
+    bad.density = "turbo";
+    CHECK(std::string(refusalFor(bad)) == "BAD_DENSITY", "an unknown density is named");
+    bad = ok;
+    bad.name = repeat("a", 33);
+    CHECK(std::string(refusalFor(bad)) == "BAD_NAME", "a 33-character name is named");
+    bad = ok;
+    bad.title = "a;b";
+    CHECK(std::string(refusalFor(bad)) == "BAD_TITLE", "a bad title is named");
+    bad = ok;
+    bad.name = accents.name;
+    bad.title = accents.title;
+    CHECK(std::string(refusalFor(bad)) == "TOO_LONG_FOR_PHONES", "too long once encoded is named");
+    bad = ok;
+    bad.palette = "pink";
+    bad.name = repeat("a", 33);
+    CHECK(std::string(refusalFor(bad)) == "BAD_PALETTE", "the first problem is the one reported");
+    Branding allBlank;
+    CHECK(std::string(refusalFor(allBlank)).empty(), "all blank is allowed: it clears the branding");
+
     // the size on the box: four short strings in the settings memory (an NVS string takes a 32-byte header plus its bytes and a
     // terminator rounded up to 32). The worst values the page accepts must stay under 512 bytes.
     int worst = nvsBytes((int)std::string("technet").size()) + nvsBytes(MAX_NAME_BYTES) + nvsBytes(MAX_TITLE_BYTES) + nvsBytes(6);

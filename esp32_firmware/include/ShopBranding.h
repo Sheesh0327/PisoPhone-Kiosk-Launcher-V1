@@ -145,6 +145,16 @@ inline bool fitsInPush(const Branding& b) {
     return (int)pushBody(asSaved).size() <= MAX_PUSH_CHARS;
 }
 
+// Why the admin page refuses a branding, as the code its message is chosen by; "" when it is good. Nothing is saved on a refusal.
+inline const char* refusalFor(const Branding& b) {
+    if (!validPalette(b.palette)) return "BAD_PALETTE";
+    if (!validDensity(b.density)) return "BAD_DENSITY";
+    if (!validName(b.name)) return "BAD_NAME";
+    if (!validTitle(b.title)) return "BAD_TITLE";
+    if (!fitsInPush(b)) return "TOO_LONG_FOR_PHONES";
+    return "";
+}
+
 // The settings memory (NVS) an entry takes for a string of this many bytes: a 32-byte header, then the bytes and a terminator
 // rounded up to 32.
 inline int nvsBytes(int stringLength) {

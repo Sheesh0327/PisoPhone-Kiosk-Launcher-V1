@@ -73,7 +73,7 @@ group. Groups 1 to 6 are app-only and need no board; groups 7 and 8 are firmware
       `ph_profiles`/`slot_prof` pattern (`src/PhoneProfileStore.cpp`), loaded on boot, with the same caps and sanitising as
       group 2. (test: a host test under `esp32_firmware/host_tests/` — store, reload, caps, bad palette id, bad density word,
       and the four together under 512 bytes with the measured sizes printed; red result logged: yes.)
-- [ ] 7b. **The admin page.** A *Shop branding* section in the box's admin config page: the palette list, the shop name, the
+- [x] 7b. **The admin page.** A *Shop branding* section in the box's admin config page: the palette list, the shop name, the
       header title and the density (`off`, `low`, `normal`, `high`), each saved with a reason shown when a value is refused.
       This is the only place the settings are edited (spec constraint 1b), so the page is part of the feature, not a nicety.
       (test: the existing dashboard/config host tests extended over the new form fields and the refusals; red result logged:

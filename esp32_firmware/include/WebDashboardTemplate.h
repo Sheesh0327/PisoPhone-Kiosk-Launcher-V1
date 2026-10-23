@@ -270,6 +270,38 @@ R"HTML(            <div class="panel" id="profiles_panel">
                     <div id="profile_slots"></div>
                 </div>
             </div>
+            <div class="panel" id="branding_panel">
+                <div class="panel-head"><h2><svg class="ic"><use href="#i-coin"/></svg>Shop branding</h2></div>
+                <div class="panel-body">
+                    <span class="hint">How the rental phones look: a colour palette, your shop's name and the title at the top of the lock screen. Set here once and every paired phone follows. Leave a box empty to use the TechNet look. The "by TechNet Solutions" line at the bottom of the phone screens is part of the app and cannot be changed.</span>
+                    <div class="split">
+                        <div class="field"><label for="brand_palette">Colour palette</label>
+                            <select id="brand_palette">
+                                <option value="">TechNet (default)</option>
+                                <option value="dagat">Dagat (sea blue)</option>
+                                <option value="tropiko">Tropiko (teal)</option>
+                                <option value="ginto">Ginto (gold)</option>
+                                <option value="rosas">Rosas (pink)</option>
+                                <option value="berde">Berde (green)</option>
+                            </select></div>
+                        <div class="field"><label for="brand_density">Background animation</label>
+                            <select id="brand_density">
+                                <option value="">Normal (default)</option>
+                                <option value="off">Off (the picture stands still)</option>
+                                <option value="low">Low (fewer, calmer)</option>
+                                <option value="normal">Normal</option>
+                                <option value="high">High (a quicker drift)</option>
+                            </select></div>
+                    </div>
+                    <div class="field"><label for="brand_name">Shop name (runs along the screen, up to 32 characters)</label>
+                        <input type="text" id="brand_name" maxlength="32" autocomplete="off" placeholder="Mang Juan's Tindahan"></div>
+                    <div class="field"><label for="brand_title">Title at the top of the lock screen (up to 20 characters)</label>
+                        <input type="text" id="brand_title" maxlength="20" autocomplete="off" placeholder="PisoPhone"></div>
+                    <div class="actions">
+                        <button type="button" class="btn primary sm" id="brand_save" onclick="saveBranding()">Save branding</button>
+                    </div>
+                </div>
+            </div>
 )HTML"
 #endif
 R"HTML(        </section>
