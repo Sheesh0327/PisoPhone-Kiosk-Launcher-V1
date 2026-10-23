@@ -1,6 +1,6 @@
 # Feature 010: check the setup, fit the full PisoWiFi on 16 MB routers, and a PisoWiFi-only shop
 
-Status: **approved by the owner (2026-10-22, round 7: the installer copy lives in RAM, the small image is parked, a PisoWiFi-only router has no rental-phone Wi-Fi). Reviewed again for execution (round 8, 2026-10-22: eight flow fixes, no decision changed). Not started: no code until the owner says to start.**
+Status: **built and validated on a computer (2026-10-23); open: criterion 10 (package sizes) and criterion 11 (RS35, all hardware). Not merged. No pull request until the owner asks.**
 Branch: `feat/010-router-flash-profile` (from `beta`; the pull request goes into `beta`, `CLAUDE.md` section 5). Area: router, setup. Release: `setup/RELEASE` raised once (1.5.16 -> 1.5.17) by the first change under `setup/src/` or `tools/pisoportal/`; rolls out at 0%, the owner raises it to 100%.
 Backlog rows: none. Related: feature 008 (parked), `specs/spec_01_findings.json` RT-08 to RT-26 (installer space checks).
 

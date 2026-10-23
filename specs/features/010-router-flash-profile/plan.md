@@ -1,6 +1,6 @@
 # Plan: feature 010, fit the full PisoWiFi and a PisoWiFi-only shop
 
-Status: **approved by the owner (2026-10-22, round 7). Not started: no code, and no task group run, until the owner says to start.**
+Status: **all task groups done (2026-10-23); validation in `validation.md`; hardware check RS35 owed.**
 
 How to work (for the execution model): one task group at a time, in order. Test first: write the test, run it, see it fail, log the red result in `ledger/negative-constraints.md`; then the code; then the test passes. One commit per group, plain English, with the session's trailer lines. Tick the box here. Use only the names in the spec's "Names" table. Generated files are made by `python3 tools/build_piso_setup.py` or by CI, never by hand. If the spec does not say something you need, stop and ask the owner.
 
@@ -35,7 +35,7 @@ Each group names the spec criteria it proves.
 - [x] 6. **Switching the product keeps everything else, tests first** (criterion 8). Re-run with `wifi`, with `both`, and without; an update; the data-folder and settings comparisons. If a test shows a loss: a small fix here, a large one stops for the owner.
 - [x] 7. **The setup program's product choice, tests first** (criterion 6). `--product`, the web page and `--cli` question, the `--yes` refusal, `--phone-only` kept, the kiosk password only for `both`. Regenerate `website/pisophone_setup.py`.
 - [x] 8. **Docs and the hardware check** (criterion 11). The new check in `docs/REAL_WORLD_TESTING.md` ("not run"), `docs/ROUTERS.md` (sizes, 16 MB routers), `setup/README.md` and `website/manual.html` (the product choice, what a PisoWiFi-only router has), `CHANGELOG.md`.
-- [ ] 9. **Validate** (criteria 9, 12). Every criterion in `validation.md` with its evidence, the gates, "Not tested" (at least: all hardware, the T6GS, the jffs2 sizes), "Money and time"; update `specs/STATUS.md`. Pull request into `beta` only when the owner asks.
+- [x] 9. **Validate** (criteria 9, 12). Every criterion in `validation.md` with its evidence, the gates, "Not tested" (at least: all hardware, the T6GS, the jffs2 sizes), "Money and time"; update `specs/STATUS.md`. Pull request into `beta` only when the owner asks.
 
 ## Release
 - Router: `setup/RELEASE` 1.5.16 -> 1.5.17, once, in group 3 (the program changes only the console's tab label).
