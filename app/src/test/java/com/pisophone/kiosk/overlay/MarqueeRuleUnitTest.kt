@@ -1,5 +1,6 @@
 package com.pisophone.kiosk.overlay
 
+import com.pisophone.kiosk.overlay.ui.AnimationDensity
 import com.pisophone.kiosk.overlay.ui.MarqueeRule
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -8,13 +9,21 @@ import org.junit.Test
 
 class MarqueeRuleUnitTest {
     private fun scrolls(
+        density: AnimationDensity = AnimationDensity.Normal,
         thermal: Int = 0,
         powerSave: Boolean = false,
         battery: Int = 80,
         charging: Boolean = false,
         animationsOn: Boolean = true,
         screenInFront: Boolean = true,
-    ) = MarqueeRule.shouldScroll(thermal, powerSave, battery, charging, animationsOn, screenInFront)
+    ) = MarqueeRule.shouldScroll(density, thermal, powerSave, battery, charging, animationsOn, screenInFront)
+
+    @Test
+    fun `density off stills the name and the other levels let it scroll`() {
+        assertFalse(scrolls(density = AnimationDensity.Off))
+        for (d in listOf(AnimationDensity.Low, AnimationDensity.Normal, AnimationDensity.High)) assertTrue("$d", scrolls(density = d))
+        assertFalse("the ladder still wins at high", scrolls(density = AnimationDensity.High, thermal = 2))
+    }
 
     @Test
     fun `a cool charged phone with animations on and the screen in front scrolls`() {

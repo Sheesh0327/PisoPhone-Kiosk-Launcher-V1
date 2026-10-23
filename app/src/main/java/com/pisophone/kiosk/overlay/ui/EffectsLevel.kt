@@ -105,12 +105,13 @@ fun rememberEffectsLevel(): EffectsLevel {
 
 /** Whether the shop-name marquee may scroll right now, by [MarqueeRule] on this phone's temperature, battery and settings. */
 @Composable
-fun rememberMarqueeScrolls(): Boolean {
+fun rememberMarqueeScrolls(density: AnimationDensity): Boolean {
     val context = LocalContext.current
     val thermal = rememberThermalStatus()
     val facts = remember { VideoBackgroundPolicy.readDeviceFacts(context) }
     val animationsOff = remember { animationsAreOff(context) }
     return MarqueeRule.shouldScroll(
+        density = density,
         thermalStatus = thermal,
         powerSaveMode = facts.powerSaveMode,
         batteryPercent = facts.batteryPercent,

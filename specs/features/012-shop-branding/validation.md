@@ -34,5 +34,10 @@ box or phone. A tick below means I ran it.
 - **Hardware checks added to `docs/REAL_WORLD_TESTING.md`: RS36** (the box's admin page to a real phone, a restart, the heat rule, each animation level on a T606 phone, the memory figure) **and RS37** (an old phone build with the new box and a new phone build with a live 3.11.1 box).
 - A phone that is offline when the owner saves branding gets it at its next pairing, or after the next config save while it is online; if the box's request queue happens to be full the branding push is dropped (the same is true of every push the box sends).
 
+## Changes after the first validation (2026-10-23, owner decisions)
+- Header shows a shop title alone (no "TechNet" before it); the palette button is not drawn when a shop palette is set; at density `off` the shop name stands still (the credit's sheen still follows only the ladder). `MarqueeRuleUnitTest` has a new density test; the branded lock golden shows the missing button. **Not run (no Android SDK).**
+- The `GUI_SPEC` section 6 rule ("every string with a `values-fil` counterpart") is unmet across the whole module (about 100 existing strings have none); the `values-fil` folder this feature had added was removed. That is its own task, not this feature's.
+- The commits up to `31624ef` carry the wrong model name ("Sonnet 4.5") in their trailer; later commits say Sonnet 5.5. History is left as it is.
+
 ## Money and time
 Not touched: no payment, credit, expiry, deduction or payment-queue code changed (`git diff --name-only` above). The one shared file is `KioskHttpServer.kt`, the `/config` handler: a push that carries any of `price`, `minutes`, `device_name`, `admin_pin`, `slot` or `slot_num`, or no branding at all, calls `onConfigUpdated` exactly as before, so a rate change reaches the phone unchanged; only a push made of branding params alone skips it (so no second "Config Synced" message). `KioskHttpServerUnitTest` has tests for both cases (not run). The branding is its own push; the old pushes, including the PIN and the rate, are byte for byte what they were.
