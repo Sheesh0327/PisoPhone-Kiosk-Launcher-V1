@@ -156,7 +156,7 @@ main() {
 		# a first setup from the setup program on a computer: it copied the setup file (and its checksum) here; nothing is downloaded
 		say "Using the PisoPhone setup the computer copied to this router ($LOCAL)..."
 		[ -f "$LOCAL/$file" ] && [ -f "$LOCAL/$file.sha256" ] || fail "--local: $LOCAL has no $file with its checksum. Nothing was changed."
-		cp "$LOCAL/$file" "$tmp" && cp "$LOCAL/$file.sha256" "$tmp.sha256" || fail "could not copy the setup file from $LOCAL (is the router's memory full?)"
+		if ! cp "$LOCAL/$file" "$tmp" || ! cp "$LOCAL/$file.sha256" "$tmp.sha256"; then fail "could not copy the setup file from $LOCAL (is the router's memory full?)"; fi
 	else
 		say "Downloading the PisoPhone setup ($branch)..."
 		fetch "$base/$file" "$tmp" || fail "could not download $base/$file (is the router online? the modem must be in the WAN port)"
