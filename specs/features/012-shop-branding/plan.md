@@ -46,7 +46,7 @@ group. Groups 1 to 6 are app-only and need no board; groups 7 and 8 are firmware
       touches the coin rain, sparkle-on-coin, pop-over or speech. It composes with the existing `EffectsLevel`.
       (test: `AnimationDensityUnitTest` over the level × ladder matrix, `normal` reproducing today's exact counts, the particle
       cap, and an assertion that payment feedback is untouched at `off`; red result logged: yes.)
-- [ ] 4. **The marquee rule and the marquee.** `overlay/ui/MarqueeRule.kt`: a pure `shouldScroll(...)` taking thermal status,
+- [x] 4. **The marquee rule and the marquee.** `overlay/ui/MarqueeRule.kt`: a pure `shouldScroll(...)` taking thermal status,
       power save, battery percent, charging, animations on, screen in front — the shape of `VideoBackgroundPolicy.shouldPlay`.
       `overlay/ui/BrandMarquee.kt` draws one line: scrolling when the rule says so, centred and still otherwise, never
       clipped. (test: `MarqueeRuleUnitTest` over the ladder cases incl. battery -1 and charging at 10%; red result logged: yes.)
