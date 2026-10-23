@@ -13,6 +13,7 @@ import com.pisophone.kiosk.security.KioskActivationManager
 import com.pisophone.kiosk.security.KioskSecurity
 import com.pisophone.kiosk.server.KioskServerDelegate
 import com.pisophone.kiosk.util.HardwareFeedback
+import com.pisophone.kiosk.util.ShopBranding
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
