@@ -818,6 +818,21 @@ for _label, _kv, _want in (
     check((NOTICE in status_part) == _want, f"piso-setup status {'shows' if _want else 'does not show'} the box network line for {_label}: " + r.stdout[-400:] + r.stderr[-300:])
     check((NOTICE in summary_part) == _want, f"and the summary {'shows' if _want else 'does not show'} it: " + summary_part[-400:])
     check("rc=0" in r.stdout, "and the line does not make status fail")
+
+# ---- feature 011 part B: the pairing tips say that another router nearby may answer the setup name ----------------------------
+PAIR_TIP = "another PisoHub router nearby may answer the setup name PisoCoinBox: switch it off for a few minutes, or run piso-setup box-wifi-name on it"
+cf = _bwn_conf("pairtips", KIOSK_PASS="kp-old-1")
+open(f"{tmp}/uci.log", "w").close()
+r = lib('PAIR_WAIT=160; sleep() { :; }; box_station() { :; }; box_ifname() { echo wlan0-3; }; cmd_box_diag() { :; }; (pair_box); echo "rc=$?"', env={"PISO_CONF": cf})
+out = r.stdout + r.stderr
+tips = [ln for ln in out.splitlines() if PAIR_TIP in ln]
+check(len(tips) >= 3, f"the 60 s tip, the 150 s tip and the failure message each carry the nearby-router tip (found {len(tips)}): " + out[-900:])
+check("no box yet after a minute" in out and "still nothing" in out and "last try" not in out, "and the tips that were there are still there")
+check(out.rstrip().splitlines()[-2:] and PAIR_TIP in "\n".join(out.rstrip().splitlines()[-3:]) and "did not join" in out, "the 'did not join' message ends with it: " + out[-500:])
+ul = open(f"{tmp}/uci.log").read()
+check("set wireless.box_ap.ssid=PisoCoinBox\n" in ul and "box_ap.ssid=PisoCoinBox-" not in ul.split("macfilter")[0], "pairing still opens the box network as PisoCoinBox, the name new boxes know: " + ul[:400])
+r = lib('PAIR_WAIT=70; sleep() { :; }; box_station() { :; }; box_ifname() { :; }; cmd_box_diag() { :; }; (pair_box); echo "rc=$?"', env={"PISO_CONF": cf})
+check("not broadcasting" in r.stdout and PAIR_TIP not in r.stdout, "with no box network on the air the tip stays about the radio (another router is not the cause): " + r.stdout[-400:])
 # ---- box-diag: where the router <-> box link breaks -----------------------------------------------------------------------------
 def box_diag(setup_code):
     return lib(setup_code + "; cmd_box_diag", env={"BOX_IP": "127.0.0.1:1"})   # nothing listens there: the box does not answer

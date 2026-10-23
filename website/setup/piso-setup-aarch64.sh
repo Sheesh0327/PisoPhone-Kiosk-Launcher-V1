@@ -749,6 +749,8 @@ box_station() {  # MAC of a station joined to the box network
 # only the station list is read.
 psk_mismatches() { logread 2> /dev/null | grep -c 'POSSIBLE-PSK-MISMATCH'; }
 # the words for a box that is refused (shown while pairing, in the failure message and by box-diag)
+# the tip for a pairing that does not finish: a second router set up nearby (or an older one on the shared name) answers the name every new box knows
+PAIR_NEARBY_TIP="another PisoHub router nearby may answer the setup name $BOX_PAIR_SSID: switch it off for a few minutes, or run piso-setup box-wifi-name on it"
 PSK_HINT="the box is trying to join but the router refuses its Wi-Fi password: it remembers one from an earlier setup. Factory reset the box (touch the wire on GPIO 2 to ground for 5 seconds, or flash it again with an erase), then run: piso-setup pair"
 box_up() { curl -s -m 4 "http://$BOX_IP/api/gateway/challenge" 2> /dev/null | grep -q '{'; }
 
@@ -791,9 +793,9 @@ pair_box() {
 			log "  still waiting for the coin box ($_t of $PAIR_WAIT s): $_net, nobody has joined it yet"
 		fi
 		case "$_t" in
-			60) if [ -n "$(box_ifname)" ]; then tip "no box yet after a minute. Check that the ESP32 has power (its light should blink) and that it runs this project's firmware: write it again with the setup program (https://pisophone.pages.dev/pisophone_setup.py, it does this over USB)"
+			60) if [ -n "$(box_ifname)" ]; then tip "no box yet after a minute. Check that the ESP32 has power (its light should blink) and that it runs this project's firmware: write it again with the setup program (https://pisophone.pages.dev/pisophone_setup.py, it does this over USB). Also: $PAIR_NEARBY_TIP"
 				else tip "the router is not broadcasting the box network. Check that its 2.4 GHz radio is on (Network > Wireless in the router's web page)."; fi ;;
-			150) tip "still nothing. A box that was set up before remembers its old Wi-Fi: factory reset it (touch the wire on GPIO 2 to ground for 5 seconds, or flash it again with 'erase all') so that it tries $BOX_PAIR_SSID." ;;
+			150) tip "still nothing. A box that was set up before remembers its old Wi-Fi: factory reset it (touch the wire on GPIO 2 to ground for 5 seconds, or flash it again with 'erase all') so that it tries $BOX_PAIR_SSID. If the box was never set up before: $PAIR_NEARBY_TIP." ;;
 			300) tip "last try: put the box right next to the router, and use a phone charger that gives at least 1 A (a weak supply makes the ESP32 restart when it uses Wi-Fi). If it still fails, run: piso-setup box-diag" ;;
 		esac
 		if [ "$_old" != "$BOX_DEFAULT_WIFI" ] && [ $((_t % PAIR_SWAP)) -eq 0 ]; then
@@ -812,7 +814,7 @@ pair_box() {
 		lock_box_network ""
 		[ -n "$_up" ] || die "the hidden coin box network is not on the air (check the router's 2.4 GHz radio: iwinfo), so the coin box could not join it. Then run: piso-setup pair"
 		[ -z "$_refused" ] || die "$PSK_HINT"
-		die "the coin box did not join the hidden $BOX_PAIR_SSID network. Check that it is powered and has the current firmware (or factory reset it: it must try $BOX_PAIR_SSID), then run: piso-setup pair"
+		die "the coin box did not join the hidden $BOX_PAIR_SSID network. Check that it is powered and has the current firmware (or factory reset it: it must try $BOX_PAIR_SSID), then run: piso-setup pair. Also: $PAIR_NEARBY_TIP"
 	fi
 	UNDO=""
 	if [ "$_key" = "$_old" ] && [ "$_old" != "$BOX_DEFAULT_WIFI" ]; then conf_set BOX_WIFI_ROTATED 1; fi   # it joined with its own password
