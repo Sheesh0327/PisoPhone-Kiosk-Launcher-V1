@@ -1,6 +1,6 @@
 # Plan: feature 012, no coin box mix-ups when a second router is set up nearby
 
-Status: **draft, waiting for the owner's approval of spec.md (and its three owner decisions) and this plan. No code until approved.**
+Status: **approved by the owner (2026-10-23). Not started: no code until the owner says to start.**
 
 How to work (for the execution model): one task group at a time, in order. Test first: write the test, run it, see it fail, log the red result in `ledger/negative-constraints.md`; then the code; then the test passes. One commit per group, plain English, with the session's trailer lines. Tick the box here. Use only the names in the spec's "Names" table. Generated files are made by `python3 tools/build_piso_setup.py`, never by hand. If the spec does not say something you need, stop and ask the owner.
 
@@ -18,7 +18,7 @@ Context manifest (constitution rule 1). Unresolved ledger entries loaded: read `
 | `router/tests/test_setup.py`, `test_pisophone_setup.py` | stubs for `box_curl`, `uci`, `wifi`, the existing rotate tests | grep, ranges | 2,500 |
 
 ## Task groups
-- [ ] 0. **Owner gate.** The owner approves the spec, its three owner decisions and this plan.
+- [x] 0. **Owner gate.** Spec, its three owner decisions and this plan approved (2026-10-23).
 - [ ] 1. **Baseline** (criterion 1). Run the tests; counts in `validation.md`.
 - [ ] 2. **Failure before the switch changes nothing, tests first** (criterion 3). `rotate_box_wifi` restores `BOX_WIFI_ROTATED` (and leaves every other setting) when the box refuses; the after-switch message. This fixes `piso-setup rotate-box-wifi` too. Raise `setup/RELEASE` to 1.5.18 here. Regenerate; `--check` passes.
 - [ ] 3. **The command, tests first** (criteria 2, 6). `own_box_wifi_name` and `piso-setup box-wifi-name`: the checks before it starts, the question or `--yes`, the new name from `router_id`, `BOX_SSID_NAME`, then `rotate_box_wifi`; no kiosk setting touched.

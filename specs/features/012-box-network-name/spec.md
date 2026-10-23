@@ -1,6 +1,6 @@
 # Feature 012: no coin box mix-ups when a second router is set up nearby
 
-Status: **draft, waiting for the owner's approval. No code until approved.**
+Status: **approved by the owner (2026-10-23), with owner decisions 1 to 3 as proposed. Not started: no code until the owner says to start.**
 Branch: `feat/012-box-network-name` (from `beta`). Area: router, setup. Release: router (`setup/RELEASE` 1.5.17 -> 1.5.18). Proposed to ship before feature 011 (011 then takes the next router release).
 Backlog rows: none (owner report 2026-10-23: while setting up router 2 next to a working router 1, coin box 2 did not reliably talk to router 2).
 
@@ -21,7 +21,7 @@ The owner sets up router 2 and coin box 2 while router 1 already runs nearby. Bo
 8. **Payments while the box is off its network:** the box records every coin in its own flash queue before anything else and the phone or router credits each payment once when the link is back (`docs/ARCHITECTURE.md`); during a network switch, Wi-Fi customers cannot pay by coin for up to the 240 s wait.
 9. The computer side: every router's LAN is 10.0.0.1 and a factory router is 192.168.1.1, which many modems also use. A computer connected to router 1 or to the modem's Wi-Fi while cabled to router 2 can reach the wrong device (not changed by this feature; see "Questions for later").
 
-## Decisions (proposed; the owner approves them with the spec)
+## Decisions (approved by the owner, 2026-10-23)
 1. **A command for older routers:** `piso-setup box-wifi-name` gives the box network the router's own name `PisoCoinBox-<id>` (and a new own password), by telling the box first and then switching the router, the way `rotate_box_wifi` already does. The rental phones' network keeps its name (phones are not touched).
 2. **Never by itself:** an update does not run it; the owner runs it (it takes the box off its network for up to four minutes).
 3. **Tell the owner:** `piso-setup status`, the setup summary and the setup program's Check-up say when the box network is still called `PisoCoinBox`, with the one command that fixes it.
@@ -63,10 +63,10 @@ The owner sets up router 2 and coin box 2 while router 1 already runs nearby. Bo
 - Detecting another router's hidden network by scanning (a hidden network's name is not visible in a scan).
 - The computer-side address clash of fact 9.
 
-## Owner decisions (answer before code)
-1. **Where the fix lives:** proposed: the command `piso-setup box-wifi-name`, plus the status, summary and Check-up line that names it. Alternative: also a button in the router console's Settings (more owner-friendly, more work).
-2. **Automatic on update:** proposed: no (it takes the box off its network for minutes, so the owner chooses when).
-3. **Release order:** proposed: 012 first as router 1.5.18 (small, fixes a real field problem), then 011.
+## Owner decisions (answered 2026-10-23: all three as proposed)
+1. **Where the fix lives (approved):** the command `piso-setup box-wifi-name`, plus the status, summary and Check-up line that names it. (A console button was not chosen.)
+2. **Automatic on update: no (approved)** (it takes the box off its network for minutes, so the owner chooses when).
+3. **Release order (approved):** 012 first as router 1.5.18 (small, fixes a real field problem), then 011.
 
 ## Questions for later
 - The computer-side clash (fact 9): should the setup program check that the router it reached is the one being set up (for example its MAC on the factory address) and warn when the computer is also on another network?
