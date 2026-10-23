@@ -30,8 +30,8 @@ Line numbers below are hints true at `beta` `b1db87f` (2026-10-23); the **symbol
 ## Task groups
 Each group names the spec criteria it proves.
 
-- [ ] 0. **Owner gate.** Spec, both sets of owner decisions and this plan approved (part A 2026-10-22, part B 2026-10-23); the two features merged at the owner's instruction (2026-10-23). Done: feature 010 merged into `beta` and live as router 1.5.17; this branch rebased on `beta` `b1db87f`; every reference in the spec refreshed and re-verified. **Left: the owner's go.**
-- [ ] 1. **Baseline** (criterion 1). Run the area checks the criterion lists; counts in `validation.md`. Four are already measured on this exact base (`test_setup` 379, `test_install` 39, `test_pisophone_setup` 189, `test_phone_only` 39, 0 failures; security rules passed; `--check` up to date) — re-run them to confirm, and run or record-as-skipped the four browser-backed files depending on whether Playwright is installed.
+- [x] 0. **Owner gate.** Spec, both sets of owner decisions and this plan approved (part A 2026-10-22, part B 2026-10-23); the two features merged at the owner's instruction (2026-10-23). Done: feature 010 merged into `beta` and live as router 1.5.17; this branch rebased on `beta` `b1db87f`; every reference in the spec refreshed and re-verified. **Left: the owner's go.**
+- [x] 1. **Baseline** (criterion 1). Run the area checks the criterion lists; counts in `validation.md`. Four are already measured on this exact base (`test_setup` 379, `test_install` 39, `test_pisophone_setup` 189, `test_phone_only` 39, 0 failures; security rules passed; `--check` up to date) — re-run them to confirm, and run or record-as-skipped the four browser-backed files depending on whether Playwright is installed.
 
 ### Part B: the coin box network's own name
 - [ ] 2. **Failure before the switch changes nothing, tests first** (criterion 3). `rotate_box_wifi` restores `BOX_WIFI_ROTATED` (and leaves every other setting) when the box refuses; the after-switch message. This fixes `piso-setup rotate-box-wifi` too (fact B7). **Raise `setup/RELEASE` to 1.5.18 here** — once, for both parts. Regenerate; `--check` passes.
