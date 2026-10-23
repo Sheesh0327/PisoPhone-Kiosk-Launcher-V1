@@ -53,7 +53,8 @@ box stores only short settings, so nothing new is ever downloaded or installed o
    added, and it obeys the existing thermal and battery ladder (below).
 3b. **The animation density is a ceiling the owner lowers, never a way to raise past the budget.** The thermal and battery
    ladder (`GUI_SPEC` section 10: MODERATE drops ambient motion, SEVERE flattens to background plus timer) always wins over the
-   setting: a hot phone is calm whatever the box says. The highest density stays inside the 16-particle cap. Today's behaviour
+   setting: a hot phone is calm whatever the box says. The highest density never has more ambient particles than `normal`, and no
+   burst passes the 16-particle cap (`GUI_SPEC` section 5: the 16 is a burst's size). Today's behaviour
    is the `normal` level, so a shop that sets nothing sees no change.
 3c. **The maker's credit is not configuration.** "by TechNet Solutions" is drawn at the bottom of the lock and home screens
    from the app's own resources, with its own animation. No setting reaches it: there is no box key, no param and no vault
@@ -112,7 +113,7 @@ box stores only short settings, so nothing new is ever downloaded or installed o
 11. **The density levels do what they say, and the ladder still wins.** A pure function maps (density, thermal status, battery,
     power save, animations on) to how many stickers wiggle, how many bubbles and sparkles run, and whether the clouds and rays
     move. Unit-tested: `off` has no ambient motion at any temperature; `normal` reproduces today's counts exactly; `high` never
-    exceeds 16 particles; MODERATE drops ambient motion and SEVERE flattens the art at *every* density including `high`; and at
+    has more ambient particles than `normal` and no burst passes 16; MODERATE drops ambient motion and SEVERE flattens the art at *every* density including `high`; and at
     every density — `off` included — a coin still brings the coin rain, the sparkle, the pop-over and the spoken confirmation.
 12. **The credit cannot be removed by configuration.** A test drives every combination the box can send — every palette, every
     density including `off`, an empty shop name, an empty title, junk values, nothing set at all — and in each case the
@@ -169,7 +170,10 @@ They are kept here in full as the record of what was approved:
    - `off` — the picture stands still. Clouds, rays, stickers and bubbles do not move; a coin still animates.
    - `low` — 4 stickers instead of 10, no bubbles, no ambient twinkle; slow cloud drift only.
    - `normal` — exactly today: 10 stickers wiggling, 12 bubbles, 20 sparkles, turning rays, the 60 s loop.
-   - `high` — the fullest the budget allows: ambient sparkle and bubble counts raised to the 16-particle cap, livelier drift.
+   - `high` — the liveliest the budget allows: `normal`'s counts (20 sparkles, 12 bubbles, never more) with a faster drift and
+     ray turn (a 40 s loop instead of 60 s). *Corrected 2026-10-23 on the owner's answer: the first wording, "raised to the
+     16-particle cap", contradicted `normal`'s 32 ambient particles today; the 16 is the size of one burst, not of the ambient
+     count.*
 
    Note on `normal`: the design spec (`GUI_SPEC` sections 5 and 10) asks for *less* than today's code does — it wants the ray
    rotation, the sticker wiggle and the 60 s loop cut, and 6 stickers not 10. I kept `normal` as today's behaviour so an
