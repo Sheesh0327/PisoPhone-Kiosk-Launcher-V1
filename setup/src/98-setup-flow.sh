@@ -84,9 +84,10 @@ review_choices() {
 	case "$_a" in y | Y | yes) ;; *) echo "Cancelled. Nothing was changed (answers kept: run the setup again to change them)."; exit 1 ;; esac
 }
 
-# choose_product: store the product of this run. Switching an installed both router to PisoWiFi only removes the rental phones' Wi-Fi
-# and its password, so it is said first and asked (a terminal) or accepted with --yes. Nothing else is touched.
-choose_product() {
+# confirm_product: switching an installed both router to PisoWiFi only removes the rental phones' Wi-Fi and its password, so it is said
+# first and asked (a terminal) or accepted with --yes. It changes nothing: the product is stored by apply_product, once the new Wi-Fi is
+# written (a cancel at the review, or an install that stops early, leaves the router and its settings as they were).
+confirm_product() {
 	if wifi_only && [ -n "$(conf_get KIOSK_PASS)" ]; then
 		echo
 		echo "This router is set up for rental phones. As PisoWiFi only, the hidden Wi-Fi $KIOSK_SSID is removed: rental phones on $KIOSK_SSID will lose their Wi-Fi."
@@ -98,6 +99,11 @@ choose_product() {
 			case "$_a" in y | Y | yes) ;; *) echo "Cancelled. Nothing was changed."; exit 1 ;; esac
 		fi
 	fi
+}
+
+# apply_product: after apply_batch has written the router's Wi-Fi: keep the product, and on a PisoWiFi-only router forget the rental
+# phones' password (their Wi-Fi is gone). The environment's SHOP_PRODUCT decides until then.
+apply_product() {
 	store_product
 	if wifi_only; then conf_del KIOSK_PASS; fi
 }
@@ -114,7 +120,7 @@ stage1() {
 		echo "First a few questions; nothing is changed until you have reviewed your answers."
 	fi
 	choose_names
-	choose_product
+	confirm_product
 	ask_name SITE_NAME "shop / site (printed on the setup sheet, shown in Telegram messages)" "$GUEST_NAME" "$SITE_NAME"
 	valid_plain "$ASKED" || die "the site name may not contain quotes, backslashes, \$ or backticks"
 	choose_passwords
@@ -131,6 +137,7 @@ stage1() {
 	step "Writing the router settings"
 	[ -n "$(conf_get CONSOLE_MODE)" ] || conf_set CONSOLE_MODE front   # (the console is the front page, http://admin.hub; LuCI is on 8080)
 	apply_batch "$KIOSK_PASS" "$GUEST_NAME" "$BOX_MAC"
+	apply_product
 	stage2
 }
 
