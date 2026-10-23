@@ -191,7 +191,7 @@ main() {
 			push_kiosk_wifi
 			if kiosk_wifi_on_box; then log "checked: the box's \"Set up a phone\" link carries the password"
 			else log "the box's link does not show it yet (a box with firmware before 3.3.3 cannot: it updates itself, then run this again)"; fi ;;
-		rotate-box-wifi) DRY=0; [ "$(id -u)" = 0 ] || die "run as root"; conf_set BOX_WIFI_ROTATED 0; rotate_box_wifi ;;
+		rotate-box-wifi) DRY=0; [ "$(id -u)" = 0 ] || die "run as root"; rotate_box_wifi force ;;
 		set-password) cmd_set_password ;;
 		summary) cat "$SUMMARY" ;;
 		uninstall-info) echo "To undo: sysupgrade -n (factory reset) the router. Nothing else is changed outside the files listed in $0." ;;

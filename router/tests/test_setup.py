@@ -400,6 +400,7 @@ class Box(http.server.BaseHTTPRequestHandler):
     kiosk = None
     kiosk_ssid = None
     wifi_ssid = None
+    refuse_wifi = False   # a box that answers the box-network request with an error
     kiosk_support = True
     ssid_support = True   # firmware 3.6.0 and newer carries the kiosk network's name in the link
     log = []
@@ -420,6 +421,8 @@ class Box(http.server.BaseHTTPRequestHandler):
         if self.path == "/save" and "admin_pw" in body:
             Box.admin = body["admin_pw"]
             self.send_response(200); self.end_headers(); self.wfile.write(b"{}"); return
+        if self.path == "/save" and "wifi_pass" in body and Box.refuse_wifi:
+            self.send_response(500); self.end_headers(); return
         if self.path == "/save" and "wifi_pass" in body:
             Box.wifi = body["wifi_pass"]
             Box.wifi_ssid = urllib.parse.unquote_plus(body.get("wifi_ssid", "")) or None
@@ -658,6 +661,57 @@ r = lib('sleep() { :; }; box_station() { :; }; box_ifname() { :; }; pair_box; ec
 check("rc=0" not in r.stdout and "not on the air" in r.stderr + r.stdout, "a missing box network is reported as such: " + r.stdout + r.stderr)
 r = lib('sleep() { :; }; box_station() { :; }; box_ifname() { echo wlan0-3; }; pair_box; echo rc=$?', env={"PAIR_WAIT": "10"})
 check("rc=0" not in r.stdout and "did not join" in r.stderr + r.stdout, "a network that is up but never joined keeps the original message: " + r.stdout + r.stderr)
+
+# ---- feature 011 part B: a box that refuses its new Wi-Fi changes nothing; one that does not come back is told how to recover ----
+def _conf_value(path, name):
+    for ln in open(path).read().splitlines():
+        if ln.startswith(name + "="):
+            return ln.split("=", 1)[1].strip("'")
+    return ""
+
+
+NAMES2 = NAMES + "conf_set BOX_ADMIN_PASS NewPassw0rdXYZ; "
+Box.admin = "NewPassw0rdXYZ"; Box.wifi = None; Box.wifi_ssid = None; Box.refuse_wifi = True
+# (1) a router whose box still has the built-in password: the box says no
+cf = f"{tmp}/conf_refuse1"
+open(f"{tmp}/uci.log", "w").close()
+r = lib(NAMES2 + 'conf_set BOX_WIFI_ROTATED 0; rotate_box_wifi; echo "rc=$?"; echo "ROT=$(conf_get BOX_WIFI_ROTATED) NEW=$(conf_get BOX_WIFI_PASS_NEW)"',
+        env={"BOX_IP": addr, "ROTATE_SETTLE": "0", "PISO_CONF": cf})
+ul = open(f"{tmp}/uci.log").read()
+check("ROT=0 NEW=" in r.stdout and "ROT=0 NEW=\n" in r.stdout + "\n", "a box that refuses leaves BOX_WIFI_ROTATED 0 and no new password stored: " + r.stdout + r.stderr)
+check("set wireless.box_ap" not in ul and "wifi reload" not in ul, "and the router's box network is not touched: " + ul)
+check("rc=1" in r.stdout and "did not take" in r.stdout and "HTTP 500" in r.stdout, "and it says so and fails, so a command can tell: " + r.stdout)
+check(_conf_value(cf, "BOX_SSID_NAME") == "PisoCoinBox-a1b2", "and the stored network name is as it was")
+# (2) a router whose box already has its own password and name: the command to do it again must not lose that
+cf = f"{tmp}/conf_refuse2"
+open(f"{tmp}/uci.log", "w").close()
+r = lib(NAMES2 + 'conf_set BOX_WIFI_ROTATED 1; conf_set BOX_WIFI_PASS_NEW OwnPassw0rd1234567; rotate_box_wifi force; echo "rc=$?"; '
+        'echo "ROT=$(conf_get BOX_WIFI_ROTATED) NEW=$(conf_get BOX_WIFI_PASS_NEW) KEY=$(box_wifi_key)"',
+        env={"BOX_IP": addr, "ROTATE_SETTLE": "0", "PISO_CONF": cf})
+check("rc=1" in r.stdout and "ROT=1 NEW=OwnPassw0rd1234567 KEY=OwnPassw0rd1234567" in r.stdout,
+      "a forced run that the box refuses keeps BOX_WIFI_ROTATED 1 and the box's own password (fact B7): " + r.stdout + r.stderr)
+check("set wireless.box_ap" not in open(f"{tmp}/uci.log").read(), "and does not touch the router's box network")
+# (3) the piso-setup command itself (it used to set BOX_WIFI_ROTATED 0 before asking, and leave it there)
+open(f"{bindir}/id", "w").write("#!/bin/sh\necho 0\n"); os.chmod(f"{bindir}/id", 0o755)
+open(f"{tmp}/conf", "w").write("")
+for _k, _v in (("BOX_ADMIN_PASS", "NewPassw0rdXYZ"), ("BOX_WIFI_ROTATED", "1"), ("BOX_WIFI_PASS_NEW", "OwnPassw0rd1234567"), ("KIOSK_SSID_NAME", "PisoKiosk-a1b2"), ("BOX_SSID_NAME", "PisoCoinBox-a1b2")):
+    open(f"{tmp}/conf", "a").write(f"{_k}='{_v}'\n")
+r = run("rotate-box-wifi", env={"BOX_IP": addr, "ROTATE_SETTLE": "0"})
+check(_conf_value(f"{tmp}/conf", "BOX_WIFI_ROTATED") == "1" and _conf_value(f"{tmp}/conf", "BOX_WIFI_PASS_NEW") == "OwnPassw0rd1234567",
+      "piso-setup rotate-box-wifi against a refusing box leaves BOX_WIFI_ROTATED 1 (fact B7): " + r.stdout + r.stderr)
+os.remove(f"{bindir}/id")
+# (4) the box takes it but never comes back: the router keeps the new name and key, the message says what to do
+Box.refuse_wifi = False; Box.wifi = None
+cf = f"{tmp}/conf_noreturn"
+open(f"{tmp}/uci.log", "w").close()
+r = lib(NAMES2 + 'conf_set BOX_WIFI_ROTATED 0; box_up() { return 1; }; cmd_box_diag() { echo DIAG; }; (rotate_box_wifi); echo "rc=$?"; '
+        'echo "ROT=$(conf_get BOX_WIFI_ROTATED) NEW=$(conf_get BOX_WIFI_PASS_NEW)"',
+        env={"BOX_IP": addr, "ROTATE_SETTLE": "0", "ROTATE_WAIT": "0", "PISO_CONF": cf})
+ul = open(f"{tmp}/uci.log").read()
+out = r.stdout + r.stderr
+check("rc=0" not in r.stdout and "Power-cycle" in out and "piso-setup status" in out, "a box that does not come back: the message says power-cycle it and run piso-setup status: " + out)
+check(Box.wifi and "ROT=1 NEW=" + Box.wifi in r.stdout and f"set wireless.box_ap.key={Box.wifi}" in ul and "set wireless.box_ap.ssid=PisoCoinBox-a1b2" in ul,
+      "and the router keeps the new name and key (the box has them): " + out)
 # ---- box-diag: where the router <-> box link breaks -----------------------------------------------------------------------------
 def box_diag(setup_code):
     return lib(setup_code + "; cmd_box_diag", env={"BOX_IP": "127.0.0.1:1"})   # nothing listens there: the box does not answer

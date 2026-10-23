@@ -29,7 +29,7 @@
 
 VERSION="dev"
 # the release of this file (setup/RELEASE): routers install only a higher release that the owner signed
-PISO_RELEASE='1.5.17'
+PISO_RELEASE='1.5.18'
 # the CPU family the portal program in this file is built for (router_family below names the family of the router it runs on)
 PISO_ARCH='armv7'
 
@@ -911,15 +911,20 @@ sync_kiosk_wifi() {
 # rotate_box_wifi: the firmware's built-in Wi-Fi password is public, so once the box is paired (and only its MAC is admitted)
 # it is given a random one of its own, and this router's own network name (BOX_SSID: the built-in name is shared by every router):
 # stored on the box through its admin API, then set on the router's hidden box network. The box loses the network for a moment and rejoins with the new password (within about a minute).
-rotate_box_wifi() {
-	[ "$(conf_get BOX_WIFI_ROTATED)" = 1 ] && return 0
+rotate_box_wifi() {  # rotate_box_wifi [force]: "force" does it again even when the box already has its own password
+	[ "$1" = force ] || [ "$(conf_get BOX_WIFI_ROTATED)" != 1 ] || return 0
 	step "Giving the coin box its own Wi-Fi password"
 	tip "the box's light will blink for up to a minute while it moves to the new password. That is normal: wait."
+	_had=$(conf_get BOX_WIFI_PASS_NEW)
 	_new=$(secret BOX_WIFI_PASS_NEW 20)
 	box_curl "$(conf_get BOX_ADMIN_PASS)" /save --data-urlencode "wifi_pass=$_new" --data-urlencode "wifi_ssid=$BOX_SSID"
 	case "$BOXCODE" in
 		200 | 302 | 303) ;;
-		*) log "the box did not take its own Wi-Fi password (HTTP ${BOXCODE:-none}); it keeps the built-in one for now (still locked to its MAC). Run again: piso-setup rotate-box-wifi"; return 0 ;;
+		*)
+			# the box said no: nothing on the router changes (a new password stored now would be named by box_wifi_key for a box that never got it)
+			if [ -z "$_had" ]; then conf_del BOX_WIFI_PASS_NEW; fi
+			log "the box did not take its own Wi-Fi password (HTTP ${BOXCODE:-none}); nothing was changed on the router, the box keeps the Wi-Fi password and name it had. Run again: piso-setup rotate-box-wifi"
+			return 1 ;;
 	esac
 	uci set wireless.box_ap.key="$_new"; uci set wireless.box_ap.ssid="$BOX_SSID"; uci commit wireless
 	conf_set BOX_WIFI_ROTATED 1
@@ -2265,7 +2270,7 @@ main() {
 			push_kiosk_wifi
 			if kiosk_wifi_on_box; then log "checked: the box's \"Set up a phone\" link carries the password"
 			else log "the box's link does not show it yet (a box with firmware before 3.3.3 cannot: it updates itself, then run this again)"; fi ;;
-		rotate-box-wifi) DRY=0; [ "$(id -u)" = 0 ] || die "run as root"; conf_set BOX_WIFI_ROTATED 0; rotate_box_wifi ;;
+		rotate-box-wifi) DRY=0; [ "$(id -u)" = 0 ] || die "run as root"; rotate_box_wifi force ;;
 		set-password) cmd_set_password ;;
 		summary) cat "$SUMMARY" ;;
 		uninstall-info) echo "To undo: sysupgrade -n (factory reset) the router. Nothing else is changed outside the files listed in $0." ;;
