@@ -3,10 +3,12 @@ package com.pisophone.kiosk.server
 import com.pisophone.kiosk.network.BoxClock
 import com.pisophone.kiosk.repository.PaymentResult
 import com.pisophone.kiosk.security.KioskSecurity
+import com.pisophone.kiosk.util.ShopBranding
 import fi.iki.elonen.NanoHTTPD
 import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -24,6 +26,11 @@ class KioskHttpServerUnitTest {
     private var lastCreditedAmount: Double? = null
     private var creditPaymentCallCount: Int = 0
     private val triggeredActions = mutableListOf<String>()
+    private var configPushes = 0
+    private var lastConfigPrice: Double? = null
+    private var lastConfigDeviceName: String? = null
+    private val brandingPushes = mutableListOf<List<String?>>()
+    private var storeBrandingForReal = false
 
     private val fakeDelegate = object : KioskServerDelegate {
         override fun getSecretKey(): String = testSecret
@@ -40,7 +47,15 @@ class KioskHttpServerUnitTest {
             return simulatedPaymentResult
         }
         override fun onDeductTime(seconds: Int, txId: String?) {}
-        override fun onConfigUpdated(price: Double?, minutes: Int?, deviceName: String?, adminPin: String?, slotNum: Int?) {}
+        override fun onConfigUpdated(price: Double?, minutes: Int?, deviceName: String?, adminPin: String?, slotNum: Int?) {
+            configPushes++
+            lastConfigPrice = price
+            lastConfigDeviceName = deviceName
+        }
+        override fun onBrandingUpdated(palette: String?, shopName: String?, title: String?, density: String?) {
+            brandingPushes += listOf(palette, shopName, title, density)
+            if (storeBrandingForReal) ShopBranding.applyFromBox(context, palette, shopName, title, density)
+        }
         override fun onTriggerAction(action: String, slotNum: Int?, extra: Map<String, String>?) {
             triggeredActions += action
         }
@@ -57,6 +72,13 @@ class KioskHttpServerUnitTest {
         server = KioskHttpServer(context = context, port = 8080, delegate = fakeDelegate)
         creditPaymentCallCount = 0
         triggeredActions.clear()
+        configPushes = 0
+        lastConfigPrice = null
+        lastConfigDeviceName = null
+        brandingPushes.clear()
+        storeBrandingForReal = false
+        context.createDeviceProtectedStorageContext().getSharedPreferences("shop_branding", android.content.Context.MODE_PRIVATE)
+            .edit().clear().commit()
         lastCreditedTxId = null
         lastCreditedSeconds = null
         lastCreditedAmount = null
@@ -410,5 +432,88 @@ class KioskHttpServerUnitTest {
         assertEquals(200, response.status.requestStatus)
         assertEquals("OK", readResponseBody(response))
         assertEquals(1, creditPaymentCallCount)
+    }
+
+    // ---- feature 012: the four optional branding params of the box's /config push ----
+
+    private fun pushConfig(query: String) =
+        server.serve(createSession("/config", createEncryptedParams("$query&ts=${System.currentTimeMillis()}")))
+
+    @Test
+    fun aConfigPushWithBrandingHandsOverTheFourDecodedValues() {
+        val response = pushConfig("price=5.0&minutes=10&palette=rosas&shop_name=Mang+Juan%27s+Tindahan&brand_title=Piso+Net&anim_density=low")
+        assertEquals(200, response.status.requestStatus)
+        assertEquals(1, configPushes)
+        assertEquals(listOf(listOf("rosas", "Mang Juan's Tindahan", "Piso Net", "low")), brandingPushes)
+    }
+
+    @Test
+    fun aPercentSignAndAPlusInAShopNameSurviveExactlyOneDecode() {
+        // the box url-encodes a literal % as %25 and a literal + as %2B; the signed payload is decrypted to this exact text and
+        // split on & and = without any decoding, so the one decode in decodeBrandingValue is the only one
+        pushConfig("shop_name=100%25+Sulit+%2B+Load")
+        assertEquals("100% Sulit + Load", brandingPushes.single()[1])
+    }
+
+    @Test
+    fun aConfigPushWithoutBrandingStillWorksAndLeavesTheStoredBrandingAlone() {
+        storeBrandingForReal = true
+        pushConfig("palette=berde&shop_name=Tindahan&brand_title=Piso&anim_density=high")
+        val before = ShopBranding.read(context)
+        brandingPushes.clear()
+
+        val response = pushConfig("price=7.5&minutes=15&device_name=Phone+3")
+        assertEquals(200, response.status.requestStatus)
+        assertEquals("the old settings still apply", 2, configPushes)
+        assertEquals(7.5, lastConfigPrice ?: 0.0, 0.001)
+        assertTrue("an old box sends no branding, so the phone is not told anything", brandingPushes.isEmpty())
+        assertEquals(before, ShopBranding.read(context))
+        assertEquals("berde", ShopBranding.read(context).palette)
+    }
+
+    @Test
+    fun aPushWithOnlyOneBrandingParamLeavesTheOthersUntouched() {
+        storeBrandingForReal = true
+        pushConfig("palette=ginto&shop_name=Tindahan&brand_title=Piso&anim_density=high")
+        pushConfig("palette=dagat")
+        val b = ShopBranding.read(context)
+        assertEquals("dagat", b.palette)
+        assertEquals("Tindahan", b.shopName)
+        assertEquals("Piso", b.title)
+        assertEquals("high", b.density)
+    }
+
+    @Test
+    fun junkAndOverLongBrandingValuesAreRefusedOrTrimmedBeforeStorage() {
+        storeBrandingForReal = true
+        val tooLongOnTheWire = "A".repeat(600)
+        val longName = "B".repeat(100)
+        pushConfig("palette=nonsense&anim_density=turbo&shop_name=%0A%00%09X%0D%0AY&brand_title=$longName")
+        var b = ShopBranding.read(context)
+        assertNull("an unknown palette id never reaches storage", b.palette)
+        assertNull("an unknown density word never reaches storage", b.density)
+        assertEquals("control characters and newlines are stripped", "XY", b.shopName)
+        assertEquals("the title is cut at its cap", ShopBranding.MAX_TITLE, b.title?.length)
+
+        brandingPushes.clear()
+        pushConfig("shop_name=$tooLongOnTheWire&brand_title=%zz")
+        assertEquals("a value too long to be real is dropped on the wire", listOf(listOf(null, null, null, null)), brandingPushes)
+        b = ShopBranding.read(context)
+        assertEquals("so the stored name stays", "XY", b.shopName)
+    }
+
+    @Test
+    fun anUnknownConfigParamIsIgnoredAndTheRestStillApplies() {
+        val response = pushConfig("price=3.0&rainbow=1&hide_credit=1&palette=tropiko")
+        assertEquals(200, response.status.requestStatus)
+        assertEquals(3.0, lastConfigPrice ?: 0.0, 0.001)
+        assertEquals(listOf(listOf("tropiko", null, null, null)), brandingPushes)
+    }
+
+    @Test
+    fun aBrandingPushThatIsNotSignedIsRefused() {
+        val response = server.serve(createSession("/config", mapOf("palette" to "rosas")))
+        assertEquals(401, response.status.requestStatus)
+        assertTrue(brandingPushes.isEmpty())
     }
 }

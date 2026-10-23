@@ -34,11 +34,11 @@ group. Groups 1 to 6 are app-only and need no board; groups 7 and 8 are firmware
       at 32 characters and the title at 20, strip control characters, newlines and leading/trailing space, treat blank as unset,
       keep an unknown palette id or density word out of storage. (test: `ShopBrandingUnitTest` — caps, control characters,
       blank, unknown id, unknown density, defaults when nothing was ever written; red result logged: yes.)
-- [ ] 3. **`/config` accepts the four settings.** `server/KioskHttpServer.kt` reads `palette`, `shop_name`, `brand_title` and
+- [x] 3. **`/config` accepts the four settings.** `server/KioskHttpServer.kt` reads `palette`, `shop_name`, `brand_title` and
       `anim_density` from the decrypted params and passes them on; the delegate stores them through group 2. Unknown or missing
       params change nothing (back-compat, criterion 2). (test: the existing `/config` server test extended — a push with the new
       params stores them, a push without them leaves the stored branding alone, junk and over-long values are refused or
-      trimmed; red result logged: yes.)
+      trimmed; red result logged: yes, as "not run (no Android SDK)".)
 - [ ] 3b. **The density rule.** `overlay/ui/AnimationDensity.kt`: the four levels and a pure function mapping (density, thermal
       status, battery percent, charging, power save, animations on, screen in front) to the ambient budget — sticker count,
       whether stickers wiggle, bubble and sparkle counts, cloud and ray motion. The ladder is a cap, not an override:
