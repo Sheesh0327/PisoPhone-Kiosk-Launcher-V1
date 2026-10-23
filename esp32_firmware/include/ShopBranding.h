@@ -74,12 +74,12 @@ inline bool validText(const std::string& text, int maxChars, int maxBytes) {
         }
         if (len == 3 && cp < 0x800) return false;                      // overlong
         if (len == 4 && (cp < 0x10000 || cp > 0x10FFFF)) return false; // overlong or beyond Unicode
-        if (cp >= 0xD800 && cp <= 0xDFFF) return false;               // a surrogate half
-        if (cp < 0x20 || (cp >= 0x7F && cp <= 0x9F)) return false;    // control characters, DEL and the C1 controls
-        if (cp >= 0x200B && cp <= 0x200F) return false;               // zero-width and direction marks
-        if (cp >= 0x2028 && cp <= 0x202E) return false;               // line and paragraph separators, direction overrides
-        if (cp >= 0x2060 && cp <= 0x206F) return false;               // invisible operators and isolates
-        if (cp == 0xFEFF) return false;                                // byte order mark
+        if (cp >= 0xD800 && cp <= 0xDFFF) return false;                // a surrogate half
+        if (cp < 0x20 || (cp >= 0x7F && cp <= 0x9F)) return false;     // control characters, DEL and the C1 controls
+        if (cp >= 0x200B && cp <= 0x200F) return false;                // zero-width and direction marks
+        if (cp >= 0x2028 && cp <= 0x202E) return false; // line and paragraph separators, direction overrides
+        if (cp >= 0x2060 && cp <= 0x206F) return false; // invisible operators and isolates
+        if (cp == 0xFEFF) return false;                 // byte order mark
         if (len == 1 && std::strchr("|;\"\\<>&", (int)c) != nullptr) return false;
         chars++;
         i += len;
@@ -106,19 +106,20 @@ struct Branding {
 
 // The phone reads the values url-encoded (a space is +, a percent sign %25): the same encoding the rest of the push uses.
 inline std::string urlEncode(const std::string& text) {
-    static const char* const HEX = "0123456789ABCDEF";
+    // not named HEX: Arduino's Print.h defines HEX as 16, and this header is included from firmware code
+    static const char* const HEX_DIGITS = "0123456789ABCDEF";
     std::string out;
     for (size_t i = 0; i < text.size(); i++) {
         unsigned char c = (unsigned char)text[i];
-        if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '-' || c == '_' || c == '.' ||
-            c == '~') {
+        if ((c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '-' || c == '_' ||
+            c == '.' || c == '~') {
             out += (char)c;
         } else if (c == ' ') {
             out += '+';
         } else {
             out += '%';
-            out += HEX[(c >> 4) & 0xF];
-            out += HEX[c & 0xF];
+            out += HEX_DIGITS[(c >> 4) & 0xF];
+            out += HEX_DIGITS[c & 0xF];
         }
     }
     return out;
@@ -134,8 +135,8 @@ constexpr int MAX_PUSH_CHARS = 240;
 // this feature ignores params it does not know.
 inline std::string pushBody(const Branding& b) {
     if (!b.configured) return "";
-    return "palette=" + urlEncode(b.palette) + "&shop_name=" + urlEncode(b.name) + "&brand_title=" + urlEncode(b.title) +
-           "&anim_density=" + urlEncode(b.density);
+    return "palette=" + urlEncode(b.palette) + "&shop_name=" + urlEncode(b.name) +
+           "&brand_title=" + urlEncode(b.title) + "&anim_density=" + urlEncode(b.density);
 }
 
 // True when the branding push fits the buffer. A name made of plain letters always does; one of many accented characters may not.

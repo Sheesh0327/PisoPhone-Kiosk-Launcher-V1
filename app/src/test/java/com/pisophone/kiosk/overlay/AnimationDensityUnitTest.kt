@@ -3,6 +3,7 @@ package com.pisophone.kiosk.overlay
 import com.pisophone.kiosk.overlay.ui.AmbientBudget
 import com.pisophone.kiosk.overlay.ui.AnimationDensity
 import com.pisophone.kiosk.overlay.ui.EffectsLevel
+import com.pisophone.kiosk.overlay.ui.PhoneState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -23,14 +24,16 @@ class AnimationDensityUnitTest {
         screenInFront: Boolean = true,
     ) = AmbientBudget.of(
         density = density,
-        thermalStatus = thermal,
-        videoSwitchOn = true,
-        lowRamDevice = false,
-        powerSaveMode = powerSave,
-        batteryPercent = battery,
-        charging = charging,
-        animationsOn = animationsOn,
-        screenInFront = screenInFront,
+        phone = PhoneState(
+            thermalStatus = thermal,
+            videoSwitchOn = true,
+            lowRamDevice = false,
+            powerSaveMode = powerSave,
+            batteryPercent = battery,
+            charging = charging,
+            animationsOn = animationsOn,
+            screenInFront = screenInFront,
+        ),
     )
 
     @Test

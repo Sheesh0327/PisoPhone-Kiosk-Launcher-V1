@@ -34,28 +34,42 @@ int main() {
           "an unknown id is refused, not guessed");
 
     // the density words
-    CHECK(validDensity("off") && validDensity("low") && validDensity("normal") && validDensity("high") && validDensity(""),
+    CHECK(validDensity("off") && validDensity("low") && validDensity("normal") && validDensity("high") &&
+              validDensity(""),
           "the four density words, or blank");
-    CHECK(!validDensity("turbo") && !validDensity("OFF") && !validDensity("0") && !validDensity("high "), "any other word refused");
+    CHECK(!validDensity("turbo") && !validDensity("OFF") && !validDensity("0") && !validDensity("high "),
+          "any other word refused");
 
     // the shop name: 32 characters, not bytes
-    CHECK(validName("") && validName("Tindahan ni Mang Juan") && validName("Mang Juan's Tindahan"), "plain names, an apostrophe ok");
+    CHECK(validName("") && validName("Tindahan ni Mang Juan") && validName("Mang Juan's Tindahan"),
+          "plain names, an apostrophe ok");
     CHECK(validName(repeat("a", 32)) && !validName(repeat("a", 33)), "32 characters at most");
-    CHECK(validName(repeat("\xC3\xB1", 32)) && !validName(repeat("\xC3\xB1", 33)), "a character is counted once, not by its bytes");
-    CHECK(!validName(repeat("\xF0\x9F\x98\x80", 32)), "32 four-byte characters are too many bytes for the settings memory");
+    CHECK(validName(repeat("\xC3\xB1", 32)) && !validName(repeat("\xC3\xB1", 33)),
+          "a character is counted once, not by its bytes");
+    CHECK(!validName(repeat("\xF0\x9F\x98\x80", 32)),
+          "32 four-byte characters are too many bytes for the settings memory");
     CHECK(!validName(" Tindahan") && !validName("Tindahan "), "no space at either end");
-    CHECK(!validName("a|b") && !validName("a;b") && !validName("a\"b") && !validName("a\\b") && !validName("<b>") && !validName("a&b"),
+    CHECK(!validName("a|b") && !validName("a;b") && !validName("a\"b") && !validName("a\\b") && !validName("<b>") &&
+              !validName("a&b"),
           "separators and markup refused");
     CHECK(!validName(std::string("a\nb")) && !validName(std::string("a\tb")) && !validName(std::string("a\x01")) &&
               !validName(std::string("a\x7F")) && !validName(std::string("a\r")),
           "control characters and newlines refused");
-    CHECK(!validName("a\xC2\x85" "b") && !validName("a\xE2\x80\xAE" "b") && !validName("a\xE2\x80\xA8" "b") && !validName("a\xEF\xBB\xBF"),
+    CHECK(!validName("a\xC2\x85"
+                     "b") &&
+              !validName("a\xE2\x80\xAE"
+                         "b") &&
+              !validName("a\xE2\x80\xA8"
+                         "b") &&
+              !validName("a\xEF\xBB\xBF"),
           "C1 controls, direction marks, line separators and the byte order mark refused");
-    CHECK(!validName("a\x80") && !validName("\xC3") && !validName("\xC0\xAF") && !validName("\xF8\x88\x80\x80\x80") && !validName("\xED\xA0\x80"),
+    CHECK(!validName("a\x80") && !validName("\xC3") && !validName("\xC0\xAF") && !validName("\xF8\x88\x80\x80\x80") &&
+              !validName("\xED\xA0\x80"),
           "broken UTF-8 refused");
 
     // the header title: 20 characters
-    CHECK(validTitle("") && validTitle("Piso Net") && validTitle(repeat("t", 20)) && !validTitle(repeat("t", 21)), "20 characters at most");
+    CHECK(validTitle("") && validTitle("Piso Net") && validTitle(repeat("t", 20)) && !validTitle(repeat("t", 21)),
+          "20 characters at most");
     CHECK(!validTitle("a;b") && !validTitle(std::string("a\nb")), "the same rules as the name");
 
     // what the phone is told: nothing when the owner never set anything
@@ -98,7 +112,8 @@ int main() {
     accents.title = repeat("\xC3\xB1", 20);
     CHECK(validName(accents.name) && validTitle(accents.title), "the accented values are valid text");
     CHECK(!fitsInPush(accents), "but too long once encoded: refused at save, never cut in the middle of an escape");
-    CHECK(pushBody(longest).size() <= (size_t)MAX_PUSH_CHARS && MAX_PUSH_CHARS < 255, "and it is under the 256-byte buffer");
+    CHECK(pushBody(longest).size() <= (size_t)MAX_PUSH_CHARS && MAX_PUSH_CHARS < 255,
+          "and it is under the 256-byte buffer");
 
     // the admin page's refusals: which setting, and why, with nothing saved. The first problem found is the one reported.
     Branding ok;
@@ -132,11 +147,13 @@ int main() {
 
     // the size on the box: four short strings in the settings memory (an NVS string takes a 32-byte header plus its bytes and a
     // terminator rounded up to 32). The worst values the page accepts must stay under 512 bytes.
-    int worst = nvsBytes((int)std::string("technet").size()) + nvsBytes(MAX_NAME_BYTES) + nvsBytes(MAX_TITLE_BYTES) + nvsBytes(6);
+    int worst = nvsBytes((int)std::string("technet").size()) + nvsBytes(MAX_NAME_BYTES) + nvsBytes(MAX_TITLE_BYTES) +
+                nvsBytes(6);
     int typical = nvsBytes((int)b.palette.size()) + nvsBytes((int)b.name.size()) + nvsBytes((int)b.title.size()) +
                   nvsBytes((int)b.density.size());
-    std::printf("settings memory: typical %d bytes, worst case %d bytes (limit 512; name %d + title %d + palette %d + density %d at worst)\n",
-                typical, worst, nvsBytes(MAX_NAME_BYTES), nvsBytes(MAX_TITLE_BYTES), nvsBytes(7), nvsBytes(6));
+    std::printf(
+        "settings memory: typical %d bytes, worst case %d bytes (limit 512; name %d + title %d + palette %d + density %d at worst)\n",
+        typical, worst, nvsBytes(MAX_NAME_BYTES), nvsBytes(MAX_TITLE_BYTES), nvsBytes(7), nvsBytes(6));
     CHECK(worst < 512, "the four settings together take under 512 bytes at their longest");
     CHECK(nvsBytes(0) == 64 && nvsBytes(31) == 64 && nvsBytes(32) == 96, "the size rule rounds up by 32");
 

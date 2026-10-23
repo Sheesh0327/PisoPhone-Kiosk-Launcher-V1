@@ -54,18 +54,24 @@ class MakerCreditUnitTest {
     fun `the line is the same words for every combination the box can send`() {
         assertEquals("by TechNet Solutions", context.getString(R.string.maker_credit))
         var combos = 0
-        for (pal in palettes) for (den in densities) for (name in names) for (title in titles) {
-            ShopBranding.applyFromBox(context, pal, name, title, den)
-            val b = ShopBranding.read(context)
-            val palette = BrandPalette.of(b.palette)
-            // the credit takes no branding value: its colour is the palette's credit colour and its sheen follows the ladder only
-            for (bg in listOf(palette.top, palette.bottom)) {
-                assertTrue("credit unreadable for $pal/$den", contrast(palette.credit, bg) >= 4.5)
+        for (pal in palettes) {
+            for (den in densities) {
+                for (name in names) {
+                    for (title in titles) {
+                        ShopBranding.applyFromBox(context, pal, name, title, den)
+                        val b = ShopBranding.read(context)
+                        val palette = BrandPalette.of(b.palette)
+                        // the credit takes no branding value: its colour is the palette's credit colour and its sheen follows the ladder only
+                        for (bg in listOf(palette.top, palette.bottom)) {
+                            assertTrue("credit unreadable for $pal/$den", contrast(palette.credit, bg) >= 4.5)
+                        }
+                        for (effects in EffectsLevel.values()) {
+                            assertEquals(effects.ambient, MakerCredit.sheenRuns(effects))
+                        }
+                        combos++
+                    }
+                }
             }
-            for (effects in EffectsLevel.values()) {
-                assertEquals(effects.ambient, MakerCredit.sheenRuns(effects))
-            }
-            combos++
         }
         assertTrue("drove $combos combinations", combos > 3000)
     }
@@ -92,16 +98,24 @@ class MakerCreditUnitTest {
 
     @Test
     fun `the composable has no switch to hide, disable or still it`() {
-        val method = Class.forName("com.pisophone.kiosk.overlay.ui.MakerCreditKt").declaredMethods.single { it.name == "MakerCredit" }
-        assertFalse("no Boolean parameter at all", method.parameterTypes.any { it == java.lang.Boolean.TYPE })
-        assertFalse("no String parameter: the words are not configurable", method.parameterTypes.any { it == String::class.java })
+        // the composable takes a Color, which is a value class, so Kotlin mangles its JVM name to "MakerCredit-<hash>";
+        // the compiler also adds a "MakerCredit$default" for the default Modifier. Every one of them must stay switch-free.
+        val methods = Class.forName("com.pisophone.kiosk.overlay.ui.MakerCreditKt").declaredMethods
+            .filter { it.name.startsWith("MakerCredit") }
+        assertTrue("the credit composable is gone from MakerCreditKt", methods.isNotEmpty())
+        for (method in methods) {
+            assertFalse("no Boolean parameter at all (${method.name})", method.parameterTypes.any { it == java.lang.Boolean.TYPE })
+            assertFalse("no String parameter: the words are not configurable (${method.name})", method.parameterTypes.any { it == String::class.java })
+        }
     }
 
     @Test
     fun `no key, param or stored setting addresses the credit`() {
         assertTrue(KioskHttpServer.BRANDING_PARAMS.none { it.contains("credit") || it.contains("maker") })
-        val members = (ShopBranding::class.java.declaredMethods.map { it.name } + ShopBranding::class.java.declaredFields.map { it.name } +
-            Branding::class.java.declaredFields.map { it.name }).map { it.lowercase() }
+        val members = (
+            ShopBranding::class.java.declaredMethods.map { it.name } + ShopBranding::class.java.declaredFields.map { it.name } +
+                Branding::class.java.declaredFields.map { it.name }
+        ).map { it.lowercase() }
         assertTrue("ShopBranding/Branding mention the credit: $members", members.none { "credit" in it || "maker" in it })
     }
 }

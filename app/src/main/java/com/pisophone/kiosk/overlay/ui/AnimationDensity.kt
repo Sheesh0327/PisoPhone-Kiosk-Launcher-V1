@@ -28,6 +28,21 @@ enum class AnimationDensity(val word: String) {
 }
 
 /**
+ * What the phone itself allows right now, so the ladder reads one snapshot instead of eight loose arguments.
+ * [batteryPercent] is -1 when unknown.
+ */
+data class PhoneState(
+    val thermalStatus: Int,
+    val videoSwitchOn: Boolean,
+    val lowRamDevice: Boolean,
+    val powerSaveMode: Boolean,
+    val batteryPercent: Int,
+    val charging: Boolean,
+    val animationsOn: Boolean,
+    val screenInFront: Boolean,
+)
+
+/**
  * What the lock screen's art may draw and move right now: the owner's [AnimationDensity] under the thermal and battery ladder
  * (`GUI_SPEC` section 10). The ladder wins at every level: MODERATE heat, power save, a low draining battery, animations
  * switched off or a screen that is not in front hold the picture still ([EffectsLevel.Events] and below), and SEVERE heat draws
@@ -75,28 +90,18 @@ data class AmbientBudget(
 
         private val FLAT = AmbientBudget(false, 0, false, 0, 0, false, false, false, false, NORMAL_LOOP_MS)
 
-        /** The whole ladder for one phone state, pure so it is tested without a phone. [batteryPercent] is -1 when unknown. */
-        fun of(
-            density: AnimationDensity,
-            thermalStatus: Int,
-            videoSwitchOn: Boolean,
-            lowRamDevice: Boolean,
-            powerSaveMode: Boolean,
-            batteryPercent: Int,
-            charging: Boolean,
-            animationsOn: Boolean,
-            screenInFront: Boolean,
-        ): AmbientBudget {
+        /** The whole ladder for one phone state, pure so it is tested without a phone. */
+        fun of(density: AnimationDensity, phone: PhoneState): AmbientBudget {
             val motionAllowed = VideoBackgroundPolicy.shouldPlay(
-                enabled = videoSwitchOn,
-                lowRamDevice = lowRamDevice,
-                powerSaveMode = powerSaveMode,
-                batteryPercent = batteryPercent,
-                charging = charging,
-                screenInFront = screenInFront,
+                enabled = phone.videoSwitchOn,
+                lowRamDevice = phone.lowRamDevice,
+                powerSaveMode = phone.powerSaveMode,
+                batteryPercent = phone.batteryPercent,
+                charging = phone.charging,
+                screenInFront = phone.screenInFront,
                 covered = false,
             )
-            return of(density, EffectsLevel.of(thermalStatus, motionAllowed, animationsOff = !animationsOn))
+            return of(density, EffectsLevel.of(phone.thermalStatus, motionAllowed, animationsOff = !phone.animationsOn))
         }
 
         /** The same, from the effects level the lock screen already works out ([rememberEffectsLevel]). */

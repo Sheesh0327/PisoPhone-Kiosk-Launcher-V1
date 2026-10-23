@@ -33,7 +33,8 @@ void handleApiBranding() {
         return;
     }
     if (!checkAdminAuth()) return;
-    if (!webServer.hasArg("palette") || !webServer.hasArg("name") || !webServer.hasArg("title") || !webServer.hasArg("density")) {
+    if (!webServer.hasArg("palette") || !webServer.hasArg("name") || !webServer.hasArg("title") ||
+        !webServer.hasArg("density")) {
         sendError(400, "NO_BRANDING");
         return;
     }

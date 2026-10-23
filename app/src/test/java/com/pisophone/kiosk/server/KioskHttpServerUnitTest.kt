@@ -464,7 +464,9 @@ class KioskHttpServerUnitTest {
 
         val response = pushConfig("price=7.5&minutes=15&device_name=Phone+3")
         assertEquals(200, response.status.requestStatus)
-        assertEquals("the old settings still apply", 2, configPushes)
+        // the first push was branding only, which is deliberately not a config update (no second "Config Synced"), so this
+        // ordinary push is the only one the delegate has been told about
+        assertEquals("the old settings still apply", 1, configPushes)
         assertEquals(7.5, lastConfigPrice ?: 0.0, 0.001)
         assertTrue("an old box sends no branding, so the phone is not told anything", brandingPushes.isEmpty())
         assertEquals(before, ShopBranding.read(context))

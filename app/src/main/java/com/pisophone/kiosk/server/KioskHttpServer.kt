@@ -69,6 +69,7 @@ class KioskHttpServer(
             return try {
                 java.net.URLDecoder.decode(raw, "UTF-8")
             } catch (e: IllegalArgumentException) {
+                Log.w(TAG, "Branding value the box sent is not valid encoding, leaving that setting alone", e)
                 null
             }
         }

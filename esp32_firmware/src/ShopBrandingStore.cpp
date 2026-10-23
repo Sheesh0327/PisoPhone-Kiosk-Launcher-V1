@@ -41,7 +41,8 @@ Branding shopBrandingCurrent() {
 }
 
 bool shopBrandingSave(const Branding& next) {
-    if (!validPalette(next.palette) || !validName(next.name) || !validTitle(next.title) || !validDensity(next.density)) return false;
+    if (!validPalette(next.palette) || !validName(next.name) || !validTitle(next.title) || !validDensity(next.density))
+        return false;
     if (!fitsInPush(next)) return false;
     if (!prefs.begin(NVS_NAMESPACE, false)) return false;
     prefs.putString(NVS_KEY_BRAND_PALETTE, next.palette.c_str());
@@ -58,7 +59,8 @@ String shopBrandingJson() {
     String json = "{\"configured\":";
     json += current.configured ? "true" : "false";
     json += ",\"palette\":\"" + String(current.palette.c_str()) + "\",\"name\":\"" + String(current.name.c_str()) +
-            "\",\"title\":\"" + String(current.title.c_str()) + "\",\"density\":\"" + String(current.density.c_str()) + "\"}";
+            "\",\"title\":\"" + String(current.title.c_str()) + "\",\"density\":\"" + String(current.density.c_str()) +
+            "\"}";
     return json;
 }
 
