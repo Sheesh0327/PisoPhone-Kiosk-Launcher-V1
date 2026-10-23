@@ -11,9 +11,14 @@ A shop owner resells PisoPhone to clients who want the rental phones to look lik
 every phone in every shop is identical: three fixed backdrop colours (`BackdropTint`), a hardcoded launcher palette
 (`LauncherThemeColors`) and the product name "PisoPhone" in the lock-screen header. There is no shop name anywhere in the app.
 
-This feature lets the owner pick one of several built-in colour palettes and set the shop's name, shown as a running marquee on
-the lock and home screens, with the header title also settable. The colours ship inside the one signed APK; the coin box holds
-the choice and the names and hands them to each phone, so a shop is branded once and every phone follows.
+This feature lets the owner pick one of several built-in colour palettes, set the shop's name (shown as a running marquee on the
+lock and home screens), set the header title, and choose how busy the screen's animation is. **All four are set in one place:
+the box's own admin page.** The colours and the animation code ship inside the one signed APK; the coin box holds only the
+choice and the names and hands them to each phone, so a shop is branded once and every phone follows.
+
+**The division of labour, as a rule for this feature and any later one:** the box stores configuration — short text and
+numbers — and the phones do all the rendering, following what the box says. No picture, font or animation asset ever lives on
+the box.
 
 It serves **project rule 2** (only owner-signed software is installed): the palettes are compiled into the signed APK, and the
 box stores only short settings, so nothing new is ever downloaded or installed on a phone to change how it looks.
@@ -27,17 +32,29 @@ box stores only short settings, so nothing new is ever downloaded or installed o
   `/config` push; the signed message contract (`protocol/gen_vectors.py` fixtures) does not change.
 
 ## Constraints
-1. **The box stores settings, never files.** The three settings are short text: a palette id, the shop name and the header
-   title. No image, logo or font is ever uploaded to, stored on or served by the coin box. Total NVS cost **under 128 bytes**
-   (NVS is 20 KB in total, `esp32_firmware/partitions_encrypted.csv`, and already holds the payment queue, accounts, the
-   revenue vault, phone profiles and orphan payments).
+1. **The box stores settings, never files.** The four settings are short text: a palette id, the shop name, the header title
+   and an animation density. No image, logo, font or animation asset is ever uploaded to, stored on or served by the coin box,
+   and the box never renders anything for a phone. Total NVS cost **under 512 bytes measured** (NVS is 20 KB in total,
+   `esp32_firmware/partitions_encrypted.csv`, and already holds the payment queue, accounts, the revenue vault, phone profiles
+   and orphan payments; NVS charges per-entry overhead, so four short strings cost more than their characters).
+1b. **The admin page is the only place these are set.** They are typed in the box's admin (dashboard) config page, like the
+   phone profiles and the rate are today. The phone's owner vault shows what the phone received, read-only, and never edits it:
+   one source of truth for a shop, and no way for a customer-facing phone to disagree with the box.
 2. **Both sides change in one change** (`CLAUDE.md` section 6). Only *optional* url-encoded params are added to the existing
    `/config` push (`esp32_firmware/src/DeviceManager.cpp:88`, `WebServerConfig.cpp:377` → `KioskHttpServer.kt:306`). A live box
    with a new app, and a new box with a live app, both keep working: the phone reads the params with `has`/`optString` as it
    already does for `device_name`, `price` and `minutes`, and an old box simply sends none.
 3. **`docs/design/GUI_SPEC_PISOPHONE_KIDS.md` section 10 (performance).** 0 fps at rest, no `Modifier.blur`, no alpha panels
-   over the art, at most 16 particles, everything stops when the screen is not RESUMED. The marquee is the one moving thing
+   over the art, **at most 16 particles**, everything stops when the screen is not RESUMED. The marquee is the one moving thing
    added, and it obeys the existing thermal and battery ladder (below).
+3b. **The animation density is a ceiling the owner lowers, never a way to raise past the budget.** The thermal and battery
+   ladder (`GUI_SPEC` section 10: MODERATE drops ambient motion, SEVERE flattens to background plus timer) always wins over the
+   setting: a hot phone is calm whatever the box says. The highest density stays inside the 16-particle cap. Today's behaviour
+   is the `normal` level, so a shop that sets nothing sees no change.
+3c. **Density never removes feedback that money arrived.** The coin rain, the sparkle on a coin, the "time added" pop-over and
+   the spoken confirmation play at every density, including `off`. Density governs *ambient* motion only — the drifting clouds,
+   the turning rays, the sticker wiggle, the rising bubbles, the idle twinkle. A customer must always see that their coin
+   counted (project rule 1).
 4. **`GUI_SPEC` section 11 (must not change).** `TimeLevel`, `VideoBackgroundPolicy`, `LockScreenPresence`, the banner triggers,
    `AdminMaintenanceMode.suspendOverlays`, the strings asserted by `KioskStatusToastUnitTest` and `CoinSpeechUnitTest`, and the
    panel-centred layout order (status row, panel, rate and button, card link, footer). The marquee is added inside the header
@@ -53,13 +70,14 @@ box stores only short settings, so nothing new is ever downloaded or installed o
    before storage, and it is never used as a file name, a URL or a shell argument.
 
 ## Success criteria
-1. **The box holds the settings.** The box dashboard has a *Shop branding* section with three fields — palette (a list of the
-   built-in ids), shop name, header title. Saving stores them in NVS; they survive a box restart. Firmware host test plus a
-   serial check on the board (RS36).
+1. **The admin page holds the settings.** The box's admin config page has a *Shop branding* section with four fields —
+   palette (a list of the built-in ids), shop name, header title, animation density (`off`, `low`, `normal`, `high`). Saving
+   stores them in NVS; they survive a box restart; a bad value is refused with a reason and changes nothing. Firmware host test
+   plus a serial and browser check on the board (RS36).
 2. **The box pushes them, and nothing old breaks.** The settings ride the existing authenticated `/config` push on pairing and
    on save. `protocol/fixtures` and the signing vectors are byte-identical; a phone build without this feature ignores the new
    params (host test asserting the pushed parameter string, and the app's `/config` test fed a push with unknown params).
-3. **The phone remembers, and shows it before unlock.** After `/config`, the three settings are in the device-protected
+3. **The phone remembers, and shows it before unlock.** After `/config`, the four settings are in the device-protected
    preferences; after a reboot with the box offline the lock screen still draws the shop's palette, title and marquee. Unit
    test on the storage, plus a Roborazzi golden of the branded lock screen.
 4. **No palette can hide the text.** A unit test over *every* built-in palette: primary text on the backdrop (top and bottom
@@ -73,12 +91,17 @@ box stores only short settings, so nothing new is ever downloaded or installed o
    unchanged — byte-identical, no re-record.
 7. **Money and time screens are untouched.** `./gradlew testDebugUnitTest` passes with no changes to the tests that pin
    `TimeLevel`, `VideoBackgroundPolicy`, `LockScreenPresence`, the toast and speech strings, or the payment paths.
-8. **The box stays a money device, not a file store.** No new upload endpoint, no file written to spiffs, and the three
-   settings together take under 128 bytes of NVS (host test on the stored sizes).
+8. **The box stays a money device, not a file store.** No new upload endpoint, no file written to spiffs, no rendering done on
+   the box, and the four settings together take under 512 bytes of NVS (host test printing the measured sizes).
 9. **Nothing moved that must not move.** `bash scripts/check_security_rules.sh` passes; `protocol/gen_vectors.py` output
    unchanged; `esp32_firmware/host_tests/protocol_contract_test.cpp` passes unchanged.
 10. **Releases raised.** `PISO_FW_VERSION` raised (3.12.0) and the app build number raised; no router or setup release
     (`setup/RELEASE` untouched), because nothing a router installs changes.
+11. **The density levels do what they say, and the ladder still wins.** A pure function maps (density, thermal status, battery,
+    power save, animations on) to how many stickers wiggle, how many bubbles and sparkles run, and whether the clouds and rays
+    move. Unit-tested: `off` has no ambient motion at any temperature; `normal` reproduces today's counts exactly; `high` never
+    exceeds 16 particles; MODERATE drops ambient motion and SEVERE flattens the art at *every* density including `high`; and at
+    every density — `off` included — a coin still brings the coin rain, the sparkle, the pop-over and the spoken confirmation.
 
 ## Out of scope
 - **Logo images.** No logo in this feature, and when one comes it ships in the APK or is picked on the phone — the box never
@@ -90,6 +113,9 @@ box stores only short settings, so nothing new is ever downloaded or installed o
 - The PisoWiFi portal and the router console (a separate product, a separate spec).
 - Translating the shop name, and fixing the pre-existing fact that the child's palette button choice
   (`KioskStateManager.themeIndex`) is not saved across restarts.
+- **Editing the branding on a phone.** The owner vault shows what the phone received, read-only; the box's admin page is the
+  only place to change it (constraint 1b).
+- Per-phone branding inside one shop: the settings are the shop's, and every paired phone gets the same ones.
 - Pushing branding to several phones from one phone (QR copy), and setting branding at provisioning time.
 
 ## Owner decisions
@@ -100,6 +126,9 @@ Answered by the owner on 2026-10-23 (interview in session `session_01PnBTKntvzuD
 - Mechanism: one signed APK carrying several built-in palettes; the setup picks one.
 - Marquee: scrolls, and stands still when the phone is hot or low on battery.
 - Source of truth: the coin box holds the palette choice and the names; the box saves settings only, never files.
+- Where they are set: the ESP32 admin page, and only there (owner, 2026-10-23).
+- An animation density setting is part of this feature (owner, 2026-10-23): the box stores the level, the phones render it.
+- The split for this and later features: configuration on the box, all rendering in the app, following the box (owner).
 - Fallback: last known branding from direct-boot storage, today's TechNet look when nothing was ever set.
 - Verification: spec, plan and code written here; the owner (or a session with the Android SDK) compiles and runs the gates.
 
@@ -114,3 +143,14 @@ Still open, needed before the UI groups (4 to 6) are built:
    place.
 4. **The header title default.** Stays "PisoPhone" when the owner sets nothing, so a phone always identifies itself unless a
    client deliberately renames it. Confirm.
+5. **The density levels.** I propose four, with `normal` the default and today's screen:
+   - `off` — the picture stands still. Clouds, rays, stickers and bubbles do not move; a coin still animates.
+   - `low` — 4 stickers instead of 10, no bubbles, no ambient twinkle; slow cloud drift only.
+   - `normal` — exactly today: 10 stickers wiggling, 12 bubbles, 20 sparkles, turning rays, the 60 s loop.
+   - `high` — the fullest the budget allows: ambient sparkle and bubble counts raised to the 16-particle cap, livelier drift.
+
+   Note on `normal`: the design spec (`GUI_SPEC` sections 5 and 10) asks for *less* than today's code does — it wants the ray
+   rotation, the sticker wiggle and the 60 s loop cut, and 6 stickers not 10. I kept `normal` as today's behaviour so an
+   existing shop sees no change, which means `low` is close to what the design spec actually asked for. Say if you would rather
+   `normal` become the design spec's calmer version and today's busier screen become `high` — that is a one-line change now and
+   an owner-visible change on every live phone later.
