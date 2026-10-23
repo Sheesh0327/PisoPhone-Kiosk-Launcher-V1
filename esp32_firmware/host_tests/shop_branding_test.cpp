@@ -137,7 +137,7 @@ int main() {
     bad = ok;
     bad.name = accents.name;
     bad.title = accents.title;
-    CHECK(std::string(refusalFor(bad)) == "TOO_LONG_FOR_PHONES", "too long once encoded is named");
+    CHECK(std::string(refusalFor(bad)) == "TOO_LONG_FOR_PUSH", "too long once encoded is named");
     bad = ok;
     bad.palette = "pink";
     bad.name = repeat("a", 33);

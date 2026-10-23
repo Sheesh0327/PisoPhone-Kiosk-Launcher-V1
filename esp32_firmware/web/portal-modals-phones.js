@@ -355,7 +355,7 @@ function brandingFail(data) {
         BAD_DENSITY: 'That animation setting is not one of the list.',
         BAD_NAME: 'The shop name must be up to 32 characters, with no | ; " \\ < > & and no line breaks, and no space at either end.',
         BAD_TITLE: 'The title must be up to 20 characters, with no | ; " \\ < > & and no line breaks, and no space at either end.',
-        TOO_LONG_FOR_PHONES: 'The name and title are too long to send to the phones. Use fewer accented characters or shorter words.',
+        TOO_LONG_FOR_PUSH: 'The name and title are too long to send to the phones. Use fewer accented characters or shorter words.',
         NO_BRANDING: 'The form was incomplete. Reload the page and try again.'
     };
     notify((data && why[data.error]) || 'Could not save the branding.', 'bad');

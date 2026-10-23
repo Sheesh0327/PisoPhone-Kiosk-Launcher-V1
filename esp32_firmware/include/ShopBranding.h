@@ -152,7 +152,7 @@ inline const char* refusalFor(const Branding& b) {
     if (!validDensity(b.density)) return "BAD_DENSITY";
     if (!validName(b.name)) return "BAD_NAME";
     if (!validTitle(b.title)) return "BAD_TITLE";
-    if (!fitsInPush(b)) return "TOO_LONG_FOR_PHONES";
+    if (!fitsInPush(b)) return "TOO_LONG_FOR_PUSH";
     return "";
 }
 
