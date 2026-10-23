@@ -29,40 +29,58 @@ group. Groups 1 to 6 are app-only and need no board; groups 7 and 8 are firmware
       (test: `BrandPaletteContrastUnitTest` over every palette — text ≥ 4.5:1 on both backdrop colours, icons and outlines ≥
       3:1, and `of("nonsense") == technet`; red result logged: yes.) No UI touched in this group.
 - [ ] 2. **Branding storage in direct-boot preferences.** `util/ShopBranding.kt` (read/write through
-      `KioskSecurity.getDirectBootPrefs`, same as `KioskSettings`) with sanitising: cap the shop name at 32 characters and the
-      title at 20, strip control characters, newlines and leading/trailing space, treat blank as unset, keep an unknown palette
-      id out of storage. (test: `ShopBrandingUnitTest` — caps, control characters, blank, unknown id, defaults when nothing was
-      ever written; red result logged: yes.)
-- [ ] 3. **`/config` accepts the three settings.** `server/KioskHttpServer.kt` reads `palette`, `shop_name` and `brand_title`
-      from the decrypted params and passes them on; the delegate stores them through group 2. Unknown or missing params change
-      nothing (back-compat, criterion 2). (test: the existing `/config` server test extended — a push with the new params
-      stores them, a push without them leaves the stored branding alone, junk and over-long values are refused or trimmed;
-      red result logged: yes.)
+      `KioskSecurity.getDirectBootPrefs`, same as `KioskSettings`) holding the four settings, with sanitising: cap the shop name
+      at 32 characters and the title at 20, strip control characters, newlines and leading/trailing space, treat blank as unset,
+      keep an unknown palette id or density word out of storage. (test: `ShopBrandingUnitTest` — caps, control characters,
+      blank, unknown id, unknown density, defaults when nothing was ever written; red result logged: yes.)
+- [ ] 3. **`/config` accepts the four settings.** `server/KioskHttpServer.kt` reads `palette`, `shop_name`, `brand_title` and
+      `anim_density` from the decrypted params and passes them on; the delegate stores them through group 2. Unknown or missing
+      params change nothing (back-compat, criterion 2). (test: the existing `/config` server test extended — a push with the new
+      params stores them, a push without them leaves the stored branding alone, junk and over-long values are refused or
+      trimmed; red result logged: yes.)
+- [ ] 3b. **The density rule.** `overlay/ui/AnimationDensity.kt`: the four levels and a pure function mapping (density, thermal
+      status, battery percent, charging, power save, animations on, screen in front) to the ambient budget — sticker count,
+      whether stickers wiggle, bubble and sparkle counts, cloud and ray motion. The ladder is a cap, not an override:
+      MODERATE drops ambient motion and SEVERE flattens the art at every level, `high` never passes 16 particles, and no level
+      touches the coin rain, sparkle-on-coin, pop-over or speech. It composes with the existing `EffectsLevel`.
+      (test: `AnimationDensityUnitTest` over the level × ladder matrix, `normal` reproducing today's exact counts, the particle
+      cap, and an assertion that payment feedback is untouched at `off`; red result logged: yes.)
 - [ ] 4. **The marquee rule and the marquee.** `overlay/ui/MarqueeRule.kt`: a pure `shouldScroll(...)` taking thermal status,
       power save, battery percent, charging, animations on, screen in front — the shape of `VideoBackgroundPolicy.shouldPlay`.
       `overlay/ui/BrandMarquee.kt` draws one line: scrolling when the rule says so, centred and still otherwise, never
       clipped. (test: `MarqueeRuleUnitTest` over the ladder cases incl. battery -1 and charging at 10%; red result logged: yes.)
 - [ ] 5. **Lock screen wiring.** `BlockScreen.kt` takes the branding; `LockScreenArt` takes the palette's colours instead of
-      `BackdropTint` (old stored theme numbers keep cycling the three built-in tints when the shop has no palette set); the
-      header shows the title and, under it, the marquee inside the header band, above `BAND_TOP_*` so no sticker is drawn over
-      it. Clouds, rays, stickers, mascot and coins unchanged. (test: `LockScreenScreenshotTest` — the existing default golden
-      stays byte-identical, one new golden for a branded phone; red result logged: yes.)
+      `BackdropTint` (old stored theme numbers keep cycling the three built-in tints when the shop has no palette set) and the
+      ambient budget from group 3b instead of its own constants (`STICKERS`, `BUBBLE_COUNT`, `SPARKLE_COUNT`, the ray and cloud
+      motion); the header shows the title and, under it, the marquee inside the header band, above `BAND_TOP_*` so no sticker is
+      drawn over it. The art itself, the mascot and the coin feedback are unchanged. (test: `LockScreenScreenshotTest` — the
+      existing default golden stays byte-identical at `normal`, one new golden for a branded phone, one at `off` and one at
+      `high`; red result logged: yes.)
 - [ ] 6. **Home screen wiring.** `LauncherScreen.kt`: `currentTheme` reads the palette (bg and accent only; gold, red and teal
       stay), the marquee under the clock and date row. The logo video, its poster and `VideoBackgroundPolicy` untouched.
       (test: a launcher Roborazzi golden, default unchanged plus one branded; red result logged: yes.)
-- [ ] 7. **The box stores the settings.** NVS keys `brand_pal`, `shop_name`, `brand_title` beside the existing
+- [ ] 7. **The box stores the settings.** NVS keys `brand_pal`, `shop_name`, `brand_title`, `anim_dens` beside the existing
       `ph_profiles`/`slot_prof` pattern (`src/PhoneProfileStore.cpp`), loaded on boot, with the same caps and sanitising as
-      group 2 and a *Shop branding* section in the dashboard config page. (test: a host test under
-      `esp32_firmware/host_tests/` — store, reload, caps, bad palette id, and the three together under 128 bytes; red result
-      logged: yes.) If the dashboard page lives under `esp32_firmware/web/`, regenerate `include/WebAssets.h` with
+      group 2. (test: a host test under `esp32_firmware/host_tests/` — store, reload, caps, bad palette id, bad density word,
+      and the four together under 512 bytes with the measured sizes printed; red result logged: yes.)
+- [ ] 7b. **The admin page.** A *Shop branding* section in the box's admin config page: the palette list, the shop name, the
+      header title and the density (`off`, `low`, `normal`, `high`), each saved with a reason shown when a value is refused.
+      This is the only place the settings are edited (spec constraint 1b), so the page is part of the feature, not a nicety.
+      (test: the existing dashboard/config host tests extended over the new form fields and the refusals; red result logged:
+      yes.) If the page lives under `esp32_firmware/web/`, regenerate `include/WebAssets.h` with
       `python3 scripts/embed_web.py` — never hand-edited.
-- [ ] 8. **The box pushes the settings.** Add the three optional params to the push built in `DeviceManager.cpp:88` and to the
+- [ ] 8. **The box pushes the settings.** Add the four optional params to the push built in `DeviceManager.cpp:88` and to the
       params in `WebServerConfig.cpp:377`, so pairing and every save reach the paired phones. (test: host test asserting the
       pushed parameter string with and without branding set, and that `protocol/gen_vectors.py` output and
       `host_tests/protocol_contract_test.cpp` are unchanged; red result logged: yes.)
-- [ ] 9. **Owner-facing paperwork.** Hardware checks **RS36** (branding set on the box reaches a phone; it survives a phone
-      reboot with the box off; the marquee stands still on a hot phone) and **RS37** (an old phone build paired to the new box,
-      and a new phone build paired to a live 3.11.1 box, both keep working) added to `docs/REAL_WORLD_TESTING.md`;
+- [ ] 8b. **The vault shows what arrived, read-only.** One line in the owner vault: the palette, the shop name, the title, the
+      density, and when they last came from the box — no editing (spec constraint 1b, and it is how an owner tells a phone has
+      not heard from the box). (test: a unit test on the text the line renders from stored branding, including the never-set
+      case; red result logged: yes.)
+- [ ] 9. **Owner-facing paperwork.** Hardware checks **RS36** (branding typed on the box's admin page reaches a phone; it
+      survives a phone reboot with the box off; the marquee stands still on a hot phone; each density level looked at on a real
+      T606 phone) and **RS37** (an old phone build paired to the new box, and a new phone build paired to a live 3.11.1 box,
+      both keep working) added to `docs/REAL_WORLD_TESTING.md`;
       `CHANGELOG.md` entry in the owner's words; `specs/STATUS.md` row; `validation.md` filled with evidence.
 
 ## Release
