@@ -1,6 +1,6 @@
 # Feature 011: setting up a router in a real shop: no internet needed, no coin box mix-ups
 
-Status: **approved by the owner. Part A (first setup without the router's internet) approved 2026-10-22 with its owner decisions 1 to 3; part B (the coin box network's own name) approved 2026-10-23 with its owner decisions 1 to 3. Merged into one feature on 2026-10-23 at the owner's instruction: what was feature 012 is now part B of this spec, and feature number 012 is retired. Not started: waiting only for the owner's go.**
+Status: **approved by the owner (part A 2026-10-22, part B 2026-10-23; merged into one feature 2026-10-23). Built and validated on a computer 2026-10-23; every criterion passes except 14 (hardware: RS36, RS37), which is not run. See `validation.md`. Not `done` until the owner has had the hardware checks run and merged it.**
 Branch: `feat/011-offline-setup` (from `beta`, rebased on `b1db87f` 2026-10-23). Area: setup, router. Depends on: feature 010 (it changed the same files: `setup/install.sh`, `20-preflight.sh`, the setup program's router flow) — **done**, merged and live as router 1.5.17. Release: one router release, `setup/RELEASE` 1.5.17 -> **1.5.18**, and the setup program (`website/pisophone_setup.py`).
 Backlog rows: none. Part A is an owner request of 2026-10-22; part B is an owner field report of 2026-10-23 (while setting up router 2 next to a working router 1, coin box 2 did not reliably talk to router 2). Both ideas were checked against the code before their specs.
 

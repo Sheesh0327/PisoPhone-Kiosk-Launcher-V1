@@ -48,7 +48,7 @@ Each group names the spec criteria it proves.
 
 ### Both parts
 - [x] 11. **Docs and the hardware checks** (criterion 14). `docs/REAL_WORLD_TESTING.md` (new checks for both parts, "not run"); `setup/README.md` (the router no longer needs internet during setup with the setup program; `--router-online`; the `box-wifi-name` command and "switch the other router off while pairing"); `setup/MANUAL.md`; `website/manual.html`; `CHANGELOG.md` (one entry describing both parts for the owner).
-- [ ] 12. **Validate** (criterion 15). Every criterion in `validation.md` with evidence, the gates, "Not tested" (at least: all hardware, community sources, real OpenWrt indexes beyond the fixtures), "Money and time"; update `specs/STATUS.md`. Pull request into `beta` only when the owner asks.
+- [x] 12. **Validate** (criterion 15). Every criterion in `validation.md` with evidence, the gates, "Not tested" (at least: all hardware, community sources, real OpenWrt indexes beyond the fixtures), "Money and time"; update `specs/STATUS.md`. Pull request into `beta` only when the owner asks.
 
 ## Release
 - Router: `setup/RELEASE` 1.5.17 -> **1.5.18**, once, in group 2, carrying both parts. Firmware and phone app: not touched.
