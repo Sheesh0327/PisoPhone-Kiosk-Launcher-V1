@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pisophone.kiosk.R
 import com.pisophone.kiosk.model.AppInfo
+import com.pisophone.kiosk.overlay.ui.AnimationDensity
 import com.pisophone.kiosk.overlay.ui.BrandMarquee
 import com.pisophone.kiosk.overlay.ui.MakerCredit
 import com.pisophone.kiosk.overlay.ui.rememberEffectsLevel
@@ -56,7 +57,7 @@ fun LauncherScreen(
     val context = LocalContext.current
     val currentTheme = remember(branding.palette) { LauncherThemeColors.forBranding(branding.palette) }
     val effects = rememberEffectsLevel()
-    val marqueeScrolls = rememberMarqueeScrolls()
+    val marqueeScrolls = rememberMarqueeScrolls(AnimationDensity.of(branding.density))
 
     var pinnedSlots by remember { mutableStateOf(PinnedSlotsManager.getPinnedSlots(context)) }
     var slotToPinIndex by remember { mutableStateOf<Int?>(null) }

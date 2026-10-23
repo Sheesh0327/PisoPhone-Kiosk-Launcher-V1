@@ -14,6 +14,7 @@ object MarqueeRule {
 
     /** [batteryPercent] is -1 when unknown; a phone that reports no thermal status passes 0. */
     fun shouldScroll(
+        density: AnimationDensity,
         thermalStatus: Int,
         powerSaveMode: Boolean,
         batteryPercent: Int,
@@ -21,6 +22,8 @@ object MarqueeRule {
         animationsOn: Boolean,
         screenInFront: Boolean,
     ): Boolean {
+        // `off` means the picture stands still, the shop name included (the maker's credit is the one exception, MakerCredit.kt)
+        if (density == AnimationDensity.Off) return false
         if (thermalStatus >= EffectsLevel.THERMAL_MODERATE) return false
         if (powerSaveMode || !animationsOn || !screenInFront) return false
         val lowAndDraining = batteryPercent in 0 until LOW_BATTERY_PERCENT && !charging

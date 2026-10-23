@@ -60,6 +60,10 @@ box stores only short settings, so nothing new is ever downloaded or installed o
    setting: a hot phone is calm whatever the box says. The highest density never has more ambient particles than `normal`, and no
    burst passes the 16-particle cap (`GUI_SPEC` section 5: the 16 is a burst's size). Today's behaviour
    is the `normal` level, so a shop that sets nothing sees no change.
+3e. **A shop title replaces the maker's word in the header; a shop palette hides the palette button (owner, 2026-10-23).** With a
+   title set, the lock-screen header shows that title alone, without the hardcoded "TechNet" before it (TechNet stays on screen
+   through the permanent credit, 3c); with none set the header is "TechNet PisoPhone" as today. With a shop palette set the
+   child's palette button is not drawn (it could no longer change the colours); with none set it cycles the three tints as today.
 3c. **The maker's credit is not configuration.** "by TechNet Solutions" is drawn at the bottom of the lock and home screens
    from the app's own resources, with its own animation. No setting reaches it: there is no box key, no param and no vault
    switch for it, so it cannot be turned off, emptied or hidden, and a client's palette cannot make it invisible (its contrast
@@ -78,7 +82,9 @@ box stores only short settings, so nothing new is ever downloaded or installed o
 5. **Readable before unlock.** The lock screen draws in direct boot, so the branding is stored in the device-protected
    preferences (`KioskSecurity.getDirectBootPrefs`, as `KioskSettings` already does), never in credential-protected storage.
 6. **No contrast a client can break.** Only built-in palettes, each checked by a test (criterion 4). Free hex colours are out.
-7. **English strings in `strings.xml` with a `values-fil` counterpart** (`GUI_SPEC` section 6). The shop name itself is owner
+7. **English strings in `strings.xml`** (`GUI_SPEC` section 6 also asks for a `values-fil` counterpart; the module has none for any
+   string, so a folder holding only this feature's strings was removed 2026-10-23 on the owner's decision. That rule is unmet across
+   the whole module and is its own task, not this feature's). The shop name itself is owner
    data, not a string resource, and is never translated.
 8. Generated files are regenerated, never hand-edited (`CLAUDE.md` section 4): if the box dashboard page under
    `esp32_firmware/web/` changes, `python3 scripts/embed_web.py` regenerates `include/WebAssets.h`.
@@ -100,9 +106,13 @@ box stores only short settings, so nothing new is ever downloaded or installed o
    backdrop (top and bottom colour) is at least 4.5:1, icons and outlines at least 3:1 — the `GUI_SPEC` section 2 and 9
    numbers — and the maker's credit at least 4.5:1 on both. A palette that fails does not compile into the product (the test is
    the gate).
-5. **The marquee obeys the ladder.** A pure function, tested like `VideoBackgroundPolicy`: it scrolls only at thermal NONE or
-   LIGHT, with the screen RESUMED and in front, animations on, not in power save, and not below 15% battery while draining.
+5. **The marquee obeys the ladder, and `off` stills it.** A pure function, tested like `VideoBackgroundPolicy`: it scrolls only at
+   density `low`, `normal` or `high` and at thermal NONE or LIGHT, with the screen RESUMED and in front, animations on, not in power save, and not below 15% battery while draining.
    Otherwise the shop name stands still, centred, and stays fully readable. Unit test over the cases.
+   *Added 2026-10-23 (owner): at density `off` the name stands still too, because `off` means "the picture stands still". The
+   maker's credit is the one deliberate exception: its sheen follows only the ladder, never the density, because the owner said
+   the credit holds "regardless of the settings or animation density". The marquee and the credit differ on purpose; do not
+   "fix" either to match the other.*
 6. **An unbranded phone looks exactly like today.** With nothing ever set (and with the box offline before the first push):
    palette `technet`, title "PisoPhone", no marquee row at all. The existing lock-screen and launcher Roborazzi goldens differ
    from today only by the credit line at the bottom (the footer and everything above it sit one line higher, nothing else
@@ -177,7 +187,7 @@ They are kept here in full as the record of what was approved:
    - `low` — 4 stickers instead of 10, no bubbles, no ambient twinkle; slow cloud drift only.
    - `normal` — exactly today: 10 stickers wiggling, 12 bubbles, 20 sparkles, turning rays, the 60 s loop.
    - `high` — the liveliest the budget allows: `normal`'s counts (20 sparkles, 12 bubbles, never more) with a faster drift and
-     ray turn (a 40 s loop instead of 60 s). *Corrected 2026-10-23 on the owner's answer: the first wording, "raised to the
+     ray turn (a 40 s loop instead of 60 s). *Corrected 2026-10-23, found during implementation and accepted by the owner: the first wording, "raised to the
      16-particle cap", contradicted `normal`'s 32 ambient particles today; the 16 is the size of one burst, not of the ambient
      count.*
 

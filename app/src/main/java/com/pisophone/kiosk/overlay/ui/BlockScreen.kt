@@ -113,7 +113,7 @@ fun BlockScreen(
     val palette = if (branding.palette != null) BrandPalette.of(branding.palette) else BrandPalette.forTheme(themeIndex)
     val effects = rememberEffectsLevel()
     val budget = AmbientBudget.of(AnimationDensity.of(branding.density), effects)
-    val marqueeScrolls = rememberMarqueeScrolls()
+    val marqueeScrolls = rememberMarqueeScrolls(AnimationDensity.of(branding.density))
     val shopName = branding.shopName
     val slot = rememberAssignedSlot(deviceIp, slotNumber)
     val haptic = LocalHapticFeedback.current
@@ -247,7 +247,7 @@ fun BlockScreen(
                         Box(modifier = Modifier.weight(0.4f).fillMaxHeight(), contentAlignment = Alignment.Center) { halo() }
                         Column(modifier = Modifier.weight(0.6f).fillMaxHeight().verticalScroll(rememberScrollState())) {
                             LockPanel {
-                                LockUpHeader(slot, title = branding.title ?: ShopBranding.DEFAULT_TITLE, titleColor = palette.accent)
+                                LockUpHeader(slot, title = branding.title ?: ShopBranding.DEFAULT_TITLE, titleColor = palette.accent, showMakerWord = branding.title == null)
                                 if (shopName != null) BrandMarquee(shopName, palette.accent, marqueeScrolls)
                                 Spacer(Modifier.height(8.dp))
                                 body()
@@ -259,7 +259,7 @@ fun BlockScreen(
                         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        LockUpHeader(slot, modifier = Modifier.widthIn(max = 420.dp), title = branding.title ?: ShopBranding.DEFAULT_TITLE, titleColor = palette.accent)
+                        LockUpHeader(slot, modifier = Modifier.widthIn(max = 420.dp), title = branding.title ?: ShopBranding.DEFAULT_TITLE, titleColor = palette.accent, showMakerWord = branding.title == null)
                         // the shop name runs under the title, in the header band the stickers keep out of
                         if (shopName != null) {
                             BrandMarquee(shopName, palette.accent, marqueeScrolls, modifier = Modifier.widthIn(max = 420.dp).height(MARQUEE_ROW_HEIGHT))
@@ -276,7 +276,12 @@ fun BlockScreen(
                 }
             }
 
-            StatusFooter(isOnline = isEsp32Online, onBackdropClick = onThemeChange, onAdminClick = { showPinDialog = true })
+            StatusFooter(
+                isOnline = isEsp32Online,
+                onBackdropClick = onThemeChange,
+                onAdminClick = { showPinDialog = true },
+                showBackdropButton = branding.palette == null,
+            )
             // the maker's credit sits under the footer and takes nothing from the branding: it cannot be set, hidden or still
             Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 MakerCredit(color = palette.credit, effects = effects)

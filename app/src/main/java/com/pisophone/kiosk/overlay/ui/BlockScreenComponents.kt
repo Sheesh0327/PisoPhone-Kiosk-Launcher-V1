@@ -119,12 +119,16 @@ fun LockUpHeader(
     modifier: Modifier = Modifier,
     title: String = ShopBranding.DEFAULT_TITLE,
     titleColor: Color = TechNet.teal,
+    /** False when the shop set its own title: the title then stands alone (feature 012). */
+    showMakerWord: Boolean = true,
 ) {
     Row(modifier = modifier.fillMaxWidth().height(40.dp), verticalAlignment = Alignment.CenterVertically) {
         Image(painter = painterResource(R.drawable.technet_sticker_pisophone), contentDescription = null, modifier = Modifier.size(28.dp))
         Spacer(Modifier.width(8.dp))
-        Text("TechNet", color = TechNet.text, fontSize = 18.sp, lineHeight = 24.sp, fontWeight = FontWeight.ExtraBold)
-        Spacer(Modifier.width(5.dp))
+        if (showMakerWord) {
+            Text("TechNet", color = TechNet.text, fontSize = 18.sp, lineHeight = 24.sp, fontWeight = FontWeight.ExtraBold)
+            Spacer(Modifier.width(5.dp))
+        }
         // the shop's header title (feature 012, at most 20 characters); a long one on a narrow phone is cut with dots, never pushes the chip off
         Text(
             title,
@@ -212,13 +216,24 @@ fun LiveTotalCard(
 
 /** Under the panel: whether the coin box answers (a dot and words), the backdrop colour button and the owner's door. */
 @Composable
-fun StatusFooter(isOnline: Boolean, onBackdropClick: () -> Unit, onAdminClick: () -> Unit, modifier: Modifier = Modifier) {
+fun StatusFooter(
+    isOnline: Boolean,
+    onBackdropClick: () -> Unit,
+    onAdminClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    /** False when the shop set a palette: the button could no longer change the colours, so it is not drawn (its space stays). */
+    showBackdropButton: Boolean = true,
+) {
     Row(
         modifier = modifier.fillMaxWidth().padding(horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(onClick = onBackdropClick, modifier = Modifier.alpha(0.8f)) {
-            Icon(Icons.Filled.Palette, contentDescription = stringResource(R.string.lock_cd_backdrop), tint = TechNet.text)
+        if (showBackdropButton) {
+            IconButton(onClick = onBackdropClick, modifier = Modifier.alpha(0.8f)) {
+                Icon(Icons.Filled.Palette, contentDescription = stringResource(R.string.lock_cd_backdrop), tint = TechNet.text)
+            }
+        } else {
+            Spacer(Modifier.size(48.dp)) // the button's space, so the box status stays centred
         }
         Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
             Box(modifier = Modifier.size(8.dp).background(if (isOnline) TechNet.ok else TechNet.warn, CircleShape))
