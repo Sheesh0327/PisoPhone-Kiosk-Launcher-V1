@@ -1892,6 +1892,186 @@ def setup_command(branch):
             f"if [ -r /root/piso-handout.html ]; then echo @@PISO-HANDOUT; cat /root/piso-handout.html; fi; echo @@PISO-END")
 
 
+# ---- the first setup without the router's internet (feature 011, part A) -------------------------------------------------------
+# The computer has internet and the router may not. The computer reads what the router knows, downloads the installer and the
+# OpenWrt packages the router is missing from the router's own package sources, copies them to the router's memory, and the router
+# checks them itself before it installs anything (setup/src/21-local-packages.sh).
+
+OFFLINE_DIR = "/tmp/piso-offline"           # where the bundle lives on the router (memory only, deleted after the setup)
+OFFLINE_WANTED = ["opennds", "curl", "ca-bundle", "jsonfilter"]   # what the setup installs (setup/src/20-preflight.sh install_packages)
+
+
+class OfflineNotPossible(SetupError):
+    """The first setup cannot run without the router's internet. The message says why; the caller then uses today's way."""
+
+    def __init__(self, reason):
+        super().__init__(f"offline setup not possible: {reason}")
+        self.reason = reason
+
+
+# one ssh command that prints what offline mode needs to know, each part after its marker line
+READ_FEEDS_COMMAND = (
+    "echo @@RELEASE; cat /etc/openwrt_release 2>/dev/null; "
+    "echo @@FEEDS; cat /etc/opkg/distfeeds.conf 2>/dev/null; "
+    "echo @@INSTALLED; opkg list-installed 2>/dev/null; "
+    "echo @@CONF; cat /etc/opkg.conf 2>/dev/null; "
+    "echo @@USIGN; if command -v usign >/dev/null 2>&1; then echo yes; else echo no; fi; "
+    "echo @@KEYS; for k in /etc/opkg/keys/*; do [ -f \"$k\" ] && echo \"$k\"; done; "
+    "echo @@APK; if command -v apk >/dev/null 2>&1; then echo yes; else echo no; fi; "
+    "echo @@MEM; sed -n 's/^MemAvailable: *\\([0-9]*\\) kB.*/\\1/p' /proc/meminfo 2>/dev/null | head -n 1")
+
+
+def parse_router_feeds(text):
+    """What READ_FEEDS_COMMAND printed, as a dict; raises OfflineNotPossible when the router cannot take part (an apk router, no
+    signature checking, no usign, no keys)."""
+    parts, cur = {}, None
+    for line in text.splitlines():
+        if re.fullmatch(r"@@[A-Z]+", line):
+            cur = line[2:]
+            parts[cur] = []
+        elif cur:
+            parts[cur].append(line)
+    release = {}
+    for line in parts.get("RELEASE", []):
+        m = re.match(r"\s*(DISTRIB_[A-Z]+)=['\"]?([^'\"]*)['\"]?\s*$", line)
+        if m:
+            release[m.group(1)] = m.group(2)
+    feeds = []
+    for line in parts.get("FEEDS", []):
+        m = re.match(r"\s*src(?:/gz)?\s+(\S+)\s+(\S+)", line)
+        if m:
+            feeds.append((m.group(1), m.group(2)))
+    installed = {}
+    for line in parts.get("INSTALLED", []):
+        m = re.match(r"(\S+) - (\S+)", line)
+        if m:
+            installed[m.group(1)] = m.group(2)
+    signed = False
+    for line in parts.get("CONF", []):
+        m = re.match(r"\s*option\s+check_signature(?:\s+(\S+))?\s*$", line)
+        if m and (m.group(1) or "1").lower() not in ("0", "false", "no"):
+            signed = True
+    word = lambda name: (parts.get(name) or [""])[0].strip() 
+    keys = len([k for k in parts.get("KEYS", []) if k.strip()])
+    mem = word("MEM")
+    if not feeds:
+        if word("APK") == "yes":
+            raise OfflineNotPossible("this router uses apk (OpenWrt 25.x or a snapshot), which the setup without internet does not support yet")
+        raise OfflineNotPossible("the router lists no package sources (/etc/opkg/distfeeds.conf)")
+    if not signed:
+        raise OfflineNotPossible("this router does not check package signatures (no 'option check_signature' in /etc/opkg.conf), so copied packages could not be checked")
+    if word("USIGN") != "yes":
+        raise OfflineNotPossible("this router has no usign program to check package signatures")
+    if not keys:
+        raise OfflineNotPossible("this router has no package signing keys in /etc/opkg/keys")
+    return {"release": release.get("DISTRIB_RELEASE", ""), "arch": release.get("DISTRIB_ARCH", ""), "target": release.get("DISTRIB_TARGET", ""),
+            "feeds": feeds, "installed": installed, "mem_kb": int(mem) if mem.isdigit() else 0, "keys": keys}
+
+
+def read_router_feeds(ssh, host):
+    """Asks the router (one ssh command, with the session's login) for its release, package sources, installed packages, signature
+    settings and free memory. Raises OfflineNotPossible with the reason when offline mode cannot be used with this router."""
+    try:
+        r = ssh.run(host, READ_FEEDS_COMMAND, "-T", capture_output=True, text=True, timeout=60, stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.SubprocessError) as e:
+        raise OfflineNotPossible(f"could not ask the router for its package sources ({e})")
+    if r.returncode != 0:
+        raise OfflineNotPossible("could not log in to the router to read its package sources")
+    return parse_router_feeds(r.stdout)
+
+
+def parse_depends(text):
+    """'a, b (>= 1) | c' -> [[('a', '', '')], [('b', '>=', '1'), ('c', '', '')]]: a list of clauses, each a list of alternatives."""
+    clauses = []
+    for clause in text.split(","):
+        alts = []
+        for alt in clause.split("|"):
+            m = re.match(r"\s*([^\s(]+)\s*(?:\(\s*([<>=]+)\s*([^)\s]+)\s*\))?", alt)
+            if m:
+                alts.append((m.group(1), m.group(2) or "", m.group(3) or ""))
+        if alts:
+            clauses.append(alts)
+    return clauses
+
+
+def parse_packages_index(text):
+    """The packages in an OpenWrt 'Packages' file: name, version, depends (see parse_depends), provides, filename, size, sha256."""
+    out = []
+    for block in re.split(r"\n\s*\n", text):
+        fields = {}
+        for line in block.splitlines():
+            if line[:1] in (" ", "\t") or ":" not in line:
+                continue   # a continuation of the description
+            key, _, value = line.partition(":")
+            fields[key.strip()] = value.strip()
+        if "Package" not in fields:
+            continue
+        size = fields.get("Size", "")
+        out.append({"name": fields["Package"], "version": fields.get("Version", ""), "depends": parse_depends(fields.get("Depends", "")),
+                    "provides": [m.group(1) for m in (re.match(r"\s*([^\s(]+)", x) for x in fields.get("Provides", "").split(",")) if m],
+                    "filename": fields.get("Filename", ""), "size": int(size) if size.isdigit() else 0, "sha256": fields.get("SHA256sum", "")})
+    return out
+
+
+def resolve_packages(info, indexes, wanted=None):
+    """The packages the router is missing, and the ones they need, in install order (dependencies first), from the router's own
+    package sources. `info` is read_router_feeds' answer, `indexes` the text of each source's Packages file by source name.
+    An alternative (a | b) that is already installed (itself, or through a package that Provides it) is used, else the first one
+    that exists; version constraints are not compared, except that a package built for another kernel is refused. Raises
+    OfflineNotPossible when a package or a kernel does not fit."""
+    installed = info["installed"]
+    urls = dict(info["feeds"])
+    by_name, providers = {}, {}
+    for source, text in indexes.items():
+        for rec in parse_packages_index(text):
+            rec["source"], rec["url"] = source, urls.get(source, "")
+            by_name.setdefault(rec["name"], rec)
+            for virtual in rec["provides"]:
+                providers.setdefault(virtual, []).append(rec)
+    have = set(installed)   # names that are there: installed packages and what they Provide
+    for name in installed:
+        if name in by_name:
+            have.update(by_name[name]["provides"])
+    chosen, order, visiting = {}, [], set()
+
+    def present(name):
+        return name in have or name in chosen or any(rec["name"] in chosen for rec in providers.get(name, []))
+
+    def known(name):
+        return name in by_name or bool(providers.get(name))
+
+    def need(name):
+        if present(name):
+            return
+        rec = by_name.get(name) or providers[name][0]
+        if rec["name"] in visiting:
+            return
+        visiting.add(rec["name"])
+        for clause in rec["depends"]:
+            if any(present(a[0]) and not (a[0] == "kernel" and a[1] == "=" and installed.get("kernel") != a[2]) for a in clause):
+                continue
+            for dep, op, version in clause:
+                if dep == "kernel" and op == "=":
+                    raise OfflineNotPossible(f"{rec['name']} is built for kernel {version}, but this router runs {installed.get('kernel') or 'an unknown kernel'}")
+            usable = [a[0] for a in clause if known(a[0])]
+            if not usable:
+                raise OfflineNotPossible(f"{rec['name']} needs {clause[0][0]}, which is not in any of the router's package sources")
+            need(usable[0])
+        chosen[rec["name"]] = rec
+        order.append(rec)
+
+    if wanted is None:
+        wanted = ([] if any(n.startswith("libmicrohttpd") for n in installed) else ["libmicrohttpd-no-ssl"]) + OFFLINE_WANTED
+    for name in wanted:
+        if present(name):
+            continue
+        if not known(name):
+            raise OfflineNotPossible(f"{name} is not in any of the router's package sources")
+        need(name)
+    return [{"name": r["name"], "version": r["version"], "source": r["source"], "url": r["url"], "filename": r["filename"],
+             "size": r["size"], "sha256": r["sha256"]} for r in order]
+
+
 def tip_text(line):
     """The advice in a "TIP:" line of the router's output, or None."""
     m = re.match(r"\s*TIP: (.+)$", line or "")
