@@ -11,7 +11,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
-/** The home screen (feature 012): unbranded, branded, and at density off, where the credit line must still be there. */
+/** The home screen (feature 013): unbranded, branded, and at density off, where the credit line must still be there. */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], qualifiers = "w360dp-h740dp-hdpi")
 class LauncherScreenshotTest : ScreenshotTest() {

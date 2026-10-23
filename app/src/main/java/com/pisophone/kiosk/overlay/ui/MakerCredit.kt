@@ -24,7 +24,7 @@ import com.pisophone.kiosk.R
 import kotlinx.coroutines.delay
 
 /**
- * The maker's credit, "by TechNet Solutions", at the bottom of the lock and home screens (feature 012). It is part of the signed
+ * The maker's credit, "by TechNet Solutions", at the bottom of the lock and home screens (feature 013). It is part of the signed
  * app, not configuration: it takes no shop name, no title, no density and no switch, only the colour its palette gives it and the
  * thermal and battery level the phone is at, so nothing the box sends can remove, hide or still it. The words always stay on
  * screen; only the sheen rests, with all the other motion, on a hot or nearly flat phone.

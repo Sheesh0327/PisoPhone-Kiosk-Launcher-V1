@@ -3,7 +3,7 @@ package com.pisophone.kiosk.overlay.ui
 import com.pisophone.kiosk.ui.video.VideoBackgroundPolicy
 
 /**
- * How busy the shop wants the lock screen's background to be (feature 012). The box stores one of four words and the phone
+ * How busy the shop wants the lock screen's background to be (feature 013). The box stores one of four words and the phone
  * draws accordingly. It is a ceiling the owner lowers: it never raises the screen past what [AmbientBudget] allows for the
  * phone's temperature and battery, and it governs ambient motion only, never the feedback that a coin counted.
  */

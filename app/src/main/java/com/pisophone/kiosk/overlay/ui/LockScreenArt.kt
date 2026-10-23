@@ -106,7 +106,7 @@ private const val TAU = 6.2831855f
  * star. It is one canvas that takes no touches. Every movement repeats seamlessly (a whole number of cycles in [LOOP_MS]).
  * The movement runs only while [effects] allow ambient motion (a phone that is not hot, with animations on, and the owner's
  * video switch not off); otherwise the same picture stands still. [budget] is the shop's animation density under that ladder
- * (feature 012): how many stickers, bubbles and sparkles, and what moves; the default is today's screen. [bandTopExtra] lowers the
+ * (feature 013): how many stickers, bubbles and sparkles, and what moves; the default is today's screen. [bandTopExtra] lowers the
  * sticker band by the height of the shop-name row, so no sticker is drawn over it.
  */
 @Composable

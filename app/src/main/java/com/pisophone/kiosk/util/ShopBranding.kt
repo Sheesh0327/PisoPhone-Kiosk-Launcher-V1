@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
 /**
- * What the shop's coin box told this phone about how it should look (feature 012): a palette id, the shop name, the header
+ * What the shop's coin box told this phone about how it should look (feature 013): a palette id, the shop name, the header
  * title and how busy the animation is. A setting nobody chose is `null`, which means today's TechNet look.
  */
 data class Branding(

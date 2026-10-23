@@ -1,4 +1,4 @@
-# Plan: feature 012, shop branding on the phone screens
+# Plan: feature 013, shop branding on the phone screens
 
 Context manifest (constitution rule 1). Unresolved ledger entries loaded: **none** (every entry in
 `ledger/negative-constraints.md` is `resolved: yes`).

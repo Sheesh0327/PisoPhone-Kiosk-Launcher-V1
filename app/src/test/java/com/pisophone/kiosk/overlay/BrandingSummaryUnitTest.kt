@@ -12,7 +12,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
-/** The read-only line in the owner vault (feature 012): what the box told this phone, and when. */
+/** The read-only line in the owner vault (feature 013): what the box told this phone, and when. */
 @RunWith(RobolectricTestRunner::class)
 class BrandingSummaryUnitTest {
     private lateinit var context: Context

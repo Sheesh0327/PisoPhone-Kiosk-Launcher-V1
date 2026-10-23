@@ -9,7 +9,7 @@ import org.junit.Test
 import kotlin.math.pow
 
 /**
- * The gate for feature 012: no palette a shop can pick may hide the text, the icons or the maker's credit. The numbers are the
+ * The gate for feature 013: no palette a shop can pick may hide the text, the icons or the maker's credit. The numbers are the
  * ones in docs/design/GUI_SPEC_PISOPHONE_KIDS.md sections 2 and 9: 4.5:1 for text, 3:1 for icons and outlines.
  * A new palette that fails here does not get into the product.
  */

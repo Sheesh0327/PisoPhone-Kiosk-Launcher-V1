@@ -3,7 +3,7 @@ package com.pisophone.kiosk.ui.theme
 import androidx.compose.ui.graphics.Color
 
 /**
- * The colour sets a shop owner can pick for the lock screen and the home screen (feature 012). They are compiled into the
+ * The colour sets a shop owner can pick for the lock screen and the home screen (feature 013). They are compiled into the
  * signed app; the coin box only sends the [id]. A palette changes the backdrop (two colours, three soft clouds), one accent and
  * the colour of the maker's credit. It never changes money gold, warning red or success teal, the text colour or the panel.
  * `BrandPaletteContrastUnitTest` checks every palette, so a palette that would hide the text does not build.

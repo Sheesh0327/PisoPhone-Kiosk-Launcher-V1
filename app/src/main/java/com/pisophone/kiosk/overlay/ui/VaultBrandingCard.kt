@@ -19,7 +19,7 @@ import com.pisophone.kiosk.R
 import com.pisophone.kiosk.ui.theme.TechNet
 import com.pisophone.kiosk.util.ShopBranding
 
-/** Owner vault: what the box told this phone about the shop's look, read-only (feature 012). It also shows when the box last said it. */
+/** Owner vault: what the box told this phone about the shop's look, read-only (feature 013). It also shows when the box last said it. */
 @Composable
 fun VaultBrandingCard(context: Context, onShowHelp: (String, String) -> Unit) {
     val branding by ShopBranding.observe(context).collectAsState()

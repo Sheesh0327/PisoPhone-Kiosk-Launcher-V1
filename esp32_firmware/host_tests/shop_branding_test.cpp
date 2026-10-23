@@ -1,5 +1,5 @@
 // The shop's branding on the box (include/ShopBranding.h): the four settings the admin page saves and the optional params the
-// box adds to the config push it already sends. The box stores configuration only; the phones draw (feature 012).
+// box adds to the config push it already sends. The box stores configuration only; the phones draw (feature 013).
 #include <cstdio>
 #include <string>
 

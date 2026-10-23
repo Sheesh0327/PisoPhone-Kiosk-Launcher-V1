@@ -51,7 +51,7 @@ import java.util.*
 fun LauncherScreen(
     apps: List<AppInfo>,
     onAppClick: (AppInfo) -> Unit,
-    /** The shop's look from the coin box (feature 012); by default what the phone last heard, nothing set is today's screen. */
+    /** The shop's look from the coin box (feature 013); by default what the phone last heard, nothing set is today's screen. */
     branding: Branding = ShopBranding.observe(LocalContext.current).collectAsState().value,
 ) {
     val context = LocalContext.current

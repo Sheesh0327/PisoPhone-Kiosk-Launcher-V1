@@ -21,7 +21,7 @@ import org.robolectric.RobolectricTestRunner
 import kotlin.math.pow
 
 /**
- * Criterion 12 of feature 012: nothing the box can send removes, hides or stills the "by TechNet Solutions" line.
+ * Criterion 12 of feature 013: nothing the box can send removes, hides or stills the "by TechNet Solutions" line.
  */
 @RunWith(RobolectricTestRunner::class)
 class MakerCreditUnitTest {

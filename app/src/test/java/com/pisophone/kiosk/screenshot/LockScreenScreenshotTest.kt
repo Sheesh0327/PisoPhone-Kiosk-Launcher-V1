@@ -22,7 +22,7 @@ class LockScreenScreenshotTest : ScreenshotTest() {
         BlockScreen(onInsertCoin = {}, coinsInserted = 0, paymentTimeout = 0, onDoneClick = {}, isEsp32Online = true, batteryStatus = BATTERY)
     }
 
-    // feature 012: the shop's look. The art stands still in these pictures (the base turns the animation scale off), so the
+    // feature 013: the shop's look. The art stands still in these pictures (the base turns the animation scale off), so the
     // density shows in how many stickers are drawn; the credit line is in every one of them.
     private fun branded(density: String) = Branding(palette = "rosas", shopName = "Mang Juan's Tindahan", title = "Piso Net", density = density)
 

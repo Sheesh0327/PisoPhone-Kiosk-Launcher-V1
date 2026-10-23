@@ -104,7 +104,7 @@ fun BlockScreen(
     isArenaMode: Boolean = false,
     arenaRole: Int = 0,
     arenaStakeMinutes: Int = 15,
-    /** The shop's look from the coin box (feature 012); nothing set is today's TechNet screen. */
+    /** The shop's look from the coin box (feature 013); nothing set is today's TechNet screen. */
     branding: Branding = Branding(),
     modifier: Modifier = Modifier.fillMaxSize(),
 ) {

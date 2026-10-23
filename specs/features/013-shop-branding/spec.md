@@ -1,10 +1,10 @@
-# Feature 012: Shop branding on the phone screens (colours, shop name, title)
+# Feature 013: Shop branding on the phone screens (colours, shop name, title)
 
-Status: **approved** (owner, 2026-10-23)   Branch: `feat/012-shop-branding`   Area: app, firmware
+Status: **approved** (owner, 2026-10-23)   Branch: `feat/013-shop-branding`   Area: app, firmware
 Backlog rows: none (owner request 2026-10-23)   Release: app + firmware
 
 > Branch note: `beta` is not present in the session that wrote this, so the work sits on `claude/serene-feynman-ycyr6r`
-> until the owner grafts it onto `feat/012-shop-branding` cut from `beta`.
+> until the owner grafts it onto `feat/013-shop-branding` cut from `beta`.
 
 ## Intent
 A shop owner resells PisoPhone to clients who want the rental phones to look like *their* shop, not like a TechNet demo. Today

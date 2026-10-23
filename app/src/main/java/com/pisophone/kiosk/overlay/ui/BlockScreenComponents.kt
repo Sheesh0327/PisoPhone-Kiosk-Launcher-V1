@@ -119,7 +119,7 @@ fun LockUpHeader(
     modifier: Modifier = Modifier,
     title: String = ShopBranding.DEFAULT_TITLE,
     titleColor: Color = TechNet.teal,
-    /** False when the shop set its own title: the title then stands alone (feature 012). */
+    /** False when the shop set its own title: the title then stands alone (feature 013). */
     showMakerWord: Boolean = true,
 ) {
     Row(modifier = modifier.fillMaxWidth().height(40.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -129,7 +129,7 @@ fun LockUpHeader(
             Text("TechNet", color = TechNet.text, fontSize = 18.sp, lineHeight = 24.sp, fontWeight = FontWeight.ExtraBold)
             Spacer(Modifier.width(5.dp))
         }
-        // the shop's header title (feature 012, at most 20 characters); a long one on a narrow phone is cut with dots, never pushes the chip off
+        // the shop's header title (feature 013, at most 20 characters); a long one on a narrow phone is cut with dots, never pushes the chip off
         Text(
             title,
             color = titleColor,

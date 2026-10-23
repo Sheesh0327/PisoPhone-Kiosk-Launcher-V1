@@ -14,7 +14,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 /**
- * The shop's name on one line (feature 012). While [scrolling] (the answer of [MarqueeRule]) a name too long for the width runs
+ * The shop's name on one line (feature 013). While [scrolling] (the answer of [MarqueeRule]) a name too long for the width runs
  * across it, and one that fits stays centred. Otherwise the name stands still, centred, and is never clipped: a long one wraps
  * to a second line instead of being cut. Draws nothing for a blank name, so an unbranded phone has no marquee row at all.
  */

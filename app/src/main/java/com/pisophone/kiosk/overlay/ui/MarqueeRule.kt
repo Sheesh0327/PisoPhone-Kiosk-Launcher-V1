@@ -3,7 +3,7 @@ package com.pisophone.kiosk.overlay.ui
 import com.pisophone.kiosk.ui.video.VideoBackgroundPolicy
 
 /**
- * When the shop name may scroll (feature 012). The marquee is the one moving thing the branding adds, so it follows the same
+ * When the shop name may scroll (feature 013). The marquee is the one moving thing the branding adds, so it follows the same
  * thermal and battery ladder as the rest of the screen (`GUI_SPEC` section 10): it scrolls only on a cool phone with the screen
  * in front, animations on, not in power save and not nearly flat; otherwise the name stands still, centred. Pure, so it is
  * tested without a phone, like [VideoBackgroundPolicy.shouldPlay].

@@ -1,4 +1,4 @@
-# Validation: feature 012, shop branding on the phone screens
+# Validation: feature 013, shop branding on the phone screens
 
 Written 2026-10-23 by the session that built it. **Read this first: no Android code was compiled or run** (no Android SDK in the
 session), so every row that depends on `./gradlew`, ktlint, detekt or a Roborazzi golden says *not run*. The firmware rules were

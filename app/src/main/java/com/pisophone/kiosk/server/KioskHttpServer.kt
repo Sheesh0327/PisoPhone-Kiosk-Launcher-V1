@@ -23,7 +23,7 @@ interface KioskServerDelegate {
     fun onConfigUpdated(price: Double?, minutes: Int?, deviceName: String?, adminPin: String?, slotNum: Int? = null)
 
     /**
-     * The shop's branding the box pushed with the config (feature 012). A value is `null` when the box did not send it; the
+     * The shop's branding the box pushed with the config (feature 013). A value is `null` when the box did not send it; the
      * default does nothing, so a delegate written before this feature keeps compiling and an old box changes nothing.
      */
     fun onBrandingUpdated(palette: String?, shopName: String?, title: String?, density: String?) {}
@@ -50,10 +50,10 @@ class KioskHttpServer(
         private const val MAX_REQUESTS_PER_WINDOW = 60
         private const val MAX_TRACKED_IPS = 256
 
-        /** The params of the box's config push before feature 012. */
+        /** The params of the box's config push before feature 013. */
         private val CONFIG_PARAMS = listOf("price", "minutes", "device_name", "admin_pin", "slot", "slot_num")
 
-        /** The optional branding params of the box's /config push (feature 012). */
+        /** The optional branding params of the box's /config push (feature 013). */
         internal val BRANDING_PARAMS = listOf("palette", "shop_name", "brand_title", "anim_density")
 
         /** A branding value is at most this long on the wire (the longest allowed name is 32 characters, up to 12 bytes encoded each). */

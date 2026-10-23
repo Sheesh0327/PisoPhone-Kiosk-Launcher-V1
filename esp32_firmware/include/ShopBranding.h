@@ -3,7 +3,7 @@
 
 // The shop's branding: four short settings the owner types on the admin page (a palette, the shop name, the header title and how
 // busy the background animation is). The box stores them and hands them to the phones with the config push it already sends;
-// the phones draw everything (feature 012). The box never stores or serves a file for this, and never renders anything.
+// the phones draw everything (feature 013). The box never stores or serves a file for this, and never renders anything.
 // Pure functions, tested on a PC (host_tests/shop_branding_test.cpp). The phone applies the same caps and cleaning again
 // (ShopBranding.kt), so a value that gets past one side is still made safe by the other.
 

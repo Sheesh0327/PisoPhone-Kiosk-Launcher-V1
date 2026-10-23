@@ -52,7 +52,7 @@ class LauncherThemeColors(
 ) {
     companion object {
         /**
-         * The home screen's colours for the shop's palette (feature 012): only the background and the accent follow it; the text,
+         * The home screen's colours for the shop's palette (feature 013): only the background and the accent follow it; the text,
          * the surfaces and the cards stay. A shop with no palette gets today's colours exactly.
          */
         fun forBranding(paletteId: String?): LauncherThemeColors {

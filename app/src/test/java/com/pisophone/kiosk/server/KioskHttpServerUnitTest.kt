@@ -434,7 +434,7 @@ class KioskHttpServerUnitTest {
         assertEquals(1, creditPaymentCallCount)
     }
 
-    // ---- feature 012: the four optional branding params of the box's /config push ----
+    // ---- feature 013: the four optional branding params of the box's /config push ----
 
     private fun pushConfig(query: String) =
         server.serve(createSession("/config", createEncryptedParams("$query&ts=${System.currentTimeMillis()}")))

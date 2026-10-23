@@ -5,7 +5,7 @@ import com.pisophone.kiosk.R
 import com.pisophone.kiosk.util.Branding
 
 /**
- * The rows of the owner vault's branding card (feature 012): what the coin box told this phone, and when. The phone never edits
+ * The rows of the owner vault's branding card (feature 013): what the coin box told this phone, and when. The phone never edits
  * these (the box's admin page is the one place they are set), so this only reads; a row that was never sent shows its default.
  */
 object BrandingSummary {
