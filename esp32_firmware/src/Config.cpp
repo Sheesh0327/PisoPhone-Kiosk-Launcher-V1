@@ -4,6 +4,7 @@
 #include "Config.h"
 #if PISO_HAS_PHONES
 #include "PhoneProfileStore.h"
+#include "ShopBrandingStore.h"
 #endif
 #include "PulseGuard.h"
 #include "CoinCredit.h"
@@ -646,6 +647,7 @@ void loadAllConfig() {
     minutesPerCoin = clampMinutesPerCoin(minutesPerCoin); // 1..1440, also for a value saved by an older version
 #if PISO_HAS_PHONES
     loadPhoneProfilesFromPrefs();
+    loadShopBrandingFromPrefs();
 #endif
 
     webPassword = prefs.getString(NVS_KEY_ADMIN_PW, webPassword);
@@ -773,6 +775,7 @@ void factoryResetDefaults(bool ownerWipe) {
     minutesPerCoin = DEFAULT_MINUTES_PER_COIN;
 #if PISO_HAS_PHONES
     resetPhoneProfiles();
+    resetShopBranding();
     p1Ip = "";
     p2Ip = "";
     matchMinutes = 15;
