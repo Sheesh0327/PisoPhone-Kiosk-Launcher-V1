@@ -25,6 +25,8 @@
     <string name="lock_cd_backdrop">Change backdrop colour</string>
     <string name="lock_cd_admin">Owner settings</string>
     <string name="lock_cd_mascot">TechNet mascot</string>
+    <!-- The maker's credit at the bottom of the lock and home screens (feature 012). Not configurable. -->
+    <string name="maker_credit">by TechNet Solutions</string>
 
     <!-- Banners -->
     <string name="banner_low_battery">Low battery (%1$d%%)</string>

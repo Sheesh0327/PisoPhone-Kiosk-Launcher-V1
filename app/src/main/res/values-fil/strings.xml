@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Filipino counterpart of values/strings.xml. All product text is English (GUI_SPEC section 6), so a string here repeats the
+     English words; strings not listed fall back to values/. -->
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+    <string name="maker_credit">by TechNet Solutions</string>
+</resources>

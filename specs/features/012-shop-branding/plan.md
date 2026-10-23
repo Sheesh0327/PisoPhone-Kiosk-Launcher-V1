@@ -50,7 +50,7 @@ group. Groups 1 to 6 are app-only and need no board; groups 7 and 8 are firmware
       power save, battery percent, charging, animations on, screen in front — the shape of `VideoBackgroundPolicy.shouldPlay`.
       `overlay/ui/BrandMarquee.kt` draws one line: scrolling when the rule says so, centred and still otherwise, never
       clipped. (test: `MarqueeRuleUnitTest` over the ladder cases incl. battery -1 and charging at 10%; red result logged: yes.)
-- [ ] 4b. **The maker's credit.** `overlay/ui/MakerCredit.kt`: the "by TechNet Solutions" line with its own sheen animation,
+- [x] 4b. **The maker's credit.** `overlay/ui/MakerCredit.kt`: the "by TechNet Solutions" line with its own sheen animation,
       taking no branding parameter at all — it reads only the palette's credit colour and the ladder (so there is nothing for a
       setting to address, spec criterion 12). Its string goes in `strings.xml` with a `values-fil` counterpart.
       (test: `MakerCreditUnitTest` — the line is produced for every palette, every density including `off`, an empty name, an
