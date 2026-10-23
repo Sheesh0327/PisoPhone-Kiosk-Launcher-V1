@@ -29,6 +29,11 @@ on:
       - 'gradle.properties'
       - '.github/workflows/build-apk.yml'
   workflow_dispatch:
+    inputs:
+      record_goldens:
+        description: 'Re-record every screenshot golden (ignored on main)'
+        type: boolean
+        default: false
 
 permissions:
   contents: write # Required to push the APK to the website directory
@@ -54,8 +59,12 @@ jobs:
           distribution: 'temurin'
           cache: gradle
 
+      # A design change on purpose needs the goldens drawn again. Without this input that takes a machine with the Android
+      # SDK; with it, a branch can ask the build to re-record and commit them (the step below refuses to do that on main).
       - name: Run unit tests
-        run: bash ./gradlew :app:testDebugUnitTest --no-daemon --no-configuration-cache
+        env:
+          RECORD: ${{ (github.event_name == 'workflow_dispatch' && inputs.record_goldens && github.ref_name != 'main') && '-Pscreenshots.update=true' || '' }}
+        run: bash ./gradlew :app:testDebugUnitTest --no-daemon --no-configuration-cache $RECORD
 
       # What the failed tests said (the build log only names the exception).
       - name: Why the unit tests failed
