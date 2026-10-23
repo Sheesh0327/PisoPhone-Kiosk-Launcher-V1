@@ -2,7 +2,7 @@
 """The console's Rental phones tab in a real browser (headless Chromium): it shows the coin box's own page (passed through one port above the
 console, with the router's box login) inside the console, the console's content security policy allows exactly that frame, and the console's
 light/dark switch reaches the page in the frame."""
-import base64, glob, http.server, os, shutil, sys, threading
+import base64, glob, http.server, os, shutil, subprocess, sys, threading
 from harness import *
 
 try:
@@ -12,6 +12,7 @@ except ImportError:
     sys.exit(0)
 
 CP = 18390
+PRODUCT = os.environ.get("TEST_SHOP_PRODUCT", "both")   # the second pass (below) runs the same page for a PisoWiFi-only router
 env = Env(offset=95)
 tmp = env.tmp
 open(f"{tmp}/ubus", "w").write('#!/bin/sh\ncase "$4" in *\\"password\\":\\"router-pass\\"*) echo \'{ "ubus_rpc_session": "abc" }\';; *) echo \'{}\';; esac\n')
@@ -46,7 +47,7 @@ class Stub(http.server.BaseHTTPRequestHandler):   # the coin box: its page needs
 stub = http.server.ThreadingHTTPServer(("127.0.0.1", CP + 10), Stub)
 threading.Thread(target=stub.serve_forever, daemon=True).start()
 env.extra.update(CONSOLE_PORT=CP, CONSOLE_BIND="127.0.0.1", UBUS=f"{tmp}/ubus", DHCP_LEASES=f"{tmp}/leases", ROUTE_FILE=f"{tmp}/route", NETDEV_FILE=f"{tmp}/dev",
-                 PISO_SETUP_CONF=f"{tmp}/setup.conf", GW_BOX=f"127.0.0.1:{CP + 10}")
+                 PISO_SETUP_CONF=f"{tmp}/setup.conf", GW_BOX=f"127.0.0.1:{CP + 10}", SHOP_PRODUCT=PRODUCT)
 
 try:
     check(env.start(), "the portal starts")
@@ -61,6 +62,8 @@ try:
         pg.wait_for_selector("#pw", state="visible", timeout=8000)
         pg.fill("#pw", "router-pass"); pg.click("#gobtn")
         pg.wait_for_selector("#tabs", state="visible", timeout=8000)
+        label = pg.inner_text("#tabs button[data-t=ph]")
+        check(label == ("Coin box" if PRODUCT == "wifi" else "Rental phones"), f"the tab that shows the coin box page reads {label!r} for SHOP_PRODUCT={PRODUCT}")
         pg.click("#tabs button[data-t=ph]")
         pg.wait_for_selector("#boxf", state="visible", timeout=5000)
         frame = None
@@ -85,5 +88,10 @@ try:
         br.close()
 finally:
     env.close()
-    stub.shutdown()
+    stub.shutdown(); stub.server_close()
+rc_wifi = 0
+if "TEST_SHOP_PRODUCT" not in os.environ:   # again for a PisoWiFi-only router (feature 010)
+    rc_wifi = subprocess.run([sys.executable, __file__], env=dict(os.environ, TEST_SHOP_PRODUCT="wifi")).returncode
 finish()
+if rc_wifi:
+    sys.exit(rc_wifi)

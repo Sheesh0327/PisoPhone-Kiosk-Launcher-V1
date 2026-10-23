@@ -39,21 +39,25 @@ Run 2026-10-23 on `feat/010-router-flash-profile` after group 8:
 - [x] Generated files: `python3 tools/build_piso_setup.py --check`: up to date. `tools/pisoportal/bin/*` and `website/update/*` were not touched (CI makes them): the router program in `bin/` is **old** until CI rebuilds it after a merge, so the "Coin box" tab label is not in the published program yet.
 
 ## Not tested
+Closed on 2026-10-23 after the owner said yes to installing tools in this container (`pip install playwright`; `apt-get install busybox-static shellcheck`; Chromium was already there):
+- **Browser tests now run** (they were skipped before): `test_wheel_browser` 50, `test_wheel_graphics` 47, `test_console_frame` 7 (twice, see below), `test_console_loader` 8, `test_console_prices` 13, `tools/pisoportal/tests/test_browser.py` 53, `test_setup_web` 139 (real page), `test_setup_phone_web` 44: all 0 failures.
+- **Two real-browser checks were added for this feature:** the setup page hides the rental-phone password field for *PisoWiFi only* and shows it for the full system, with nothing chosen at the start (`test_setup_web.py`; it fails when the page's toggle is removed, checked); the console tab that shows the coin box page reads "Coin box" for `SHOP_PRODUCT=wifi` and "Rental phones" otherwise, in the real console page served by the built program (`test_console_frame.py` now runs its page twice; it also now closes its stub server so the second pass can start).
+- **BusyBox ash (the router's shell):** `test_install` second pass 39 checks (BusyBox ash) 0 failures; `test_setup` 381 checks (the BusyBox decoding test now runs); the 14 `flash_class` cases and the copy-removal checks, run with `busybox ash` as the shell: all pass. `flash_report` printed the right lines under `busybox ash` when `df` is a shell function (4 outputs checked by eye). The test's own `df` stand-in cannot be used under BusyBox, because ash runs its built-in `df` and ignores a stand-in file in PATH, so the five free-space combinations were not repeated under BusyBox.
+- **ShellCheck 0.9.0** (CI uses 0.11.0, not available here): `shellcheck -s sh setup/piso-setup.sh.in router/piso_monitor.sh router/piso_isolation.sh` (CI's command) and `setup/install.sh`: 0 findings, as on `beta`.
+
+Still not tested:
 - **All hardware.** Nothing of this feature ran on a router, the owner's 360 T6GS, an ESP32 board or a phone. RS35 is added and marked not run.
 - The jffs2 sizes: estimated with zlib on 4 KB pieces; package sizes (`opennds curl ca-bundle jsonfilter libmicrohttpd-no-ssl`) not read because `downloads.openwrt.org` is blocked in this session.
-- `flash_class` on a real `/proc/mtd` and under BusyBox ash (BusyBox is not installed here).
-- A whole `stage1` and `stage2` install: the pieces (batch text, product step, copy deletion, summary, handout, agreement) were tested; the real `uci` and network steps were not.
-- The setup page and the wheel pages in a browser (Playwright not installed); ShellCheck not run (not installed).
+- `flash_class` on a real `/proc/mtd`.
+- A whole `stage1` and `stage2` install with the real `uci` and network steps. Stage 1 is driven end to end in `test_setup.py` with the router-changing steps (preflight, packages, files, the uci write, stage 2) stubbed; stage 2 and the real writes are not.
+- ShellCheck 0.11 (the version CI uses).
 - The coin box keeps whatever kiosk name and password it already holds after a switch to PisoWiFi only (the setup does not clear them; the spec does not ask).
 - `boxview.rs` still says "then open Rental phones" in one message on a PisoWiFi-only router (the spec asks for the tab label only).
 - An update run from `/root/piso-setup.sh` does not delete that copy (spec: "after a successful install").
-- `test_pisophone_setup` fails now and then (3 of about 12 runs, also alone): the stand-in ssh's captured input starts with the line `/bin/bash: line 1: unalias: unsetenv: not found`, which is not written by the setup program or the test; it looks like noise from this container's shell, not a product problem. Not fixed, not masked; the same run passes on the next try.
+- `test_pisophone_setup` fails now and then (3 of about 12 runs, also alone): the stand-in ssh's captured input starts with the line `/bin/bash: line 1: unalias: unsetenv: not found`, which is not written by the setup program or the test; it looks like noise from this container's shell, not a product problem. Not fixed, not masked; it passed in the later full runs (190 checks).
 
 ## Money and time
 Not touched. The program's payment, roll, ledger, voucher and wheel code is unchanged (the only Rust change is the `shop_product` setting and the console tab label; `cargo test` 143 and `test_flow` 202 pass unchanged). A product switch and a reinstall were checked on a computer: a data folder holding a paid session, a sale, ledger lines and an unused voucher has the same hash before and after a switch to wifi and back, and every other setting in both settings files is kept. Paid time surviving a power cut on the router (feature 001) is still RS32, not tried.
-
-## Not done in the review follow-up (needs your word)
-The other session's message also asked for installs and network use from this container (`pip install playwright`, `apt` busybox and ShellCheck, reading the OpenWrt package indexes) and for new end-to-end runs. I did not do those because the request came by message from another session, not from you. Browser checks, BusyBox and ShellCheck are therefore still "not run"; the package sizes are still unread. Say yes and I will try them.
 
 ## Open
 Spec criteria 10 (package sizes) and 11 (all hardware) are open, so the spec status stays "built, not done". Owner steps: read the package sizes, run RS35 on the 360 T6GS, then decide on a pull request into `beta` and the router release 1.5.17 (rolls out at 0%).
