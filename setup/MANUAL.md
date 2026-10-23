@@ -58,7 +58,7 @@ It needs Python 3.8 or newer and the `ssh` command (installed for you on Linux w
 command line, and the router's SSH key is pinned for the run (the same key must answer at 192.168.1.1 and at 10.0.0.1).
 Running it again is safe: a router that was set up before keeps its names and passwords and is only finished or repaired
 (ssh then asks for the router password, which is in the saved summary). Other uses: `--update` installs new software on a
-router that is set up already, `--yes` asks nothing (defaults and generated passwords), `--guest-ssid` and `--site-name` set
+router that is set up already, `--product wifi|phone|both` chooses what you set up (`phone` is `--phone-only`; asked when missing, and required with `--yes`), `--yes` asks nothing (defaults and generated passwords), `--guest-ssid` and `--site-name` set
 the names, `--out <folder>` chooses where the files go. If it stops with an error, it says why; fix that and run it again.
 
 The steps below are the same thing by hand.
@@ -69,20 +69,22 @@ Plug your computer into a LAN port of the factory-reset router, log in and paste
 ssh root@192.168.1.1
 wget -qO- https://pisophone.pages.dev/install.sh | sh
 ```
-It downloads the current setup file to `/root/piso-setup.sh`, checks it (its published sha256, that it is complete and readable),
+It downloads the current setup file to `/tmp/piso-setup.sh` (the router's memory; to `/root/piso-setup.sh` on flash when the router has under 24 MB of free memory), checks it (its published sha256, that it is complete and readable),
 then asks to move the router from `192.168.1.1` to **10.0.0.1** (the kiosk network). Answer `y`: the SSH session ends, which is
 expected. Unplug and replug the computer's cable (or wait a minute), then continue:
 ```
 ssh root@10.0.0.1
-./piso-setup.sh
+sh /tmp/piso-setup.sh
 ```
-(A router that is already at 10.0.0.1 goes straight on to the setup.) If the modem itself uses `10.0.0.x`, the installer stops and
+(The installer prints the exact path. If the router restarts before you log in again, the copy in `/tmp` is gone: run the one-line installer again. After a good install the setup deletes its copy, so the 1.6 MB never stays on flash; after a failed one the copy stays, so you can run it again. A router that is already at 10.0.0.1 goes straight on to the setup.) If the modem itself uses `10.0.0.x`, the installer stops and
 tells you to change the modem's address first.
 
 Other uses of the same line: `... | sh -s update` installs new software on a router that is set up already, and
 `... | sh -s -- --branch beta` uses the setup file of another branch (testing); `... | sh -s -- --yes` asks nothing (it moves the
 router by itself and runs the setup unattended, with passwords from `ROOT_PASSWORD`, `KIOSK_PASSWORD`, `BOX_NEW_ADMIN_PASSWORD`
-or generated: this is what `pisophone_setup.py` uses). The installer is `setup/install.sh`; the website serves copies of it and
+or generated: this is what `pisophone_setup.py` uses).
+
+**PisoWiFi only (no rental phones):** put `SHOP_PRODUCT=wifi` in front of `sh`, for example `wget -qO- https://pisophone.pages.dev/install.sh | SHOP_PRODUCT=wifi sh`. The router then has no hidden PisoKiosk Wi-Fi and no rental-phone password; the customer Wi-Fi, the coin box, vouchers and the console are the same, and the console tab that shows the coin box reads *Coin box*. Without it (or with `SHOP_PRODUCT=both`) you get the full system. Running the line again with the other value switches an installed router: going to `wifi` first says that rental phones on the PisoKiosk Wi-Fi will lose it and asks (`--yes` accepts); paid time, sales, vouchers and the ledger are not touched. An update never changes the product. Any other value stops the setup. The installer is `setup/install.sh`; the website serves copies of it and
 of `pisophone_setup.py` (`website/install.sh`, `website/pisophone_setup.py`, kept equal by `tools/build_piso_setup.py`).
 
 ## Step 2: run the setup
