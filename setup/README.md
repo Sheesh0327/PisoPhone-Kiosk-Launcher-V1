@@ -8,7 +8,7 @@ box over USB, sets up the router and pairs them. About 15 minutes a unit, and on
 ## What you need
 - The **ESP32 coin box board** and a USB data cable (a charge-only cable does not work), plugged into the setup computer
 - An **OpenWrt router** (for example the 360T6M), factory reset
-- A **modem** with internet, and a network cable from it to the router's **WAN** port
+- A **modem** with internet, and a network cable from it to the router's **WAN** port. The router does **not** need internet while the setup runs (this computer does: it downloads the router's software and copies it over, and the router checks it before it installs it); plug the modem in anyway, customers need it. If that cannot work for your router the setup says why and uses the router's internet instead; `--router-online` skips the copying.
 - A network cable from the setup computer to one of the router's **LAN** ports
 - **A phone or laptop** to open the setup page (it must reach the setup computer: see "Which network?" below)
 - The **rental phones**, factory reset
@@ -99,7 +99,8 @@ For the next phone, choose the next slot and make the link again.
 | The page does not open on the phone | The first page has a *My phone can't open this page* help. The phone and the setup computer must be on the same network (see above). Use the address printed in the terminal; a firewall may block port 8765 (`--port` changes it). |
 | "No board found" / the board does not answer | Use a USB **data** cable. Hold the board's BOOT button, tap RESET, release BOOT, tap *Try again*. Linux: you must be in the `dialout` group (or run as root). Windows: install the CH340 / CP210x driver once. Close any serial monitor that uses the port. On Ubuntu / Parrot desktops ModemManager can grab the port: `sudo systemctl stop ModemManager`. |
 | "No router found" | Cable in a **LAN** port (not WAN), router on for 2 minutes after the reset. The page keeps looking every few seconds; after a fix it finds the router by itself. |
-| "The router could not download..." | The modem must be in the router's WAN port and have internet. |
+| "The router could not download..." | The modem must be in the router's WAN port and have internet. (Normally this computer's internet is used instead; the message "setup without the router's internet is not possible: ..." says why it was not.) |
+| The coin box takes long to join, or never, while another PisoHub router is on | Another router nearby may answer the name a new box knows (`PisoCoinBox`). Switch it off for a few minutes while this one pairs, or run `piso-setup box-wifi-name` on it (see "Prefer to do it by hand?" in `MANUAL.md`). After pairing, this router gives its box a name of its own. |
 | "The coin box did not join" | Is the box powered (the USB cable does it), near the router, and written by this program (it erases the board first)? Tap *Try again*: the installation continues where it stopped. |
 | esptool or ssh "Missing" on the first page | Tap *Install what is missing*. Without root rights it shows the exact `sudo apt install ...` command to run. |
 | The phone does not ask "Allow USB debugging?" | Unlock the phone, use a data cable, unplug and replug. Or use the on-phone setting. |

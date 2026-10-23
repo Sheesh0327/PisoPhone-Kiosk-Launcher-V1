@@ -148,13 +148,13 @@ main() {
 		case "$1" in
 			--dry-run) DRY=1 ;;
 			--yes | -y) ASSUME_YES=1 ;;
-			status | pair | summary | wifi-name | guest-port | kiosk-wifi | verify | uninstall-info | test-coin | diag | box-diag | set-password | reconcile | telegram | rotate-box-wifi | handout | console | export | import | space | forget-summary | lock-admin | lock-admin-confirm | unlock-admin | wifi-admin | update | self-update | box-update | auto-update | voucher-choice) CMD="$1"; shift; ARG="$1"; ARGS="$*"; break ;;
+			status | pair | summary | wifi-name | guest-port | kiosk-wifi | verify | uninstall-info | test-coin | diag | box-diag | set-password | reconcile | telegram | rotate-box-wifi | box-wifi-name | handout | console | export | import | space | forget-summary | lock-admin | lock-admin-confirm | unlock-admin | wifi-admin | update | self-update | box-update | auto-update | voucher-choice) CMD="$1"; shift; ARG="$1"; ARGS="$*"; break ;;
 			-h | --help) sed -n '2,/^# Options:/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 			*) echo "unknown option: $1 (try --help)" >&2; exit 1 ;;
 		esac
 		shift
 	done
-	[ -z "$CMD" ] || unset SHOP_PRODUCT   # (the product is chosen by the installer only: no other command, an update included, changes it)
+	[ -z "$CMD" ] || unset SHOP_PRODUCT PISO_LOCAL_PKGS   # (the product is chosen by the installer only: no other command, an update included, changes it; the copied packages are for a first setup only)
 	case "$CMD" in
 		status) cmd_status ;;
 		wifi-name) cmd_wifi_name "$ARG" ;;
@@ -191,7 +191,8 @@ main() {
 			push_kiosk_wifi
 			if kiosk_wifi_on_box; then log "checked: the box's \"Set up a phone\" link carries the password"
 			else log "the box's link does not show it yet (a box with firmware before 3.3.3 cannot: it updates itself, then run this again)"; fi ;;
-		rotate-box-wifi) DRY=0; [ "$(id -u)" = 0 ] || die "run as root"; conf_set BOX_WIFI_ROTATED 0; rotate_box_wifi ;;
+		box-wifi-name) DRY=0; [ "$(id -u)" = 0 ] || die "run as root"; own_box_wifi_name ;;
+		rotate-box-wifi) DRY=0; [ "$(id -u)" = 0 ] || die "run as root"; rotate_box_wifi force ;;
 		set-password) cmd_set_password ;;
 		summary) cat "$SUMMARY" ;;
 		uninstall-info) echo "To undo: sysupgrade -n (factory reset) the router. Nothing else is changed outside the files listed in $0." ;;

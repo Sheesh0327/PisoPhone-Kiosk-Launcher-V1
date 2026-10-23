@@ -15,9 +15,11 @@ EOT
 Kiosk Wi-Fi:           $KIOSK_SSID (HIDDEN)   password: $(conf_get KIOSK_PASS)    (rental phones only; the coin box's "Set up a phone" link carries it, nobody types it)
 EOT
 	fi
+	_bnn=$(box_name_notice)   # (a line only when the coin box network still has the shared setup name)
 	cat >> "$SUMMARY" << EOT
 PisoWiFi (customers):  $(conf_get GUEST_NAME)   (open; rename with: piso-setup wifi-name "New Name")
-Coin box:              http://$BOX_IP      admin password: $(conf_get BOX_ADMIN_PASS)    hidden Wi-Fi: $BOX_SSID (only MAC $(conf_get BOX_MAC))
+Coin box:              http://$BOX_IP      admin password: $(conf_get BOX_ADMIN_PASS)    hidden Wi-Fi: $BOX_SSID (only MAC $(conf_get BOX_MAC))${_bnn:+
+$_bnn}
 
 $(flash_report)
 
