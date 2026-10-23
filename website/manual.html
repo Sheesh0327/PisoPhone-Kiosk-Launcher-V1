@@ -122,6 +122,7 @@ ol.steps>li::before{content:counter(s);position:absolute;left:0;top:2px;width:30
 
 <h2 id="setup">3. Set up a new unit</h2>
 <p>One program, <code>pisophone_setup.py</code>, does the whole job. It is about 15 minutes per unit.</p>
+<p><b>First, on the program's first page, choose what you set up</b>: the full system, <i>PisoWiFi only</i> (customer Wi-Fi by the coin, no rental phones: no hidden PisoKiosk Wi-Fi is made and the phone steps are left out) or <i>PisoPhone only</i>. Nothing is chosen for you. The steps below are for the full system.</p>
 <ol class="steps">
 <li><b>Download and run it.</b> Get <a href="https://pisophone.pages.dev/pisophone_setup.py">pisophone_setup.py</a> and run <code>python3 pisophone_setup.py</code> (Windows: <code>py pisophone_setup.py</code>). It installs what is missing by itself.</li>
 <li><b>Open the page it prints</b> on your phone, for example <code>http://192.168.1.50:8765</code>, and type the <b>PIN</b> shown in the terminal.</li>
@@ -314,7 +315,7 @@ ol.steps>li::before{content:counter(s);position:absolute;left:0;top:2px;width:30
 <h3>Backups and small routers</h3>
 <ul>
 <li><code>piso-setup export</code> writes a private backup (settings, keys, revenue ledger) to copy to your computer; <code>piso-setup import &lt;file&gt;</code> restores it after a reset or on a replaced router. A firmware upgrade of the router now keeps these by itself.</li>
-<li><code>piso-setup space</code> shows what PisoPhone uses and what is free; <code>piso-setup forget-summary</code> deletes the saved summary (it holds passwords).</li>
+<li><code>piso-setup space</code> shows what PisoPhone uses, the flash chip and what is free, and warns when under 2 MB is free (the same lines are in the setup summary). The setup file is kept in the router's memory while it installs and deleted after a good install; <code>piso-setup forget-summary</code> deletes the saved summary (it holds passwords).</li>
 <li>The portal program is built for five CPU families: <b>mipsel</b> (MT7621, MT7628: the 360T6M), <b>mips</b> (older TP-Link), <b>aarch64</b> (newer Wi-Fi 6 routers, Raspberry Pi 4), <b>armv7</b> (Qualcomm IPQ40xx) and <b>x86_64</b> (mini PCs). Check yours with <code>cat /etc/openwrt_release</code> (the <code>DISTRIB_ARCH</code> line). The installer picks the right file by itself; on a CPU with no build the setup stops before changing anything and says so. You want OpenWrt 23.05 or newer, 16 MB flash or more, and 128 MB RAM or more. Only the 360T6M has been tried on real hardware so far.</li>
 </ul>
 <h3>Joining the hidden PisoKiosk network</h3>

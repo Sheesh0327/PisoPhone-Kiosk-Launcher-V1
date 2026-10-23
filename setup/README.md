@@ -54,7 +54,7 @@ add `--local-only` to serve the computer's own browser only.
 
 | Step | What you do | What the program does |
 |---|---|---|
-| **1 Start** | Read what you need | Checks this computer, installs what is missing |
+| **1 Start** | Choose what you set up: *The full TechNet PisoHub*, *PisoWiFi only* (no rental phones: the Phones step is left out and no rental-phone Wi-Fi is made) or *PisoPhone only* (no router software). Nothing is chosen for you. Then read what you need | Checks this computer, installs what is missing |
 | **2 Router** | Reset the router, plug in the modem and the cable | Finds the router by itself |
 | **3 Settings** | Type this customer's shop name and public Wi-Fi name (asked every time); the passwords are made for you (new ones for every unit; *Advanced: type my own passwords* is folded away if you want your own) | Checks every entry |
 | **4 Install** | Plug the ESP32 in by USB (a data cable), tap *Start the installation*, wait about 10 minutes | Writes the PisoPhone software to the box (erasing it first), installs the router software, pairs the coin box, checks everything, saves your passwords and a printable sheet |
@@ -111,4 +111,4 @@ For the next phone, choose the next slot and make the link again.
 - **Check on the router at any time:** `ssh root@10.0.0.1`, then `piso-setup status`. More commands: [`MANUAL.md`](MANUAL.md), "Day to day".
 
 ## Prefer to do it by hand?
-[`MANUAL.md`](MANUAL.md) has every step, the router commands, the command-line version of the program (`--cli`) and the repair tools.
+In the terminal the same choice is `--product wifi|phone|both` (asked when missing; `--yes` needs it). [`MANUAL.md`](MANUAL.md) has every step, the router commands, the command-line version of the program (`--cli`) and the repair tools.

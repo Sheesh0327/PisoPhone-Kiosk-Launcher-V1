@@ -17,10 +17,17 @@ file by themselves; a file for another CPU refuses to run before changing anythi
 
 What else the router needs:
 - **OpenWrt 23.05 or newer** with the `opennds` package, a **2.4 GHz** Wi-Fi radio (the coin box is 2.4 GHz only) and a LAN you can run SSH on.
-- **Room (measured from the builds):** the portal program is 0.7 to 0.9 MB, the installed `piso-setup` command about 0.1 MB, and an update keeps a
-  backup of the old program (another ~0.9 MB) until the new one proves itself; the update file itself (1.1 to 1.3 MB) is held in memory, or in flash
-  on a router with little free memory. The records are small text files. Routers with **16 MB flash and 128 MB RAM or more** are comfortable;
-  routers with 4 or 8 MB flash have too little room left after OpenWrt and openNDS (this has not been tried on one).
+- **Room (sizes from the builds; flash use is an estimate, not a reading from a router):** the portal program is 0.7 to 1.1 MB (about 0.57 MB on
+  flash once compressed), the installed `piso-setup` command about 0.1 MB (about 0.05 MB), and an update keeps a backup of the old program (another
+  ~0.9 MB) until the new one proves itself; the update file itself (1.1 to 1.7 MB) is held in memory, or in flash on a router with little free
+  memory. The one-line installer keeps its 1.6 MB copy in memory (`/tmp`) and the setup deletes it after a good install, so it no longer sits on
+  flash. By that estimate our own files take about 0.6 MB of flash; the packages (`opennds`, `curl`, `ca-bundle`, `jsonfilter`,
+  `libmicrohttpd-no-ssl`) were not measured. The setup prints the flash chip it found and the free space (`piso-setup space`, and the summary) and
+  warns under 2 MB free. The full PisoWiFi (wheel and game included) is the same program on every router; there is no cut-down build. Routers with
+  **16 MB flash and 128 MB RAM or more** should be comfortable (reports say 6 to 8 MB writable after OpenWrt with LuCI; some boards about 4 MB, which is
+  tight). Routers with 4 or 8 MB flash have too little room left after OpenWrt and openNDS (not tried on one).
+- **Which product:** *PisoWiFi only* (`SHOP_PRODUCT=wifi`) leaves out the rental phones' hidden Wi-Fi and its password; the coin box and its Wi-Fi, the
+  guest Wi-Fi, the isolation tables and the console are the same. *Both* is the full system. See `setup/MANUAL.md`.
 - **Wi-Fi 5 or 6 dual band** is better for customers (the 5 GHz band carries more people), but only 2.4 GHz is required.
 
 What is checked: every family's program runs its self-test, and the portal's own test suite passes, in an emulator (QEMU) in CI and here, including the
