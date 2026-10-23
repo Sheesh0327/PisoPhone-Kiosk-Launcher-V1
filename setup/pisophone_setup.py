@@ -1884,12 +1884,23 @@ def installer_command(branch, *args):
             f"exit 3; fi; sh /tmp/piso-install.sh {run}")
 
 
-def setup_command(branch):
+def local_installer_command(branch):
+    """The remote command that runs the installer copied to the router (no download): it uses the setup file in the same folder."""
+    q = shlex.quote(OFFLINE_DIR)
+    return f"sh {q}/install.sh --branch {shlex.quote(branch)} --yes --local {q}"
+
+
+def setup_command(branch, local=False):
     """The remote command for the setup itself: the answers are read from the connection's input (never on a command line,
     where any process on the router could read them), then the installer runs the setup, then the results are sent back
-    between markers."""
+    between markers. With `local` the packages and the setup file were copied to the router's memory first (PISO_LOCAL_PKGS):
+    nothing is downloaded by the router."""
     reads = "; ".join(f"IFS= read -r {n}" for n in ANSWER_ORDER)
-    return (f"{reads}; export {' '.join(ANSWER_ORDER)}; {installer_command(branch)}; rc=$?; echo; echo \"@@PISO-RC $rc\"; "
+    if local:
+        installer = f"export PISO_LOCAL_PKGS={shlex.quote(OFFLINE_DIR + '/pkgs')}; {local_installer_command(branch)}"
+    else:
+        installer = installer_command(branch)
+    return (f"{reads}; export {' '.join(ANSWER_ORDER)}; {installer}; rc=$?; echo; echo \"@@PISO-RC $rc\"; "
             f"echo \"@@PISO-STATE $(cat /tmp/piso-setup.state 2>/dev/null)\"; "
             f"if [ -r /root/piso-setup-summary.txt ]; then echo @@PISO-SUMMARY; cat /root/piso-setup-summary.txt; fi; "
             f"if [ -r /root/piso-handout.html ]; then echo @@PISO-HANDOUT; cat /root/piso-handout.html; fi; echo @@PISO-END")
@@ -2174,14 +2185,33 @@ def build_offline_bundle(info, branch, out_dir, opener=urllib.request.urlopen, s
             "sums": "".join(f"{f['sha256']}  {f['path']}\n" for f in files), "setup_file": setup_file}
 
 
+def check_offline_memory(mem_kb, bundle):
+    """OfflineNotPossible unless the router has 24000 KB free after the bundle is in its memory (the rule updates use)."""
+    need = 24000 + -(-bundle["total"] // 1024)
+    if not mem_kb:
+        raise OfflineNotPossible("could not tell how much free memory the router has")
+    if mem_kb < need:
+        raise OfflineNotPossible(f"the router has {mem_kb} KB of free memory and copying the bundle needs {need} KB (24000 KB must stay free)")
+
+
+def sub_bundle(bundle, paths):
+    """The same bundle with only these files (what goes to a factory router before it is moved)."""
+    files = [f for f in bundle["files"] if f["path"] in paths]
+    return dict(bundle, files=files, total=sum(f["size"] for f in files), sums="".join(f"{f['sha256']}  {f['path']}\n" for f in files))
+
+
+def router_has_internet(ssh, host):
+    """Decision A8: the router answers a ping to 1.1.1.1 or 8.8.8.8 (the test the setup itself uses)."""
+    r = run_remote(ssh, host, "ping -c 1 -W 3 1.1.1.1 > /dev/null 2>&1 || ping -c 1 -W 3 8.8.8.8 > /dev/null 2>&1", lambda line: None)
+    return r["exit"] == 0
+
+
 def push_offline_bundle(ssh, host, bundle, mem_kb, emit=None, offline_dir=OFFLINE_DIR):
     """Copies the bundle into the router's memory, one ssh command per file, and has the router check every sha256. Returns
     "already there" (the same bundle is in place: the second run after the address move) or "copied". Raises OfflineNotPossible
     when the router has too little free memory (24000 KB must stay free) or a file did not arrive intact."""
     emit = emit or (lambda line: None)
-    need = 24000 + -(-bundle["total"] // 1024)
-    if mem_kb < need:
-        raise OfflineNotPossible(f"the router has {mem_kb} KB of free memory and copying the bundle needs {need} KB (24000 KB must stay free)")
+    check_offline_memory(mem_kb, bundle)
     q = shlex.quote(offline_dir)
     sums = hashlib.sha256(bundle["sums"].encode()).hexdigest()
 
@@ -2302,26 +2332,89 @@ def renew_address():
             pass
 
 
-def install(ssh, host, answers, branch, out_dir, emit, wait_move, stage=lambda n: None):
+def install(ssh, host, answers, branch, out_dir, emit, wait_move, stage=lambda n: None, online=False, offline_site=None,
+            opener=urllib.request.urlopen):
     """The installation: on a factory router the installer first moves it to 10.0.0.1 (wait_move() waits for that), then
     the setup runs with the answers. Returns the result (ok, state, saved files, summary); raises SetupError when it could
-    not run to its end."""
-    if host == FACTORY_IP:
-        stage(0)
-        emit(f"Downloading the setup to the router and moving it to {TARGET_IP}...")
-        r = run_remote(ssh, host, installer_command(branch), emit)
-        if r["exit"] != 0:
-            raise SetupError("the router could not be prepared (see the messages above). Nothing else was changed; try again.")
-        stage(1)
-        if not wait_move():
-            raise SetupError(
-                f"the router does not answer at {TARGET_IP}. Unplug and replug this computer's network cable (or restart the "
-                "computer's network), then try again: it continues where it stopped.")
-        host = TARGET_IP
-    stage(2)
-    values = "".join(answers.get(key, "") + "\n" for key in ANSWER_ORDER)
-    save_router_password(out_dir, answers.get("ROOT_PASSWORD"), host)   # before the router changes it: a repeat can log in
-    result = run_remote(ssh, host, setup_command(branch), emit, data=values)
+    not run to its end.
+
+    Offline first (unless `online`): this computer reads the router, builds the packages bundle and checks that it fits in the
+    router's memory before the router is changed at all; the router then installs from its memory and never goes online. When the
+    bundle cannot be prepared (or copied) the router's internet is tested (decision A8): with internet today's way runs and the
+    reason is told; without, the setup stops and says both reasons. The bundle is removed from the router afterwards."""
+    state = {"local": False, "pushed": False, "moved": False}
+    work = None
+    info = bundle = None
+
+    def fall_back(reason):
+        state["local"] = False
+        emit(f"NOTE: the setup without the router's internet is not possible: {reason}")
+        clean_router()
+        if router_has_internet(ssh, host_now[0]):
+            emit("The router has internet: it will download what it needs, as the setup always did.")
+            return
+        raise SetupError(f"{'Nothing more was changed' if state['moved'] else 'Nothing was changed'} on the router. The setup without the router's internet is not possible ({reason}), "
+                         "and the router has no internet either: plug the modem into its WAN port (and wait a minute), or fix the reason "
+                         "above, then try again.")
+
+    def clean_router():
+        if state["pushed"]:
+            state["pushed"] = False
+            try:
+                run_remote(ssh, host_now[0], f"rm -rf {shlex.quote(OFFLINE_DIR)}", lambda line: None)
+            except (OSError, subprocess.SubprocessError):
+                pass   # (a restart of the router clears its memory too)
+
+    host_now = [host]
+    try:
+        if not online:
+            try:
+                info = read_router_feeds(ssh, host)
+                emit("Preparing the router's packages on this computer, so that the router does not need the internet...")
+                work = tempfile.mkdtemp(prefix="piso-offline-")
+                bundle = build_offline_bundle(info, branch, work, opener=opener, site=offline_site, emit=emit)
+                check_offline_memory(info["mem_kb"], bundle)
+                state["local"] = True
+            except OfflineNotPossible as e:
+                fall_back(e.reason)
+        if host == FACTORY_IP:
+            stage(0)
+            if state["local"]:
+                try:
+                    first = sub_bundle(bundle, {"install.sh", bundle["setup_file"], bundle["setup_file"] + ".sha256"})
+                    state["pushed"] = True
+                    push_offline_bundle(ssh, host, first, info["mem_kb"], emit)
+                except OfflineNotPossible as e:
+                    fall_back(e.reason)
+            if state["local"]:
+                emit(f"Moving the router to {TARGET_IP} (it downloads nothing)...")
+                r = run_remote(ssh, host, local_installer_command(branch), emit)
+            else:
+                emit(f"Downloading the setup to the router and moving it to {TARGET_IP}...")
+                r = run_remote(ssh, host, installer_command(branch), emit)
+            if r["exit"] != 0:
+                raise SetupError("the router could not be prepared (see the messages above). Nothing else was changed; try again.")
+            stage(1)
+            if not wait_move():
+                raise SetupError(
+                    f"the router does not answer at {TARGET_IP}. Unplug and replug this computer's network cable (or restart the "
+                    "computer's network), then try again: it continues where it stopped.")
+            host = host_now[0] = TARGET_IP
+            state["moved"] = True
+        stage(2)
+        if state["local"]:
+            try:
+                state["pushed"] = True
+                push_offline_bundle(ssh, host, bundle, info["mem_kb"], emit)
+            except OfflineNotPossible as e:
+                fall_back(e.reason)
+        values = "".join(answers.get(key, "") + "\n" for key in ANSWER_ORDER)
+        save_router_password(out_dir, answers.get("ROOT_PASSWORD"), host)   # before the router changes it: a repeat can log in
+        result = run_remote(ssh, host, setup_command(branch, state["local"]), emit, data=values)
+    finally:
+        clean_router()
+        if work:
+            shutil.rmtree(work, ignore_errors=True)
 
     saved = []
     stamp = time.strftime("%Y%m%d-%H%M")
@@ -2858,7 +2951,7 @@ def flash_in_terminal(args, read, board_finder, flasher):
 
 
 def run_setup(args, ssh, read=input, read_secret=getpass.getpass, probe=port_open, wait=wait_for_move, open_page=open_url,
-              board_finder=usb_boards, flasher=None):
+              board_finder=usb_boards, flasher=None, offline_site=None):
     if flasher is None:
         def flasher(port, emit):
             return flash_box(args.branch, port, emit, flash_cache_dir(), product="wifi" if getattr(args, "product", None) == "wifi" else "full")
@@ -2913,7 +3006,8 @@ def run_setup(args, ssh, read=input, read_secret=getpass.getpass, probe=port_ope
             say("box powered on). Do not close this window.")
             say()
 
-    result = install(ssh, host, answers, args.branch, args.out, say, lambda: wait(probe=probe, renew=renew_address), stage)
+    result = install(ssh, host, answers, args.branch, args.out, say, lambda: wait(probe=probe, renew=renew_address), stage,
+                     online=getattr(args, "router_online", False), offline_site=offline_site)
     host = result["host"]
     say()
     for label, path in result["saved"]:
@@ -4262,8 +4356,9 @@ LOG_KEEP = 3000
 class Core:
     """What the setup does with the network, the router and the coin box; tests replace it with a fake."""
 
-    def __init__(self, branch, workdir):
+    def __init__(self, branch, workdir, router_online=False):
         self.branch = branch
+        self.router_online = router_online   # --router-online: the router downloads its packages itself (it needs internet)
         self.ssh = Ssh(workdir, hidden=True)
         self.ssh.set_password("")   # never wait for a password on a terminal there is not
 
@@ -4295,7 +4390,7 @@ class Core:
 
     def install(self, host, answers, out_dir, emit, stage, notify):
         return install(self.ssh, host, answers, self.branch, out_dir, emit,
-                       lambda: wait_for_move(renew=renew_address, notify=notify), stage)
+                       lambda: wait_for_move(renew=renew_address, notify=notify), stage, online=self.router_online)
 
     def run(self, host, password, command, emit):
         """A command on the router (the root password is known by now): its output line by line; returns its exit status."""
@@ -5370,7 +5465,7 @@ def run_web(args, core=None, system=None):
         ensure_dependencies(say, system)
     workdir = tempfile.mkdtemp(prefix="pisophone-")
     try:
-        session = Session(core or Core(args.branch, workdir), args.branch, None if args.out == "." else args.out, system)
+        session = Session(core or Core(args.branch, workdir, getattr(args, "router_online", False)), args.branch, None if args.out == "." else args.out, system)
         pin = load_pin(wanted=args.pin)
         server = make_server(session, pin, "127.0.0.1" if args.local_only else "0.0.0.0", args.port)
         port = server.server_address[1]
@@ -5805,17 +5900,8 @@ poll();
 
 # ---- start ---------------------------------------------------------------------------------------------------------------
 
-def main(argv=None):
-    if os.environ.get("PISO_ASKPASS_MODE"):
-        # started by ssh as its password helper (Ssh.set_password): the answer is the password, nothing else
-        os.write(1, (os.environ.get("PISO_ASKPASS_PW", "") + "\n").encode())
-        return 0
-    if sys.stdout is not None and hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(errors="replace")
-    web = urllib.request.build_opener()   # every download of this program says who it is (Python's own name is often refused)
-    web.addheaders = [("User-Agent", USER_AGENT)]
-    urllib.request.install_opener(web)
-    use_private_libs()
+def build_parser():
+    """The command line of this program."""
     p = argparse.ArgumentParser(description="Set up a TechNet PisoHub system: the coin box, the router and the rental phones.")
     p.add_argument("--branch", default=DEFAULT_BRANCH, help=f"the repository branch whose setup files are used (default {DEFAULT_BRANCH})")
     p.add_argument("--cli", action="store_true", help="run in the terminal instead of the setup page")
@@ -5837,6 +5923,7 @@ def main(argv=None):
     p.add_argument("--no-flash", action="store_true", help="do not write the coin box software over USB (terminal; it has it already)")
     p.add_argument("--product", choices=[key for key, _n, _w in PRODUCTS],
                    help="terminal: what to set up: wifi (PisoWiFi only), phone (same as --phone-only) or both. Asked when missing; required with --yes")
+    p.add_argument("--router-online", action="store_true", help="router setup: do not copy the packages from this computer, let the router download them (it needs internet)")
     p.add_argument("--phone-only", action="store_true", help="terminal: set up a PisoPhone-only coin box (the shop's normal router, no router software, no SSH)")
     p.add_argument("--check-box", action="store_true", help="look at the coin box on USB (set up? online? its address) and stop")
     p.add_argument("--serial", help="PisoPhone-only terminal mode: the board's serial port, e.g. COM3 or /dev/ttyACM0 (default: found by itself)")
@@ -5862,6 +5949,21 @@ def main(argv=None):
     p.add_argument("--minutes", default="60", help="with --make-recovery: how many minutes code stays valid (default 60)")
     p.add_argument("--make-wifi-poster", action="store_true", help="generate the PisoWiFi wall poster")
     p.add_argument("--portal-url", default="http://10.0.30.1:2080/", help="with --make-wifi-poster: portal URL (default http://10.0.30.1:2080/)")
+    return p
+
+
+def main(argv=None):
+    if os.environ.get("PISO_ASKPASS_MODE"):
+        # started by ssh as its password helper (Ssh.set_password): the answer is the password, nothing else
+        os.write(1, (os.environ.get("PISO_ASKPASS_PW", "") + "\n").encode())
+        return 0
+    if sys.stdout is not None and hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(errors="replace")
+    web = urllib.request.build_opener()   # every download of this program says who it is (Python's own name is often refused)
+    web.addheaders = [("User-Agent", USER_AGENT)]
+    urllib.request.install_opener(web)
+    use_private_libs()
+    p = build_parser()
     args = p.parse_args(argv)
     if not re.fullmatch(r"[A-Za-z0-9._/-]+", args.branch):
         p.error(f"not a branch name: {args.branch}")

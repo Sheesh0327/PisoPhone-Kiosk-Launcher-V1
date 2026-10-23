@@ -140,6 +140,7 @@ script("netinit", f'echo "$1" >> {tmp_p}/network.log\n')
 FAKE_SETUP = f"""#!/bin/sh
 PISO_RELEASE='9.9.9'
 echo "  TIP: fake advice"
+echo "LOCAL-PKGS=[$PISO_LOCAL_PKGS]"
 echo "SETUP-RAN args=[$*] root=[$ROOT_PASSWORD] kiosk=[$KIOSK_PASSWORD] box=[$BOX_NEW_ADMIN_PASSWORD] guest=[$GUEST_SSID] site=[$SITE_NAME] product=[$SHOP_PRODUCT]"
 R={fake_root_p}
 case "$(cat {tmp_p}/result 2>/dev/null)" in
@@ -182,6 +183,10 @@ if host != lan:
 need = "{tmp_p}/needpw"   # a router with a password: a login without it is refused
 if os.path.exists(need) and os.environ.get("PISO_ASKPASS_PW") != open(need).read().strip():
     sys.stderr.write("root@" + host + ": Permission denied (publickey,password).\\n"); sys.exit(255)
+if remote.startswith("echo @@RELEASE") and os.path.exists("{tmp_p}/feeds_output"):   # the offline read: what this router knows
+    sys.stdout.write(open("{tmp_p}/feeds_output").read()); sys.exit(0)
+if "ping -c 1 -W 3 1.1.1.1" in remote:   # does the router have internet
+    sys.exit(0 if open("{tmp_p}/inet").read().strip() == "1" else 1)
 remote = remote.replace("/tmp/piso", "{fake_root_p}/tmp/piso").replace("/root/piso", "{fake_root_p}/root/piso")
 if remote == "piso-setup telegram":   # a conversation: the input is passed through as it comes, like real ssh
     env = dict(os.environ, PATH="{bindir_p}" + os.pathsep + os.environ["PATH"])
@@ -193,6 +198,9 @@ env = dict(os.environ, PATH="{bindir_p}" + os.pathsep + os.environ["PATH"], PISO
 sys.exit(subprocess.run(["sh", "-c", remote], input=data, env=env).returncode)
 """)
 os.environ["PISO_SSH"] = f'"{sys.executable}" "{tmp_p}/fake_ssh.py"'
+
+
+OFFLINE_SITE = None   # the offline-first tests point the computer at a local web server
 
 
 def e2e(answers=(), secrets_=(), lan="192.168.1.1", probe="factory", result="ok", up=lambda h: True, moved=True, needpw=None,
@@ -212,7 +220,7 @@ def e2e(answers=(), secrets_=(), lan="192.168.1.1", probe="factory", result="ok"
     if saved_pw:
         open(f"{outdir}/pisophone-router-password.txt", "w").write(f"Router (SSH / LuCI):   root@10.0.0.1        password: {saved_pw}\n")
     a = dict(branch="main", update=False, router=None, guest_ssid=None, site_name=None, yes=False, out=outdir, no_browser=False,
-             country="PH")
+             country="PH", router_online=True)   # (these tests are the router-online path; the offline-first ones set router_online=False)
     a.update(opts)
     opened = []
     buf = io.StringIO()
@@ -226,7 +234,8 @@ def e2e(answers=(), secrets_=(), lan="192.168.1.1", probe="factory", result="ok"
         rc = ps.run_setup(types.SimpleNamespace(**a), ps.Ssh(tmp), read=reader(*answers), read_secret=reader(*secrets_),
                           board_finder=lambda: list(BOARDS), flasher=lambda port, emit: FLASHED.append(port),
                           probe=lambda h: h == (open(f"{tmp}/lan").read().strip()) and up(h),
-                          wait=lambda probe, renew: moved and probe("10.0.0.1"), open_page=lambda url, chromium=True: opened.append(url))
+                          wait=lambda probe, renew: moved and probe("10.0.0.1"), open_page=lambda url, chromium=True: opened.append(url),
+                          offline_site=OFFLINE_SITE)
     except ps.SetupError as e:
         err = str(e)
     finally:
@@ -879,6 +888,143 @@ q = 2
 check(len(rows) >= len(m) + 2 * q and all(len(r) == len(m) + 2 * q for r in rows), "terminal QR: the size is the code plus a quiet zone")
 check(all(rows[q + y][q + x] == m[y][x] for y in range(len(m)) for x in range(len(m))) and not any(rows[0]) and not any(r[0] for r in rows),
       "terminal QR: the modules are the ones of the QR encoder, with a white border")
+
+# ---- feature 011 part A: the first setup without the router's internet, end to end ---------------------------------------------
+import ast, gzip, http.server, threading   # noqa: E401
+
+SERVED = {}
+
+
+class WebSite(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def do_GET(self):
+        data = SERVED.get(self.path)
+        self.send_response(404 if data is None else 200)
+        self.send_header("Content-Length", str(len(data or b"")))
+        self.end_headers()
+        self.wfile.write(data or b"")
+
+
+web = http.server.ThreadingHTTPServer(("127.0.0.1", 0), WebSite)
+threading.Thread(target=web.serve_forever, daemon=True).start()
+WEB = f"http://127.0.0.1:{web.server_address[1]}"
+
+
+def pkg(name, depends="libc"):
+    body = f"{name} ipk".encode()
+    return (f"Package: {name}\nVersion: 1\nDepends: {depends}\nFilename: {name}_1_mipsel_24kc.ipk\nSize: {len(body)}\n"
+            f"SHA256sum: {hashlib.sha256(body).hexdigest()}\n\n", f"{name}_1_mipsel_24kc.ipk", body)
+
+
+def serve_offline_site(sources=None):
+    SERVED.clear()
+    sources = sources or {"openwrt_base": ["curl", "ca-bundle", "jsonfilter"], "openwrt_packages": ["opennds", "libmicrohttpd-no-ssl"]}
+    for src, names in sources.items():
+        text = ""
+        for n in names:
+            stanza_text, fname, body = pkg(n)
+            text += stanza_text
+            SERVED[f"/feeds/{src}/{fname}"] = body
+        SERVED[f"/feeds/{src}/Packages"] = text.encode()
+        SERVED[f"/feeds/{src}/Packages.sig"] = b"sig"
+    SERVED["/install.sh"] = open(f"{site}/main/install.sh", "rb").read()
+    SERVED["/setup/piso-setup.sh"] = open(f"{site}/main/setup/piso-setup.sh", "rb").read()
+    SERVED["/setup/piso-setup.sh.sha256"] = open(f"{site}/main/setup/piso-setup.sh.sha256", "rb").read()
+    return list(sources)
+
+
+def router_knows(sources, installed="libc - 1\nuclient-fetch - 1\n", conf="option check_signature\n", mem=90000):
+    feeds = "".join(f"src/gz {n} {WEB}/feeds/{n}\n" for n in sources)
+    open(f"{tmp}/feeds_output", "w").write(
+        f"@@RELEASE\nDISTRIB_RELEASE='23.05.5'\nDISTRIB_ARCH='mipsel_24kc'\nDISTRIB_TARGET='ramips/mt7621'\n@@FEEDS\n{feeds}@@INSTALLED\n{installed}"
+        f"@@CONF\n{conf}@@USIGN\nyes\n@@KEYS\n/etc/opkg/keys/abcd\n@@APK\nno\n@@MEM\n{mem}\n")
+
+
+def commands(r):
+    """The remote command of every ssh call, in order."""
+    return [ast.literal_eval(line)[-1] for line in r.ssh.splitlines() if line.startswith("[")]
+
+
+def offline_run(inet, **kw):
+    open(f"{tmp}/inet", "w").write("1" if inet else "0")
+    OFFLINE = dict(answers=("Tindahan WiFi", "Aling Nena", "y", "n"), secrets_=("routerpass1", "routerpass1", "kioskpass1", "kioskpass1", "boxadmin99", "boxadmin99"),
+                   router_online=False)
+    OFFLINE.update(kw)
+    return e2e(**OFFLINE)
+
+
+OFFLINE_SITE = WEB
+os.environ["PISO_SSH"] = f'"{sys.executable}" "{tmp_p}/fake_ssh.py"'   # (an earlier section took it away)
+os.makedirs(f"{fake_root}/tmp", exist_ok=True)
+router_knows(serve_offline_site())
+r = offline_run(inet=False)
+cmds = commands(r)
+check(r.err is None and "SETUP-RAN" in r.out and "SETUP COMPLETE" in r.out, f"a factory router with no internet is set up ({r.err}): " + r.out[-700:])
+bad_cmds = [(w, c[:200]) for c in cmds for w in ("wget", "curl", "opkg update", "ping") if re.search(r"(^|[\s;&|(])" + w + r"(\s|$)", c)]
+check(not bad_cmds, "and no wget, curl, ping or opkg update was ever sent to the router: " + str(bad_cmds))
+check(r.wget == "", "(the router's wget was never started)")
+check(cmds[1].startswith("echo @@RELEASE"), "the first thing after the login probe is reading the router: " + cmds[1][:60])
+i_inst = next((i for i, c in enumerate(cmds) if "install.sh" in c and "--local" in c), -1)
+i_setup = next((i for i, c in enumerate(cmds) if "IFS= read -r ROOT_PASSWORD" in c), -1)
+i_copy = [i for i, c in enumerate(cmds) if "cat >" in c]
+check(0 < i_inst < i_setup and i_copy and min(i_copy) < i_inst and max(i_copy) > i_inst, "the order: read, copy install.sh and the setup file, move the router, copy the whole bundle, run the setup: "
+      + str([(i, c[:50]) for i, c in enumerate(cmds)]))
+first_copies = [c for c in cmds[:i_inst] if "cat >" in c]
+check(first_copies and all(("install.sh" in c or "piso-setup.sh" in c or "SHA256SUMS" in c) for c in first_copies) and not any(".ipk" in c for c in first_copies),
+      "at the factory address only install.sh, the setup file and its checksum are copied: " + str([c[-60:] for c in first_copies]))
+check(any(".ipk" in c for c in cmds[i_inst:i_setup]) and any("order.txt" in c for c in cmds[i_inst:i_setup]), "and the packages go over at 10.0.0.1, after the move")
+check("--local" in cmds[i_inst] and "--yes" in cmds[i_inst] and "piso-offline" in cmds[i_inst], "install.sh is run with --yes --local on the copied folder: " + cmds[i_inst][:140])
+check("PISO_LOCAL_PKGS=" in cmds[i_setup] and "install.sh" in cmds[i_setup] and "--local" in cmds[i_setup] and "IFS= read -r ROOT_PASSWORD" in cmds[i_setup], "the setup command exports PISO_LOCAL_PKGS next to the answers: " + cmds[i_setup][-200:])
+check("LOCAL-PKGS=[" + fake_root_p + "/tmp/piso-offline/pkgs]" in r.out, "and the setup got it: " + r.out[-600:])
+check(r.ssh.count("root@192.168.1.1") >= 3 and r.ssh.count("root@10.0.0.1") >= 3, "the factory address is used before the move and 10.0.0.1 after it")
+check(not os.path.exists(f"{fake_root}/tmp/piso-offline"), "the bundle is gone from the router's memory afterwards")
+check(cmds[-1].startswith("rm -rf") and "piso-offline" in cmds[-1], "removed by the last command: " + cmds[-1][:80])
+
+# the router at 10.0.0.1 already: no move, the bundle goes over once
+router_knows(serve_offline_site())
+r = offline_run(inet=False, lan="10.0.0.1", probe="configured", answers=("y", "n"), secrets_=(), country="JP")
+cmds = commands(r)
+check(r.err is None and "SETUP COMPLETE" in r.out and not any("--local" in c and "IFS= read" not in c for c in cmds), "a router at 10.0.0.1: set up, with no separate install.sh run: " + str(r.err) + r.out[-300:] + str([c[:90] for c in cmds if "--local" in c and "IFS= read" not in c]))
+check(sum(1 for c in cmds if "order.txt" in c and "cat >" in c) == 1 and r.ssh.count("root@192.168.1.1") == 0, "and the bundle is copied once")
+
+# the setup fails: the bundle is removed all the same
+router_knows(serve_offline_site())
+r = offline_run(inet=False, lan="10.0.0.1", probe="configured", result="fail", answers=("y", "n"), secrets_=(), country="JP")
+check(not os.path.exists(f"{fake_root}/tmp/piso-offline") and commands(r)[-1].startswith("rm -rf"), "a failed setup also removes the bundle from the router")
+
+# it cannot be prepared and the router has internet: today's way, with the reason
+router_knows(serve_offline_site(), conf="option overlay_root /overlay\n")
+r = offline_run(inet=True)
+check(r.err is None and "SETUP-RAN" in r.out and "https://pisophone.pages.dev/install.sh" in r.wget, "not possible (no signature checking) but the router has internet: today's path runs: " + str(r.err) + r.out[-400:])
+check("without the router's internet is not possible" in r.out and "signature" in r.out, "and the message names the reason: " + r.out[:900])
+check(any("ping -c 1" in c for c in commands(r)) and not any("cat >" in c for c in commands(r)), "the router's internet was tested by ping over ssh, and no bundle was copied")
+# neither works: stops before anything is changed
+router_knows(serve_offline_site(), conf="option overlay_root /overlay\n")
+open(f"{tmp}/lan", "w").write("192.168.1.1")
+r = offline_run(inet=False)
+check(r.err and "signature" in r.err and "internet" in r.err and "Nothing was changed" in r.err, "no way to prepare and no internet: it stops with both reasons: " + str(r.err))
+check(open(f"{tmp}/lan").read().strip() == "192.168.1.1" and r.uci == "" and not any("install" in c and "--yes" in c for c in commands(r)) and not os.path.exists(f"{fake_root}/tmp/piso-offline"),
+      "and the router was not changed (same address, nothing installed, nothing copied)")
+# too little memory is a reason to fall back, found before the router is touched
+router_knows(serve_offline_site(), mem=24000)
+r = offline_run(inet=True)
+check(r.err is None and "memory" in r.out and "https://pisophone.pages.dev/install.sh" in r.wget, "too little free memory: today's path, naming it: " + str(r.err) + r.out[:500])
+# a package that cannot be downloaded
+sources = serve_offline_site()
+SERVED.pop("/feeds/openwrt_base/curl_1_mipsel_24kc.ipk")
+router_knows(sources)
+r = offline_run(inet=True)
+check(r.err is None and "curl_1_mipsel_24kc.ipk" in r.out and "https://pisophone.pages.dev/install.sh" in r.wget, "a package that cannot be downloaded: today's path, naming the file: " + str(r.err))
+# --router-online: the offline way is not even tried
+router_knows(serve_offline_site())
+open(f"{tmp}/ssh.log", "w").close()
+r = offline_run(inet=True, router_online=True)
+check(r.err is None and "https://pisophone.pages.dev/install.sh" in r.wget and not any(c.startswith("echo @@RELEASE") for c in commands(r)) and "offline" not in r.out.lower(),
+      "--router-online: today's path, the router is not asked about its package sources: " + str(r.err))
+check(ps.build_parser().parse_args(["--router-online"]).router_online is True and ps.build_parser().parse_args([]).router_online is False, "the option exists and is off by default")
+OFFLINE_SITE = None
 
 shutil.rmtree(tmp, ignore_errors=True)
 print(f"{checks} checks, {failures} failures")
