@@ -31,5 +31,5 @@ Each group names the spec criteria it proves.
 - [ ] 8. **Validate** (criterion 10). Every criterion in `validation.md` with evidence, the gates, "Not tested" (at least: all hardware, community sources, real OpenWrt indexes beyond the fixtures); update `specs/STATUS.md`. Pull request into `beta` only when the owner asks.
 
 ## Release
-- Router: `setup/RELEASE` raised once (after 010's 1.5.17), in group 3. Firmware, phone app: not touched.
+- Router: `setup/RELEASE` raised once (to 1.5.19, after feature 012's 1.5.18), in group 3. Rebase on `beta` after 012 is merged too. Firmware, phone app: not touched.
 - Setup program: the new `website/pisophone_setup.py` is published with the website when merged to `main` (owner's order).

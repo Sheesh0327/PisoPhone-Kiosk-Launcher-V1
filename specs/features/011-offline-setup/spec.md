@@ -1,7 +1,7 @@
 # Feature 011: first setup without internet on the router (the computer brings the files)
 
 Status: **approved by the owner (2026-10-22), with owner decisions 1 to 3 as proposed. Reviewed for execution (2026-10-22: the factory flow, how files reach the router, how the setting travels and who deletes the bundle are now fixed; no decision changed). Not started: build after feature 010 is merged into `beta`, and only when the owner says to start.**
-Branch: `feat/011-offline-setup` (from `beta`). Area: setup, router. Depends on: feature 010 (it changes the same files: `setup/install.sh`, `20-preflight.sh`, the setup program's router flow); build 011 after 010 is merged into `beta`, and rebase this branch on it first. Release: router (`setup/RELEASE`, the number after 010's 1.5.17) and the setup program (`website/pisophone_setup.py`).
+Branch: `feat/011-offline-setup` (from `beta`). Area: setup, router. Depends on: feature 010 (it changes the same files: `setup/install.sh`, `20-preflight.sh`, the setup program's router flow); build 011 after 010 is merged into `beta`, and rebase this branch on it first. Release: router (`setup/RELEASE`, 1.5.19: after feature 012, which the owner chose to ship first as 1.5.18) and the setup program (`website/pisophone_setup.py`).
 Backlog rows: none (owner request 2026-10-22, idea checked against the code before this spec).
 
 ## How to read this spec (for the execution model)
