@@ -1,0 +1,206 @@
+[
+  {
+    "id": "AO-01",
+    "area": "router",
+    "files": [
+      "router/piso_monitor.sh"
+    ],
+    "category": "reliability",
+    "severity": "high",
+    "money_or_signing": false,
+    "confidence": "confirmed",
+    "status": "open",
+    "problem": "The monitor checks the box, the ledger, grief and the report, but **not the portal itself**. A hung (not crashed) `pisoportal` is not restarted by procd: customers cannot pay until someone reboots. (HARDENING item 8, roadmap 6.1)",
+    "fix": "Each tick: `/ping` the portal with a 5 s limit; after 3 failures in a row restart it with the init script and alert once; alert again when it is back. Never restart twice within 10 min.",
+    "test": {
+      "kind": "integration",
+      "where": "`router/tests/test_monitor.py`: fake portal that hangs; 3 ticks restart once; 4th tick alerts nothing new.",
+      "fails_before": true
+    },
+    "release": "router"
+  },
+  {
+    "id": "AO-02",
+    "area": "router",
+    "files": [
+      "tools/pisoportal/src/ledger.rs"
+    ],
+    "category": "resource",
+    "severity": "high",
+    "money_or_signing": true,
+    "confidence": "confirmed",
+    "status": "open",
+    "problem": "`revenue.csv` on flash (`/etc/coinslot.d`) is append-only and never split. At ~50 bytes a row and 300 rows a day it grows about 5 MB a year; routers with 16 MB of flash have under 2 MB free (feature 010). When flash is full the next sale row cannot be written.",
+    "fix": "Decision D1. Monthly segments (section 5), checked by `verify` across segments.",
+    "test": {
+      "kind": "unit",
+      "where": "`cargo test`: 3 months of rows, roll, chain and totals equal to one big file; a torn row at the roll; a power cut between move and first `carry` row.",
+      "fails_before": true
+    },
+    "release": "router"
+  },
+  {
+    "id": "AO-03",
+    "area": "router",
+    "files": [
+      "tools/pisoportal/src/ledger.rs"
+    ],
+    "category": "resource",
+    "severity": "med",
+    "money_or_signing": false,
+    "confidence": "confirmed",
+    "status": "open",
+    "problem": "`verify` reads the whole file into RAM every hour (`check_ledger` in the monitor). At 100,000 rows that is about 5 MB on a router with 64 MB RAM and MIPS speed. (spec 01 RT-16)",
+    "fix": "Stream the file line by line; with segments only the current one is re-read, closed segments keep a stored last hash and total (RT-16's incremental verify).",
+    "test": {
+      "kind": "unit",
+      "where": "`cargo test`: 100k rows verify under 50 ms after the first (x86), peak memory below 64 KB extra.",
+      "fails_before": true
+    },
+    "release": "router"
+  },
+  {
+    "id": "AO-04",
+    "area": "router",
+    "files": [
+      "tools/pisoportal/src/wheel_gate.rs"
+    ],
+    "category": "resource",
+    "severity": "low",
+    "money_or_signing": false,
+    "confidence": "confirmed",
+    "status": "open",
+    "problem": "`wheel.log` grows without bound.",
+    "fix": "Cap at 256 KB, keep one `.1`.",
+    "test": {
+      "kind": "unit",
+      "where": "`cargo test`.",
+      "fails_before": true
+    },
+    "release": "router"
+  },
+  {
+    "id": "AO-05",
+    "area": "router",
+    "files": [
+      "piso_monitor.sh"
+    ],
+    "category": "reliability",
+    "severity": "med",
+    "money_or_signing": false,
+    "confidence": "confirmed",
+    "status": "open",
+    "problem": "Nothing watches free flash after setup.",
+    "fix": "Each hour: `df /overlay`; alert under 1 MB and under 256 KB (once each a day); the portal never stops recording coins because of it. `piso-setup status` and the Check-up show the same.",
+    "test": {
+      "kind": "integration",
+      "where": "`test_monitor.py` with a fake `df`.",
+      "fails_before": true
+    },
+    "release": "router"
+  },
+  {
+    "id": "AO-06",
+    "area": "router",
+    "files": [
+      "piso_monitor.sh"
+    ],
+    "category": "reliability",
+    "severity": "med",
+    "money_or_signing": false,
+    "confidence": "confirmed",
+    "status": "open",
+    "problem": "Every alert needs Telegram. A shop without Telegram is never told anything.",
+    "fix": "Write each alert also to `/etc/coinslot.d/alerts.txt` (last 20 lines, a small file); the console front page and the setup program's Check-up show them.",
+    "test": {
+      "kind": "integration",
+      "where": "`test_monitor.py`, `test_console.py`.",
+      "fails_before": true
+    },
+    "release": "router"
+  },
+  {
+    "id": "AO-07",
+    "area": "firmware",
+    "files": [
+      "esp32_firmware/src/WebServerModule.cpp:51",
+      "esp32_firmware/src/WebServerAuth.cpp:71"
+    ],
+    "category": "reliability",
+    "severity": "high",
+    "money_or_signing": true,
+    "confidence": "confirmed",
+    "status": "open",
+    "problem": "The AuthWorker task (sends signed acks to phones) is not on the task watchdog and nothing checks it is alive. If it hangs, phones stop getting credit while the box looks healthy; payments stay queued (no loss) but customers wait.",
+    "fix": "The worker bumps a counter each pass; `loop()` checks it every 10 s. No progress for 60 s while the queue is not empty: log, and let `HealthPolicy` restart the box when `canPerformRebootOrOta()` allows. Pure rule in `include/` with a host test.",
+    "test": {
+      "kind": "integration",
+      "where": "new `host_tests/worker_liveness_test.cpp`.",
+      "fails_before": true
+    },
+    "release": "firmware"
+  },
+  {
+    "id": "AO-08",
+    "area": "app",
+    "files": [
+      "app/src/main/java/com/pisophone/kiosk/db/PaymentDao.kt"
+    ],
+    "category": "resource",
+    "severity": "low",
+    "money_or_signing": true,
+    "confidence": "confirmed",
+    "status": "open",
+    "problem": "`payment_receipts` is never pruned (only `coin_events` keeps 500). It is the exactly-once record, so pruning it is dangerous; growth is small (about 1 MB a year a phone) but unmeasured.",
+    "fix": "**Measure only** in this spec: log the row count in the health snapshot. No pruning without decision D4.",
+    "test": {
+      "kind": "integration",
+      "where": "unit test of the snapshot.",
+      "fails_before": true
+    },
+    "release": "app"
+  },
+  {
+    "id": "AO-09",
+    "area": "router",
+    "files": [
+      "tools/pisoportal/src/console.rs:795-806",
+      "tools/pisoportal/src/boxview.rs:207-211"
+    ],
+    "category": "resource",
+    "severity": "med",
+    "money_or_signing": false,
+    "confidence": "confirmed",
+    "status": "open",
+    "problem": "One thread per console / box-view connection, no cap. 200 idle sockets from a guest exhaust memory on a 64 MB router. (spec 01 RT-09; `http.rs:394` already uses `http::Limits`)",
+    "fix": "Reuse `http::Limits` (cap and read timeouts) on both listeners.",
+    "test": {
+      "kind": "integration",
+      "where": "`test_console.py`: 200 idle sockets, `/ping` and the coin page still answer.",
+      "fails_before": true
+    },
+    "release": "router"
+  },
+  {
+    "id": "AO-10",
+    "area": "router",
+    "files": [
+      "tools/pisoportal/tests/test_soak.py"
+    ],
+    "category": "test",
+    "severity": "med",
+    "money_or_signing": false,
+    "confidence": "confirmed",
+    "status": "open",
+    "problem": "No long-run test: memory, threads, open files and file sizes over weeks of simulated use are unknown.",
+    "fix": "A soak harness (feature 014) on top of `tests/harness.py` and `fakebox.py`.",
+    "test": {
+      "kind": "integration",
+      "where": "the harness itself (section 7).",
+      "fails_before": true
+    },
+    "release": "none",
+    "feature": "014-router-soak-harness",
+    "implemented_in": "feat/014-router-soak-harness"
+  }
+]
