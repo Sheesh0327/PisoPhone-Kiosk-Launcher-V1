@@ -40,7 +40,7 @@ Each group names the spec criteria it proves.
 - [x] 5. **Pairing tips, tests first** (criterion 5). The tip at 60 s and 150 s and in the "did not join" message; the pairing itself unchanged (it must keep using `PisoCoinBox`).
 
 ### Part A: the first setup without the router's internet
-- [ ] 6. **Router-side check and install, tests first** (criterion 11). `setup/src/21-local-packages.sh` with `install_local_packages`; tests with stub `usign`, `sha256sum`, `opkg`, including a tampered `.ipk` and a tampered `Packages`.
+- [x] 6. **Router-side check and install, tests first** (criterion 11). `setup/src/21-local-packages.sh` with `install_local_packages`; tests with stub `usign`, `sha256sum`, `opkg`, including a tampered `.ipk` and a tampered `Packages`.
 - [ ] 7. **Installer without internet, tests first** (criterion 12). `PISO_LOCAL_PKGS` in `20-preflight.sh` (no ping, no `opkg update`, `install_local_packages` instead); `install.sh --local`. The existing tests pass unchanged. `setup/RELEASE` was already raised in group 2, so do not raise it again. Regenerate; `--check` passes.
 - [ ] 8. **Reading the router and resolving packages, tests first** (criteria 7, 8). Create `router/tests/test_offline_setup.py` and list it in `quality.yml` in this group. `read_router_feeds`, `resolve_packages` with the two fixture sets.
 - [ ] 9. **Building and pushing the bundle, tests first** (criteria 9, 10). `build_offline_bundle` against a local HTTP server; `push_offline_bundle` through a stub SSH; the RAM rule.

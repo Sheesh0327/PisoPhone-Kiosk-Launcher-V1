@@ -833,6 +833,93 @@ ul = open(f"{tmp}/uci.log").read()
 check("set wireless.box_ap.ssid=PisoCoinBox\n" in ul and "box_ap.ssid=PisoCoinBox-" not in ul.split("macfilter")[0], "pairing still opens the box network as PisoCoinBox, the name new boxes know: " + ul[:400])
 r = lib('PAIR_WAIT=70; sleep() { :; }; box_station() { :; }; box_ifname() { :; }; cmd_box_diag() { :; }; (pair_box); echo "rc=$?"', env={"PISO_CONF": cf})
 check("not broadcasting" in r.stdout and PAIR_TIP not in r.stdout, "with no box network on the air the tip stays about the radio (another router is not the cause): " + r.stdout[-400:])
+
+# ---- feature 011 part A: the router checks what the setup program copied here before it installs anything -----------------------
+bin6 = f"{tmp}/bin6"
+os.makedirs(bin6, exist_ok=True)
+open(f"{bin6}/usign", "w").write(f"""#!/bin/sh
+# stub: a signature file holds "signed:<sha256 of the signed file>"
+echo "usign $*" >> {tmp}/offline.log
+while [ $# -gt 0 ]; do case "$1" in -m) m="$2"; shift ;; -P) P="$2"; shift ;; -x) x="$2"; shift ;; esac; shift; done
+[ -d "$P" ] || exit 1
+[ -f "$x" ] || exit 1
+[ "$(cat "$x")" = "signed:$(sha256sum "$m" | cut -d' ' -f1)" ]
+""")
+open(f"{bin6}/opkg", "w").write(f"""#!/bin/sh
+echo "opkg $*" >> {tmp}/offline.log
+[ -z "$OPKG_FAIL" ]
+""")
+for _f in ("usign", "opkg"):
+    os.chmod(f"{bin6}/{_f}", 0o755)
+
+
+def make_bundle(name, sources, order, tamper=None):
+    """sources: {source name: [(file, bytes, size_override or None)]}; every Packages is signed (the stub's way) unless tamper says otherwise."""
+    root = f"{tmp}/bundle_{name}"
+    shutil.rmtree(root, ignore_errors=True)
+    os.makedirs(root + "/pkgs")
+    keys = f"{root}/root/etc/opkg/keys"
+    os.makedirs(keys)
+    open(f"{keys}/abcd1234", "w").write("key")
+    for src, files in sources.items():
+        os.makedirs(f"{root}/pkgs/{src}")
+        stanzas = ""
+        for fname, data, size in files:
+            open(f"{root}/pkgs/{fname}", "wb").write(data)
+            stanzas += f"Package: {fname.split('_')[0]}\nVersion: 1\nFilename: {fname}\nSize: {size if size is not None else len(data)}\nSHA256sum: {hashlib.sha256(data).hexdigest()}\n\n"
+        pk = f"{root}/pkgs/{src}/Packages"
+        open(pk, "w").write(stanzas)
+        open(pk + ".sig", "w").write("signed:" + hashlib.sha256(open(pk, "rb").read()).hexdigest())
+    open(f"{root}/pkgs/order.txt", "w").write("".join(f + "\n" for f in order))
+    if tamper:
+        tamper(root)
+    return root
+
+
+def install_local(root, extra=""):
+    open(f"{tmp}/offline.log", "w").close()
+    r = lib(f'{extra}(install_local_packages "{root}/pkgs"); echo "rc=$?"', env={"PATH": f"{bin6}:" + os.environ["PATH"], "PISO_ROOT": f"{root}/root"})
+    return r, open(f"{tmp}/offline.log").read()
+
+
+import hashlib, shutil  # noqa: E402  (this part of the file is read top to bottom: these were not needed before)
+GOOD = {"base": [("libfoo_1_mips.ipk", b"libfoo bytes", None), ("opennds_9_mips.ipk", b"opennds bytes", None)], "packages": [("curl_8_mips.ipk", b"curl bytes", None)]}
+ORDER = ["libfoo_1_mips.ipk", "curl_8_mips.ipk", "opennds_9_mips.ipk"]
+root = make_bundle("good", GOOD, ORDER)
+r, ol = install_local(root)
+inst = [ln for ln in ol.splitlines() if ln.startswith("opkg install")]
+check("rc=0" in r.stdout and len(inst) == 1 and inst[0] == "opkg install " + " ".join(f"{root}/pkgs/{f}" for f in ORDER),
+      "a signed bundle: one opkg install with every file, in order.txt order: " + ol + r.stdout + r.stderr)
+check(ol.count("usign -V") == 2 and all(f"-P {root}/root/etc/opkg/keys" in ln for ln in ol.splitlines() if ln.startswith("usign")) and "Packages.sig" in ol,
+      "and each source's Packages was checked with usign -V against the router's keys first: " + ol)
+check(0 <= ol.find("usign") < ol.find("opkg install"), "the signatures are checked before anything is installed")
+
+
+def refuses(label, root, why, extra=""):
+    r, ol = install_local(root, extra)
+    check("rc=0" not in r.stdout and "opkg install" not in ol and why in (r.stdout + r.stderr).lower(), f"{label}: nothing is installed and the reason is given ({why}): " + ol + r.stdout + r.stderr)
+
+
+refuses("a tampered package", make_bundle("t_ipk", GOOD, ORDER, lambda d: open(f"{d}/pkgs/curl_8_mips.ipk", "wb").write(b"evil")), "curl_8_mips.ipk")
+refuses("a tampered Packages index", make_bundle("t_idx", GOOD, ORDER, lambda d: open(f"{d}/pkgs/base/Packages", "a").write("Package: x\n")), "signature")
+refuses("a missing signature", make_bundle("t_nosig", GOOD, ORDER, lambda d: os.remove(f"{d}/pkgs/packages/Packages.sig")), "signature")
+refuses("a package no signed index lists", make_bundle("t_unk", GOOD, ORDER + ["extra_1_mips.ipk"], lambda d: open(f"{d}/pkgs/extra_1_mips.ipk", "wb").write(b"x")), "extra_1_mips.ipk")
+refuses("a listed package that was not copied", make_bundle("t_miss", GOOD, ORDER, lambda d: os.remove(f"{d}/pkgs/libfoo_1_mips.ipk")), "libfoo_1_mips.ipk")
+refuses("a package whose size differs from the signed list", make_bundle("t_size", {"base": [("libfoo_1_mips.ipk", b"libfoo bytes", 99)]}, ["libfoo_1_mips.ipk"]), "size")
+refuses("a path in order.txt", make_bundle("t_path", GOOD, ["../../etc/passwd"]), "order.txt")
+refuses("a name that is not a package file", make_bundle("t_name", GOOD, ["libfoo_1_mips.ipk; reboot"]), "order.txt")
+refuses("no keys on the router", make_bundle("t_keys", GOOD, ORDER, lambda d: shutil.rmtree(f"{d}/root/etc/opkg/keys")), "key")
+refuses("no order.txt", make_bundle("t_order", GOOD, ORDER, lambda d: os.remove(f"{d}/pkgs/order.txt")), "order.txt")
+refuses("no signed index at all", make_bundle("t_none", {}, ORDER), "signature")
+r, ol = install_local(make_bundle("t_inst", GOOD, ORDER), "")
+check("rc=0" in r.stdout, "(control: the same bundle installs)")
+open(f"{tmp}/offline.log", "w").close()
+root = make_bundle("t_fail", GOOD, ORDER)
+r = lib(f'(install_local_packages "{root}/pkgs"); echo "rc=$?"', env={"PATH": f"{bin6}:" + os.environ["PATH"], "PISO_ROOT": f"{root}/root", "OPKG_FAIL": "1"})
+check("rc=0" not in r.stdout and "could not install" in (r.stdout + r.stderr), "opkg failing stops the setup with a reason: " + r.stdout + r.stderr)
+root = make_bundle("t_empty", {"base": []}, [])
+r, ol = install_local(root)
+check("rc=0" in r.stdout and "opkg install" not in ol, "an empty order.txt (everything is installed already) installs nothing and is not an error: " + r.stdout + r.stderr)
 # ---- box-diag: where the router <-> box link breaks -----------------------------------------------------------------------------
 def box_diag(setup_code):
     return lib(setup_code + "; cmd_box_diag", env={"BOX_IP": "127.0.0.1:1"})   # nothing listens there: the box does not answer
