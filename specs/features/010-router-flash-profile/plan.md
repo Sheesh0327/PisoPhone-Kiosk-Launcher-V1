@@ -1,6 +1,6 @@
 # Plan: feature 010, fit the full PisoWiFi and a PisoWiFi-only shop
 
-Status: **all task groups done (2026-10-23); validation in `validation.md`; hardware check RS35 owed.**
+Status: **done: all task groups ticked; merged into `beta` on 2026-10-23. Hardware check RS35 and the package sizes are owed (spec criteria 10 and 11).**
 
 How to work (for the execution model): one task group at a time, in order. Test first: write the test, run it, see it fail, log the red result in `ledger/negative-constraints.md`; then the code; then the test passes. One commit per group, plain English, with the session's trailer lines. Tick the box here. Use only the names in the spec's "Names" table. Generated files are made by `python3 tools/build_piso_setup.py` or by CI, never by hand. If the spec does not say something you need, stop and ask the owner.
 
