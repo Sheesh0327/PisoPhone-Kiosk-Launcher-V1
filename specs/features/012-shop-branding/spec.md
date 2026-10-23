@@ -95,7 +95,7 @@ box stores only short settings, so nothing new is ever downloaded or installed o
 1. **The admin page holds the settings.** The box's admin config page has a *Shop branding* section with four fields —
    palette (a list of the built-in ids), shop name, header title, animation density (`off`, `low`, `normal`, `high`). Saving
    stores them in NVS; they survive a box restart; a bad value is refused with a reason and changes nothing. Firmware host test
-   plus a serial and browser check on the board (RS36).
+   plus a serial and browser check on the board (RS38).
 2. **The box pushes them, and nothing old breaks.** The settings ride the existing authenticated `/config` push on pairing and
    on save. `protocol/fixtures` and the signing vectors are byte-identical; a phone build without this feature ignores the new
    params (host test asserting the pushed parameter string, and the app's `/config` test fed a push with unknown params).

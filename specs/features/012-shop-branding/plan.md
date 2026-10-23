@@ -88,9 +88,9 @@ group. Groups 1 to 6 are app-only and need no board; groups 7 and 8 are firmware
       density, and when they last came from the box — no editing (spec constraint 1b, and it is how an owner tells a phone has
       not heard from the box). (test: a unit test on the text the line renders from stored branding, including the never-set
       case; red result logged: yes.)
-- [x] 9. **Owner-facing paperwork.** Hardware checks **RS36** (branding typed on the box's admin page reaches a phone; it
+- [x] 9. **Owner-facing paperwork.** Hardware checks **RS38** (branding typed on the box's admin page reaches a phone; it
       survives a phone reboot with the box off; the marquee stands still on a hot phone; each density level looked at on a real
-      T606 phone) and **RS37** (an old phone build paired to the new box, and a new phone build paired to a live 3.11.1 box,
+      T606 phone) and **RS39** (an old phone build paired to the new box, and a new phone build paired to a live 3.11.1 box,
       both keep working) added to `docs/REAL_WORLD_TESTING.md`;
       `CHANGELOG.md` entry in the owner's words; `specs/STATUS.md` row; `validation.md` filled with evidence.
 
