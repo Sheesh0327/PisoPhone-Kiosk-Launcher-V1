@@ -42,24 +42,9 @@ void handleApiBranding() {
     next.name = std::string(webServer.arg("name").c_str());
     next.title = std::string(webServer.arg("title").c_str());
     next.density = std::string(webServer.arg("density").c_str());
-    if (!validPalette(next.palette)) {
-        sendError(400, "BAD_PALETTE");
-        return;
-    }
-    if (!validDensity(next.density)) {
-        sendError(400, "BAD_DENSITY");
-        return;
-    }
-    if (!validName(next.name)) {
-        sendError(400, "BAD_NAME");
-        return;
-    }
-    if (!validTitle(next.title)) {
-        sendError(400, "BAD_TITLE");
-        return;
-    }
-    if (!fitsInPush(next)) {
-        sendError(400, "TOO_LONG_FOR_PHONES");
+    const char* why = refusalFor(next); // the first problem found; nothing is saved on a refusal
+    if (why[0] != '\0') {
+        sendError(400, why);
         return;
     }
     if (!shopBrandingSave(next)) {
