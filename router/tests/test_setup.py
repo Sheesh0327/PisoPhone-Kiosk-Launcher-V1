@@ -1145,7 +1145,7 @@ def sw(code, env=None, conf=BOTHCONF):
 
 before = data_hash()
 # both -> wifi, accepted with --yes: warns, drops the kiosk password, keeps every other setting and the data
-r = sw("ASSUME_YES=1; resolve_wifi_names; choose_product; write_coinslot_conf k1 aa; echo rc=$?", env={"SHOP_PRODUCT": "wifi"})
+r = sw("ASSUME_YES=1; resolve_wifi_names; confirm_product; apply_product; write_coinslot_conf k1 aa; echo rc=$?", env={"SHOP_PRODUCT": "wifi"})
 check("rental phones on PisoKiosk-a1b2 will lose their Wi-Fi" in r.stdout + r.stderr and "rc=0" in r.stdout, "both -> wifi: the warning names the Wi-Fi: " + r.stdout + r.stderr)
 after = open(f"{tmp}/swconf").read()
 check("KIOSK_PASS" not in after and "SHOP_PRODUCT='wifi'" in after, "both -> wifi: KIOSK_PASS is deleted, SHOP_PRODUCT=wifi is stored: " + after)
@@ -1159,20 +1159,20 @@ fake_uci({"radio0": "2g", "radio1": "5g"})
 r = run("--dry-run", env={"PISO_CONF": f"{tmp}/swconf"})
 check("kiosk_" not in r.stdout and "wireless.guest_radio0" in r.stdout, "the next run of a wifi router writes no kiosk Wi-Fi (the product comes from the settings): " + r.stdout[:200])
 # no SHOP_PRODUCT: the product stays
-r = sw("ASSUME_YES=1; choose_product; shop_product", conf="SHOP_PRODUCT='wifi'\nBOX_MAC='x'\n")
+r = sw("ASSUME_YES=1; confirm_product; apply_product; shop_product", conf="SHOP_PRODUCT='wifi'\nBOX_MAC='x'\n")
 check(r.stdout.split()[-1] == "wifi" and "lose their Wi-Fi" not in r.stdout + r.stderr, "without SHOP_PRODUCT a wifi router stays wifi, with no warning: " + r.stdout + r.stderr)
-r = sw("ASSUME_YES=1; choose_product; shop_product; grep -c KIOSK_PASS $CONF", conf=BOTHCONF)
+r = sw("ASSUME_YES=1; confirm_product; apply_product; shop_product; grep -c KIOSK_PASS $CONF", conf=BOTHCONF)
 check(r.stdout.split()[-2] == "both" and r.stdout.split()[-1] == "1" and "lose their Wi-Fi" not in r.stdout + r.stderr, "without SHOP_PRODUCT an installed router (no product stored) stays both and keeps its kiosk password: " + r.stdout + r.stderr)
 # wifi -> both: the kiosk Wi-Fi comes back with a new password
-r = sw("rm -f /dev/null; ASSUME_YES=1; choose_product; choose_passwords; K=$(kiosk_pass); echo LEN=${#K}; grep SHOP_PRODUCT $CONF", env={"SHOP_PRODUCT": "both"},
+r = sw("rm -f /dev/null; ASSUME_YES=1; confirm_product; apply_product; choose_passwords; K=$(kiosk_pass); echo LEN=${#K}; grep SHOP_PRODUCT $CONF", env={"SHOP_PRODUCT": "both"},
        conf="SHOP_PRODUCT='wifi'\nBOX_MAC='x'\nKIOSK_SSID_NAME='PisoKiosk-a1b2'\nBOX_SSID_NAME='PisoCoinBox-a1b2'\n")
 check("LEN=12" in r.stdout and "SHOP_PRODUCT='both'" in r.stdout and "KIOSK_PASS='" in open(f"{tmp}/swconf").read(), "wifi -> both: a new kiosk password is made and stored: " + r.stdout + r.stderr)
 check(data_hash() == before, "the data folder is byte for byte the same after the switch back")
 # a dry run only warns
-r = sw("DRY=1; choose_product; echo rc=$?", env={"SHOP_PRODUCT": "wifi"})
+r = sw("DRY=1; confirm_product; apply_product; echo rc=$?", env={"SHOP_PRODUCT": "wifi"})
 check("lose their Wi-Fi" in r.stdout and "KIOSK_PASS='oldKioskPw1'" in open(f"{tmp}/swconf").read() and "SHOP_PRODUCT" not in open(f"{tmp}/swconf").read(), "--dry-run warns and changes nothing")
 # no terminal and no --yes: refused, nothing changed
-r = sw("choose_product < /dev/null; echo rc=$?", env={"SHOP_PRODUCT": "wifi"})
+r = sw("confirm_product < /dev/null; echo rc=$?", env={"SHOP_PRODUCT": "wifi"})
 check("rc=" not in r.stdout and "KIOSK_PASS='oldKioskPw1'" in open(f"{tmp}/swconf").read() and "--yes" in r.stdout + r.stderr, "no terminal and no --yes: it stops, nothing is changed: " + r.stdout + r.stderr)
 
 
@@ -1204,9 +1204,9 @@ def at_terminal(code, answer):
     return out.decode(errors="replace")
 
 
-out = at_terminal("choose_product; echo DONE", "n")
+out = at_terminal("confirm_product; apply_product; echo DONE", "n")
 check("lose their Wi-Fi" in out and "DONE" not in out and "KIOSK_PASS='oldKioskPw1'" in open(f"{tmp}/swconf").read(), "asked at a terminal, answered no: cancelled, nothing changed: " + out[-300:])
-out = at_terminal("choose_product; echo DONE", "y")
+out = at_terminal("confirm_product; apply_product; echo DONE", "y")
 check("DONE" in out and "KIOSK_PASS" not in open(f"{tmp}/swconf").read(), "asked at a terminal, answered yes: switched: " + out[-300:])
 # an update never changes the product: the environment applies only to the installer
 open(f"{tmp}/swconf", "w").write(BOTHCONF)
@@ -1215,6 +1215,60 @@ check("no rental phones" not in r.stdout + r.stderr, "SHOP_PRODUCT in the enviro
 main_body = text.split("\nmain() {")[1].split("\n}\n")[0]
 check('unset SHOP_PRODUCT' in main_body and main_body.index("unset SHOP_PRODUCT") < main_body.index('case "$CMD" in'), "main drops SHOP_PRODUCT before running any command but the install")
 st1 = text.split("\nstage1() {")[1].split("\n}\n")[0]
-check(st1.index("choose_product") < st1.index("choose_passwords") and "store_product" not in st1, "stage 1 chooses the product before any password and any change")
+check(st1.index("confirm_product") < st1.index("choose_passwords") and "store_product" not in st1 and st1.index("apply_batch") < st1.index("apply_product") < st1.index("stage2"),
+      "stage 1 asks about the product before any password, and stores it (and drops the kiosk password) only after apply_batch")
+# ---- feature 010 review fix: the kiosk password goes only after the new Wi-Fi is written -------------------------------------------
+def stage1_at_terminal(answers, fail_install=False):
+    """Runs the real stage1 of an installed both router switched to wifi, at a terminal, with the router-changing steps stubbed
+    (preflight, packages, files, the uci write, stage 2). `answers` are typed at each [y/N] question in turn."""
+    open(f"{tmp}/swconf", "w").write(BOTHCONF + "SITE_NAME='Shop'\nBOX_ADMIN_PASS_NEW='boxadmin12345'\n")   # (everything stage 1 would ask is answered)
+    stubs = ("preflight() { R24=radio0; R5=radio1; }; ask_telegram() { :; }; extract_payload() { :; }; stage2() { echo STAGE2-RAN; }; box_up() { return 1; }; "
+             + ('install_packages() { die "no internet"; }; ' if fail_install else "install_packages() { echo PACKAGES; }; ")
+             + f'apply_batch() {{ echo APPLY-RAN; uci_batch "$@" > {tmp}/applied.uci; }}; ')
+    env = dict(os.environ, PATH=f"{bindir}:" + os.environ["PATH"], PISO_SETUP_SOURCE_ONLY="1", PISO_LOG=f"{tmp}/log2", PISO_STATE=f"{tmp}/state2",
+               PISO_SUMMARY=f"{tmp}/sum2", PISO_ROUTER_ID="a1b2", SHOP_PRODUCT="wifi", **senv)
+    if os.path.exists(f"{tmp}/applied.uci"):
+        os.remove(f"{tmp}/applied.uci")
+    pid, fd = pty.fork()
+    if pid == 0:
+        os.execvpe("sh", ["sh", "-c", f". {SCRIPT}; {stubs} resolve_wifi_names; LOG={tmp}/log2; stage1; echo STAGE1-END"], env)
+    out, todo = b"", list(answers)
+    seen = 0
+    while True:
+        ready, _, _ = select.select([fd], [], [], 15)
+        if not ready:
+            break
+        try:
+            chunk = os.read(fd, 4096)
+        except OSError:
+            break
+        if not chunk:
+            break
+        out += chunk
+        while todo and out.count(b"[y/N]") > seen:
+            seen += 1
+            os.write(fd, (todo.pop(0) + "\n").encode())
+    os.waitpid(pid, 0)
+    return out.decode(errors="replace")
+
+
+fake_uci({"radio0": "2g", "radio1": "5g"})
+# (a) cancelled at the review screen: nothing is changed
+out = stage1_at_terminal(["y", "n"])
+conf_now = open(f"{tmp}/swconf").read()
+check("KIOSK_PASS='oldKioskPw1'" in conf_now and "SHOP_PRODUCT='wifi'" not in conf_now and "APPLY-RAN" not in out and "STAGE1-END" not in out,
+      "wifi switch cancelled at the review: KIOSK_PASS and the product are as they were, nothing was written: " + out[-500:] + conf_now)
+# (b) the install fails before the new Wi-Fi is written: the old Wi-Fi is still there, so its password is too
+out = stage1_at_terminal(["y", "y"], fail_install=True)
+conf_now = open(f"{tmp}/swconf").read()
+check("KIOSK_PASS='oldKioskPw1'" in conf_now and "SHOP_PRODUCT='wifi'" not in conf_now and "APPLY-RAN" not in out,
+      "wifi switch, install stops before the Wi-Fi is written: KIOSK_PASS and the product are unchanged: " + out[-500:] + conf_now)
+# (c) the run completes: the password is gone, the product is wifi, the batch has no kiosk Wi-Fi
+out = stage1_at_terminal(["y", "y"])
+conf_now = open(f"{tmp}/swconf").read()
+applied = open(f"{tmp}/applied.uci").read() if os.path.exists(f"{tmp}/applied.uci") else ""
+parts = ("STAGE2-RAN" in out, "KIOSK_PASS" not in conf_now, "SHOP_PRODUCT='wifi'" in conf_now, bool(applied), "wireless.kiosk_" not in applied, "wireless.guest_radio0" in applied)
+check(all(parts),
+      "wifi switch completed: KIOSK_PASS deleted, product wifi stored, no kiosk Wi-Fi written: " + out[-300:] + conf_now + " parts=" + str(parts))
 print(f"{checks} checks, {failures} failures")
 sys.exit(1 if failures else 0)
