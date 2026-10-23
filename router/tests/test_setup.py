@@ -712,6 +712,96 @@ out = r.stdout + r.stderr
 check("rc=0" not in r.stdout and "Power-cycle" in out and "piso-setup status" in out, "a box that does not come back: the message says power-cycle it and run piso-setup status: " + out)
 check(Box.wifi and "ROT=1 NEW=" + Box.wifi in r.stdout and f"set wireless.box_ap.key={Box.wifi}" in ul and "set wireless.box_ap.ssid=PisoCoinBox-a1b2" in ul,
       "and the router keeps the new name and key (the box has them): " + out)
+
+# ---- feature 011 part B: piso-setup box-wifi-name gives the box network the router's own name ----------------------------------
+def _bwn_conf(name, **kv):
+    path = f"{tmp}/conf_{name}"
+    open(path, "w").write("".join(f"{k}='{v}'\n" for k, v in kv.items()))
+    return path
+
+
+def _bwn(path, code="own_box_wifi_name", env=None, ok=True):
+    open(f"{tmp}/uci.log", "w").close()
+    n0 = len(Box.log)
+    r = lib("ASSUME_YES=1; " * ok + "(" + code + '); echo "rc=$?"; echo "ROT=$(conf_get BOX_WIFI_ROTATED) BN=$(conf_get BOX_SSID_NAME) KN=$(conf_get KIOSK_SSID_NAME) KP=$(conf_get KIOSK_PASS) NEW=$(conf_get BOX_WIFI_PASS_NEW)"',
+            env=dict({"BOX_IP": addr, "ROTATE_SETTLE": "0", "PISO_CONF": path}, **(env or {})))
+    changes = "".join(ln + "\n" for ln in open(f"{tmp}/uci.log").read().splitlines() if not ln.startswith(("get ", "-q get ", "show ")))   # (reading is not changing)
+    return r, changes, len(Box.log) - n0
+
+
+def _cv(path, name):
+    return _conf_value(path, name)
+
+
+MAC = "AA:BB:CC:DD:EE:01"
+Box.admin = "NewPassw0rdXYZ"; Box.refuse_wifi = False; Box.wifi = None; Box.wifi_ssid = None
+# an older router: shared names (it has a stored phone password and no stored names)
+cf = _bwn_conf("old", KIOSK_PASS="kp-old-1", BOX_MAC=MAC, BOX_ADMIN_PASS="NewPassw0rdXYZ", BOX_WIFI_ROTATED="1", BOX_WIFI_PASS_NEW="OwnPassw0rd1234567")
+r, ul, sent = _bwn(cf)
+out = r.stdout + r.stderr
+check("four minutes" in out and "kept" in out, "it says the box is off its network for up to four minutes and that coins are kept: " + out)
+check("rc=0" in r.stdout and Box.wifi_ssid == "PisoCoinBox-a1b2" and Box.wifi and len(Box.wifi) >= 16,
+      f"an older router: the box is sent wifi_ssid=PisoCoinBox-<id> and a password in one request: {Box.wifi_ssid!r} {Box.wifi!r} " + out)
+check("set wireless.box_ap.ssid=PisoCoinBox-a1b2" in ul and f"set wireless.box_ap.key={Box.wifi}" in ul and "ROT=1 BN=PisoCoinBox-a1b2" in r.stdout,
+      "and the router's box network takes both, and stores BOX_SSID_NAME and BOX_WIFI_ROTATED 1: " + ul + r.stdout)
+check("maclist" not in ul and "macfilter" not in ul, "and the MAC lock is not touched: " + ul)
+check("kiosk" not in ul.lower() and " KN= KP=kp-old-1 " in r.stdout, "the rental phones' network, KIOSK_SSID_NAME and KIOSK_PASS are not touched: " + ul + r.stdout)
+check(Box.wifi != "OwnPassw0rd1234567" and _cv(cf, "BOX_WIFI_PASS_NEW") == Box.wifi, "and the password is a new one (the old router had one already): " + Box.wifi)
+r2 = lib('echo "$BOX_SSID $KIOSK_SSID"', env={"PISO_CONF": cf})
+check(r2.stdout.strip() == "PisoCoinBox-a1b2 PisoKiosk", "and the next time the router loads its names the box network keeps the new one, the phones the shared one: " + r2.stdout)
+# a newer router whose password change failed once (names stored, BOX_WIFI_ROTATED 0)
+cf = _bwn_conf("new", KIOSK_SSID_NAME="PisoKiosk-a1b2", BOX_SSID_NAME="PisoCoinBox-a1b2", BOX_MAC=MAC, BOX_ADMIN_PASS="NewPassw0rdXYZ", BOX_WIFI_ROTATED="0")
+Box.wifi = None; Box.wifi_ssid = None
+r, ul, sent = _bwn(cf)
+check("rc=0" in r.stdout and "ROT=1" in r.stdout and Box.wifi_ssid == "PisoCoinBox-a1b2" and "set wireless.box_ap.ssid=PisoCoinBox-a1b2" in ul,
+      "a newer router with BOX_WIFI_ROTATED 0 works the same: " + r.stdout + r.stderr)
+# already has its own name: nothing changes
+cf = _bwn_conf("own", KIOSK_SSID_NAME="PisoKiosk-a1b2", BOX_SSID_NAME="PisoCoinBox-a1b2", BOX_MAC=MAC, BOX_ADMIN_PASS="NewPassw0rdXYZ", BOX_WIFI_ROTATED="1", BOX_WIFI_PASS_NEW="OwnPassw0rd1234567")
+before = open(cf).read()
+r, ul, sent = _bwn(cf)
+check("already has its own name" in r.stdout + r.stderr and sent == 0 and ul == "" and open(cf).read() == before,
+      "a router whose box network already has its own name: says so and changes nothing: " + r.stdout + r.stderr)
+# cannot start: no paired box, box silent, a name the box could not use
+cf = _bwn_conf("nomac", KIOSK_PASS="kp-old-1", BOX_ADMIN_PASS="NewPassw0rdXYZ")
+before = open(cf).read()
+r, ul, sent = _bwn(cf)
+check("rc=0" not in r.stdout and "pair" in r.stdout + r.stderr and sent == 0 and ul == "" and open(cf).read() == before,
+      "without a paired box it stops with the reason and changes nothing: " + r.stdout + r.stderr)
+cf = _bwn_conf("silent", KIOSK_PASS="kp-old-1", BOX_MAC=MAC, BOX_ADMIN_PASS="NewPassw0rdXYZ")
+before = open(cf).read()
+r, ul, sent = _bwn(cf, env={"BOX_IP": "127.0.0.1:1"})
+check("rc=0" not in r.stdout and "answer" in r.stdout + r.stderr and ul == "" and open(cf).read() == before,
+      "with the box not answering it stops with the reason and changes nothing: " + r.stdout + r.stderr)
+for _bad in ("a b;x", "x" * 40, ""):
+    cf = _bwn_conf("badname", KIOSK_PASS="kp-old-1", BOX_MAC=MAC, BOX_ADMIN_PASS="NewPassw0rdXYZ")
+    before = open(cf).read()
+    r, ul, sent = _bwn(cf, env={"PISO_ROUTER_ID": _bad} if _bad else {"PISO_ROUTER_ID": "x/y"})
+    check("rc=0" not in r.stdout and "name" in r.stdout + r.stderr and sent == 0 and ul == "" and open(cf).read() == before,
+          f"a name the box could not use ({_bad!r}) is refused before anything is sent: " + r.stdout + r.stderr)
+# the question: no answer means no change; yes goes ahead
+cf = _bwn_conf("ask", KIOSK_PASS="kp-old-1", BOX_MAC=MAC, BOX_ADMIN_PASS="NewPassw0rdXYZ")
+before = open(cf).read()
+r, ul, sent = _bwn(cf, code="echo n | own_box_wifi_name", ok=False)
+check("rc=0" in r.stdout and sent == 0 and ul == "" and open(cf).read() == before, "answering no changes nothing: " + r.stdout + r.stderr)
+r, ul, sent = _bwn(cf, code="echo y | own_box_wifi_name", ok=False)
+check("ROT=1 BN=PisoCoinBox-a1b2" in r.stdout and sent >= 1, "answering yes goes ahead: " + r.stdout + r.stderr)
+# the box says no: the router is exactly as before (an older router has no stored box name again)
+cf = _bwn_conf("refused", KIOSK_PASS="kp-old-1", BOX_MAC=MAC, BOX_ADMIN_PASS="NewPassw0rdXYZ")
+before = open(cf).read()
+Box.refuse_wifi = True
+r, ul, sent = _bwn(cf)
+check("rc=0" not in r.stdout and "set wireless.box_ap" not in ul and open(cf).read() == before,
+      "a box that refuses: BOX_SSID_NAME, BOX_WIFI_ROTATED, BOX_WIFI_PASS_NEW and the box network are as before: " + r.stdout + r.stderr + open(cf).read())
+Box.refuse_wifi = False
+# the command exists and runs as root only
+open(f"{bindir}/id", "w").write("#!/bin/sh\necho 0\n"); os.chmod(f"{bindir}/id", 0o755)
+open(f"{tmp}/conf", "w").write(f"KIOSK_PASS='kp-old-1'\nBOX_MAC='{MAC}'\nBOX_ADMIN_PASS='NewPassw0rdXYZ'\n")
+Box.wifi_ssid = None
+r = run("--yes", "box-wifi-name", env={"BOX_IP": addr, "ROTATE_SETTLE": "0"})
+check(Box.wifi_ssid == "PisoCoinBox-a1b2" and _cv(f"{tmp}/conf", "BOX_SSID_NAME") == "PisoCoinBox-a1b2",
+      "piso-setup --yes box-wifi-name runs the command: " + r.stdout + r.stderr)
+os.remove(f"{bindir}/id")
+check("box-wifi-name" in text.split("main() {")[1].split("case \"$CMD\" in")[0], "and it is in the list of commands")
 # ---- box-diag: where the router <-> box link breaks -----------------------------------------------------------------------------
 def box_diag(setup_code):
     return lib(setup_code + "; cmd_box_diag", env={"BOX_IP": "127.0.0.1:1"})   # nothing listens there: the box does not answer

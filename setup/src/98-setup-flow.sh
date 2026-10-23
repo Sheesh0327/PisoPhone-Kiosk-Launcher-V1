@@ -148,7 +148,7 @@ main() {
 		case "$1" in
 			--dry-run) DRY=1 ;;
 			--yes | -y) ASSUME_YES=1 ;;
-			status | pair | summary | wifi-name | guest-port | kiosk-wifi | verify | uninstall-info | test-coin | diag | box-diag | set-password | reconcile | telegram | rotate-box-wifi | handout | console | export | import | space | forget-summary | lock-admin | lock-admin-confirm | unlock-admin | wifi-admin | update | self-update | box-update | auto-update | voucher-choice) CMD="$1"; shift; ARG="$1"; ARGS="$*"; break ;;
+			status | pair | summary | wifi-name | guest-port | kiosk-wifi | verify | uninstall-info | test-coin | diag | box-diag | set-password | reconcile | telegram | rotate-box-wifi | box-wifi-name | handout | console | export | import | space | forget-summary | lock-admin | lock-admin-confirm | unlock-admin | wifi-admin | update | self-update | box-update | auto-update | voucher-choice) CMD="$1"; shift; ARG="$1"; ARGS="$*"; break ;;
 			-h | --help) sed -n '2,/^# Options:/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 			*) echo "unknown option: $1 (try --help)" >&2; exit 1 ;;
 		esac
@@ -191,6 +191,7 @@ main() {
 			push_kiosk_wifi
 			if kiosk_wifi_on_box; then log "checked: the box's \"Set up a phone\" link carries the password"
 			else log "the box's link does not show it yet (a box with firmware before 3.3.3 cannot: it updates itself, then run this again)"; fi ;;
+		box-wifi-name) DRY=0; [ "$(id -u)" = 0 ] || die "run as root"; own_box_wifi_name ;;
 		rotate-box-wifi) DRY=0; [ "$(id -u)" = 0 ] || die "run as root"; rotate_box_wifi force ;;
 		set-password) cmd_set_password ;;
 		summary) cat "$SUMMARY" ;;

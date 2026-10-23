@@ -68,7 +68,8 @@ router_id() {
 resolve_wifi_names() {
 	_kn=$(conf_get KIOSK_SSID_NAME); _bn=$(conf_get BOX_SSID_NAME)
 	if [ -n "$_kn" ] && [ -n "$_bn" ]; then KIOSK_SSID="$_kn"; BOX_SSID="$_bn"; return 0; fi
-	if [ -n "$(conf_get KIOSK_PASS)" ]; then KIOSK_SSID="$KIOSK_BASE"; BOX_SSID="$BOX_PAIR_SSID"; return 0; fi
+	# (a box name stored alone is the one piso-setup box-wifi-name gave an older router: only the box network is renamed, never the phones')
+	if [ -n "$(conf_get KIOSK_PASS)" ]; then KIOSK_SSID="$KIOSK_BASE"; BOX_SSID="${_bn:-$BOX_PAIR_SSID}"; return 0; fi
 	_id=$(router_id)
 	KIOSK_SSID="$KIOSK_BASE-$_id"; BOX_SSID="$BOX_PAIR_SSID-$_id"
 }

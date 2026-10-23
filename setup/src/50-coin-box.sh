@@ -182,13 +182,16 @@ rotate_box_wifi() {  # rotate_box_wifi [force]: "force" does it again even when 
 	step "Giving the coin box its own Wi-Fi password"
 	tip "the box's light will blink for up to a minute while it moves to the new password. That is normal: wait."
 	_had=$(conf_get BOX_WIFI_PASS_NEW)
-	_new=$(secret BOX_WIFI_PASS_NEW 20)
+	if [ "$1" = force ]; then   # asked for again: a new password, not the stored one
+		_new=$(rand 20); [ "${#_new}" -eq 20 ] || die "could not generate a random value for BOX_WIFI_PASS_NEW"
+		conf_set BOX_WIFI_PASS_NEW "$_new"
+	else _new=$(secret BOX_WIFI_PASS_NEW 20); fi
 	box_curl "$(conf_get BOX_ADMIN_PASS)" /save --data-urlencode "wifi_pass=$_new" --data-urlencode "wifi_ssid=$BOX_SSID"
 	case "$BOXCODE" in
 		200 | 302 | 303) ;;
 		*)
 			# the box said no: nothing on the router changes (a new password stored now would be named by box_wifi_key for a box that never got it)
-			if [ -z "$_had" ]; then conf_del BOX_WIFI_PASS_NEW; fi
+			if [ -n "$_had" ]; then conf_set BOX_WIFI_PASS_NEW "$_had"; else conf_del BOX_WIFI_PASS_NEW; fi
 			log "the box did not take its own Wi-Fi password (HTTP ${BOXCODE:-none}); nothing was changed on the router, the box keeps the Wi-Fi password and name it had. Run again: piso-setup rotate-box-wifi"
 			return 1 ;;
 	esac
@@ -201,3 +204,40 @@ rotate_box_wifi() {  # rotate_box_wifi [force]: "force" does it again even when 
 	log "the coin box rejoined with its own Wi-Fi password"
 }
 
+# own_box_wifi_name: piso-setup box-wifi-name. A router whose box network is still called PisoCoinBox (the name every new box
+# knows, so a second router being set up nearby can answer a new box in its place) gives it the router's own name
+# PisoCoinBox-<id>, and a new password, the way rotate_box_wifi does: the box is told first, then the router switches.
+# The phones' network, its name and password are not touched. The box is off its network for up to four minutes; its coins
+# wait in its own memory and are credited once afterwards.
+own_box_wifi_name() {
+	if [ "$(box_net_ssid)" != "$BOX_PAIR_SSID" ]; then
+		log "the coin box network already has its own name ($(box_net_ssid)). Nothing was changed."
+		return 0
+	fi
+	[ -n "$(conf_get BOX_MAC)" ] || die "no coin box is paired with this router yet, so there is no box network to rename. Nothing was changed. Run: piso-setup pair"
+	box_up || die "the coin box does not answer at $BOX_IP (is it powered and joined? check: piso-setup status). Nothing was changed."
+	# The box stores the name it is given without checking it, and a name it cannot use would leave it unable to join: check it here.
+	_name="$BOX_PAIR_SSID-$(router_id)"
+	case "$_name" in
+		"$BOX_PAIR_SSID"-?*) ;;
+		*) die "the new coin box network name \"$_name\" is not usable. Nothing was changed." ;;
+	esac
+	case "$_name" in
+		*[!A-Za-z0-9-]*) die "the new coin box network name \"$_name\" has characters the box cannot use. Nothing was changed." ;;
+	esac
+	[ "${#_name}" -le 32 ] || die "the new coin box network name \"$_name\" is longer than a Wi-Fi name may be. Nothing was changed."
+	log "The coin box network will be called $_name from now on, with a new password (now it is $BOX_PAIR_SSID, a name every new box knows)."
+	log "The coin box is off its network for up to four minutes while it switches. Coins put in meanwhile are kept in the box and credited once it is back; Wi-Fi customers cannot pay by coin until then."
+	if [ "$ASSUME_YES" != 1 ]; then
+		printf 'Go ahead? [y/N] '; read -r _a
+		case "$_a" in y | Y) ;; *) echo "Cancelled. Nothing was changed."; return 0 ;; esac
+	fi
+	_old_bn=$(conf_get BOX_SSID_NAME); _old_ssid="$BOX_SSID"
+	conf_set BOX_SSID_NAME "$_name"; BOX_SSID="$_name"
+	if ! rotate_box_wifi force; then
+		if [ -n "$_old_bn" ]; then conf_set BOX_SSID_NAME "$_old_bn"; else conf_del BOX_SSID_NAME; fi
+		BOX_SSID="$_old_ssid"
+		die "the coin box did not take its new network name. Nothing was changed on the router; the box keeps working as before. Run again: piso-setup box-wifi-name"
+	fi
+	log "the coin box network is now called $_name"
+}
