@@ -662,6 +662,28 @@ if sync_playwright:
         check(not problems, f"no script error on the page: {problems}")
         overflow = page.evaluate("document.documentElement.scrollWidth > window.innerWidth")
         check(not overflow, "no sideways scrolling on a phone screen")
+        # feature 010: PisoWiFi only hides the rental-phone password, the full system shows it
+        for mode_value, kiosk_visible in (("wifi", False), ("full", True)):
+            core2, session2, server2 = start(mode=None)
+            page2 = browser.new_page(viewport={"width": 390, "height": 800})
+            page2.goto(f"http://127.0.0.1:{server2.server_address[1]}")
+            page2.fill("#pin", "123456")
+            page2.click("#pinBtn")
+            page2.wait_for_selector("#login", state="hidden")
+            page2.wait_for_selector("#checks .kv")
+            check(page2.is_disabled("#btnNextStep") and not page2.is_checked("input[name=mode][value=wifi]") and not page2.is_checked("input[name=mode][value=full]") and not page2.is_checked("input[name=mode][value=phone]"), "nothing is chosen at the start")
+            page2.check(f"input[name=mode][value={mode_value}]")
+            until(lambda: not page2.is_disabled("#btnNextStep"), "Next opens")
+            page2.click("#btnNextStep")
+            page2.wait_for_selector("#s1", state="visible")
+            until(lambda: "192.168.1.1" in page2.inner_text("#routerBox"), "the router is found")
+            page2.click("#btnNextStep")
+            page2.wait_for_selector("#s2", state="visible")
+            page2.click("#pwOwn summary")
+            check(page2.is_visible("#KIOSK_PASSWORD") == kiosk_visible and page2.is_visible("#ROOT_PASSWORD"),
+                  f"{mode_value}: the rental-phone password field is {'shown' if kiosk_visible else 'hidden'} in the page")
+            page2.close()
+            server2.shutdown()
         browser.close()
     server.shutdown()
 
