@@ -976,6 +976,13 @@ own_box_wifi_name() {
 	fi
 	log "the coin box network is now called $_name"
 }
+
+# box_name_notice: one line, only when a coin box is paired and its network still has the shared setup name PisoCoinBox
+# (status and the summary print it; nothing here changes anything)
+box_name_notice() {
+	[ -n "$(conf_get BOX_MAC)" ] && [ "$(box_net_ssid)" = "$BOX_PAIR_SSID" ] || return 0
+	echo "Coin box network: $BOX_PAIR_SSID (the shared setup name: a second router being set up nearby can take this box's place). Fix: piso-setup box-wifi-name"
+}
 # ---------------------------------------------------------------------------------------------------------------------
 # Stage 2: pairing the box, services, checks
 # ---------------------------------------------------------------------------------------------------------------------
@@ -996,6 +1003,9 @@ EOT
 	cat >> "$SUMMARY" << EOT
 PisoWiFi (customers):  $(conf_get GUEST_NAME)   (open; rename with: piso-setup wifi-name "New Name")
 Coin box:              http://$BOX_IP      admin password: $(conf_get BOX_ADMIN_PASS)    hidden Wi-Fi: $BOX_SSID (only MAC $(conf_get BOX_MAC))
+EOT
+	box_name_notice >> "$SUMMARY"
+	cat >> "$SUMMARY" << EOT
 
 $(flash_report)
 
@@ -1189,6 +1199,7 @@ stage2() {
 cmd_status() {
 	[ -r "$STATE" ] && echo "setup: $(cat "$STATE")"
 	DRY=1; check_all; _f=$?
+	box_name_notice   # (information only: it does not count as a failed check)
 	[ "$_f" = 0 ] && echo "All checks passed." || echo "$_f check(s) failed. Log: $LOG"
 	return "$_f"
 }

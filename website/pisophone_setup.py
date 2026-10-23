@@ -2188,9 +2188,20 @@ def box_online(host=BOX_IP, probe=port_open):
 PRINT_HOST = "10.0.0.95"   # where the router looks for the print server unless SEND_HOST says otherwise
 
 
-def run_checkup(branch, probe=port_open, opener=urllib.request.urlopen):
+def read_box_network(ssh, host):
+    """The name of the router's hidden coin box network, read-only, over the login the session already holds (it never asks for
+    a password); None when the router cannot be asked."""
+    try:
+        r = ssh.run(host, "uci -q get wireless.box_ap.ssid", "-T", capture_output=True, text=True, timeout=60, stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return r.stdout.strip() or None if r.returncode == 0 else None
+
+
+def run_checkup(branch, probe=port_open, opener=urllib.request.urlopen, box_net=None):
     """The Check-up page: a read-only look at the router, the coin box, the update feed and the print server. Each item has
-    a state (ok, bad, or off for the optional print server), one line saying what was found and, when it is not ok, the one-line fix."""
+    a state (ok, bad, warn for a notice, or off for the optional print server), one line saying what was found and, when it is
+    not ok, the one-line fix. `box_net` (optional) tells the name of the router's coin box network."""
     items = []
 
     def add(name, state, text, fix=""):
@@ -2206,6 +2217,14 @@ def run_checkup(branch, probe=port_open, opener=urllib.request.urlopen):
         add("Coin box", "ok", f"Answers at {BOX_IP}.")
     else:
         add("Coin box", "bad", f"Does not answer at {BOX_IP}.", "Is it powered (its USB cable) and near the router? If it was never paired, run the installation again.")
+    if box_net is not None and probe(TARGET_IP, 22):
+        try:
+            name = box_net()
+        except (OSError, subprocess.SubprocessError):
+            name = None
+        if name == "PisoCoinBox":
+            add("Coin box network", "warn", "Called PisoCoinBox, the shared setup name: a second router being set up nearby can take this box's place.",
+                "Log in to the router and run: piso-setup box-wifi-name")
     try:
         request = urllib.request.Request(site_url(branch) + "/update/router.json", headers={"User-Agent": USER_AGENT})
         with opener(request, timeout=8) as r:
@@ -3970,7 +3989,7 @@ class Core:
         return box_online()
 
     def checkup(self):
-        return run_checkup(self.branch)
+        return run_checkup(self.branch, box_net=lambda: read_box_network(self.ssh, TARGET_IP))
 
     # -- PisoPhone only (no router) ---------------------------------------------------------------------------------------------
     def preflight_phone(self):
@@ -5374,7 +5393,7 @@ function paint5(){
 function paintCheckup(){
  const cu=S.checkup,cl=$('#cuList');clear(cl);$('#btnCheckup').disabled=cu.running;
  if(cu.running)cl.append(h('p',{class:'mut'},'Checking...'));
- cu.items.forEach(i=>cl.append(h('div',{class:'kv'},h('span',{style:'color:var(--'+(i.state==='ok'?'ok':i.state==='bad'?'bad':'warn')+')'},i.state==='ok'?'OK':i.state==='bad'?'Problem':'Not used'),h('span',{style:'color:var(--ink)'},i.name+' '),h('span',{class:'mut small'},i.text+(i.fix&&i.state!=='ok'?' '+i.fix:'')))));
+ cu.items.forEach(i=>cl.append(h('div',{class:'kv'},h('span',{style:'color:var(--'+(i.state==='ok'?'ok':i.state==='bad'?'bad':'warn')+')'},i.state==='ok'?'OK':i.state==='bad'?'Problem':i.state==='warn'?'Notice':'Not used'),h('span',{style:'color:var(--ink)'},i.name+' '),h('span',{class:'mut small'},i.text+(i.fix&&i.state!=='ok'?' '+i.fix:'')))));
 }
 $('#btnCheckup').onclick=()=>act('checkup');
 function paintTools(){

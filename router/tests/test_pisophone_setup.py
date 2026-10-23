@@ -806,12 +806,12 @@ class Feed:
     def read(self, n=-1): return self.body
 
 
-def checkup(up=(), feed=b'{"version": "1.5.4", "rollout": 100}'):
+def checkup(up=(), feed=b'{"version": "1.5.4", "rollout": 100}', box_net=None):
     def opener(request, timeout=0):
         if feed is None:
             raise urllib.error.URLError("offline")
         return Feed(feed)
-    return {i["name"]: i for i in ps.run_checkup("main", probe=lambda h, p=22, timeout=2.0: (h, p) in up, opener=opener)}
+    return {i["name"]: i for i in ps.run_checkup("main", probe=lambda h, p=22, timeout=2.0: (h, p) in up, opener=opener, box_net=box_net)}
 
 
 everything = checkup(up={("10.0.0.1", 22), ("10.0.0.10", 80), ("10.0.0.95", 80)})
@@ -822,6 +822,49 @@ check(all(none[n]["fix"] for n in ("Router", "Coin box", "Update feed", "Print s
 factory = checkup(up={("192.168.1.1", 22)})
 check(factory["Router"]["state"] == "bad" and "not been set up" in factory["Router"]["text"], "check-up: a router at the factory address is not set up yet")
 check(checkup(feed=b"not json")["Update feed"]["state"] == "bad" and checkup(feed=b"{}")["Update feed"]["state"] == "bad", "check-up: a broken update list is a problem, not a crash")
+
+# feature 011 part B: the Check-up names a coin box network that still has the shared setup name
+_router_up = {("10.0.0.1", 22), ("10.0.0.10", 80), ("10.0.0.95", 80)}
+shared = checkup(up=_router_up, box_net=lambda: "PisoCoinBox")
+net = shared.get("Coin box network")
+check(net and net["state"] == "warn" and "shared setup name" in net["text"] and "piso-setup box-wifi-name" in net["fix"],
+      "check-up: a box network still called PisoCoinBox is a notice with the command that fixes it: " + str(net))
+check("Coin box network" not in checkup(up=_router_up, box_net=lambda: "PisoCoinBox-a1b2"), "check-up: a box network with its own name has no such line")
+check("Coin box network" not in checkup(up=_router_up, box_net=lambda: None) and "Coin box network" not in checkup(up=_router_up), "check-up: no login (or no way to ask) means no such line")
+
+
+def _no_call():
+    raise AssertionError("the router was asked although it does not answer")
+
+
+check("Coin box network" not in checkup(up={("192.168.1.1", 22)}, box_net=_no_call) and "Coin box network" not in checkup(box_net=_no_call, feed=None),
+      "check-up: the router is not asked when it does not answer at 10.0.0.1")
+
+
+def _broken():
+    raise OSError("ssh failed")
+
+
+check("Coin box network" not in checkup(up=_router_up, box_net=_broken), "check-up: a failing question is no line, not a crash")
+
+
+class _Ssh:
+    def __init__(self, code=0, out="PisoCoinBox\n", exc=None):
+        self.code, self.out, self.exc, self.calls = code, out, exc, []
+
+    def run(self, host, remote, *extra, **kw):
+        self.calls.append((host, remote, extra))
+        if self.exc:
+            raise self.exc
+        return subprocess.CompletedProcess([], self.code, self.out, "")
+
+
+_s = _Ssh()
+check(ps.read_box_network(_s, "10.0.0.1") == "PisoCoinBox" and _s.calls[0][1] == "uci -q get wireless.box_ap.ssid" and "BatchMode=yes" not in _s.calls[0][2],
+      "check-up: the box network name is read with one read-only uci command over the session's login: " + str(_s.calls))
+check(ps.read_box_network(_Ssh(code=255, out=""), "10.0.0.1") is None and ps.read_box_network(_Ssh(exc=subprocess.TimeoutExpired("ssh", 60)), "10.0.0.1") is None,
+      "check-up: a failed login or a timeout gives no name")
+check("'Notice'" in open(ps.__file__).read(), "check-up page: a notice has its own label")
 
 url = "http://192.168.1.50:8765"
 check(ps.terminal_qr(url, tty=False) == "", "no QR code when the output is not a terminal")

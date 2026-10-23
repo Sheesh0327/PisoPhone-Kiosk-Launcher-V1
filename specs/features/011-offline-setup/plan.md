@@ -36,7 +36,7 @@ Each group names the spec criteria it proves.
 ### Part B: the coin box network's own name
 - [x] 2. **Failure before the switch changes nothing, tests first** (criterion 3). `rotate_box_wifi` restores `BOX_WIFI_ROTATED` (and leaves every other setting) when the box refuses; the after-switch message. This fixes `piso-setup rotate-box-wifi` too (fact B7). **Raise `setup/RELEASE` to 1.5.18 here** — once, for both parts. Regenerate; `--check` passes.
 - [x] 3. **The command, tests first** (criteria 2, 6). `own_box_wifi_name` and `piso-setup box-wifi-name`: the checks before it starts, the question or `--yes`, the new name from `router_id` **checked before it is sent** (fact B4: the box validates nothing), `BOX_SSID_NAME`, then `rotate_box_wifi`; no kiosk setting touched.
-- [ ] 4. **Telling the owner, tests first** (criterion 4). The status line in `piso-setup status` and the summary; the Check-up line in the setup program. Regenerate `website/pisophone_setup.py`.
+- [x] 4. **Telling the owner, tests first** (criterion 4). The status line in `piso-setup status` and the summary; the Check-up line in the setup program. Regenerate `website/pisophone_setup.py`.
 - [ ] 5. **Pairing tips, tests first** (criterion 5). The tip at 60 s and 150 s and in the "did not join" message; the pairing itself unchanged (it must keep using `PisoCoinBox`).
 
 ### Part A: the first setup without the router's internet

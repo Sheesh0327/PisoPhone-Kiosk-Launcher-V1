@@ -18,6 +18,9 @@ EOT
 	cat >> "$SUMMARY" << EOT
 PisoWiFi (customers):  $(conf_get GUEST_NAME)   (open; rename with: piso-setup wifi-name "New Name")
 Coin box:              http://$BOX_IP      admin password: $(conf_get BOX_ADMIN_PASS)    hidden Wi-Fi: $BOX_SSID (only MAC $(conf_get BOX_MAC))
+EOT
+	box_name_notice >> "$SUMMARY"
+	cat >> "$SUMMARY" << EOT
 
 $(flash_report)
 

@@ -241,3 +241,10 @@ own_box_wifi_name() {
 	fi
 	log "the coin box network is now called $_name"
 }
+
+# box_name_notice: one line, only when a coin box is paired and its network still has the shared setup name PisoCoinBox
+# (status and the summary print it; nothing here changes anything)
+box_name_notice() {
+	[ -n "$(conf_get BOX_MAC)" ] && [ "$(box_net_ssid)" = "$BOX_PAIR_SSID" ] || return 0
+	echo "Coin box network: $BOX_PAIR_SSID (the shared setup name: a second router being set up nearby can take this box's place). Fix: piso-setup box-wifi-name"
+}

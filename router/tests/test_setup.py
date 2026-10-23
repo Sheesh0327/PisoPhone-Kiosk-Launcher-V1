@@ -802,6 +802,22 @@ check(Box.wifi_ssid == "PisoCoinBox-a1b2" and _cv(f"{tmp}/conf", "BOX_SSID_NAME"
       "piso-setup --yes box-wifi-name runs the command: " + r.stdout + r.stderr)
 os.remove(f"{bindir}/id")
 check("box-wifi-name" in text.split("main() {")[1].split("case \"$CMD\" in")[0], "and it is in the list of commands")
+
+# ---- feature 011 part B: status and the summary tell the owner when the box network is still called PisoCoinBox ---------------
+NOTICE = "Coin box network: PisoCoinBox (the shared setup name: a second router being set up nearby can take this box's place). Fix: piso-setup box-wifi-name"
+for _label, _kv, _want in (
+    ("an older router (shared names)", dict(KIOSK_PASS="kp-old-1", BOX_MAC=MAC), True),
+    ("a newer router whose box password change failed (BOX_WIFI_ROTATED 0)", dict(KIOSK_SSID_NAME="PisoKiosk-a1b2", BOX_SSID_NAME="PisoCoinBox-a1b2", BOX_MAC=MAC, BOX_WIFI_ROTATED="0"), True),
+    ("a router whose box network has its own name", dict(KIOSK_SSID_NAME="PisoKiosk-a1b2", BOX_SSID_NAME="PisoCoinBox-a1b2", BOX_MAC=MAC, BOX_WIFI_ROTATED="1", BOX_WIFI_PASS_NEW="OwnPassw0rd1234567"), False),
+    ("a router with no paired box yet", dict(KIOSK_PASS="kp-old-1"), False),
+):
+    cf = _bwn_conf("notice", **_kv)
+    sm = f"{tmp}/summary_notice"
+    r = lib('check_all() { echo CHECKS; return 0; }; cmd_status; echo "rc=$?"; write_summary; cat "$SUMMARY"', env={"PISO_CONF": cf, "PISO_SUMMARY": sm, "BOX_IP": addr})
+    status_part, _, summary_part = r.stdout.partition("rc=0")
+    check((NOTICE in status_part) == _want, f"piso-setup status {'shows' if _want else 'does not show'} the box network line for {_label}: " + r.stdout[-400:] + r.stderr[-300:])
+    check((NOTICE in summary_part) == _want, f"and the summary {'shows' if _want else 'does not show'} it: " + summary_part[-400:])
+    check("rc=0" in r.stdout, "and the line does not make status fail")
 # ---- box-diag: where the router <-> box link breaks -----------------------------------------------------------------------------
 def box_diag(setup_code):
     return lib(setup_code + "; cmd_box_diag", env={"BOX_IP": "127.0.0.1:1"})   # nothing listens there: the box does not answer
