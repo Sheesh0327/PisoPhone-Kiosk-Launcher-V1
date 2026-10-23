@@ -28,10 +28,12 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.res.imageResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.pisophone.kiosk.R
+import com.pisophone.kiosk.ui.theme.BrandPalette
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
@@ -90,9 +92,12 @@ private val COIN_X = floatArrayOf(.18f, .40f, .62f, .80f, .30f, .70f, .52f, .08f
 
 private const val POP_MS = 260
 private const val INTRO_MS = 2_600
-private const val LOOP_MS = 60_000
-private const val SPARKLE_COUNT = 20
-private const val BUBBLE_COUNT = 12
+
+/** Where in the loop a picture that stands still is frozen. */
+private const val STILL_T = 0.07f
+
+/** Which stickers stay when fewer than ten are drawn: a spread over both edges, kept in their own order of drawing. */
+private val STICKER_ORDER = listOf(0, 5, 4, 9, 1, 2, 3, 6, 7, 8)
 private const val TAU = 6.2831855f
 
 /**
@@ -100,27 +105,32 @@ private const val TAU = 6.2831855f
  * turning, bubbles rising, ten stickers floating and wiggling, sparkles twinkling, coins falling and now and then a shooting
  * star. It is one canvas that takes no touches. Every movement repeats seamlessly (a whole number of cycles in [LOOP_MS]).
  * The movement runs only while [effects] allow ambient motion (a phone that is not hot, with animations on, and the owner's
- * video switch not off); otherwise the same picture stands still.
+ * video switch not off); otherwise the same picture stands still. [budget] is the shop's animation density under that ladder
+ * (feature 012): how many stickers, bubbles and sparkles, and what moves; the default is today's screen. [bandTopExtra] lowers the
+ * sticker band by the height of the shop-name row, so no sticker is drawn over it.
  */
 @Composable
 fun LockScreenArt(
     modifier: Modifier = Modifier,
-    tint: BackdropTint = BackdropTint.Dagat,
+    palette: BrandPalette = BrandPalette.technet,
     landscape: Boolean = false,
     effects: EffectsLevel = EffectsLevel.Full,
+    budget: AmbientBudget = AmbientBudget.of(AnimationDensity.Normal, effects),
+    bandTopExtra: Dp = 0.dp,
 ) {
     val stickerImages = STICKERS.map { ImageBitmap.imageResource(it.res) }
-    val animate = effects.ambient
+    val animate = budget.anythingMoves
+    val shown = STICKER_ORDER.take(budget.stickers).toSet()
     // a State read only while drawing: a frame redraws the canvas and recomposes nothing
     val time: State<Float> = if (animate) {
         rememberInfiniteTransition(label = "lockArt").animateFloat(
             initialValue = 0f,
             targetValue = 1f,
-            animationSpec = infiniteRepeatable(tween(LOOP_MS, easing = LinearEasing), RepeatMode.Restart),
+            animationSpec = infiniteRepeatable(tween(budget.loopMs, easing = LinearEasing), RepeatMode.Restart),
             label = "lockArtTime",
         )
     } else {
-        remember { mutableStateOf(0.07f) }
+        remember { mutableStateOf(STILL_T) }
     }
     val intro = remember { Animatable(if (effects.events) 0f else 1f) }
     LaunchedEffect(Unit) {
@@ -129,37 +139,36 @@ fun LockScreenArt(
 
     Canvas(modifier = modifier.fillMaxSize()) {
         val t = time.value
-        drawRect(Brush.verticalGradient(listOf(tint.top, tint.bottom)))
-        drawClouds(tint, t)
-        drawRays(landscape, t)
-        if (animate) drawBubbles(t)
+        drawRect(Brush.verticalGradient(listOf(palette.top, palette.bottom)))
+        drawClouds(palette, if (budget.cloudsDrift) t else STILL_T)
+        drawRays(landscape, if (budget.raysTurn) t else STILL_T)
+        if (budget.bubbles > 0) drawBubbles(t, budget.bubbles)
         // a light dim layer keeps the text readable; the stickers and sparkles are above it
         drawRect(
             Brush.verticalGradient(
-                0f to tint.top.copy(alpha = 0.12f),
-                0.5f to tint.top.copy(alpha = 0.22f),
-                1f to tint.top.copy(alpha = 0.5f),
+                0f to palette.top.copy(alpha = 0.12f),
+                0.5f to palette.top.copy(alpha = 0.22f),
+                1f to palette.top.copy(alpha = 0.5f),
             ),
         )
-        if (animate) drawCoins(t)
+        if (budget.fallingCoins) drawCoins(t)
         val seconds = intro.value * INTRO_MS
-        val bandTop = (if (landscape) BAND_TOP_LANDSCAPE else BAND_TOP_PORTRAIT).toPx()
+        val bandTop = (if (landscape) BAND_TOP_LANDSCAPE else BAND_TOP_PORTRAIT).toPx() + bandTopExtra.toPx()
         val bandBottom = size.height - (if (landscape) BAND_BOTTOM_LANDSCAPE else BAND_BOTTOM_PORTRAIT).toPx()
         STICKERS.forEachIndexed { i, s ->
             if (landscape && !s.inLandscape) return@forEachIndexed
+            if (i !in shown) return@forEachIndexed
             val appear = ((seconds - i * POP_MS) / POP_MS).coerceIn(0f, 1f)
-            if (appear > 0f) drawSticker(stickerImages[i], s, i, t, appear, animate, bandTop..maxOf(bandTop, bandBottom))
+            if (appear > 0f) drawSticker(stickerImages[i], s, i, t, appear, budget.stickersMove, bandTop..maxOf(bandTop, bandBottom))
         }
-        if (animate) {
-            drawSparkles(t)
-            drawShootingStar(t)
-        }
+        if (budget.sparkles > 0) drawSparkles(t, budget.sparkles)
+        if (budget.shootingStar) drawShootingStar(t)
     }
 }
 
 /** Three big soft colour clouds drifting around the screen. */
-private fun DrawScope.drawClouds(tint: BackdropTint, t: Float) {
-    val colors = listOf(tint.cloudA, tint.cloudB, tint.cloudC)
+private fun DrawScope.drawClouds(palette: BrandPalette, t: Float) {
+    val colors = listOf(palette.cloudA, palette.cloudB, palette.cloudC)
     val radius = size.width * 0.95f
     colors.forEachIndexed { i, c ->
         val a = TAU * (t * 2f + i / 3f)
@@ -192,8 +201,8 @@ private fun DrawScope.drawRays(landscape: Boolean, t: Float) {
 }
 
 /** Soap bubbles rising from the bottom, swaying a little. */
-private fun DrawScope.drawBubbles(t: Float) {
-    for (i in 0 until BUBBLE_COUNT) {
+private fun DrawScope.drawBubbles(t: Float, count: Int) {
+    for (i in 0 until count) {
         val rise = (t * (3 + i % 3) + i * 0.083f) % 1f
         val r = (6 + i % 5 * 3).dp.toPx()
         val x = size.width * ((i * 0.6180339f + 0.13f) % 1f) + 14.dp.toPx() * sin(TAU * (t * (6 + i % 4 * 3) + i * 0.2f))
@@ -246,9 +255,9 @@ private fun DrawScope.drawSticker(
 }
 
 /** Four-point stars that twinkle. */
-private fun DrawScope.drawSparkles(t: Float) {
+private fun DrawScope.drawSparkles(t: Float, count: Int) {
     val palette = listOf(Color.White, Color(0xFFFFD66B), Color(0xFF6FE3C8), Color(0xFF8FB8FF))
-    for (i in 0 until SPARKLE_COUNT) {
+    for (i in 0 until count) {
         val twinkle = (sin(TAU * (t * (8 + i % 5 * 4) + i * 0.137f)) + 1f) / 2f
         val r = (4 + i % 4 * 2).dp.toPx() * (0.4f + 0.9f * twinkle)
         val c = Offset(size.width * ((i * 0.6180339f + 0.07f) % 1f), size.height * ((i * 0.4142136f + 0.11f) % 1f))

@@ -41,12 +41,14 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pisophone.kiosk.R
 import com.pisophone.kiosk.model.BatteryStatus
 import com.pisophone.kiosk.security.KioskSecurity
 import com.pisophone.kiosk.ui.theme.TechNet
+import com.pisophone.kiosk.util.ShopBranding
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -112,13 +114,28 @@ fun rememberAssignedSlot(deviceIp: String, slotNumber: Int): Int {
 
 /** The logo line of the panel: the brand name, and which phone this is. */
 @Composable
-fun LockUpHeader(slot: Int, modifier: Modifier = Modifier) {
+fun LockUpHeader(
+    slot: Int,
+    modifier: Modifier = Modifier,
+    title: String = ShopBranding.DEFAULT_TITLE,
+    titleColor: Color = TechNet.teal,
+) {
     Row(modifier = modifier.fillMaxWidth().height(40.dp), verticalAlignment = Alignment.CenterVertically) {
         Image(painter = painterResource(R.drawable.technet_sticker_pisophone), contentDescription = null, modifier = Modifier.size(28.dp))
         Spacer(Modifier.width(8.dp))
         Text("TechNet", color = TechNet.text, fontSize = 18.sp, lineHeight = 24.sp, fontWeight = FontWeight.ExtraBold)
         Spacer(Modifier.width(5.dp))
-        Text("PisoPhone", color = TechNet.teal, fontSize = 18.sp, lineHeight = 24.sp, fontWeight = FontWeight.ExtraBold)
+        // the shop's header title (feature 012, at most 20 characters); a long one on a narrow phone is cut with dots, never pushes the chip off
+        Text(
+            title,
+            color = titleColor,
+            fontSize = 18.sp,
+            lineHeight = 24.sp,
+            fontWeight = FontWeight.ExtraBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false),
+        )
         Spacer(Modifier.weight(1f))
         Text(
             text = stringResource(R.string.lock_phone_chip, slot),

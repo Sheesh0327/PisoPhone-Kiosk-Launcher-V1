@@ -23,6 +23,7 @@ import com.pisophone.kiosk.overlay.ui.BlockScreen
 import com.pisophone.kiosk.service.LockIdle
 import com.pisophone.kiosk.service.SessionRules
 import com.pisophone.kiosk.service.SessionState
+import com.pisophone.kiosk.util.ShopBranding
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
 
@@ -235,6 +236,7 @@ class LockScreenOverlay(
             val armFailure by armFailureFlow.collectAsState()
             val isArmingInProgress by isArmingInProgressFlow.collectAsState()
             val themeIndex by themeIndexFlow.collectAsState()
+            val branding by ShopBranding.observe(context).collectAsState()
             val pricePerCoin by pricePerCoinFlow.collectAsState()
             val minutesPerCoin by minutesPerCoinFlow.collectAsState()
             val deviceIp by deviceIpFlow.collectAsState()
@@ -297,6 +299,7 @@ class LockScreenOverlay(
                             deviceIp = deviceIp,
                             slotNumber = slotNumber,
                             themeIndex = themeIndex,
+                            branding = branding,
                             batteryStatus = batteryStatus,
                             onThemeChange = onThemeChange,
                             isSlotExpired = isSlotExpired,
@@ -320,6 +323,7 @@ class LockScreenOverlay(
                             deviceIp = deviceIp,
                             slotNumber = slotNumber,
                             themeIndex = themeIndex,
+                            branding = branding,
                             batteryStatus = batteryStatus,
                             onThemeChange = onThemeChange,
                             isSlotExpired = isSlotExpired,

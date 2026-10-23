@@ -56,18 +56,18 @@ group. Groups 1 to 6 are app-only and need no board; groups 7 and 8 are firmware
       (test: `MakerCreditUnitTest` — the line is produced for every palette, every density including `off`, an empty name, an
       empty title and nothing set; the sheen runs only when the ladder allows while the words stay; plus a check that the
       composable exposes no "hide"/"enabled" parameter; red result logged: yes.)
-- [ ] 5. **Lock screen wiring.** `BlockScreen.kt` takes the branding; `LockScreenArt` takes the palette's colours instead of
+- [x] 5. **Lock screen wiring.** `BlockScreen.kt` takes the branding; `LockScreenArt` takes the palette's colours instead of
       `BackdropTint` (old stored theme numbers keep cycling the three built-in tints when the shop has no palette set) and the
       ambient budget from group 3b instead of its own constants (`STICKERS`, `BUBBLE_COUNT`, `SPARKLE_COUNT`, the ray and cloud
       motion); the header shows the title and, under it, the marquee inside the header band, above `BAND_TOP_*` so no sticker is
       drawn over it. The art itself, the mascot and the coin feedback are unchanged. (test: `LockScreenScreenshotTest` — the
-      existing default golden stays byte-identical at `normal`, one new golden for a branded phone, one at `off` and one at
+      existing default golden differs from today only by the credit line (re-recorded once, owner looks at the diff), one new golden for a branded phone, one at `off` and one at
       `high`; red result logged: yes.) The credit from group 4b goes under the footer, displacing none of the palette button,
       the coin-box status or the owner reach — the goldens are what prove nothing moved on top of them.
 - [ ] 6. **Home screen wiring.** `LauncherScreen.kt`: `currentTheme` reads the palette (bg and accent only; gold, red and teal
       stay), the marquee under the clock and date row, the credit from group 4b at the bottom of the screen. The logo video,
       its poster and `VideoBackgroundPolicy` untouched.
-      (test: a launcher Roborazzi golden, default unchanged plus one branded, and one at density `off` showing the credit
+      (test: a launcher Roborazzi golden, default differing from today only by the credit line, plus one branded, and one at density `off` showing the credit
       present; red result logged: yes.)
 - [ ] 7. **The box stores the settings.** NVS keys `brand_pal`, `shop_name`, `brand_title`, `anim_dens` beside the existing
       `ph_profiles`/`slot_prof` pattern (`src/PhoneProfileStore.cpp`), loaded on boot, with the same caps and sanitising as

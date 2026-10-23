@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.SharedPreferences
 import com.pisophone.kiosk.security.KioskSecurity
 import com.pisophone.kiosk.ui.theme.BrandPalette
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 
 /**
  * What the shop's coin box told this phone about how it should look (feature 012): a palette id, the shop name, the header
@@ -34,11 +36,21 @@ object ShopBranding {
     private const val KEY_DENSITY = "density"
     private const val KEY_RECEIVED = "received_at"
 
+    /** The header title of a phone nobody renamed. */
+    const val DEFAULT_TITLE = "PisoPhone"
+
     const val MAX_NAME = 32
     const val MAX_TITLE = 20
 
     /** The animation density words, as the box's admin page offers them. `normal` is today's screen. */
     val DENSITY_WORDS: List<String> = listOf("off", "low", "normal", "high")
+
+    private var live: MutableStateFlow<Branding>? = null
+
+    /** The branding as it is now and whenever the box pushes new values, so a lock screen already up follows the box. */
+    @Synchronized
+    fun observe(context: Context): StateFlow<Branding> =
+        live ?: MutableStateFlow(read(context)).also { live = it }
 
     private fun prefs(context: Context): SharedPreferences = KioskSecurity.getDirectBootPrefs(context.applicationContext, PREFS)
 
@@ -115,7 +127,13 @@ object ShopBranding {
             }
         }
         edit.putLong(KEY_RECEIVED, nowMs).apply()
+        publish(context)
         return true
+    }
+
+    @Synchronized
+    private fun publish(context: Context) {
+        live?.value = read(context)
     }
 
     private fun putText(edit: SharedPreferences.Editor, key: String, value: String?) {
