@@ -49,7 +49,9 @@ import csv
 import datetime
 import getpass
 import glob
+import gzip
 import hashlib
+import http.client
 import http.server
 import importlib
 import io
@@ -71,6 +73,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import webbrowser
+import zlib
 
 APP_NAME = "TechNet PisoHub Setup"
 USER_AGENT = "TechNetPisoHubSetup/1.0 (+https://pisophone.pages.dev)"   # a name a website can recognise (Python's own is often refused)
@@ -2072,6 +2075,147 @@ def resolve_packages(info, indexes, wanted=None):
              "size": r["size"], "sha256": r["sha256"]} for r in order]
 
 
+def installer_file_for(arch):
+    """The setup file for the router's CPU family: the same choice as setup/install.sh makes (the file carries the portal program)."""
+    if not arch or arch.startswith("mipsel_"):
+        return "piso-setup.sh"
+    if arch.startswith("mips_"):
+        return "piso-setup-mips.sh"
+    if arch.startswith("aarch64_"):
+        return "piso-setup-aarch64.sh"
+    if arch in ("arm_cortex-a7_neon-vfpv4", "arm_cortex-a15_neon-vfpv4", "arm_cortex-a9_neon", "arm_cortex-a9_vfpv3-d16"):
+        return "piso-setup-armv7.sh"
+    if arch == "x86_64":
+        return "piso-setup-x86_64.sh"
+    raise OfflineNotPossible(f"this router's CPU ({arch}) has no PisoPhone portal program built yet")
+
+
+def download_bytes(url, name, opener=urllib.request.urlopen, timeout=120):
+    """A file from the web (http or https), or OfflineNotPossible naming it."""
+    try:
+        with opener(urllib.request.Request(url, headers={"User-Agent": USER_AGENT}), timeout=timeout) as r:
+            return r.read()
+    except (OSError, ValueError, http.client.HTTPException) as e:
+        raise OfflineNotPossible(f"{name} could not be downloaded ({e})")
+
+
+def build_offline_bundle(info, branch, out_dir, opener=urllib.request.urlopen, site=None, emit=None):
+    """Prepares, on this computer, everything the router needs for a first setup without its internet, in `out_dir`:
+    install.sh, the setup file for the router's CPU with its .sha256, and pkgs/ with the packages the router is missing (downloaded
+    from the router's own package sources and checked against their lists here too), each used source's Packages and Packages.sig,
+    and order.txt. The router checks signatures itself; this computer cannot (usign). Nothing on the router changes.
+    Returns the bundle: its files with sizes and sha256, the total size, a sha256 list and the package names."""
+    emit = emit or (lambda line: None)
+    site = site or site_url(branch)
+    get = lambda url, name: download_bytes(url, name, opener)
+    raw, skipped = {}, []
+    for name, url in info["feeds"]:
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+", name):
+            raise OfflineNotPossible(f"the router's package source name \"{name}\" is not one this setup can use")
+        url = url.rstrip("/")
+        try:
+            raw[name] = get(f"{url}/Packages", f"{name}/Packages")
+        except OfflineNotPossible:
+            try:
+                raw[name] = gzip.decompress(get(f"{url}/Packages.gz", f"{name}/Packages.gz"))
+            except (OfflineNotPossible, OSError, EOFError, zlib.error):
+                skipped.append(name)   # (fine unless a package that is needed is only there)
+    try:
+        wanted = resolve_packages(info, {n: d.decode("utf-8", "replace") for n, d in raw.items()})
+    except OfflineNotPossible as e:
+        if skipped:
+            raise OfflineNotPossible(f"{e.reason} (package sources this computer could not read: {', '.join(skipped)})")
+        raise
+    urls = {n: u.rstrip("/") for n, u in info["feeds"]}
+    os.makedirs(os.path.join(out_dir, "pkgs"), exist_ok=True)
+
+    def put(rel, data):
+        path = os.path.join(out_dir, *rel.split("/"))
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb") as f:
+            f.write(data)
+
+    names = []
+    for rec in wanted:
+        base = os.path.basename(rec["filename"])
+        if not re.fullmatch(r"[A-Za-z0-9._+-]+\.ipk", base):
+            raise OfflineNotPossible(f"{rec['filename']} is not a package file name this setup can use")
+        emit(f"Downloading {base}")
+        data = get(f"{rec['url'].rstrip('/')}/{rec['filename']}", base)
+        if len(data) != rec["size"]:
+            raise OfflineNotPossible(f"{base} has the wrong size ({len(data)} bytes instead of {rec['size']})")
+        if hashlib.sha256(data).hexdigest() != rec["sha256"]:
+            raise OfflineNotPossible(f"{base} does not match the sha256 in the package list")
+        put(f"pkgs/{base}", data)
+        names.append(base)
+    for source in dict.fromkeys(rec["source"] for rec in wanted):
+        put(f"pkgs/{source}/Packages", raw[source])
+        put(f"pkgs/{source}/Packages.sig", get(f"{urls[source]}/Packages.sig", f"{source}/Packages.sig"))
+    put("pkgs/order.txt", "".join(n + "\n" for n in names).encode())
+    setup_file = installer_file_for(info["arch"])
+    emit(f"Downloading {setup_file}")
+    data = get(f"{site}/setup/{setup_file}", setup_file)
+    want = get(f"{site}/setup/{setup_file}.sha256", f"{setup_file}.sha256")
+    if hashlib.sha256(data).hexdigest() != want.decode("utf-8", "replace").strip()[:64]:
+        raise OfflineNotPossible(f"{setup_file} does not match its sha256 (a damaged download: try again)")
+    put(setup_file, data)
+    put(f"{setup_file}.sha256", want)
+    put("install.sh", get(f"{site}/install.sh", "install.sh"))
+    files = []
+    for root, _dirs, found in os.walk(out_dir):
+        for f in found:
+            path = os.path.join(root, f)
+            rel = os.path.relpath(path, out_dir).replace(os.sep, "/")
+            with open(path, "rb") as fh:
+                body = fh.read()
+            files.append({"path": rel, "size": len(body), "sha256": hashlib.sha256(body).hexdigest()})
+    files.sort(key=lambda f: f["path"])
+    return {"dir": out_dir, "files": files, "total": sum(f["size"] for f in files), "names": [r["name"] for r in wanted], "order": names,
+            "sums": "".join(f"{f['sha256']}  {f['path']}\n" for f in files), "setup_file": setup_file}
+
+
+def push_offline_bundle(ssh, host, bundle, mem_kb, emit=None, offline_dir=OFFLINE_DIR):
+    """Copies the bundle into the router's memory, one ssh command per file, and has the router check every sha256. Returns
+    "already there" (the same bundle is in place: the second run after the address move) or "copied". Raises OfflineNotPossible
+    when the router has too little free memory (24000 KB must stay free) or a file did not arrive intact."""
+    emit = emit or (lambda line: None)
+    need = 24000 + -(-bundle["total"] // 1024)
+    if mem_kb < need:
+        raise OfflineNotPossible(f"the router has {mem_kb} KB of free memory and copying the bundle needs {need} KB (24000 KB must stay free)")
+    q = shlex.quote(offline_dir)
+    sums = hashlib.sha256(bundle["sums"].encode()).hexdigest()
+
+    def run(command, data=None):
+        lines = []
+        result = run_remote(ssh, host, command, lines.append, data=data)
+        return result["exit"], lines
+
+    code, lines = run(f"cd {q} 2>/dev/null && [ \"$(sha256sum < SHA256SUMS | cut -c1-64)\" = {sums} ] && sha256sum -c SHA256SUMS >/dev/null 2>&1 && echo @@SAME")
+    if any(line.strip() == "@@SAME" for line in lines):
+        emit("The files are on the router already.")
+        return "already there"
+    code, lines = run(f"rm -rf {q}")
+    if code != 0:
+        raise OfflineNotPossible("the router did not let this computer clear its old copy in memory")
+    for f in bundle["files"] + [{"path": "SHA256SUMS", "data": bundle["sums"].encode()}]:
+        if "data" in f:
+            data = f["data"]
+        else:
+            with open(os.path.join(bundle["dir"], *f["path"].split("/")), "rb") as fh:
+                data = fh.read()
+        rel = f["path"]
+        full = f"{offline_dir}/{rel}"
+        emit(f"Copying {rel} to the router")
+        code, lines = run(f"mkdir -p {shlex.quote(os.path.dirname(full))} && cat > {shlex.quote(full)}.part && mv {shlex.quote(full)}.part {shlex.quote(full)}", data)
+        if code != 0:
+            raise OfflineNotPossible(f"{rel} could not be copied to the router's memory")
+    code, lines = run(f"cd {q} && sha256sum -c SHA256SUMS")
+    if code != 0:
+        bad = [line.split(":")[0] for line in lines if line.rstrip().endswith("FAILED")]
+        raise OfflineNotPossible(f"{bad[0] if bad else 'a file'} did not arrive intact on the router")
+    return "copied"
+
+
 def tip_text(line):
     """The advice in a "TIP:" line of the router's output, or None."""
     m = re.match(r"\s*TIP: (.+)$", line or "")
@@ -2114,7 +2258,7 @@ def run_remote(ssh, host, remote, emit, data=None):
                      stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     if data is not None:
         try:
-            proc.stdin.write(data.encode())
+            proc.stdin.write(data if isinstance(data, bytes) else data.encode())
             proc.stdin.close()
         except OSError:
             pass   # ssh failed before reading: its message and exit status say why

@@ -4,12 +4,16 @@ knows (read_router_feeds), choosing the packages it is missing (resolve_packages
 package sources (build_offline_bundle) and copying it to the router's memory (push_offline_bundle). No router and no internet:
 fixture package indexes, a local HTTP server standing in for the sources, a fake ssh.
 Run with:  python3 router/tests/test_offline_setup.py"""
+import gzip
 import hashlib
+import http.server
 import importlib.util
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 spec = importlib.util.spec_from_file_location("pisophone_setup", f"{ROOT}/setup/pisophone_setup.py")
@@ -217,6 +221,183 @@ ok, text = not_possible(lambda: only(dict(INSTALLED_A, curl="x"), BASE_A.replace
 check(ok, "alternatives of which none exists anywhere: the reason names the first: " + text)
 ok, text = not_possible(lambda: only({}, BASE_A, PACKAGES_A, wanted=["no-such-package"]), "no-such-package")
 check(ok, "an unknown wanted package: " + text)
+
+
+# ---- criterion 9: building the bundle from the router's own package sources ----------------------------------------------------
+SERVED, HITS = {}, []
+
+
+class Site(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def do_GET(self):
+        HITS.append(self.path)
+        data = SERVED.get(self.path)
+        if data is None:
+            self.send_response(404)
+            self.end_headers()
+            return
+        self.send_response(200)
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+
+srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Site)
+threading.Thread(target=srv.serve_forever, daemon=True).start()
+HOST = f"http://127.0.0.1:{srv.server_address[1]}"
+INSTALLER = b"#!/bin/sh\nPISO_RELEASE='9.9.9'\nexit 0\n# ---- payload: the portal files (extracted by extract_payload) ----\n"
+INSTALL_SH = b"#!/bin/sh\n# the one-line installer\n"
+
+
+def serve_site(feeds_text, gz_only=(), sig=True, arch_file="piso-setup.sh"):
+    """Fills SERVED: the sources' Packages (+ .sig), their .ipk files, the installer and install.sh. Returns the router's feed list."""
+    SERVED.clear()
+    del HITS[:]
+    feeds = []
+    for name, text in feeds_text.items():
+        feeds.append((name, f"{HOST}/feeds/{name}"))
+        raw = text.encode()
+        if name in gz_only:
+            SERVED[f"/feeds/{name}/Packages.gz"] = gzip.compress(raw)
+        else:
+            SERVED[f"/feeds/{name}/Packages"] = raw
+        if sig:
+            SERVED[f"/feeds/{name}/Packages.sig"] = b"signed:" + sha(raw).encode()
+        for rec in ps.parse_packages_index(text):
+            SERVED[f"/feeds/{name}/{rec['filename']}"] = f"{rec['name']} {rec['version']} ipk".encode()
+    SERVED[f"/setup/{arch_file}"] = INSTALLER
+    SERVED[f"/setup/{arch_file}.sha256"] = (sha(INSTALLER) + f"  {arch_file}\n").encode()
+    SERVED["/install.sh"] = INSTALL_SH
+    return feeds
+
+
+SOURCES_A = {"openwrt_core": "", "openwrt_base": BASE_A, "openwrt_packages": PACKAGES_A}
+feeds = serve_site(SOURCES_A, gz_only=("openwrt_packages",))
+inf = info(INSTALLED_A, feeds)
+out = os.path.join(tmp, "bundle1")
+b = ps.build_offline_bundle(inf, "main", out, site=HOST)
+want = ["libmicrohttpd-no-ssl", "opennds", "libcurl4", "curl", "jsonfilter"]
+order_txt = open(f"{out}/pkgs/order.txt").read().split()
+check([n.split("_")[0] for n in order_txt] == want, "the bundle's order.txt lists the .ipk files, dependencies first: " + str(order_txt))
+for n in order_txt:
+    check(os.path.isfile(f"{out}/pkgs/{n}"), f"and {n} was downloaded into pkgs/")
+check(open(f"{out}/pkgs/openwrt_base/Packages", "rb").read() == BASE_A.encode() and open(f"{out}/pkgs/openwrt_base/Packages.sig", "rb").read() == SERVED["/feeds/openwrt_base/Packages.sig"],
+      "each used source's Packages and Packages.sig are saved")
+check(open(f"{out}/pkgs/openwrt_packages/Packages", "rb").read() == PACKAGES_A.encode(), "a source that serves only Packages.gz is saved unpacked, byte for byte")
+check(not os.path.exists(f"{out}/pkgs/openwrt_core") and "/feeds/openwrt_core/Packages.sig" not in HITS, "a source nothing is taken from is not in the bundle and its signature is not fetched")
+check(open(f"{out}/piso-setup.sh", "rb").read() == INSTALLER and open(f"{out}/piso-setup.sh.sha256").read().startswith(sha(INSTALLER)) and open(f"{out}/install.sh", "rb").read() == INSTALL_SH,
+      "the setup file for the router's CPU, its .sha256 and install.sh are in the bundle")
+check(b["total"] == sum(os.path.getsize(os.path.join(out, f["path"])) for f in b["files"]) and {f["path"] for f in b["files"]} >= {"install.sh", "piso-setup.sh", "pkgs/order.txt"},
+      "the bundle says what it holds and how big it is: " + str([f["path"] for f in b["files"]][:5]))
+check("SHA256SUMS" not in [f["path"] for f in b["files"]] and b["sums"].count("\n") == len(b["files"]) and f"{sha(INSTALL_SH)}  install.sh" in b["sums"], "and carries a sha256 list of its files (pushed last)")
+check(b["names"] == want, "and the package names: " + str(b["names"]))
+
+# which setup file: the same choice as install.sh
+for arch, f in (("mipsel_24kc", "piso-setup.sh"), ("mipsel_74kc", "piso-setup.sh"), ("mips_24kc", "piso-setup-mips.sh"), ("aarch64_cortex-a53", "piso-setup-aarch64.sh"),
+                ("arm_cortex-a7_neon-vfpv4", "piso-setup-armv7.sh"), ("arm_cortex-a9_vfpv3-d16", "piso-setup-armv7.sh"), ("x86_64", "piso-setup-x86_64.sh"), ("", "piso-setup.sh")):
+    check(ps.installer_file_for(arch) == f, f"the setup file for {arch or 'an unknown CPU'} is {f}")
+ok, text = not_possible(lambda: ps.installer_file_for("riscv64_generic"), "riscv64_generic")
+check(ok, "a CPU with no portal program: " + text)
+
+def expect_refusal(label, mutate, words, sources=SOURCES_A, serve=None):
+    feeds = serve_site(sources, **(serve or {}))
+    mutate()
+    out2 = os.path.join(tmp, "bundle_bad")
+    shutil.rmtree(out2, ignore_errors=True)
+    ok, text = not_possible(lambda: ps.build_offline_bundle(info(INSTALLED_A, feeds), "main", out2, site=HOST), *words)
+    check(ok, f"{label}: {text}")
+
+
+curl = "/feeds/openwrt_base/curl_8.4.0-2_mipsel_24kc.ipk"
+expect_refusal("a package whose bytes differ from the list", lambda: SERVED.__setitem__(curl, b"evil bytes of other length"), ("curl_8.4.0-2_mipsel_24kc.ipk", "size"))
+expect_refusal("a package with the right size but another sha256", lambda: SERVED.__setitem__(curl, b"x" * len(b"curl 8.4.0-2 ipk")), ("curl_8.4.0-2_mipsel_24kc.ipk", "sha256"))
+expect_refusal("a package that cannot be downloaded", lambda: SERVED.pop(curl), ("curl_8.4.0-2_mipsel_24kc.ipk",))
+expect_refusal("a used source without a signature", lambda: SERVED.pop("/feeds/openwrt_base/Packages.sig"), ("openwrt_base", "Packages.sig"))
+expect_refusal("an installer that does not match its checksum", lambda: SERVED.__setitem__("/setup/piso-setup.sh", INSTALLER + b"x"), ("piso-setup.sh", "sha256"))
+expect_refusal("no installer", lambda: SERVED.pop("/setup/piso-setup.sh"), ("piso-setup.sh",))
+expect_refusal("no install.sh", lambda: SERVED.pop("/install.sh"), ("install.sh",))
+expect_refusal("a source that is down while a package is only there", lambda: [SERVED.pop(k) for k in list(SERVED) if k.startswith("/feeds/openwrt_packages/Packages")], ("not in any", "openwrt_packages"))
+# a source that is down but not needed does not matter
+feeds = serve_site(SOURCES_A)
+SERVED.pop("/feeds/openwrt_core/Packages")
+out3 = os.path.join(tmp, "bundle3")
+b3 = ps.build_offline_bundle(info(INSTALLED_A, feeds), "main", out3, site=HOST)
+check(b3["names"] == want, "a source that cannot be read, from which nothing is needed, is skipped: " + str(b3["names"]))
+# nothing missing: no packages, but the installer files are there
+feeds = serve_site(SOURCES_A)
+inst_all = dict(INSTALLED_A, **{"libmicrohttpd-no-ssl": "1", "opennds": "1", "curl": "1", "libcurl4": "1", "jsonfilter": "1"})
+b4 = ps.build_offline_bundle(info(inst_all, feeds), "main", os.path.join(tmp, "bundle4"), site=HOST)
+check(b4["names"] == [] and open(f"{tmp}/bundle4/pkgs/order.txt").read() == "" and os.path.isfile(f"{tmp}/bundle4/piso-setup.sh"), "nothing missing: an empty order.txt and the setup files")
+
+# ---- criterion 10: copying the bundle to the router's memory ------------------------------------------------------------------
+class LocalProc:
+    """What ssh.popen gives: a process whose standard input takes the bytes and whose output is read line by line."""
+
+    def __init__(self, argv, corrupt):
+        self.p = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        self.stdin, self.stdout, self.corrupt = self.p.stdin, self.p.stdout, corrupt
+        if corrupt:
+            real = self.stdin.write
+            self.stdin.write = lambda data: real(data[:-1] + bytes([data[-1] ^ 1]) if data else data)   # the link damages the last byte
+
+    def wait(self):
+        self.p.wait()
+
+    @property
+    def returncode(self):
+        return self.p.returncode
+
+
+class LocalSsh:
+    """A router that is this computer: the remote command runs with sh, and every command is logged."""
+
+    def __init__(self):
+        self.commands, self.corrupt_part = [], None
+
+    def popen(self, host, remote, *extra, **kw):
+        self.commands.append(remote)
+        return LocalProc(["sh", "-c", remote], bool(self.corrupt_part) and self.corrupt_part in remote and ".part" in remote)
+
+
+def pushed(bundle, router_dir, ssh=None, mem=90000):
+    ssh = ssh or LocalSsh()
+    lines = []
+    result = ps.push_offline_bundle(ssh, "10.0.0.1", bundle, mem, lines.append, offline_dir=router_dir)
+    return ssh, result, lines
+
+
+rd = os.path.join(tmp, "router_ram", "piso-offline")
+ssh, result, lines = pushed(b, rd)
+check(result == "copied", "push_offline_bundle copies the bundle: " + str(result))
+for f in b["files"]:
+    check(open(os.path.join(rd, f["path"]), "rb").read() == open(os.path.join(out, f["path"]), "rb").read(), f"{f['path']} arrived byte for byte")
+check(os.path.isfile(f"{rd}/SHA256SUMS") and open(f"{rd}/SHA256SUMS").read() == b["sums"], "with its sha256 list")
+file_cmds = [c for c in ssh.commands if "cat >" in c]
+check(len(file_cmds) == len(b["files"]) + 1 and all(".part" in c and "mv " in c for c in file_cmds), "one ssh command per file (cat > file.part && mv), and one for the list: " + str(len(file_cmds)))
+check(not any("scp" in c or "tar " in c or "sftp" in c for c in ssh.commands), "no scp, tar or sftp")
+check(any("sha256sum -c" in c for c in ssh.commands) and "".join(ssh.commands).count("sha256sum -c") >= 1, "and the router checks all sha256 with sha256sum in one more command")
+check(not [f for root, _, fs in os.walk(rd) for f in fs if f.endswith(".part")], "no half-written file is left")
+ssh2, result2, _ = pushed(b, rd)
+check(result2 == "already there" and not [c for c in ssh2.commands if "cat >" in c] and len(ssh2.commands) == 1, "the same bundle again (the second run at 10.0.0.1): only a check, nothing is copied: " + str(ssh2.commands))
+open(f"{rd}/pkgs/order.txt", "a").write("x\n")
+ssh3, result3, _ = pushed(b, rd)
+check(result3 == "copied" and open(f"{rd}/pkgs/order.txt").read() == open(f"{out}/pkgs/order.txt").read(), "a bundle that is there but changed is copied again")
+rd2 = os.path.join(tmp, "router_ram2", "piso-offline")
+os.makedirs(rd2)
+open(f"{rd2}/stale.ipk", "w").write("old")
+pushed(b, rd2)
+check(not os.path.exists(f"{rd2}/stale.ipk"), "an older copy's files are cleared first")
+low = LocalSsh()
+ok, text = not_possible(lambda: ps.push_offline_bundle(low, "10.0.0.1", b, 24000 + b["total"] // 1024 - 1, lambda l: None, offline_dir=os.path.join(tmp, "router_low")), "memory")
+check(ok and low.commands == [], "less free memory than 24000 KB plus the bundle: the fallback, and nothing is sent: " + text)
+ssh4, res4, _ = pushed(b, os.path.join(tmp, "router_exact"), mem=24000 + b["total"] // 1024 + 1)
+check(res4 == "copied", "exactly enough memory is enough")
+bad = LocalSsh()
+bad.corrupt_part = "curl_8.4.0-2"
+ok, text = not_possible(lambda: ps.push_offline_bundle(bad, "10.0.0.1", b, 90000, lambda l: None, offline_dir=os.path.join(tmp, "router_bad")), "curl_8.4.0-2", "intact")
+check(ok, "a file damaged on the way is found by the router's sha256 check: " + text)
 
 print(f"{checks} checks, {failures} failures")
 sys.exit(1 if failures else 0)
