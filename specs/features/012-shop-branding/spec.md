@@ -1,0 +1,116 @@
+# Feature 012: Shop branding on the phone screens (colours, shop name, title)
+
+Status: **draft**   Branch: `feat/012-shop-branding`   Area: app, firmware
+Backlog rows: none (owner request 2026-10-23)   Release: app + firmware
+
+> Branch note: `beta` is not present in the session that wrote this, so the work sits on `claude/serene-feynman-ycyr6r`
+> until the owner grafts it onto `feat/012-shop-branding` cut from `beta`.
+
+## Intent
+A shop owner resells PisoPhone to clients who want the rental phones to look like *their* shop, not like a TechNet demo. Today
+every phone in every shop is identical: three fixed backdrop colours (`BackdropTint`), a hardcoded launcher palette
+(`LauncherThemeColors`) and the product name "PisoPhone" in the lock-screen header. There is no shop name anywhere in the app.
+
+This feature lets the owner pick one of several built-in colour palettes and set the shop's name, shown as a running marquee on
+the lock and home screens, with the header title also settable. The colours ship inside the one signed APK; the coin box holds
+the choice and the names and hands them to each phone, so a shop is branded once and every phone follows.
+
+It serves **project rule 2** (only owner-signed software is installed): the palettes are compiled into the signed APK, and the
+box stores only short settings, so nothing new is ever downloaded or installed on a phone to change how it looks.
+
+## Invariants touched
+- **Money and time (a payment recorded first, credited once, nothing lost on a power cut): not touched.** No payment, credit,
+  expiry, deduction or queue code changes. The timer, the rate line, the coin feedback (coin rain, sparkles, speech) and
+  `TimeLevel` keep their behaviour and their colours: money gold, warning red and success teal are *not* brandable.
+- **Only owner-signed software: kept.** No new download, OTA or install path. The palettes live in the APK, which is signed and
+  published as it is today. The box gains three short settings in NVS and sends them over the existing authenticated, encrypted
+  `/config` push; the signed message contract (`protocol/gen_vectors.py` fixtures) does not change.
+
+## Constraints
+1. **The box stores settings, never files.** The three settings are short text: a palette id, the shop name and the header
+   title. No image, logo or font is ever uploaded to, stored on or served by the coin box. Total NVS cost **under 128 bytes**
+   (NVS is 20 KB in total, `esp32_firmware/partitions_encrypted.csv`, and already holds the payment queue, accounts, the
+   revenue vault, phone profiles and orphan payments).
+2. **Both sides change in one change** (`CLAUDE.md` section 6). Only *optional* url-encoded params are added to the existing
+   `/config` push (`esp32_firmware/src/DeviceManager.cpp:88`, `WebServerConfig.cpp:377` → `KioskHttpServer.kt:306`). A live box
+   with a new app, and a new box with a live app, both keep working: the phone reads the params with `has`/`optString` as it
+   already does for `device_name`, `price` and `minutes`, and an old box simply sends none.
+3. **`docs/design/GUI_SPEC_PISOPHONE_KIDS.md` section 10 (performance).** 0 fps at rest, no `Modifier.blur`, no alpha panels
+   over the art, at most 16 particles, everything stops when the screen is not RESUMED. The marquee is the one moving thing
+   added, and it obeys the existing thermal and battery ladder (below).
+4. **`GUI_SPEC` section 11 (must not change).** `TimeLevel`, `VideoBackgroundPolicy`, `LockScreenPresence`, the banner triggers,
+   `AdminMaintenanceMode.suspendOverlays`, the strings asserted by `KioskStatusToastUnitTest` and `CoinSpeechUnitTest`, and the
+   panel-centred layout order (status row, panel, rate and button, card link, footer). The marquee is added inside the header
+   band, above that order, and the existing art (clouds, rays, stickers, mascot, coins) is kept exactly.
+5. **Readable before unlock.** The lock screen draws in direct boot, so the branding is stored in the device-protected
+   preferences (`KioskSecurity.getDirectBootPrefs`, as `KioskSettings` already does), never in credential-protected storage.
+6. **No contrast a client can break.** Only built-in palettes, each checked by a test (criterion 4). Free hex colours are out.
+7. **English strings in `strings.xml` with a `values-fil` counterpart** (`GUI_SPEC` section 6). The shop name itself is owner
+   data, not a string resource, and is never translated.
+8. Generated files are regenerated, never hand-edited (`CLAUDE.md` section 4): if the box dashboard page under
+   `esp32_firmware/web/` changes, `python3 scripts/embed_web.py` regenerates `include/WebAssets.h`.
+9. The shop name is owner-entered text drawn on screen: it is length-capped and stripped of control characters and newlines
+   before storage, and it is never used as a file name, a URL or a shell argument.
+
+## Success criteria
+1. **The box holds the settings.** The box dashboard has a *Shop branding* section with three fields — palette (a list of the
+   built-in ids), shop name, header title. Saving stores them in NVS; they survive a box restart. Firmware host test plus a
+   serial check on the board (RS36).
+2. **The box pushes them, and nothing old breaks.** The settings ride the existing authenticated `/config` push on pairing and
+   on save. `protocol/fixtures` and the signing vectors are byte-identical; a phone build without this feature ignores the new
+   params (host test asserting the pushed parameter string, and the app's `/config` test fed a push with unknown params).
+3. **The phone remembers, and shows it before unlock.** After `/config`, the three settings are in the device-protected
+   preferences; after a reboot with the box offline the lock screen still draws the shop's palette, title and marquee. Unit
+   test on the storage, plus a Roborazzi golden of the branded lock screen.
+4. **No palette can hide the text.** A unit test over *every* built-in palette: primary text on the backdrop (top and bottom
+   colour) is at least 4.5:1, icons and outlines at least 3:1 — the `GUI_SPEC` section 2 and 9 numbers. A palette that fails
+   does not compile into the product (the test is the gate).
+5. **The marquee obeys the ladder.** A pure function, tested like `VideoBackgroundPolicy`: it scrolls only at thermal NONE or
+   LIGHT, with the screen RESUMED and in front, animations on, not in power save, and not below 15% battery while draining.
+   Otherwise the shop name stands still, centred, and stays fully readable. Unit test over the cases.
+6. **An unbranded phone looks exactly like today.** With nothing ever set (and with the box offline before the first push):
+   palette `technet`, title "PisoPhone", no marquee row at all. The existing lock-screen and launcher Roborazzi goldens are
+   unchanged — byte-identical, no re-record.
+7. **Money and time screens are untouched.** `./gradlew testDebugUnitTest` passes with no changes to the tests that pin
+   `TimeLevel`, `VideoBackgroundPolicy`, `LockScreenPresence`, the toast and speech strings, or the payment paths.
+8. **The box stays a money device, not a file store.** No new upload endpoint, no file written to spiffs, and the three
+   settings together take under 128 bytes of NVS (host test on the stored sizes).
+9. **Nothing moved that must not move.** `bash scripts/check_security_rules.sh` passes; `protocol/gen_vectors.py` output
+   unchanged; `esp32_firmware/host_tests/protocol_contract_test.cpp` passes unchanged.
+10. **Releases raised.** `PISO_FW_VERSION` raised (3.12.0) and the app build number raised; no router or setup release
+    (`setup/RELEASE` untouched), because nothing a router installs changes.
+
+## Out of scope
+- **Logo images.** No logo in this feature, and when one comes it ships in the APK or is picked on the phone — the box never
+  stores or serves image files (constraint 1).
+- Photo or video wallpapers; replacing or hiding the existing art (clouds, rays, stickers, mascot, coin rain).
+- Free hex colours, a palette editor, or a per-client APK build in CI.
+- Branding any surface other than the lock screen and the home screen: the card-scan screen, the time-added pop-over, the
+  floating pill and the owner vault keep TechNet colours.
+- The PisoWiFi portal and the router console (a separate product, a separate spec).
+- Translating the shop name, and fixing the pre-existing fact that the child's palette button choice
+  (`KioskStateManager.themeIndex`) is not saved across restarts.
+- Pushing branding to several phones from one phone (QR copy), and setting branding at provisioning time.
+
+## Owner decisions
+Answered by the owner on 2026-10-23 (interview in session `session_01PnBTKntvzuDSiiFRyAffPn`):
+- Branded surfaces: lock screen and home screen only.
+- What is brandable: colours, shop name as a running marquee, header title text. Logo: left out of this feature.
+- Colour reach: backdrop tints plus one accent colour; money gold, warning red and success teal stay fixed.
+- Mechanism: one signed APK carrying several built-in palettes; the setup picks one.
+- Marquee: scrolls, and stands still when the phone is hot or low on battery.
+- Source of truth: the coin box holds the palette choice and the names; the box saves settings only, never files.
+- Fallback: last known branding from direct-boot storage, today's TechNet look when nothing was ever set.
+- Verification: spec, plan and code written here; the owner (or a session with the Android SDK) compiles and runs the gates.
+
+Still open, needed before the UI groups (4 to 6) are built:
+1. **The palette list.** I propose six: `technet` (today's Dagat blue, the default), `dagat`, `tropiko`, `ginto` (the two other
+   tints today), plus `rosas` (pink) and `berde` (green). Each is a backdrop pair, three cloud colours and one accent. Approve
+   the names and the count, or give me the client colours you actually need.
+2. **Length caps.** Shop name 32 characters, header title 20 characters. Longer names are refused in the box dashboard with a
+   reason. Say if a client's name needs more.
+3. **Where the marquee sits.** My proposal: on the lock screen, one line in the header band under the title (above the sticker
+   band, so no sticker is ever drawn over it); on the home screen, one line under the clock and date. Confirm, or name another
+   place.
+4. **The header title default.** Stays "PisoPhone" when the owner sets nothing, so a phone always identifies itself unless a
+   client deliberately renames it. Confirm.
