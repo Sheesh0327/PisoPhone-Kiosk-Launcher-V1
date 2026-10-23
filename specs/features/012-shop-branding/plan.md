@@ -27,7 +27,8 @@ group. Groups 1 to 6 are app-only and need no board; groups 7 and 8 are firmware
 - [ ] 1. **The palettes, as data with a contrast gate.** `ui/theme/BrandPalette.kt`: an id, a backdrop pair, three cloud
       colours and one accent per palette, `technet` first and default, plus `of(id)` falling back to `technet` on an unknown id.
       (test: `BrandPaletteContrastUnitTest` over every palette — text ≥ 4.5:1 on both backdrop colours, icons and outlines ≥
-      3:1, and `of("nonsense") == technet`; red result logged: yes.) No UI touched in this group.
+      3:1, the maker's credit colour ≥ 4.5:1 on both, and `of("nonsense") == technet`; red result logged: yes.) No UI touched
+      in this group.
 - [ ] 2. **Branding storage in direct-boot preferences.** `util/ShopBranding.kt` (read/write through
       `KioskSecurity.getDirectBootPrefs`, same as `KioskSettings`) holding the four settings, with sanitising: cap the shop name
       at 32 characters and the title at 20, strip control characters, newlines and leading/trailing space, treat blank as unset,
@@ -49,16 +50,25 @@ group. Groups 1 to 6 are app-only and need no board; groups 7 and 8 are firmware
       power save, battery percent, charging, animations on, screen in front — the shape of `VideoBackgroundPolicy.shouldPlay`.
       `overlay/ui/BrandMarquee.kt` draws one line: scrolling when the rule says so, centred and still otherwise, never
       clipped. (test: `MarqueeRuleUnitTest` over the ladder cases incl. battery -1 and charging at 10%; red result logged: yes.)
+- [ ] 4b. **The maker's credit.** `overlay/ui/MakerCredit.kt`: the "by TechNet Solutions" line with its own sheen animation,
+      taking no branding parameter at all — it reads only the palette's credit colour and the ladder (so there is nothing for a
+      setting to address, spec criterion 12). Its string goes in `strings.xml` with a `values-fil` counterpart.
+      (test: `MakerCreditUnitTest` — the line is produced for every palette, every density including `off`, an empty name, an
+      empty title and nothing set; the sheen runs only when the ladder allows while the words stay; plus a check that the
+      composable exposes no "hide"/"enabled" parameter; red result logged: yes.)
 - [ ] 5. **Lock screen wiring.** `BlockScreen.kt` takes the branding; `LockScreenArt` takes the palette's colours instead of
       `BackdropTint` (old stored theme numbers keep cycling the three built-in tints when the shop has no palette set) and the
       ambient budget from group 3b instead of its own constants (`STICKERS`, `BUBBLE_COUNT`, `SPARKLE_COUNT`, the ray and cloud
       motion); the header shows the title and, under it, the marquee inside the header band, above `BAND_TOP_*` so no sticker is
       drawn over it. The art itself, the mascot and the coin feedback are unchanged. (test: `LockScreenScreenshotTest` — the
       existing default golden stays byte-identical at `normal`, one new golden for a branded phone, one at `off` and one at
-      `high`; red result logged: yes.)
+      `high`; red result logged: yes.) The credit from group 4b goes under the footer, displacing none of the palette button,
+      the coin-box status or the owner reach — the goldens are what prove nothing moved on top of them.
 - [ ] 6. **Home screen wiring.** `LauncherScreen.kt`: `currentTheme` reads the palette (bg and accent only; gold, red and teal
-      stay), the marquee under the clock and date row. The logo video, its poster and `VideoBackgroundPolicy` untouched.
-      (test: a launcher Roborazzi golden, default unchanged plus one branded; red result logged: yes.)
+      stay), the marquee under the clock and date row, the credit from group 4b at the bottom of the screen. The logo video,
+      its poster and `VideoBackgroundPolicy` untouched.
+      (test: a launcher Roborazzi golden, default unchanged plus one branded, and one at density `off` showing the credit
+      present; red result logged: yes.)
 - [ ] 7. **The box stores the settings.** NVS keys `brand_pal`, `shop_name`, `brand_title`, `anim_dens` beside the existing
       `ph_profiles`/`slot_prof` pattern (`src/PhoneProfileStore.cpp`), loaded on boot, with the same caps and sanitising as
       group 2. (test: a host test under `esp32_firmware/host_tests/` — store, reload, caps, bad palette id, bad density word,

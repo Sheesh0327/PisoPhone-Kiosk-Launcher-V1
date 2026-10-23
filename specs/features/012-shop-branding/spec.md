@@ -20,6 +20,10 @@ choice and the names and hands them to each phone, so a shop is branded once and
 numbers — and the phones do all the rendering, following what the box says. No picture, font or animation asset ever lives on
 the box.
 
+**One thing is not brandable: the maker's credit.** A permanent "by TechNet Solutions" line sits at the bottom of the lock and
+home screens, with its own small animation, and no palette, name, title or density setting can remove it, hide it or still it.
+It is part of the signed app, not configuration, so the box cannot switch it off either.
+
 It serves **project rule 2** (only owner-signed software is installed): the palettes are compiled into the signed APK, and the
 box stores only short settings, so nothing new is ever downloaded or installed on a phone to change how it looks.
 
@@ -51,7 +55,14 @@ box stores only short settings, so nothing new is ever downloaded or installed o
    ladder (`GUI_SPEC` section 10: MODERATE drops ambient motion, SEVERE flattens to background plus timer) always wins over the
    setting: a hot phone is calm whatever the box says. The highest density stays inside the 16-particle cap. Today's behaviour
    is the `normal` level, so a shop that sets nothing sees no change.
-3c. **Density never removes feedback that money arrived.** The coin rain, the sparkle on a coin, the "time added" pop-over and
+3c. **The maker's credit is not configuration.** "by TechNet Solutions" is drawn at the bottom of the lock and home screens
+   from the app's own resources, with its own animation. No setting reaches it: there is no box key, no param and no vault
+   switch for it, so it cannot be turned off, emptied or hidden, and a client's palette cannot make it invisible (its contrast
+   is part of the palette test, criterion 4). It must not cover or crowd the lines a shop needs: the coin-box status ("Coin box
+   offline. Ask the shop staff."), the rate, the card link or the owner-settings reach. It sits below them, and the
+   panel-centred layout order `GUI_SPEC` section 11 pins (status row, panel, rate and button, card link, footer) is unchanged:
+   the credit is added under that footer, displacing none of it.
+3d. **Density never removes feedback that money arrived.** The coin rain, the sparkle on a coin, the "time added" pop-over and
    the spoken confirmation play at every density, including `off`. Density governs *ambient* motion only — the drifting clouds,
    the turning rays, the sticker wiggle, the rising bubbles, the idle twinkle. A customer must always see that their coin
    counted (project rule 1).
@@ -80,9 +91,10 @@ box stores only short settings, so nothing new is ever downloaded or installed o
 3. **The phone remembers, and shows it before unlock.** After `/config`, the four settings are in the device-protected
    preferences; after a reboot with the box offline the lock screen still draws the shop's palette, title and marquee. Unit
    test on the storage, plus a Roborazzi golden of the branded lock screen.
-4. **No palette can hide the text.** A unit test over *every* built-in palette: primary text on the backdrop (top and bottom
-   colour) is at least 4.5:1, icons and outlines at least 3:1 — the `GUI_SPEC` section 2 and 9 numbers. A palette that fails
-   does not compile into the product (the test is the gate).
+4. **No palette can hide the text, the credit included.** A unit test over *every* built-in palette: primary text on the
+   backdrop (top and bottom colour) is at least 4.5:1, icons and outlines at least 3:1 — the `GUI_SPEC` section 2 and 9
+   numbers — and the maker's credit at least 4.5:1 on both. A palette that fails does not compile into the product (the test is
+   the gate).
 5. **The marquee obeys the ladder.** A pure function, tested like `VideoBackgroundPolicy`: it scrolls only at thermal NONE or
    LIGHT, with the screen RESUMED and in front, animations on, not in power save, and not below 15% battery while draining.
    Otherwise the shop name stands still, centred, and stays fully readable. Unit test over the cases.
@@ -102,6 +114,11 @@ box stores only short settings, so nothing new is ever downloaded or installed o
     move. Unit-tested: `off` has no ambient motion at any temperature; `normal` reproduces today's counts exactly; `high` never
     exceeds 16 particles; MODERATE drops ambient motion and SEVERE flattens the art at *every* density including `high`; and at
     every density — `off` included — a coin still brings the coin rain, the sparkle, the pop-over and the spoken confirmation.
+12. **The credit cannot be removed by configuration.** A test drives every combination the box can send — every palette, every
+    density including `off`, an empty shop name, an empty title, junk values, nothing set at all — and in each case the
+    "by TechNet Solutions" line is present, readable (criterion 4) and animating under the ladder rule of criterion 11. A
+    screenshot golden at `off` shows it, and a code check asserts there is no key, param or vault switch that addresses it.
+    It never overlaps the coin-box status, the rate, the card link or the owner-settings reach.
 
 ## Out of scope
 - **Logo images.** No logo in this feature, and when one comes it ships in the APK or is picked on the phone — the box never
@@ -128,6 +145,8 @@ Answered by the owner on 2026-10-23 (interview in session `session_01PnBTKntvzuD
 - Source of truth: the coin box holds the palette choice and the names; the box saves settings only, never files.
 - Where they are set: the ESP32 admin page, and only there (owner, 2026-10-23).
 - An animation density setting is part of this feature (owner, 2026-10-23): the box stores the level, the phones render it.
+- A permanent "by TechNet Solutions" credit with its own animation sits at the bottom, whatever the settings or the density
+  (owner, 2026-10-23).
 - The split for this and later features: configuration on the box, all rendering in the app, following the box (owner).
 - Fallback: last known branding from direct-boot storage, today's TechNet look when nothing was ever set.
 - Verification: spec, plan and code written here; the owner (or a session with the Android SDK) compiles and runs the gates.
@@ -154,3 +173,16 @@ Still open, needed before the UI groups (4 to 6) are built:
    existing shop sees no change, which means `low` is close to what the design spec actually asked for. Say if you would rather
    `normal` become the design spec's calmer version and today's busier screen become `high` — that is a one-line change now and
    an owner-visible change on every live phone later.
+6. **The credit: three details, and one place where I did not follow you literally.**
+   - *What it is.* My proposal: the words "by TechNet Solutions" as text, no image — nothing new to bundle, it scales on any
+     screen, and it is readable at the small size a footer line wants. Say if you want the drawn logo instead; then name the
+     file you want used, because there is no TechNet wordmark in `app/src/main/res/` today (only the mascot and the stickers).
+   - *Its animation.* My proposal: a slow sheen that sweeps across the words about every 6 seconds — one moving element, no
+     particles, nothing the 16-particle budget notices. Say if you pictured something else (a gentle pulse, a glow, the accent
+     colour cycling).
+   - *Where I did not follow you literally.* You said "regardless of the settings or animation density", and that is exactly
+     how I wrote it: **no setting can remove, hide or still it.** But I let its motion pause with everything else when the
+     phone reaches thermal MODERATE or drops under 15% battery while draining. The ladder is not an owner setting — it is there
+     so a cheap phone does not cook itself or die mid-rental — and a credit that keeps animating on a hot phone is the one
+     moving thing left to blame. The words stay on screen the whole time either way; only the sheen stops. **Confirm, or tell
+     me to animate it always and I will.**
