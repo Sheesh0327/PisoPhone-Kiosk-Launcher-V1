@@ -39,10 +39,10 @@ group. Groups 1 to 6 are app-only and need no board; groups 7 and 8 are firmware
       params change nothing (back-compat, criterion 2). (test: the existing `/config` server test extended — a push with the new
       params stores them, a push without them leaves the stored branding alone, junk and over-long values are refused or
       trimmed; red result logged: yes, as "not run (no Android SDK)".)
-- [ ] 3b. **The density rule.** `overlay/ui/AnimationDensity.kt`: the four levels and a pure function mapping (density, thermal
+- [x] 3b. **The density rule.** `overlay/ui/AnimationDensity.kt`: the four levels and a pure function mapping (density, thermal
       status, battery percent, charging, power save, animations on, screen in front) to the ambient budget — sticker count,
       whether stickers wiggle, bubble and sparkle counts, cloud and ray motion. The ladder is a cap, not an override:
-      MODERATE drops ambient motion and SEVERE flattens the art at every level, `high` never passes 16 particles, and no level
+      MODERATE drops ambient motion and SEVERE flattens the art at every level, `high` never has more ambient particles than `normal` (owner correction 2026-10-23), and no level
       touches the coin rain, sparkle-on-coin, pop-over or speech. It composes with the existing `EffectsLevel`.
       (test: `AnimationDensityUnitTest` over the level × ladder matrix, `normal` reproducing today's exact counts, the particle
       cap, and an assertion that payment feedback is untouched at `off`; red result logged: yes.)
