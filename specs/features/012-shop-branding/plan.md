@@ -84,7 +84,7 @@ group. Groups 1 to 6 are app-only and need no board; groups 7 and 8 are firmware
       on a branding save and after a config save, so every paired phone follows the box. (test: host test asserting the
       pushed parameter string with and without branding set, and that `protocol/gen_vectors.py` output and
       `host_tests/protocol_contract_test.cpp` are unchanged; red result logged: yes.)
-- [ ] 8b. **The vault shows what arrived, read-only.** One line in the owner vault: the palette, the shop name, the title, the
+- [x] 8b. **The vault shows what arrived, read-only.** One line in the owner vault: the palette, the shop name, the title, the
       density, and when they last came from the box — no editing (spec constraint 1b, and it is how an owner tells a phone has
       not heard from the box). (test: a unit test on the text the line renders from stored branding, including the never-set
       case; red result logged: yes.)
