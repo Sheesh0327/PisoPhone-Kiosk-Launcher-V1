@@ -47,7 +47,7 @@ Each group names the spec criteria it proves.
 - [x] 10. **The whole flow, tests first** (criterion 13, decisions A7 and A8). Offline first in the order of decision A7 (bundle built before the router changes; only `install.sh` at the factory address; the bundle and `PISO_LOCAL_PKGS` at 10.0.0.1), the fallback with the ping test, the stop with both reasons, `--router-online`, the bundle deleted afterwards over SSH. Regenerate `website/pisophone_setup.py`.
 
 ### Both parts
-- [ ] 11. **Docs and the hardware checks** (criterion 14). `docs/REAL_WORLD_TESTING.md` (new checks for both parts, "not run"); `setup/README.md` (the router no longer needs internet during setup with the setup program; `--router-online`; the `box-wifi-name` command and "switch the other router off while pairing"); `setup/MANUAL.md`; `website/manual.html`; `CHANGELOG.md` (one entry describing both parts for the owner).
+- [x] 11. **Docs and the hardware checks** (criterion 14). `docs/REAL_WORLD_TESTING.md` (new checks for both parts, "not run"); `setup/README.md` (the router no longer needs internet during setup with the setup program; `--router-online`; the `box-wifi-name` command and "switch the other router off while pairing"); `setup/MANUAL.md`; `website/manual.html`; `CHANGELOG.md` (one entry describing both parts for the owner).
 - [ ] 12. **Validate** (criterion 15). Every criterion in `validation.md` with evidence, the gates, "Not tested" (at least: all hardware, community sources, real OpenWrt indexes beyond the fixtures), "Money and time"; update `specs/STATUS.md`. Pull request into `beta` only when the owner asks.
 
 ## Release
