@@ -29,7 +29,7 @@ group. Groups 1 to 6 are app-only and need no board; groups 7 and 8 are firmware
       (test: `BrandPaletteContrastUnitTest` over every palette — text ≥ 4.5:1 on both backdrop colours, icons and outlines ≥
       3:1, the maker's credit colour ≥ 4.5:1 on both, and `of("nonsense") == technet`; red result logged: yes.) No UI touched
       in this group.
-- [ ] 2. **Branding storage in direct-boot preferences.** `util/ShopBranding.kt` (read/write through
+- [x] 2. **Branding storage in direct-boot preferences.** `util/ShopBranding.kt` (read/write through
       `KioskSecurity.getDirectBootPrefs`, same as `KioskSettings`) holding the four settings, with sanitising: cap the shop name
       at 32 characters and the title at 20, strip control characters, newlines and leading/trailing space, treat blank as unset,
       keep an unknown palette id or density word out of storage. (test: `ShopBrandingUnitTest` — caps, control characters,
