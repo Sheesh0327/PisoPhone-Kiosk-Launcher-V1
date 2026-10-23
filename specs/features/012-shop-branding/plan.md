@@ -64,7 +64,7 @@ group. Groups 1 to 6 are app-only and need no board; groups 7 and 8 are firmware
       existing default golden differs from today only by the credit line (re-recorded once, owner looks at the diff), one new golden for a branded phone, one at `off` and one at
       `high`; red result logged: yes.) The credit from group 4b goes under the footer, displacing none of the palette button,
       the coin-box status or the owner reach — the goldens are what prove nothing moved on top of them.
-- [ ] 6. **Home screen wiring.** `LauncherScreen.kt`: `currentTheme` reads the palette (bg and accent only; gold, red and teal
+- [x] 6. **Home screen wiring.** `LauncherScreen.kt`: `currentTheme` reads the palette (bg and accent only; gold, red and teal
       stay), the marquee under the clock and date row, the credit from group 4b at the bottom of the screen. The logo video,
       its poster and `VideoBackgroundPolicy` untouched.
       (test: a launcher Roborazzi golden, default differing from today only by the credit line, plus one branded, and one at density `off` showing the credit

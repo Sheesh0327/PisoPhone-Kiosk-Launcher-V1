@@ -30,9 +30,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pisophone.kiosk.R
 import com.pisophone.kiosk.model.AppInfo
+import com.pisophone.kiosk.overlay.ui.BrandMarquee
+import com.pisophone.kiosk.overlay.ui.MakerCredit
+import com.pisophone.kiosk.overlay.ui.rememberEffectsLevel
+import com.pisophone.kiosk.overlay.ui.rememberMarqueeScrolls
+import com.pisophone.kiosk.ui.theme.BrandPalette
 import com.pisophone.kiosk.ui.video.LockScreenPresence
 import com.pisophone.kiosk.ui.video.LoopingVideoBackground
+import com.pisophone.kiosk.util.Branding
 import com.pisophone.kiosk.util.PinnedSlotsManager
+import com.pisophone.kiosk.util.ShopBranding
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import java.text.SimpleDateFormat
@@ -43,9 +50,13 @@ import java.util.*
 fun LauncherScreen(
     apps: List<AppInfo>,
     onAppClick: (AppInfo) -> Unit,
+    /** The shop's look from the coin box (feature 012); by default what the phone last heard, nothing set is today's screen. */
+    branding: Branding = ShopBranding.observe(LocalContext.current).collectAsState().value,
 ) {
     val context = LocalContext.current
-    val currentTheme = remember { LauncherThemeColors() }
+    val currentTheme = remember(branding.palette) { LauncherThemeColors.forBranding(branding.palette) }
+    val effects = rememberEffectsLevel()
+    val marqueeScrolls = rememberMarqueeScrolls()
 
     var pinnedSlots by remember { mutableStateOf(PinnedSlotsManager.getPinnedSlots(context)) }
     var slotToPinIndex by remember { mutableStateOf<Int?>(null) }
@@ -197,6 +208,8 @@ fun LauncherScreen(
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 TimeDateDisplay()
+                // the shop's name runs under the clock and date; no name, no row
+                BrandMarquee(branding.shopName, currentTheme.primary, marqueeScrolls)
             }
 
             HorizontalDivider(color = currentTheme.border.copy(alpha = 0.6f), thickness = 1.dp)
@@ -518,6 +531,9 @@ fun LauncherScreen(
                     }
                 }
             }
+
+            // the maker's credit at the bottom of the screen; no setting reaches it
+            MakerCredit(color = BrandPalette.of(branding.palette).credit, effects = effects)
         }
     }
 
