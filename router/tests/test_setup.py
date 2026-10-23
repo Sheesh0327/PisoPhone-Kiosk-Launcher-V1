@@ -920,6 +920,37 @@ check("rc=0" not in r.stdout and "could not install" in (r.stdout + r.stderr), "
 root = make_bundle("t_empty", {"base": []}, [])
 r, ol = install_local(root)
 check("rc=0" in r.stdout and "opkg install" not in ol, "an empty order.txt (everything is installed already) installs nothing and is not an error: " + r.stdout + r.stderr)
+
+# ---- feature 011 part A: the setup without the router's internet (PISO_LOCAL_PKGS) -------------------------------------------------
+NONET = (f'ping() {{ echo PING >> {tmp}/nonet.log; return 1; }}; wget() {{ echo WGET >> {tmp}/nonet.log; return 1; }}; curl() {{ echo CURL >> {tmp}/nonet.log; return 1; }}; '
+         f'nslookup() {{ echo DNS >> {tmp}/nonet.log; return 1; }}; ')
+open(f"{tmp}/nonet.log", "w").close()
+# the network part of the preflight: today's rules without the setting, no WAN address and no ping needed with it
+r = lib(NONET + 'wan_ip() { :; }; (preflight_network); echo "rc=$?"')
+check("rc=0" not in r.stdout and "no WAN address" in r.stdout + r.stderr, "online path: a router with no WAN address is stopped, as always: " + r.stdout + r.stderr)
+r = lib(NONET + 'wan_ip() { echo 192.168.1.50; }; (preflight_network); echo "rc=$?"')
+check("rc=0" not in r.stdout and "no internet through the WAN port" in r.stdout + r.stderr and "PING" in open(f"{tmp}/nonet.log").read(), "online path: no ping answer stops it, as always: " + r.stdout + r.stderr)
+open(f"{tmp}/nonet.log", "w").close()
+r = lib(NONET + 'wan_ip() { :; }; (preflight_network); echo "rc=$?"', env={"PISO_LOCAL_PKGS": "/tmp/piso-offline/pkgs"})
+check("rc=0" in r.stdout and open(f"{tmp}/nonet.log").read() == "", "with PISO_LOCAL_PKGS: no WAN address and no internet are fine and nothing is pinged or downloaded: " + r.stdout + r.stderr + open(f"{tmp}/nonet.log").read())
+r = lib(NONET + 'wan_ip() { echo 10.0.0.77; }; (preflight_network); echo "rc=$?"', env={"PISO_LOCAL_PKGS": "/tmp/piso-offline/pkgs"})
+check("rc=0" not in r.stdout and "same range" in r.stdout + r.stderr, "and a WAN address that clashes with the LAN is still refused: " + r.stdout + r.stderr)
+# the packages: no opkg update, the copied files through install_local_packages, openNDS stopped, the four needed packages checked
+ostub = (f'opkg() {{ echo "opkg $*" >> {tmp}/nonet.log; case "$1" in update) return 1 ;; list-installed) printf "%s\\n" "$HAVE" ;; esac; return 0; }}; '
+         f'install_local_packages() {{ echo "LOCAL $1" >> {tmp}/nonet.log; }}; stop_opennds() {{ echo STOPPED >> {tmp}/nonet.log; }}; ')
+HAVE4 = "opennds - 1\ncurl - 1\nca-bundle - 1\njsonfilter - 1\nlibmicrohttpd-no-ssl - 1"
+open(f"{tmp}/nonet.log", "w").close()
+r = lib(NONET + ostub + '(install_packages); echo "rc=$?"', env={"PISO_LOCAL_PKGS": "/tmp/piso-offline/pkgs", "HAVE": HAVE4})
+nl = open(f"{tmp}/nonet.log").read()
+check("rc=0" in r.stdout and "LOCAL /tmp/piso-offline/pkgs" in nl and "STOPPED" in nl and "opkg update" not in nl and "opkg install" not in nl and "PING" not in nl and "WGET" not in nl and "CURL" not in nl,
+      "install_packages with PISO_LOCAL_PKGS: the copied files, openNDS stopped, no opkg update, no single installs, no network: " + nl + r.stdout + r.stderr)
+r = lib(NONET + ostub + '(install_packages); echo "rc=$?"', env={"PISO_LOCAL_PKGS": "/tmp/piso-offline/pkgs", "HAVE": HAVE4.replace("curl - 1\n", "")})
+check("rc=0" not in r.stdout and "curl" in r.stdout + r.stderr and "not installed" in r.stdout + r.stderr, "a needed package still missing afterwards stops the setup, naming it: " + r.stdout + r.stderr)
+open(f"{tmp}/nonet.log", "w").close()
+r = lib(NONET + ostub + '(install_packages); echo "rc=$?"', env={"HAVE": ""})
+nl = open(f"{tmp}/nonet.log").read()
+check("opkg update" in nl and "opkg install" not in nl.split("opkg update")[0] and "LOCAL" not in nl, "without the setting install_packages still starts with opkg update (the online path is as before): " + nl)
+check("unset SHOP_PRODUCT PISO_LOCAL_PKGS" in text.split("main() {")[1], "a command other than the first setup (an update included) never uses PISO_LOCAL_PKGS")
 # ---- box-diag: where the router <-> box link breaks -----------------------------------------------------------------------------
 def box_diag(setup_code):
     return lib(setup_code + "; cmd_box_diag", env={"BOX_IP": "127.0.0.1:1"})   # nothing listens there: the box does not answer

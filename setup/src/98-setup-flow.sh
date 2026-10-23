@@ -154,7 +154,7 @@ main() {
 		esac
 		shift
 	done
-	[ -z "$CMD" ] || unset SHOP_PRODUCT   # (the product is chosen by the installer only: no other command, an update included, changes it)
+	[ -z "$CMD" ] || unset SHOP_PRODUCT PISO_LOCAL_PKGS   # (the product is chosen by the installer only: no other command, an update included, changes it; the copied packages are for a first setup only)
 	case "$CMD" in
 		status) cmd_status ;;
 		wifi-name) cmd_wifi_name "$ARG" ;;
