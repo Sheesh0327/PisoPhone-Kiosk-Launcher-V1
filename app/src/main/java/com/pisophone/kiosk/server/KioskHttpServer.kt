@@ -21,6 +21,12 @@ interface KioskServerDelegate {
     fun creditPayment(txId: String, seconds: Int, amount: Double): PaymentResult
     fun onDeductTime(seconds: Int, txId: String? = null)
     fun onConfigUpdated(price: Double?, minutes: Int?, deviceName: String?, adminPin: String?, slotNum: Int? = null)
+
+    /**
+     * The shop's branding the box pushed with the config (feature 012). A value is `null` when the box did not send it; the
+     * default does nothing, so a delegate written before this feature keeps compiling and an old box changes nothing.
+     */
+    fun onBrandingUpdated(palette: String?, shopName: String?, title: String?, density: String?) {}
     fun onTriggerAction(action: String, slotNum: Int? = null, extra: Map<String, String>? = null)
     fun getCrashLog(): String?
 }
@@ -43,6 +49,26 @@ class KioskHttpServer(
         private const val RATE_LIMIT_WINDOW_MS = 60000L
         private const val MAX_REQUESTS_PER_WINDOW = 60
         private const val MAX_TRACKED_IPS = 256
+
+        /** The optional branding params of the box's /config push (feature 012). */
+        internal val BRANDING_PARAMS = listOf("palette", "shop_name", "brand_title", "anim_density")
+
+        /** A branding value is at most this long on the wire (the longest allowed name is 32 characters, up to 12 bytes encoded each). */
+        private const val MAX_BRANDING_WIRE_CHARS = 512
+
+        /**
+         * One branding value as the box sent it: percent-encoded text (a shop name may hold spaces or an ampersand), decoded here
+         * and only here, so the other /config params parse exactly as before. `null` when the box did not send it, when it is
+         * too long to be real, or when it is not valid encoding; the caller then leaves that setting alone.
+         */
+        internal fun decodeBrandingValue(raw: String?): String? {
+            if (raw == null || raw.length > MAX_BRANDING_WIRE_CHARS) return null
+            return try {
+                java.net.URLDecoder.decode(raw, "UTF-8")
+            } catch (e: IllegalArgumentException) {
+                null
+            }
+        }
 
         /** Actions the ESP32 box sends to a phone. Anything else arriving over the network is refused. */
         internal val NETWORK_ACTIONS = setOf(
@@ -310,6 +336,15 @@ class KioskHttpServer(
                 val pin = decryptedParams["admin_pin"]
                 val slot = decryptedParams["slot"]?.toIntOrNull() ?: decryptedParams["slot_num"]?.toIntOrNull()
                 delegate.onConfigUpdated(price, minutes, devName, pin, slot)
+                // the four branding settings are optional: a box that does not know them sends none and nothing changes
+                if (BRANDING_PARAMS.any { decryptedParams.containsKey(it) }) {
+                    delegate.onBrandingUpdated(
+                        palette = decodeBrandingValue(decryptedParams["palette"]),
+                        shopName = decodeBrandingValue(decryptedParams["shop_name"]),
+                        title = decodeBrandingValue(decryptedParams["brand_title"]),
+                        density = decodeBrandingValue(decryptedParams["anim_density"]),
+                    )
+                }
                 createResponse(Response.Status.OK, "text/plain", "OK")
             }
             "/trigger_action" -> {

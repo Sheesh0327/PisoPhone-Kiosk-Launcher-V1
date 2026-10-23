@@ -158,6 +158,12 @@ class KioskServerCoordinator(
         }
     }
 
+    override fun onBrandingUpdated(palette: String?, shopName: String?, title: String?, density: String?) {
+        // stored in the device-protected preferences so the lock screen shows it before unlock; nothing here touches money or time
+        val stored = ShopBranding.applyFromBox(context, palette, shopName, title, density)
+        Log.d(TAG, "Master pushed branding: stored=$stored")
+    }
+
     override fun onTriggerAction(action: String, slotNum: Int?, extra: Map<String, String>?) {
         if (slotNum != null && slotNum > 0) {
             stateManager.slotNumber.value = slotNum
