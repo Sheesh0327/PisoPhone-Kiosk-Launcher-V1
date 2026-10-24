@@ -242,7 +242,7 @@ class KioskService : Service() {
         return START_STICKY
     }
 
-    private var lastHealthSnapshotMs = 0L
+    @Volatile private var lastHealthSnapshotMs = 0L
 
     override fun onBind(intent: Intent?): IBinder? = null
 
