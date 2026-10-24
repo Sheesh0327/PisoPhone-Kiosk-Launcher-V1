@@ -10,7 +10,7 @@ Unresolved ledger entries loaded: the 2026-10-24 row "feat 014 (found by the soa
 ## Task groups
 - [x] 1. Test first: `tests/test_window_record.py`. Red against the old code: the coin the router never saw is not credited after the restart.
 - [x] 2. `core.rs`: `note_open` once, right after the box is armed (and idempotent); an empty window removes its record.
-- [ ] 3. Run `test_soak.py --strict` (default run), the router gates and the flow tests; fill `validation.md`; hardware check RS45; CHANGELOG line.
+- [x] 3. Run `test_soak.py --strict` (default run), the router gates and the flow tests; fill `validation.md`; hardware check RS45; CHANGELOG line.
 - [ ] 4. Open the pull request into `beta` (stacked on 015 and 016); fix CI until green.
 
 ## Release
