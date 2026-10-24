@@ -2128,11 +2128,13 @@ cmd_export() {
 cmd_import() {
 	[ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"
 	_in="$1"; [ -f "$_in" ] || die "usage: piso-setup import <backup file>"
-	tar -tzf "$_in" > /tmp/piso-import.list 2> /dev/null || { rm -f /tmp/piso-import.list; die "that is not a PisoPhone backup"; }
-	if grep -vE '^(etc/piso-setup\.conf|etc/coinslot\.conf|etc/coinslot\.d(/.*)?|etc/piso-monitor\.conf)$' /tmp/piso-import.list | grep -q .; then
-		rm -f /tmp/piso-import.list; die "that backup holds files this command does not restore: refused"
+	_lst=$(mktemp 2> /dev/null) || die "cannot make a temporary file"
+	tar -tzf "$_in" > "$_lst" 2> /dev/null || { rm -f "$_lst"; die "that is not a PisoPhone backup"; }
+	# only these paths, and no ".." part anywhere (etc/coinslot.d/../x would pass the pattern and leave the folder)
+	if grep -vE '^(etc/piso-setup\.conf|etc/coinslot\.conf|etc/coinslot\.d(/.*)?|etc/piso-monitor\.conf)$' "$_lst" | grep -q . || grep -qE '(^|/)\.\.(/|$)' "$_lst"; then
+		rm -f "$_lst"; die "that backup holds files this command does not restore: refused"
 	fi
-	rm -f /tmp/piso-import.list
+	rm -f "$_lst"
 	if [ "$ASSUME_YES" != 1 ]; then printf 'Replace this router'"'"'s PisoPhone settings and ledger with the backup? [y/N] '; read -r _a; case "$_a" in y | Y) ;; *) echo "Cancelled."; return 0 ;; esac; fi
 	[ -x /etc/init.d/pisoportal ] && /etc/init.d/pisoportal stop > /dev/null 2>&1
 	tar -C "${PISO_ROOT:-/}" -xzf "$_in" || die "could not unpack the backup"
