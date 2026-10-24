@@ -242,6 +242,8 @@ pub struct Core {
     pub files: Mutex<()>,
     /// one recovery at a time (the maintenance thread and a customer's start can both ask for one)
     recovering: Mutex<()>,
+    /// RT-17: a recovery thread is running (set before it starts, so two maintenance rounds never start two)
+    recover_running: std::sync::atomic::AtomicBool,
     /// the prices now in force (the settings file's, or what the owner set in the console) and a counter that rises with every change
     pricing: RwLock<Arc<Pricing>>,
     pricing_stamp: AtomicU32,
@@ -300,6 +302,7 @@ impl Core {
             cv: Condvar::new(),
             files: Mutex::new(()),
             recovering: Mutex::new(()),
+            recover_running: std::sync::atomic::AtomicBool::new(false),
             vchoice,
             clock: Mutex::new((now_secs(), Instant::now(), now_secs())),
             started: Instant::now(),
@@ -1534,9 +1537,16 @@ impl Core {
         self.check_clock();
         // RT-17: settling leftovers asks the coin box, which can take seconds to answer (or never); it runs on its own thread so
         // the clock check, the fair-use tick and the housekeeping below are not held up. One recovery at a time.
-        if self.recovering.try_lock().is_ok() {
+        use std::sync::atomic::Ordering;
+        if self.recover_running.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire).is_ok() {
             let me = Arc::clone(self);
-            let _ = std::thread::Builder::new().name("recover".into()).spawn(move || me.recover());
+            let started = std::thread::Builder::new().name("recover".into()).spawn(move || {
+                me.recover();
+                me.recover_running.store(false, Ordering::Release);
+            });
+            if started.is_err() {
+                self.recover_running.store(false, Ordering::Release);
+            }
         }
         {
             let _g = self.files.lock().unwrap();
@@ -1827,7 +1837,10 @@ mod tests {
         let t1 = Instant::now();
         core.maintenance();
         assert!(t1.elapsed() < Duration::from_millis(1500));
-        assert!(core.recovering.try_lock().is_err(), "the first recovery is still waiting on the box, on its own thread");
+        assert!(
+            core.recover_running.load(std::sync::atomic::Ordering::Acquire),
+            "the first recovery is still waiting on the box, on its own thread"
+        );
         drop(held);
     }
 }
