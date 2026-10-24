@@ -46,8 +46,10 @@ fn cmd_box(cfg: &config::Config) -> i32 {
     }
 }
 
-fn cmd_verify(cfg: &config::Config) -> i32 {
-    match ledger::verify_torn(&cfg.revenue_path()) {
+fn cmd_verify(cfg: &config::Config, all: bool) -> i32 {
+    // "verify all" follows the chain across the monthly segments; the plain one reads the current month only
+    let r = if all { ledger::verify_all(&cfg.revenue_path()) } else { ledger::verify_torn(&cfg.revenue_path()) };
+    match r {
         Ok((n, sum, torn)) => {
             // a last row cut short by a power failure is not a changed ledger (RT-04)
             println!("OK {} {}{}", n, sum, if torn { " torn_tail=true" } else { "" });
@@ -102,12 +104,13 @@ fn tz_offset_secs() -> i64 {
 }
 
 fn cmd_report(cfg: &config::Config, days: i64) -> i32 {
-    let Ok(text) = std::fs::read_to_string(cfg.revenue_path()) else {
-        println!("No payments recorded yet.");
-        return 0;
-    };
     let off = tz_offset_secs();
     let now = util::now_secs() as i64;
+    let text = ledger::read_recent(&cfg.revenue_path(), (now - (days + 1) * 86400).max(0) as u64);
+    if text.is_empty() {
+        println!("No payments recorded yet.");
+        return 0;
+    }
     let mut rows: std::collections::BTreeMap<(String, String), (u64, u64)> = std::collections::BTreeMap::new();
     let (mut total, mut vn, mut vp) = (0u64, 0u64, 0u64);
     for l in text.lines() {
@@ -195,7 +198,7 @@ fn main() {
             0
         }
         "box" => cmd_box(&config::Config::load()),
-        "verify" => cmd_verify(&config::Config::load()),
+        "verify" => cmd_verify(&config::Config::load(), args.get(2).map(|a| a.as_str()) == Some("all")),
         "reconcile" => cmd_reconcile(&config::Config::load(), args.get(2).map(|a| a.as_str()) == Some("rebase")),
         "update-check" => update::cmd_check(&args[2..]),
         "update-verify" => update::cmd_verify(&args[2..]),

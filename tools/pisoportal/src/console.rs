@@ -373,7 +373,12 @@ impl Console {
             )
         };
         let tz = tz_offset_secs(&read("/etc/TZ"));
-        let (today, total, week, week_total, month_total) = revenue_period_stats(&read(&cfg.revenue_path()), now, tz);
+        let (today, mut total, week, week_total, month_total) =
+            revenue_period_stats(&crate::ledger::read_recent(&cfg.revenue_path(), now.saturating_sub(40 * 86400)), now, tz);
+        if !crate::ledger::closed_segments(&cfg.revenue_path()).is_empty() {
+            total = crate::ledger::verify(&cfg.revenue_path()).map(|v| v.1).unwrap_or(total);
+            // the carry row holds the months before
+        }
         let link = BoxLink::new(&cfg.gw_box, &cfg.gw_key).remember_in(&format!("{}/box_signed", cfg.data_dir));
         let box_ok = link.challenge().is_some();
         let box_signed = link.signs_answers();
@@ -599,7 +604,12 @@ fn handle(c: &Console, req: Request, mut conn: Incoming) {
                 ("GET", "/api/sales") => {
                     let days: u64 = crate::util::query_get(&req.query, "days").and_then(|d| d.parse().ok()).unwrap_or(30);
                     let (now, tz) = (now_secs(), tz_offset_secs(&read("/etc/TZ")));
-                    let (rows, (h, e), k) = sales_report(&read(&c.core.cfg.revenue_path()), now, tz, days);
+                    let (rows, (h, e), k) = sales_report(
+                        &crate::ledger::read_recent(&c.core.cfg.revenue_path(), now.saturating_sub((days + 2) * 86400)),
+                        now,
+                        tz,
+                        days,
+                    );
                     let list: Vec<String> = rows
                         .iter()
                         .map(|r| {
