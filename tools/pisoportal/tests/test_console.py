@@ -101,6 +101,12 @@ try:
     j = json.loads(body)
     check(code == 200 and j["online"] == 1 and j["waiting"] == 1 and j["wan_if"] == "eth9", f"overview: customers and the internet line: {j}")
     check(j["today"] == 5 and j["total"] == 22 and sum(j["week"]) == 22 and j["box_ok"] is True and j["ledger_lines"] >= 0, f"overview: money and the coin box: {j}")
+    check(j.get("alerts") == [], f"overview: no alerts file, no alerts: {j.get('alerts')}")
+    open(f"{env.data}/alerts.txt", "w").write("2026-10-24 09:00 the coin box has not answered for 5 minutes\n2026-10-24 10:00 the portal program did not answer \"3\" minutes\n")
+    j = json.loads(call("/api/overview", cookie=cookie)[1])
+    check(j["alerts"] == ['2026-10-24 10:00 the portal program did not answer "3" minutes', "2026-10-24 09:00 the coin box has not answered for 5 minutes"], f"AO-06: the console front page carries alerts.txt, newest first: {j['alerts']}")
+    check("j.alerts" in call("/ui.js")[1].decode(), "and the page script draws them")
+    os.remove(f"{env.data}/alerts.txt")
     check(j["rx_kbps"] > 0 and j["tx_total"] == 125500, f"overview: the internet speed is worked out from the counters: rx {j['rx_kbps']} kbps")
     code, body, _h = call("/api/clients", cookie=cookie)
     first = json.loads(body)["clients"]
@@ -277,6 +283,34 @@ try:
     page = call("/")[1].decode()
     check("printBatch" not in ui and "vouchers/new" not in ui and "@media print" not in ui and "Print" not in page and "Make codes" not in page, "the console has no batch forms and no slip printing")
     check('data-t="set"' in page and "Voucher choice" in page and "Get a voucher code" in page, "the console has a Settings page with the voucher choice")
+    # ---- AO-09: 200 idle sockets from one guest do not starve anyone else, and do not pile up threads ---------------------------------
+    import http.client, socket
+
+    def threads():
+        return len(os.listdir(f"/proc/{env.portal.pid}/task"))
+
+    def console_from(ip, port=CP):
+        c = http.client.HTTPConnection("127.0.0.1", port, timeout=5, source_address=(ip, 0))
+        c.request("GET", "/")
+        return c.getresponse().status
+
+    before = threads()
+    idle = []
+    for port in (CP, CP + 1):
+        for _ in range(100):
+            try:
+                idle.append(socket.create_connection(("127.0.0.1", port), timeout=2))
+            except OSError:
+                break
+    time.sleep(0.5)
+    check(threads() - before <= 40, f"200 idle sockets on the console and the coin box page start few threads ({threads() - before} more)")
+    check(env.get("/ping")[1] == "ok" and env.get("/")[0] == 200, "the customers' coin page still answers")
+    check(console_from("127.0.0.2") == 200, "another address still gets the console")
+    check(100 <= console_from("127.0.0.2", CP + 1) < 600, "and the coin box page answers (with whatever the stub box says)")
+    for x in idle:
+        x.close()
+    check(wait_until(lambda: console_from("127.0.0.1") == 200, 15), "when the idle sockets go the first address is served again")
+
     code, _b, _h = call("/api/logout", {}, cookie=cookie)
     check(code == 200 and call("/api/overview", cookie=cookie)[0] == 401, "sign out ends the session")
 finally:

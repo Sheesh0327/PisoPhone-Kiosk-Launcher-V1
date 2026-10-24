@@ -66,7 +66,7 @@ rollback_update() {
 		if [ -e "$_b" ]; then cp -p "$_b" "$_f.new" && mv "$_f.new" "$_f"; fi
 	done
 	[ -x /etc/init.d/pisoportal ] && /etc/init.d/pisoportal start > /dev/null 2>&1
-	[ -r "$MONITOR_CONF" ] && [ -x /etc/init.d/piso_monitor ] && /etc/init.d/piso_monitor restart > /dev/null 2>&1
+	[ -x /etc/init.d/piso_monitor ] && /etc/init.d/piso_monitor restart > /dev/null 2>&1
 }
 
 # guests_online: customers openNDS has let online right now

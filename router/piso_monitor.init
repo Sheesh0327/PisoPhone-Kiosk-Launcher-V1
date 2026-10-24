@@ -1,11 +1,11 @@
 #!/bin/sh /etc/rc.common
-# OpenWrt service for the Telegram monitor (procd). Installed as /etc/init.d/piso_monitor; started once
+# OpenWrt service for the monitor (procd). Installed as /etc/init.d/piso_monitor and started on every router with the portal:
+# it restarts a portal that hangs, watches the flash and writes alerts.txt; it talks to Telegram only when
 # "piso-setup telegram" has written /etc/piso-monitor.conf.
 START=98
 USE_PROCD=1
 
 start_service() {
-	[ -r /etc/piso-monitor.conf ] || return 0
 	rm -rf /tmp/piso-monitor
 	procd_open_instance monitor
 	procd_set_param command /usr/bin/piso-monitor.sh run

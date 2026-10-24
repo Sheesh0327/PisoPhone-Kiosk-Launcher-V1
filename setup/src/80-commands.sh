@@ -5,6 +5,7 @@ cmd_status() {
 	[ -r "$STATE" ] && echo "setup: $(cat "$STATE")"
 	DRY=1; check_all; _f=$?
 	box_name_notice   # (information only: it does not count as a failed check)
+	[ -s "$PISO_ROOT/etc/coinslot.d/alerts.txt" ] && { echo "Recent alerts (the router's monitor wrote them to /etc/coinslot.d/alerts.txt):"; tail -n 5 "$PISO_ROOT/etc/coinslot.d/alerts.txt" | sed 's/^/  /'; }
 	[ "$_f" = 0 ] && echo "All checks passed." || echo "$_f check(s) failed. Log: $LOG"
 	return "$_f"
 }
@@ -235,7 +236,7 @@ cmd_update() {
 	fi
 	install_update_timer
 	keep_across_upgrades
-	[ -r /etc/piso-monitor.conf ] && [ -x /etc/init.d/piso_monitor ] && { /etc/init.d/piso_monitor enable; /etc/init.d/piso_monitor restart; }
+	[ -x /etc/init.d/piso_monitor ] && { /etc/init.d/piso_monitor enable; /etc/init.d/piso_monitor restart; }
 	sleep 3
 	console_default
 	log "Updated to setup file version $VERSION. Customers' sessions and the revenue ledger were not touched."

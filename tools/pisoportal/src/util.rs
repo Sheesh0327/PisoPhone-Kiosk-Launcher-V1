@@ -71,6 +71,17 @@ fn write_atomic_mode(path: &str, bytes: &[u8], mode: Option<u32>) -> std::io::Re
     Ok(())
 }
 
+/// Moves a file to a new name and flushes the folder, so the move survives a power cut (the ledger roll uses it twice).
+pub fn rename_durable(from: &str, to: &str) -> std::io::Result<()> {
+    fs::rename(from, to)?;
+    if let Some(d) = std::path::Path::new(to).parent().filter(|d| !d.as_os_str().is_empty()) {
+        if let Ok(d) = fs::File::open(d) {
+            let _ = d.sync_all();
+        }
+    }
+    Ok(())
+}
+
 /// Random lowercase hex (from the kernel's random source).
 pub fn random_hex(n: usize) -> String {
     let mut buf = vec![0u8; n.div_ceil(2)];

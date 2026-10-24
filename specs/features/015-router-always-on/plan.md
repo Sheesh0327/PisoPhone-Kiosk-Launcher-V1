@@ -1,6 +1,6 @@
 # Plan: 015 Router always on
 
-Status: **not started: waiting for the owner's D1, D2, D3 and Q1/Q2 (spec.md), then approval.** Write no code before that.
+Status: **approved, in progress** (owner's answers: spec 02 section 8). Design notes for group 3: the carry row holds the previous segment's last hash in its `plan` field and the coin total in `pesos`, so one month verifies alone and `verify all` follows the chain; readers use `ledger::read_recent`.
 
 Context manifest (constitution rule 1): `file | purpose | lines | est_tokens`. Unresolved ledger entries to load first: the two 2026-10-24 rows of feature 014 (the fake box `expire` control; AO-11 stranded coins).
 

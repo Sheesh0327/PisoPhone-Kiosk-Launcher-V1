@@ -1,6 +1,6 @@
 # Feature 015: Router always on
 
-Status: **draft: waiting for the owner (decisions D1, D2, D3 below), then for approval of the spec and plan. No code is written.**
+Status: **approved** (owner, spec 02 section 8, 2026-10-24: D1 yes, D2 yes, D3 `alerts.txt`, Q1 yes; AO-11 is feature 021)
 Branch: `feat/015-router-always-on` (from `beta`)   Area: router   Release: router **1.5.19** (shared with feature 016)
 Backlog rows: AO-01, AO-02, AO-03, AO-04, AO-05, AO-06, AO-09, RT-17 (`specs/spec_02_findings.json`, `specs/spec_01_findings.json`);
 AO-11 only if the owner says so (question Q2)
@@ -30,9 +30,9 @@ restart a hung portal safely, bound its own files, watch the flash, and tell the
 - **Only owner-signed software:** not touched. Restarting a service and alerts install nothing. The new router program and monitor script go out through the normal signed router release.
 
 ## Owner decisions (waiting for the owner; recommended answer first)
-- **D1: split `revenue.csv` by month?** *Waiting for the owner.* Recommended: **yes**. Closed months stay on flash as `revenue-YYYY-MM.csv`; when free flash is under 256 KB the owner is alerted and the setup program's Owner tools download and then delete the oldest months; **never deleted automatically.** Without D1 the file keeps growing and AO-02 and AO-03's second half are dropped (only the streaming read of AO-03 stays).
-- **D2: may the monitor restart a hung portal by itself?** *Waiting for the owner.* Recommended: **yes**, after 3 failed `/ping` a minute apart, at most once in 10 minutes; an open coin window is settled from its record on start, as today. Without D2 the monitor only alerts.
-- **D3: alerts without Telegram?** *Waiting for the owner.* Recommended: **`/etc/coinslot.d/alerts.txt`** (the last 20 lines, a small file) shown on the console front page and in the setup program's Check-up.
+- **D1: split `revenue.csv` by month?** **Answered: yes.** Closed months stay on flash as `revenue-YYYY-MM.csv`; when free flash is under 256 KB the owner is alerted and the setup program's Owner tools download and then delete the oldest months; **never deleted automatically.** Without D1 the file keeps growing and AO-02 and AO-03's second half are dropped (only the streaming read of AO-03 stays).
+- **D2: may the monitor restart a hung portal by itself?** *Waiting for the owner.* **Answered: yes**, after 3 failed `/ping` a minute apart, at most once in 10 minutes; an open coin window is settled from its record on start, as today. Without D2 the monitor only alerts.
+- **D3: alerts without Telegram?** **Answered: `/etc/coinslot.d/alerts.txt`** (the last 20 lines, a small file) shown on the console front page and in the setup program's Check-up.
 
 Questions found while planning (not in the epic; the recommended answer is mine):
 - **Q1: the monitor only runs when Telegram is set up.** `setup/src/75-checks-stage2.sh:53`, `80-commands.sh:238` and `90-updates.sh:69` start `piso_monitor` only `[ -r /etc/piso-monitor.conf ]`, which exists only after `piso-setup telegram`. So AO-01, AO-05 and AO-06 would do nothing in a shop without Telegram: exactly the shop D3 is for. *Recommended: yes, run the monitor on every router with the portal; with no Telegram settings it sends nothing and only checks, restarts and writes `alerts.txt`.* This touches `setup/src/` (installer size, below).

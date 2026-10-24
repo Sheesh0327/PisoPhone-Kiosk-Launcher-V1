@@ -243,24 +243,24 @@ fn same_origin(req: &Request) -> bool {
 
 // ---- connection limits ------------------------------------------------------------------------------------------------------------
 /// Counts what is in use, in total and per key (a client address, a device): one guest cannot take every connection.
-struct Limits<K: Eq + Hash + Clone> {
+pub(crate) struct Limits<K: Eq + Hash + Clone> {
     used: Mutex<(usize, HashMap<K, usize>)>,
     total: usize,
     each: usize,
 }
 
 /// One unit of a limit, given back when dropped.
-struct Slot<K: Eq + Hash + Clone> {
+pub(crate) struct Slot<K: Eq + Hash + Clone> {
     lim: Arc<Limits<K>>,
     key: K,
 }
 
 impl<K: Eq + Hash + Clone> Limits<K> {
-    fn new(total: usize, each: usize) -> Arc<Limits<K>> {
+    pub(crate) fn new(total: usize, each: usize) -> Arc<Limits<K>> {
         Arc::new(Limits { used: Mutex::new((0, HashMap::new())), total, each })
     }
 
-    fn take(self: &Arc<Self>, key: K) -> Option<Slot<K>> {
+    pub(crate) fn take(self: &Arc<Self>, key: K) -> Option<Slot<K>> {
         let mut g = self.used.lock().unwrap();
         let n = g.1.get(&key).copied().unwrap_or(0);
         if g.0 >= self.total || n >= self.each {
@@ -283,6 +283,12 @@ impl<K: Eq + Hash + Clone> Drop for Slot<K> {
             }
         }
     }
+}
+
+/// The owner's console and the coin box page each take at most this many connections at once, and one address at most the second
+/// number (AO-09): 200 idle sockets from a guest must not use up the memory of a router.
+pub(crate) fn console_limits() -> Arc<Limits<IpAddr>> {
+    Limits::new(24, 8)
 }
 
 /// Connections per client address, and open coin pages per device.

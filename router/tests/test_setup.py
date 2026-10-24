@@ -819,6 +819,16 @@ for _label, _kv, _want in (
     check((NOTICE in summary_part) == _want, f"and the summary {'shows' if _want else 'does not show'} it: " + summary_part[-400:])
     check("rc=0" in r.stdout, "and the line does not make status fail")
 
+# ---- feature 015 (AO-06): status shows what the monitor wrote to alerts.txt, with or without Telegram --------------------------------
+aroot = f"{tmp}/alertsroot"
+os.makedirs(f"{aroot}/etc/coinslot.d", exist_ok=True)
+r = lib('check_all() { echo CHECKS; return 0; }; cmd_status; echo "rc=$?"', env={"PISO_ROOT": aroot})
+check("Recent alerts" not in r.stdout and "rc=0" in r.stdout, "status shows no alerts section when there is no alerts.txt: " + r.stdout[-300:])
+open(f"{aroot}/etc/coinslot.d/alerts.txt", "w").write("".join(f"2026-10-24 10:0{i} alert number {i}\n" for i in range(7)))
+r = lib('check_all() { echo CHECKS; return 0; }; cmd_status; echo "rc=$?"', env={"PISO_ROOT": aroot})
+check("Recent alerts" in r.stdout and "alert number 6" in r.stdout and "alert number 2" in r.stdout and "alert number 1" not in r.stdout and "rc=0" in r.stdout,
+      "status shows the last 5 alerts and does not fail because of them: " + r.stdout[-400:])
+
 # ---- feature 011 part B: the pairing tips say that another router nearby may answer the setup name ----------------------------
 PAIR_TIP = "another PisoHub router nearby may answer the setup name PisoCoinBox: switch it off for a few minutes, or run piso-setup box-wifi-name on it"
 cf = _bwn_conf("pairtips", KIOSK_PASS="kp-old-1")
