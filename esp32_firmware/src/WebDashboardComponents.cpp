@@ -91,9 +91,22 @@ String renderPhoneSlotsHtml() {
     // stays out of the host's logs, and the setup page removes it from the address bar as soon as it has read it.
     // (the router's own network name goes first, so a reader of the link can find "&wifi_ssid=NAME&wifi_pass=")
     String kioskLink = "";
-    if (kioskWifiPass.length() > 0) {
-        if (kioskWifiSsid.length() > 0) kioskLink += String("&wifi_ssid=") + urlEncode(kioskWifiSsid);
-        kioskLink += String("&wifi_pass=") + urlEncode(kioskWifiPass);
+    String linkSsid = kioskWifiSsid;
+    String linkPass = kioskWifiPass;
+    bool linkVisible = false;
+#if !PISO_HAS_GATEWAY
+    // PisoPhone only has no router to name a PisoKiosk network: the phones join the shop's own Wi-Fi, the one this box joined. Without this
+    // the link carried no Wi-Fi at all and a new phone could not be set up (feature 028).
+    if (linkPass.length() == 0 && wifiSsid.length() > 0 && wifiPass.length() >= 8) {
+        linkSsid = wifiSsid;
+        linkPass = wifiPass;
+        linkVisible = true;
+    }
+#endif
+    if (linkPass.length() > 0) {
+        if (linkSsid.length() > 0) kioskLink += String("&wifi_ssid=") + urlEncode(linkSsid);
+        kioskLink += String("&wifi_pass=") + urlEncode(linkPass);
+        if (linkVisible) kioskLink += "&wifi_hidden=0"; // the shop's normal network is not hidden
     }
     html += "<a class=\"btn primary sm\" href=\"" + setupBase + "#secret=" + secret + kioskLink + "\">" +
             icon("download") + "Set up a phone</a>";

@@ -4,6 +4,8 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: the CI build number, shown as hundreds.tens.ones, build 466 is 4.6.6; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Firmware 3.12.4 and the phone setup page, **a PisoPhone-only box now gives new phones the shop's Wi-Fi (feature 028).** Not tried on a box or phone yet (hardware check RS52).
+  - On a PisoPhone-only box the *Set up a phone* link carried no Wi-Fi, so the QR step failed or named a network that does not exist ("PisoKiosk"), and phones stopped at "refused to add <your network>". The link now carries the Wi-Fi the box itself uses, and the setup page makes the QR code for a visible network (the full install keeps its hidden PisoKiosk network). Money and time: not touched.
 - Phone app, **a new phone on a PisoPhone-only shop no longer stops at "refused to add <your network>" (feature 027).** Not tried on a phone yet (hardware check RS51).
   - When Android would not let the app change a Wi-Fi network that was already saved on the phone (usually the shop's own router), the app now switches that network on as it is, or uses the suggestion it made, instead of giving up. If it still cannot, the line on the screen now also says the Android version and whether the phone is the device owner, so the cause can be named. Money and time: not touched.
 - Router 1.5.21, **a customer's page no longer flashes the last result when it opens (feature 025).** Not tried on a real router.
