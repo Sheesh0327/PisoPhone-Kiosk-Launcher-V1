@@ -20,7 +20,7 @@ sometimes shows a flash of the old result, and the test that checks "the first v
 - Only owner-signed software: the router program changes, so it is released and signed the normal way (router 1.5.21).
 
 ## Constraints
-- A page that never sends `hello` is still answered as today within one wake-up of its first state change (the ping and idle behaviour do not change).
+- A page that never sends `hello` is sent pings as today, but no view until it does (every page script sends `hello` as its first message; nothing else relies on a view before it).
 - A page that does say `hello` gets its first view from the `hello` handler, after `clear_result` when `reset` is true, exactly as now.
 - After the `hello`, changes reach the page as fast as today (no extra delay).
 - The router program uses only `sha2`, `hmac` and `p256`; no new thread.

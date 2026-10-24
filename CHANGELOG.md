@@ -4,6 +4,8 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: the CI build number, shown as hundreds.tens.ones, build 466 is 4.6.6; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Router 1.5.21, **a customer's page no longer flashes the last result when it opens (feature 025).** Not tried on a real router.
+  - A page that asked for a fresh start could, now and then, be shown the result of its previous coin window for a moment before the portal cleared it, if something else changed on the router in that instant. The portal now sends a page nothing until the page has said hello and its old result is cleared. Money and time: not touched; this is only what a page is first shown.
 - Router 1.5.20, **the Quick time adjust buttons work from the router console (feature 022).** Not tried on a real router; hardware check RS47 in `docs/REAL_WORLD_TESTING.md`.
   - **Add and Subtract on the coin box's admin page no longer say "refused: this request came from another page"** when you open that page from the link inside the router's console. The console told the browser not to send where a page came from, and a browser then labels a plain form post as coming from nowhere, which the console's own safety check refused. It now tells the browser to send that only to the same site. Posts from another website are still refused.
   - Money and time: not touched. The time change itself (its own transaction number, credited once) works as before; it could not reach the box before.
