@@ -4,6 +4,9 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: the CI build number, shown as hundreds.tens.ones, build 466 is 4.6.6; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Phone app, **the shop name is now a big running band on the lock and home screens (feature 023).** Not tried on a phone yet (hardware check RS48).
+  - A full-width band in the shop palette with the name in 28 sp bold, glowing, with a slow shine, running across without a stop (about 60 dp a second); a short name repeats so the band is never empty. A phone with no shop name shows **PisoPhone** in the same band.
+  - Unchanged safety: on a hot, nearly flat or power-saving phone, with animations off or density off, the name stands still, centred and whole. Money and time: not touched.
 - Firmware 3.12.4 and the phone setup page, **a PisoPhone-only box now gives new phones the shop's Wi-Fi (feature 028).** Not tried on a box or phone yet (hardware check RS52).
   - On a PisoPhone-only box the *Set up a phone* link carried no Wi-Fi, so the QR step failed or named a network that does not exist ("PisoKiosk"), and phones stopped at "refused to add <your network>". The link now carries the Wi-Fi the box itself uses, and the setup page makes the QR code for a visible network (the full install keeps its hidden PisoKiosk network). Money and time: not touched.
 - Phone app, **a new phone on a PisoPhone-only shop no longer stops at "refused to add <your network>" (feature 027).** Not tried on a phone yet (hardware check RS51).
