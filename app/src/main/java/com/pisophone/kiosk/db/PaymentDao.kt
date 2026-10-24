@@ -16,6 +16,9 @@ interface PaymentDao {
     @Query("SELECT * FROM payment_receipts WHERE txId = :txId LIMIT 1")
     fun getReceiptByTxId(txId: String): PaymentReceipt?
 
+    @Query("SELECT COUNT(*) FROM payment_receipts")
+    fun countReceipts(): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun updateSessionState(state: PaidSessionState)
 

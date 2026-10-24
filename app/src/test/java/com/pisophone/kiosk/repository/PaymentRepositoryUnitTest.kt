@@ -485,6 +485,38 @@ class PaymentRepositoryUnitTest {
         assertEquals(2L, sanitizedState.revision)
     }
 
+    // APP-02/APP-08: a coin event with no receipt must never be turned into a receipt (it would block the real credit as a duplicate).
+    @Test
+    fun testApp02OrphanCoinEventDoesNotBecomeAReceiptAndTheCoinIsStillCreditedOnce() = runBlocking {
+        db.coinEventDao().insertEvent(
+            com.pisophone.kiosk.db.CoinEvent(txId = "tx-orphan", secondsAdded = 300, source = "Piso Coin"),
+        )
+        val repository = PaymentRepository(db = db, context = context, isEligible = { true })
+        repository.recoverUncommittedTransactions()
+
+        assertEquals(null, db.paymentDao().getReceiptByTxId("tx-orphan"))
+        assertEquals(PaymentResult.APPLIED, repository.creditPayment("tx-orphan", 300, 5.0))
+        assertEquals(PaymentResult.ALREADY_APPLIED, repository.creditPayment("tx-orphan", 300, 5.0))
+        assertEquals(5.0, db.paymentDao().getReceiptByTxId("tx-orphan")?.amount ?: 0.0, 0.001)
+    }
+
+    // APP-10: a UI callback that throws after the commit must not turn an APPLIED credit into FAILED.
+    @Test
+    fun testApp10ThrowingCallbackStillReturnsAppliedAndCreditsOnce() = runBlocking {
+        var stateChangedCount = 0
+        val repository = PaymentRepository(
+            db = db,
+            isEligible = { true },
+            onPaymentApplied = { _, _, _, _ -> throw IllegalStateException("toast failed") },
+            onSessionStateChanged = { stateChangedCount++ },
+        )
+
+        assertEquals(PaymentResult.APPLIED, repository.creditPayment("tx-cb", 300, 1.0))
+        assertEquals("State listener still runs after a failing payment callback", 1, stateChangedCount)
+        assertNotNull(db.paymentDao().getReceiptByTxId("tx-cb"))
+        assertEquals(PaymentResult.ALREADY_APPLIED, repository.creditPayment("tx-cb", 300, 1.0))
+    }
+
     // Paid time starts at Done: a coin put in while the phone is locked is held, with no deadline, until the clock is started.
 
     @Test
