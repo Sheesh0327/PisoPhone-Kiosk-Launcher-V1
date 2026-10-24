@@ -33,10 +33,17 @@ fn log_path(data_dir: &str) -> String {
     format!("{}/wheel.log", data_dir)
 }
 
+/// The wheel log never grows past this (AO-04): at the limit it becomes `wheel.log.1` (the one before it is dropped) and a new one starts.
+const LOG_LIMIT: u64 = 256 * 1024;
+
 /// One line in the wheel's own log: time, what happened, detail.
 pub(crate) fn log(data_dir: &str, now: u64, what: &str, detail: &str) {
     use std::io::Write;
-    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(log_path(data_dir)) {
+    let path = log_path(data_dir);
+    if std::fs::metadata(&path).map(|m| m.len() >= LOG_LIMIT).unwrap_or(false) {
+        let _ = crate::util::rename_durable(&path, &format!("{}.1", path));
+    }
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
         let _ = writeln!(f, "{},{},{}", now, what, detail);
     }
 }
@@ -160,5 +167,19 @@ mod tests {
         std::fs::write(record_path(&d), "v=1\nversion=1\nat=notanumber\nsession=x\n").unwrap();
         assert!(!confirmed(&d));
         assert!(!enabled(&d, true));
+    }
+
+    #[test]
+    fn ao04_the_wheel_log_is_capped_and_keeps_one_older_copy() {
+        let d = dir("ao04");
+        for i in 0..20_000u64 {
+            log(&d, 1_700_000_000 + i, "spin", "aa:bb:cc:00:00:01,0123456789abcdef,5,2,5,120");
+        }
+        let (cur, old) = (std::fs::metadata(log_path(&d)).unwrap().len(), std::fs::metadata(format!("{}.1", log_path(&d))).unwrap().len());
+        assert!(cur <= LOG_LIMIT + 200 && old <= LOG_LIMIT + 200, "the log passed its limit: {} and {} bytes", cur, old);
+        assert!(cur > 0 && old >= LOG_LIMIT, "the older half is kept: {} and {}", cur, old);
+        assert!(!std::path::Path::new(&format!("{}.2", log_path(&d))).exists(), "only one older copy");
+        let text = std::fs::read_to_string(log_path(&d)).unwrap();
+        assert!(text.lines().last().unwrap().starts_with("1700019999,spin,"), "the newest line is in the current file");
     }
 }
