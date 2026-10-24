@@ -4,6 +4,9 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: the CI build number, shown as hundreds.tens.ones, build 466 is 4.6.6; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Router 1.5.20, **the Quick time adjust buttons work from the router console (feature 022).** Not tried on a real router; hardware check RS47 in `docs/REAL_WORLD_TESTING.md`.
+  - **Add and Subtract on the coin box's admin page no longer say "refused: this request came from another page"** when you open that page from the link inside the router's console. The console told the browser not to send where a page came from, and a browser then labels a plain form post as coming from nowhere, which the console's own safety check refused. It now tells the browser to send that only to the same site. Posts from another website are still refused.
+  - Money and time: not touched. The time change itself (its own transaction number, credited once) works as before; it could not reach the box before.
 - Firmware 3.12.2, **a new PisoPhone-only board no longer restarts in a loop (feature 026).** Not tried on a real board yet; hardware check RS50 in `docs/REAL_WORLD_TESTING.md`.
   - A board with no Wi-Fi saved (every new one) crashed a moment after it started (`Invalid mbox`, then a restart, again and again), so the setup program on your computer never got an answer and stopped with "No PisoPhone software answered on the board". The board now starts its Wi-Fi without connecting, as it did not before, and stays up for the setup. Boxes that already have a Wi-Fi saved are not affected. Money and time: not touched.
 - Router 1.5.19, **a router that keeps running day and night (feature 015).** Not tried on a real router; hardware check RS44 in `docs/REAL_WORLD_TESTING.md`.
