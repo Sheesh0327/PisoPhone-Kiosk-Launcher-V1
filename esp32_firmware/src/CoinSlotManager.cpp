@@ -216,6 +216,12 @@ bool reserveCoinSlot(const String& sessionId, CoinSlotOwnerType ownerType, unsig
         return false;
     }
 
+    if (!txBootCounterReady()) {
+        diagLog("[🪙 COIN SLOT] Reservation rejected for '%s': no boot counter, so transaction ids could repeat.\n",
+                sessionId.c_str());
+        return false;
+    }
+
     if (isPaymentQueueFull() || !isPaymentStorageReady()) {
         diagLog("[🪙 COIN SLOT] Reservation rejected for '%s': Storage unavailable or queue full!\n",
                 sessionId.c_str());

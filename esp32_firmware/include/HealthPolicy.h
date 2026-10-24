@@ -24,7 +24,7 @@ struct Thresholds {
     int localUtcOffsetHours = 8; // the Philippines
 };
 
-enum class Action { None, RebootLowMemory, RebootMaintenance };
+enum class Action { None, RebootLowMemory, RebootMaintenance, RebootWorkerStall };
 
 inline const char* actionName(Action a) {
     switch (a) {
@@ -32,9 +32,17 @@ inline const char* actionName(Action a) {
         return "low-memory";
     case Action::RebootMaintenance:
         return "weekly-maintenance";
+    case Action::RebootWorkerStall:
+        return "worker-stall";
     default:
         return "none";
     }
+}
+
+// A background task that stopped making progress while work waited (WorkerLiveness.h) restarts the box, but only when it is safe:
+// no coin session open and no payment that exists only in RAM, the same guard as every other restart.
+inline Action workerStallAction(bool workerStalled, bool safeToRestart) {
+    return workerStalled && safeToRestart ? Action::RebootWorkerStall : Action::None;
 }
 
 // Local hour 0-23 from an epoch in milliseconds.

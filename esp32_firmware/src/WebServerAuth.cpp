@@ -2,6 +2,8 @@
 // "superadmin") with per-client lockout after repeated failures; phone telemetry uses signed requests.
 // Also hosts the background AuthWorker task that sends encrypted, signed commands to phones.
 
+#include "AckParse.h"
+#include "PushBackoff.h"
 #include "WebServerAuth.h"
 #include "AdminSession.h"
 #include "OriginCheck.h"
@@ -66,12 +68,23 @@ void processWorkerAcks() {
     }
 }
 
+// AO-07: bumped for every request taken and every attempt made; loop() watches it (WorkerLiveness.h).
+volatile uint32_t authWorkerPasses = 0;
+// FW-04: phones that did not answer twice in a row are left alone for 30 s (PushBackoff.h); the payment stays queued on the box.
+static pushbackoff::Table pushBackoff;
+
 void authWorkerTask(void* pvParameters) {
     AuthRequest req;
     while (true) {
         if (xQueueReceive(authQueue, &req, portMAX_DELAY) == pdTRUE) {
+            authWorkerPasses++;
             String ip = String(req.ip);
             if (ip.length() == 0) continue;
+            if (pushBackoff.shouldSkip(req.ip, millis())) {
+                Serial.printf("[AUTH WORKER] %s skipped: %s did not answer twice, trying again in 30 s.\n",
+                              req.actionPath, ip.c_str());
+                continue;
+            }
 
             String finalParams = String(req.params);
             uint64_t currentMasterMs = getCurrentMasterTimeMs();
@@ -131,7 +144,10 @@ void authWorkerTask(void* pvParameters) {
             bool delivered = false;
 
             while (!delivered && retries < maxAttempts) {
+                authWorkerPasses++;
                 if (WiFi.status() != WL_CONNECTED) {
+                    if (uxQueueMessagesWaiting(authQueue) > 0)
+                        break; // FW-04: others are waiting: do not sleep on this one
                     vTaskDelay(pdMS_TO_TICKS(1000));
                     retries++;
                     continue;
@@ -161,29 +177,14 @@ void authWorkerTask(void* pvParameters) {
                     if (code >= 200 && code < 300) {
                         if (currentTxId.length() > 0 && currentDevId.length() > 0) {
                             bool ackValid = false;
-                            int ackTxPos = respBody.indexOf("tx_id=");
-                            int ackDevPos = respBody.indexOf("device_id=");
-                            if (ackTxPos != -1 && ackDevPos != -1) {
-                                int ackTxEnd = respBody.indexOf(':', ackTxPos);
-                                if (ackTxEnd == -1) ackTxEnd = respBody.length();
-                                String ackTx = respBody.substring(ackTxPos + 6, ackTxEnd);
-
-                                int ackDevEnd = respBody.indexOf(':', ackDevPos);
-                                if (ackDevEnd == -1) ackDevEnd = respBody.length();
-                                String ackDev = respBody.substring(ackDevPos + 10, ackDevEnd);
-
+                            ack::Fields a = ack::parseAckBody(std::string(respBody.c_str()));
+                            if (a.hasTx && a.hasDev) {
+                                String ackTx = String(a.tx.c_str());
+                                String ackDev = String(a.dev.c_str());
                                 if (ackTx == currentTxId && ackDev == currentDevId) {
-                                    int sigPos = respBody.indexOf("v_sig=");
-                                    int tsPosIdx = respBody.indexOf("ts=");
-                                    if (sigPos != -1 && tsPosIdx != -1) {
-                                        int sigEnd = respBody.indexOf(':', sigPos);
-                                        if (sigEnd == -1) sigEnd = respBody.length();
-                                        String ackSig = respBody.substring(sigPos + 6, sigEnd);
-
-                                        int tsEnd = respBody.indexOf(':', tsPosIdx);
-                                        if (tsEnd == -1) tsEnd = respBody.length();
-                                        String ackTs = respBody.substring(tsPosIdx + 3, tsEnd);
-
+                                    if (a.hasSig && a.hasTs) {
+                                        String ackSig = String(a.sig.c_str());
+                                        String ackTs = String(a.ts.c_str());
                                         String expectedSig = calculateHMAC("v1:" + currentDevId + ":" + currentTxId +
                                                                                ":" + currentAmount + ":" + ackTs,
                                                                            getSharedSecret());
@@ -203,7 +204,7 @@ void authWorkerTask(void* pvParameters) {
                                         "[AUTH WORKER] Mismatched ACK: (dev=%s, tx=%s) vs received (dev=%s, tx=%s)\n",
                                         currentDevId.c_str(), currentTxId.c_str(), ackDev.c_str(), ackTx.c_str());
                                 }
-                            } else if (respBody.startsWith("OK") || respBody.startsWith("ALREADY_PROCESSED")) {
+                            } else if (a.okPrefix) {
                                 ackValid = getSharedSecret().length() == 0; // see above: signed once a secret is set
                             }
 
@@ -228,9 +229,17 @@ void authWorkerTask(void* pvParameters) {
                 if (!delivered) {
                     retries++;
                     if (retries < maxAttempts) {
+                        if (uxQueueMessagesWaiting(authQueue) > 0)
+                            break; // FW-04: others are waiting: give this one up for now
                         vTaskDelay(pdMS_TO_TICKS(1000UL * retries));
                     }
                 }
+            }
+
+            if (delivered) {
+                pushBackoff.succeeded(req.ip);
+            } else {
+                pushBackoff.failed(req.ip, millis());
             }
 
             if (!delivered) {

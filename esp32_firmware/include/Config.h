@@ -223,6 +223,7 @@ void updateMasterTime(uint64_t ts, const String& sourceId = "");
 uint64_t getCurrentMasterTimeMs();
 String boxTimeJsonField(); // ,"server_time_ms":<ms> (the box's clock for phones to sign with), or "" while it has none
 String generateTxId(const char* prefix = "tx-");
+bool txBootCounterReady(); // false while the flash boot counter for transaction ids could not be read or written
 
 #if PISO_HAS_PHONES
 bool parseDeviceEntry(const String& entry, DeviceConfig& out);

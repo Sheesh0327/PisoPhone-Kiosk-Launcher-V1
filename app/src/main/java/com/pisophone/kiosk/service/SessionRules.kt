@@ -66,6 +66,13 @@ object SessionRules {
     /** Paid time ran out: an armed slot stays armed (1) so a coin being inserted is not lost, otherwise 0. */
     fun afterExpiry(current: Int): Int = if (isArmed(current)) ARMED_LOCKED else LOCKED
 
+    /**
+     * An unlocked phone whose stored session has no deadline and no held seconds has nothing left to run (APP-01); it must lock,
+     * whatever the deadline. A held balance (no deadline yet, seconds > 0) is not this case: its clock is about to start.
+     */
+    fun isUnlockedWithNothingLeft(current: Int, deadlineMs: Long, remainingSeconds: Int): Boolean =
+        isUnlocked(current) && deadlineMs <= 0L && remainingSeconds <= 0
+
     /** Admin deducted time: only an unlocked session that reached zero locks. */
     fun afterDeduct(current: Int, remainingSeconds: Int): Int? =
         if (remainingSeconds <= 0 && isUnlocked(current)) afterExpiry(current) else null
