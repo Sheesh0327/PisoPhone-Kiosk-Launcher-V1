@@ -1,69 +1,59 @@
-# Feature 022: quick add / subtract time on the box's admin page
+# Feature 022: quick add / subtract time on the box's admin page (through the router console)
 
-Status: **draft (corrected after the owner's answers, 2026-10-24)**   Branch: `feat/022-quick-adjust-fix`   Area: firmware
-Backlog rows: owner bug report 2026-10-24 (no spec row)   Release: firmware (3.12.2)
+Status: **draft (cause found, owner answers recorded 2026-10-24; waiting for approval)**   Branch: `feat/022-quick-adjust-fix`   Area: **router**
+Backlog rows: owner bug report 2026-10-24 (no spec row)   Release: router 1.5.20
 
 ## Intent
-On the box's admin page (the dashboard) the **Quick time adjust** panel has a phone chooser, a minutes box and the *Add* and
-*Subtract* buttons. The owner presses one and the browser shows **"refused: this request came from another page"** instead of
-the dashboard, for one phone and for ALL, on firmware 3.12.0 / 3.12.1, and says it never worked. The owner wants the buttons to
-work from the dashboard, and to be told truthfully what happened. Serves rule 1: time is never wrong, and the owner is never
-told a change happened when it did not.
+The owner opens the coin box's admin dashboard from the **link inside the router's console** (the "box view"). Pressing **Add** or
+**Subtract** on the *Quick time adjust* panel, for one phone or for ALL, shows **"refused: this request came from another page"**
+instead of changing the time. The owner wants the buttons to work. Serves rule 1 (time is never wrong) and the owner's day-to-day use.
 
-## What I know (read from the code, not run)
-- **The refusal is the box's own cross-site guard.** `checkAdminAuth()` (`esp32_firmware/src/WebServerAuth.cpp`, `crossSiteWrite()`
-  at line 369) refuses any change that is not a GET when the request's **Origin** (or, without it, **Referer**) names a different
-  host than its **Host** header, or is the word `null`, with `403 CROSS_SITE` and the message above (`esp32_firmware/include/OriginCheck.h`;
-  host test `origin_check_test.cpp`). The quick-adjust form is a **plain HTML form post** to `/add_time`
-  (`esp32_firmware/include/WebDashboardTemplate.h` line 86), the one kind of request here the browser makes on its own. The
-  dashboard's other changes are sent by script.
-- So the browser's Origin and the box's Host differ, or Origin is `null`, **only for this form**. Candidates, to be told apart by the
-  real header values (not yet known): (A) the dashboard is opened through an address whose host the browser reports differently
-  from the Host the box sees, for example the router console's *box view* (it rewrites Origin and Referer only when it sees an
-  Origin header, `tools/pisoportal/src/boxview.rs` line 64), a name instead of an IP, or a forwarded port; (B) the post is sent
-  with `Origin: null` (a page that sets no-referrer, or the form sent out of a sandbox or redirect); (C) the post carries a
-  Referer but no Origin and the Referer host is spelled differently (upper case, a port, a trailing dot).
-- Separately, and not the reported symptom: `handleAddTime` sends the time to the phones **inside the web request**
-  (`sendAddTime`, `esp32_firmware/src/DeviceNetwork.cpp` line 27, up to about 2 s per phone, one after another), and writes
-  "Changed time by ..." **before** anyone knows the phone answered. That can hold the box for many seconds with ALL and can say "Changed" for
-  a phone never reached.
-- The player-account buttons (`+ Time`, `- Time` on a QR card, `/api/accounts/adjust`) are a different path and are not part of this.
+## Cause (found by reading the code; not yet run against a real browser)
+- That text is printed by the **router** (`tools/pisoportal/src/boxview.rs` line 127), not by the box. The box view refuses any
+  request that is not a GET when `same_site_post` (line 101) finds the browser's **Origin** different from the **Host**.
+- The same file tells the browser, for every box page it shows, `Referrer-Policy: no-referrer` (`frame_policy`, line 48). With that
+  policy a browser sends **`Origin: null`** on a **plain HTML form post**. The Quick time adjust form is exactly that
+  (`esp32_firmware/include/WebDashboardTemplate.h` line 86, `<form action="/add_time" method="POST">`). `null` never equals the Host,
+  so the router refuses it. The dashboard's other changes are sent by script (`fetch`), which carries the real Origin, so they work.
+- That is why only this form fails, for one phone and ALL alike, on every firmware, and "never worked" through the console.
+- (Opened directly by the box's IP address, the box's own guard `OriginCheck.h` accepts the same-origin post, so the buttons are
+  expected to work that way; this is a prediction, checked by the host tests, not by a browser.)
 
 ## Invariants touched
-- Money and time: an owner adjustment is a time change on a phone with `amount=0` and its own transaction id (`tx-adj-...`). Kept:
-  one id per press, the phone credits that id once, and an adjustment goes only to a paired, active slot. **Not touched:**
-  payments, the coin queue, expiry.
-- **Security: the cross-site guard stays.** A hidden form on another website must still be refused. The fix makes the dashboard's own
-  post pass (by sending it the way the guard accepts, or by teaching the guard a genuinely same-site spelling), never by weakening
-  the guard to "allow when unsure". Every change is tested with the attack cases already in `origin_check_test.cpp` kept red-proof.
-- Only owner-signed software: not touched. The signed phone call is unchanged.
+- Money and time: **not touched.** The adjustment itself (a signed `/add_time` to the phone with its own `tx-adj-` id, credited once)
+  is unchanged; this feature only lets the request reach the box.
+- **Security: the guard stays strict.** A hidden form on another website must still be refused: a different Origin, a foreign `null`
+  from a sandboxed page, a missing Host. The fix changes what the *box's own pages* send, never "allow when unsure".
+- Only owner-signed software: not touched except that the router program changes, so it is released and signed the normal way.
 
 ## Constraints
-- The box <-> phone message does not change. The dashboard page is generated (`WebAssets.h`, `python3 scripts/embed_web.py`); never edit it by hand.
-- Firmware code needs a higher `PISO_FW_VERSION` or boxes ignore it.
+- The router program uses only `sha2`, `hmac` and `p256`. The box page is not changed (it lives in firmware); this fix is entirely in the
+  router, so it also works with every box already in a shop.
+- `setup/RELEASE` is raised (a change under `tools/pisoportal/` changes what routers install); generated files by `tools/build_piso_setup.py`.
+- No page the console shows may be allowed to leak the console's address to another site: the policy must stay as strict as today
+  for everything except the box's own same-site posts (`same-origin`).
 
 ## Success criteria
-1. **The failing request is reproduced as data.** The exact Origin / Referer / Host the owner's browser sends for this form are
-   captured (Owner decision 2) and added as a case to `origin_check_test.cpp`; it is **red** on the current guard (it is refused).
-2. **The dashboard's own Add / Subtract passes the guard** in every way the owner opens the dashboard (Owner decision 1), and the
-   cross-site cases still fail: a different host, `Origin: null` from a foreign page, a missing Host. Both kinds are in the
-   host test, with the sanitizers.
-3. **The page tells the truth about the phone.** After a press the dashboard says "Sent +N min to ...", and per phone either "done" or
-   "the phone did not answer, nothing changed"; it never says "Changed" for a phone that was not reached (Owner decision 3).
-4. A press for an unpaired phone still says "Not changed" and sends nothing (as today).
-5. The firmware compiles in CI for all four boards; clang-format 23.1.2, the host tests and `check_security_rules.sh` pass.
-6. **Hardware check RS47** is added to `docs/REAL_WORLD_TESTING.md` (open the dashboard each way the shop uses, press Add and Subtract
-   for one phone and ALL, one phone switched off) and stays unticked until run.
+1. **The failing request is a test, red first.** `tools/pisoportal/tests/` (a new test or in `test_console.py`): a plain form post
+   through the box view with `Origin: null` is refused today, and the page headers say `Referrer-Policy: no-referrer`.
+2. **The box pages are sent with `Referrer-Policy: same-origin`** (the browser then sends the real Origin on a same-origin post and
+   nothing to other sites). The Add / Subtract post with Origin `http://<router>:<console port>` and the same Host is **accepted**
+   and reaches the box with the box's own address as Origin (as the proxy already rewrites it).
+3. **Attacks still fail.** The router test keeps (and adds) refusal cases: a different Origin, `Origin: null` on a post (a foreign
+   page), an `https://` Origin, no session. All still refused.
+4. `cargo test`, clippy, rustfmt, `python3 tests/test_flow.py`, `test_console.py` and the router setup tests pass; the footprint budget holds;
+   `build_piso_setup.py --check` passes.
+5. **Hardware check RS47** is added to `docs/REAL_WORLD_TESTING.md` (open the dashboard from the console, press Add and Subtract for one
+   phone and for ALL, and a phone switched off) and stays unticked until run.
 
 ## Out of scope
-The QR card buttons, the phone side, a new setting, undoing an adjustment, moving all sends to a background worker (see Owner decision 3).
+- The firmware: moving the sends out of the web request (the box holds the page up to 2 s per phone) and the dashboard saying "Changed"
+  before the phone answers. Those are real but separate (Owner decision 2: **later feature**).
+- The QR card `+ Time` / `- Time` buttons, the phone side, anything about money.
 
 ## Owner decisions
-1. **How do you open the dashboard when you press these buttons?** The box's address typed in the browser, the link inside the
-   router's console, a name (like `pisobox.local`), or something else? Answered 2026-10-24: firmware 3.12.x, never worked, one
-   phone and ALL both fail, message "refused: this request came from another page". The how-do-you-open-it answer is still open.
-2. Can you press Add once and send me what the **Diagnostics** page (or the box's serial log) shows right after? The box logs a line
-   "[AUTH] Refused a change to /add_time that came from another website's page (...)" with the page it saw.
-3. The "Sending ... then the result on the next load" page was approved (2026-10-24). **Should the sends also move out of the web request
-   now** (the box is held up to 2 s per phone while it sends), or leave that for a later feature? My proposal: **later**, because it
-   is not the reported failure and this fix touches money-adjacent code.
+1. Answered 2026-10-24: you open the dashboard from the **link inside the router console**. This is what pointed to the router.
+2. Answered 2026-10-24: the slow/blocking sends and the "Changed" wording are **a later feature**, not this one. (If you want the
+   "Changed" wording made truthful soon, say so: it is a small firmware change of its own, feature 025.)
+3. Release: this ships as **router 1.5.20**. Router 1.5.19 is published at 0% and has not been raised; my proposal is to raise
+   **1.5.20** to 100% instead, once the hardware checks RS44 to RS47 are done. Do you agree?
