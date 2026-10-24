@@ -1,6 +1,6 @@
 {
-    "version": "3.12.2",
-    "commit": "f2fa20dce741db86a074ec9c9ba865e05bcb3b7e",
+    "version": "3.12.3",
+    "commit": "7aed3f939802cf10f2d05a71e27ec80218919dc4",
     "builds": [
         {
             "env": "esp32-c3-dev",
@@ -8,8 +8,8 @@
             "chip": "ESP32-C3",
             "file": "esp32-c3-dev.bin",
             "offset": 0,
-            "size": 1435360,
-            "sha256": "b3a769cbd2b2e08b8853c8a332682381c0dbf7c4dbcd7245d1a3bf9a3ef97353"
+            "size": 1437296,
+            "sha256": "94464c70e312d93992d60af06ba700050e4eae10d3cc0486986a0d646b8eb84c"
         },
         {
             "env": "esp32dev-dev",
@@ -17,8 +17,8 @@
             "chip": "ESP32",
             "file": "esp32dev-dev.bin",
             "offset": 4096,
-            "size": 1422320,
-            "sha256": "067abe2168584b13e3686d1ee0ac035982b819a7225cd991ac94bd73254645e3"
+            "size": 1423952,
+            "sha256": "5bc318a71b13cc63ad8e12ed5341d9f193baaf93188a29e7cefedc278fb3d9b5"
         },
         {
             "env": "esp32-c3-dev-phone",
@@ -26,8 +26,8 @@
             "chip": "ESP32-C3",
             "file": "esp32-c3-dev-phone.bin",
             "offset": 0,
-            "size": 1418704,
-            "sha256": "c6272f222341ae882e1656fc96556ea7b7d2761d03439ae03f8edaab3a3f8c69"
+            "size": 1420640,
+            "sha256": "ee4dfd08bc11051170586057d290755a02cb168a6dd8e3a033fb93ac75484314"
         },
         {
             "env": "esp32dev-dev-phone",
@@ -35,8 +35,8 @@
             "chip": "ESP32",
             "file": "esp32dev-dev-phone.bin",
             "offset": 4096,
-            "size": 1406224,
-            "sha256": "a27c8442e6fc119d99348551266560ac792a25e811819b7448f949e315e91676"
+            "size": 1407872,
+            "sha256": "309df1f8ba1052f88d77ccbcca2c75040da9424b38d5f9376105fe4940f18d83"
         },
         {
             "env": "esp32-c3-dev-wifi",
@@ -45,7 +45,7 @@
             "file": "esp32-c3-dev-wifi.bin",
             "offset": 0,
             "size": 1168736,
-            "sha256": "e049d664f4448d26688e8baca730e7f919b5552b23509883558a7bc179408b0d"
+            "sha256": "6686b8e66a6b15e43a2951a51701c6693cc302669a098f2c6be8977d238f6340"
         },
         {
             "env": "esp32dev-dev-wifi",
@@ -54,7 +54,7 @@
             "file": "esp32dev-dev-wifi.bin",
             "offset": 4096,
             "size": 1162800,
-            "sha256": "d5bae0bb5c4bb4d3352f433a9d26d035669fba078277293548bf0f1a76594e9f"
+            "sha256": "06b612fdb8829bf74b473a1fd6af628ecfdb0e528e38a08be848e13587f0a094"
         }
     ]
 }
