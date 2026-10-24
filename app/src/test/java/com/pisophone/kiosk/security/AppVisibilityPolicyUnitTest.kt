@@ -20,10 +20,34 @@ class AppVisibilityPolicyUnitTest {
 
     @Test
     fun unneededPreinstalledAppsAreDisabled() {
-        assertEquals(Action.DISABLE, decide("com.google.android.apps.photos", system = true))
-        assertEquals(Action.DISABLE, decide("com.google.android.youtube", system = true))
         assertEquals(Action.DISABLE, decide("com.android.calendar", system = true))
         assertEquals(Action.DISABLE, decide("com.android.deskclock", system = true))
+    }
+
+    @Test
+    fun googleAppsForCustomersAreKeptVisible() {
+        for (pkg in listOf(
+            "com.google.android.youtube",
+            "com.google.android.apps.youtube.music",
+            "com.android.chrome",
+            "com.google.android.gm",
+            "com.google.android.apps.maps",
+            "com.google.android.apps.photos",
+            "com.google.android.apps.docs",
+            "com.google.android.googlequicksearchbox",
+        )) {
+            assertEquals(pkg, Action.KEEP_VISIBLE, decide(pkg, system = true))
+        }
+    }
+
+    @Test
+    fun googleSettingsAndDeviceAppsStayOutOfSight() {
+        assertEquals(Action.DISABLE, decide("com.google.android.apps.wellbeing", system = true))
+        assertEquals(Action.DISABLE, decide("com.google.android.apps.pixel.support", system = true))
+        // the phone's own needs still win: the messages app is the default SMS app on many phones
+        assertEquals(Action.HIDE_IN_LAUNCHER, decide("com.google.android.apps.messaging", system = true, critical = true))
+        assertEquals(Action.HIDE_IN_LAUNCHER, decide("com.google.android.gms", system = true))
+        assertEquals(Action.DISABLE, decide("com.google.android.settings.intelligence", system = true)) // as before this feature
     }
 
     @Test
