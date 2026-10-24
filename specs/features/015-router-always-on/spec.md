@@ -20,7 +20,7 @@ restart a hung portal safely, bound its own files, watch the flash, and tell the
 | `revenue.csv` | 0 to 10,026 B: **41.8 B a window**, 12.5 KB per 300 windows, **about 4.6 MB a year**, never shrinks | AO-02 is real. A 16 MB router has under 2 MB free (feature 010): flash is full in under a year of trading |
 | the roll `vouchers.txt` | 4,171 B for 40 devices (about 100 B each), flat after the first devices | bounded by the number of devices; no work |
 | `wheel.log` | not created (the wheel is off in every shop) | AO-04 is not shown by a measurement, only by reading `wheel_gate.rs`; 015 needs a spin load in its test |
-| RSS | 3.2 MB at start, 3.99 MB after 121 undisturbed windows, still rising about 1 kB a window at the end | not shown to be a leak; the long no-kill run in 014's `validation.md` decides whether AO-xx needs a row |
+| RSS | 3.2 MB at start, 4.1 MB after 200 windows, then 4.18 MB at window 1,000 of a clean run (0.06 kB a window) | warm-up, **not a leak**; no row needed |
 | threads / open files | 7 to 9 / 8 to 11, no growth | AO-09 (one thread per console connection) is about a guest opening hundreds of sockets, not about normal use: the test must open them |
 | a torn last row after a power cut | stays in the file as a stray line (19 of them in 256 lines) | `verify` still gives the right total; the roll in AO-02 must keep that rule |
 | coins | 429 put in = 425 credited + 4 stranded by a kill (AO-11) | see Q2 |

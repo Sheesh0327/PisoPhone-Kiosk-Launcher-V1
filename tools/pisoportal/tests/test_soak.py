@@ -107,6 +107,7 @@ incidents: list = []
 life = {"n": 0, "windows": 0}
 coins_in, kills_done, cuts_done = 0, 0, 0
 coins_by_mac: dict = {}
+credits: dict = {}   # mac -> [(time, pesos)] of windows credited, for the paid-time check
 window_log: list = []
 stranded_log: list = []
 stranded, cur_mac, busy_total = 0, "", [0]
@@ -176,7 +177,6 @@ def one_window(idx, event):
     if event and event[1] == "idle":
         wait_until(lambda: os.listdir(f"{env.data}/open") == [], 10)   # between customers: the last window is closed
         kill_portal(event[0] == "cut", 0, ledger_total()[0], "before the window")
-        killed = True
     c = Cust(ip, port=env.PP, reset=True)
     if not c.ok or c.wait(lambda m: True, 8) is None:   # (after a restart the first screen may be busy: recovery runs first)
         incidents.append(f"window {idx}: the coin page did not open")
@@ -205,9 +205,12 @@ def one_window(idx, event):
     final = None
     if event and event[1] == "mid":
         time.sleep(rng.uniform(0.0, 1.9))   # (armed already)
+        was_stranded = stranded
         kill_portal(event[0] == "cut", n, before_pesos, "in the window")
         c.close()
         killed = True
+        if stranded == was_stranded:
+            credits.setdefault(mac, []).append((time.time(), n))
     else:
         final = c.wait_state("final", 25)
     got = ledger_total()[0] - before_pesos
@@ -218,6 +221,8 @@ def one_window(idx, event):
             seen = [m.get("s") for m in c.states()[c.since:]]
             tail = " | ".join(l[10:] for l in env.log_text()[log_from:].split("\n") if l)[-700:]
             incidents.append(f"window {idx} for {mac}: {n} coins in, {got} pesos booked, customer was told {final and final.get('pulses')}; screens {seen[-6:]}; portal log: {tail}")
+        else:
+            credits.setdefault(mac, []).append((time.time(), n))
     c.close()
     window_log.append({"i": idx, "mac": mac, "coins": n, "killed": killed, "event": event})
 
@@ -248,11 +253,24 @@ try:
         check(stranded == 0, f"no coin stranded on the box by a kill ({stranded} pesos in {len(stranded_log)} kills)")
     check(rc == 0, f"the ledger verifies ({verify_out})")
     check(not incidents, "no window or restart left a coin unsettled: " + "; ".join(incidents[:5]))
-    lost_by_mac: dict = {}
-    for w in stranded_log:
-        lost_by_mac[w["mac"]] = lost_by_mac.get(w["mac"], 0) + w["pesos"]
-    wrong = {m: (paid_minutes(m), (n - lost_by_mac.get(m, 0)) * MIN_PER_PESO) for m, n in coins_by_mac.items() if paid_minutes(m) != (n - lost_by_mac.get(m, 0)) * MIN_PER_PESO}
-    check(not wrong, f"each device holds exactly the time its coins bought ({len(coins_by_mac)} devices; wrong: {dict(list(wrong.items())[:3])})")
+    # paid time: each purchase adds 6 minutes a peso to a running session; a purchase after the session ran out starts a new one.
+    # (A purchase within 20 s of the end is too close to call from outside, so that device is not compared.)
+    wrong, skipped = {}, 0
+    for m, seq in credits.items():
+        mins = end = 0.0
+        unsure = False
+        for t, p in seq:
+            if t > end + 20:
+                mins = 0.0
+            elif t > end - 20:
+                unsure = True
+            mins += p * MIN_PER_PESO
+            end = max(end, t) + p * MIN_PER_PESO * 60
+        if unsure:
+            skipped += 1
+        elif paid_minutes(m) != mins:
+            wrong[m] = (paid_minutes(m), mins)
+    check(not wrong, f"each device holds exactly the time its coins bought ({len(credits) - skipped} devices compared, {skipped} too close to the end of their time to call; wrong: {dict(list(wrong.items())[:3])})")
     check(kills_done == KILLS + CUTS and cuts_done == CUTS, f"the planned kills and power cuts were done ({kills_done} kill -9 of which {cuts_done} power cuts)")
 
     # ---- resources: the last stretch is one process, no kills ---------------------------------------------------------------

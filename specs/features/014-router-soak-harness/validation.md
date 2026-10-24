@@ -17,7 +17,7 @@ undisturbed process. `--quick` (36 windows, 8 kills, 3 power cuts) takes 95 s.
 | 2 | 50 kill -9 and 20 power cuts, portal restarted each time | report line "kill -9 70 (power cuts 20)" | **pass** | `kill -9 70 (power cuts 20)`, `process starts 71`; the check "the planned kills and power cuts were done" passes |
 | 3 | every coin credited exactly once (or stranded and reported); ledger verifies; paid time per device | the report | **pass, with one finding** | 429 pesos put in = **425 credited + 4 stranded**; `pisoportal verify`: `OK 256 425` (256 lines, 425 pesos; the half-rows the power cuts left never count in the total); every device that paid holds exactly 6 minutes per credited peso |
 | 4 | report: RSS, threads, fds every 25 windows; file sizes start and end; coins in vs credited; kills | the report and `--json` | **pass** | tables below |
-| 5 | last half, no kills: RSS, threads, fds within 10% of the middle | `resource_verdicts` in the JSON | **pass** | RSS middle 3,902 kB, end 3,980 kB (limit 4,292); threads 9 / 9 (limit 11); fds 9 / 10 (limit 11). **But RSS was still rising at the end**, see "Memory" |
+| 5 | last half, no kills: RSS, threads, fds within 10% of the middle | `resource_verdicts` in the JSON | **pass** | RSS middle 3,810 kB, end 3,908 kB (limit 4,191); threads 9 / 9 (limit 11); fds 9.5 / 9 (limit 11.5). RSS was still rising at the end of this short run; the long run shows it levels off, see "Memory" |
 | 6 | `--json PATH` | the file was written and read for these tables | **pass** | |
 | 7 | router program unchanged | `git diff beta -- tools/pisoportal/src setup router tools/pisoportal/bin .github website` | **pass** | 0 lines (the only non-spec file changed besides the new test is `tests/fakebox.py`, +6 lines, opt-in) |
 
@@ -25,21 +25,20 @@ undisturbed process. `--quick` (36 windows, 8 kills, 3 power cuts) takes 95 s.
 | window | process starts so far | windows in this process | RSS kB | threads | open files |
 |---|---|---|---|---|---|
 | 0 (start) | 1 | 0 | 3,188 | 7 | 8 |
-| 25 | 13 | 1 | 3,524 | 9 | 11 |
-| 50 | 29 | 0 | 3,372 | 7 | 8 |
-| 75 | 46 | 2 | 3,576 | 9 | 11 |
-| 100 | 60 | 1 | 3,556 | 9 | 9 |
-| 125 | 71 | 6 | 3,748 | 9 | 9 |
-| 150 | 71 | 31 | 3,876 | 9 | 9 |
-| 175 | 71 | 56 | 3,928 | 9 | 9 |
-| 200 | 71 | 81 | 3,956 | 9 | 9 |
-| 225 | 71 | 106 | 3,980 | 9 | 10 |
-| 240 (end) | 71 | 121 | 3,988 | 8 | 9 |
+| 25 | 13 | 1 | 3,464 | 9 | 11 |
+| 50 | 29 | 0 | 3,380 | 7 | 8 |
+| 75 | 46 | 2 | 3,600 | 9 | 9 |
+| 100 | 60 | 1 | 3,568 | 9 | 10 |
+| 125 | 71 | 6 | 3,696 | 9 | 9 |
+| 150 | 71 | 31 | 3,780 | 9 | 9 |
+| 175 | 71 | 56 | 3,840 | 9 | 10 |
+| 200 | 71 | 81 | 3,876 | 9 | 9 |
+| 225 | 71 | 106 | 3,908 | 9 | 9 |
+| 240 (end) | 71 | 121 | 3,916 | 8 | 9 |
 
 Threads and open files stay at 7 to 9 and 8 to 11 (a customer's page and a window in flight each take one or two for a moment); they
-do not grow. **Memory:** in the single undisturbed process RSS went from 3,748 kB (6 windows in) to 3,988 kB (121 windows in):
-about +2 kB per window, flattening (+1.0 kB per window over the last 60). 121 windows cannot tell a leak from allocator warm-up.
-A longer run with no kills is in "Long clean run" below.
+do not grow. **Memory:** in the single undisturbed process of the default run RSS went from 3,696 kB (6 windows in) to 3,916 kB (121 windows in),
+about +1.9 kB a window, slowing. 121 windows cannot tell a leak from allocator warm-up, so the long clean run below was made.
 
 ## Files under `DATA_DIR` (a fresh router: every file starts empty)
 | file | start B | end B | growth per window | per simulated day (300 windows) | judged by this feature? |
@@ -77,8 +76,26 @@ no window record existed at the kill and none of that window's coins were credit
 `--strict` also fails on stranded coins (that option was **not run** with a failing result; with this seed it would exit 1).
 Recorded as row AO-11 in `specs/spec_02_findings.json` with status `owner-decision` and in `ledger/negative-constraints.md`.
 
-## Long clean run (no kills)
-(filled in below when it finishes)
+## Long clean run (no kills): is the memory growth a leak?
+`python3 test_soak.py --windows 1000 --kills 0 --cuts 0 --period 100 --seed 3` (3.3 simulated days, 38.4 minutes, one process, 1,767
+pesos in 1,000 windows, 51 customers told busy and tapping again): **all 1,767 pesos credited, `verify`: `OK 1000 1767`**.
+| window | RSS kB | threads | open files | `revenue.csv` B |
+|---|---|---|---|---|
+| 0 | 3,244 | 7 | 8 | 0 |
+| 100 | 3,984 | 9 | 9 | |
+| 200 | 4,104 | 9 | 11 | 8,027 |
+| 300 | 4,132 | 9 | 9 | 12,077 |
+| 500 | 4,156 | 9 | 9 | 20,173 |
+| 700 | 4,168 | 9 | 9 | 28,280 |
+| 1000 | 4,176 | 9 | 9 | 40,435 |
+
+RSS rises fast for the first 200 windows (the program's buffers and the page cache fill: 3.2 to 4.1 MB), then **0.06 kB a window**
+(4,132 kB at window 300, 4,176 kB at 1,000): at that rate 9,000 windows add about 0.5 MB. **This is warm-up, not a leak**; threads and
+open files do not move. File growth in the same run: `revenue.csv` 40.4 bytes a window (12.1 KB per simulated day), `vouchers.txt`
+4.2 KB (bounded by the 40 devices). *Note:* this run was made with the first version of the paid-time check, which wrongly
+failed one device (222 minutes against 228): the 38 minutes let that device's paid time run out between two purchases, which starts
+a new session, as it should. The check now models expiry (`credits`), and the default and `--quick` runs above were repeated with it;
+this long run was not.
 
 ## Gates (constitution rule 7)
 - [x] Area checks (`CLAUDE.md` section 3, router add-on): `cargo test` in `tools/pisoportal`: **143 passed, 0 failed**.
@@ -94,7 +111,7 @@ Recorded as row AO-11 in `specs/spec_02_findings.json` with status `owner-decisi
   Growth is reported per window and per simulated day (300 windows), not over 30 real days.
 - A **real** router, box, openNDS, flash or BusyBox: none. The fake box ends a window by its duration like the real one, but its
   timings (0.8 s drain, event 0.3 s after a coin) are the fake's. `wheel.log` and vouchers were not exercised.
-- `--windows 9000` (the 30-day equivalent, about 6 hours) was not run.
+- `--windows 9000` (the 30-day equivalent, about 6 hours) was not run; the 1,000-window run above is the longest.
 - The 100,000-row ledger read time and memory (AO-03) were not measured here (a ledger of 237 rows); that is a `cargo test` in 015.
 
 ## Money and time
