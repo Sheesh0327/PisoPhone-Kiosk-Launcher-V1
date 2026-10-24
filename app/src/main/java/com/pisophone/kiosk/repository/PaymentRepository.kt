@@ -164,22 +164,27 @@ class PaymentRepository(
         }
 
         if (result == PaymentResult.APPLIED) {
-            val snapshot = committedSnapshot ?: SessionSnapshot(0L, 0, 0L)
-            // The credit is committed. A callback that throws (a toast, a sound) must not turn it into FAILED:
-            // the box would resend a coin that is already credited (APP-10).
-            try {
-                onPaymentApplied?.invoke(txId, seconds, amount, snapshot)
-            } catch (e: Exception) {
-                Log.e(TAG, "onPaymentApplied failed after commit for $txId: ${e.message}", e)
-            }
-            try {
-                onSessionStateChanged?.invoke(snapshot)
-            } catch (e: Exception) {
-                Log.e(TAG, "onSessionStateChanged failed after commit for $txId: ${e.message}", e)
-            }
+            notifyApplied(txId, seconds, amount, committedSnapshot ?: SessionSnapshot(0L, 0, 0L))
         }
 
         return result
+    }
+
+    /**
+     * The credit is committed. A callback that throws (a toast, a sound) must not turn it into FAILED:
+     * the box would resend a coin that is already credited (APP-10).
+     */
+    private fun notifyApplied(txId: String, seconds: Int, amount: Double, snapshot: SessionSnapshot) {
+        try {
+            onPaymentApplied?.invoke(txId, seconds, amount, snapshot)
+        } catch (e: Exception) {
+            Log.e(TAG, "onPaymentApplied failed after commit for $txId: ${e.message}", e)
+        }
+        try {
+            onSessionStateChanged?.invoke(snapshot)
+        } catch (e: Exception) {
+            Log.e(TAG, "onSessionStateChanged failed after commit for $txId: ${e.message}", e)
+        }
     }
 
     fun creditPaymentBlocking(txId: String, seconds: Int, amount: Double, holdClock: Boolean = false): PaymentResult =

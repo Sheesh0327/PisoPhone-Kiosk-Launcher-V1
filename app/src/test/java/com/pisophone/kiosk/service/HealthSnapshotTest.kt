@@ -23,4 +23,14 @@ class HealthSnapshotTest {
     fun aClockThatWentBackIsDueAgainInsteadOfSilentForHours() {
         assertTrue(HealthSnapshot.isDue(5_000_000L, 1_000L))
     }
+
+    @Test
+    fun logIfDueLogsOnceThenStaysQuietUntilTheHourIsUp() {
+        val logged = mutableListOf<String>()
+        val first = HealthSnapshot.logIfDue(0L, { 42 }) { logged.add(it) }
+        assertEquals(listOf("Health snapshot: payment_receipts=42"), logged)
+        val second = HealthSnapshot.logIfDue(first, { 43 }) { logged.add(it) }
+        assertEquals(first, second)
+        assertEquals(1, logged.size)
+    }
 }

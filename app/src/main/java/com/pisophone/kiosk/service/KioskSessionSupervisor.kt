@@ -3,6 +3,7 @@ package com.pisophone.kiosk.service
 import android.content.Context
 import android.os.PowerManager
 import android.util.Log
+import com.pisophone.kiosk.repository.ExpiryResult
 import com.pisophone.kiosk.repository.PaymentRepository
 import com.pisophone.kiosk.security.KioskSecurity
 import com.pisophone.kiosk.util.GuestReset
@@ -46,6 +47,13 @@ class KioskSessionSupervisor(
          * locked-waiting state 1 so coins being inserted are not lost; otherwise fully locked (0).
          */
         fun lockedStateFor(current: Int): Int = SessionRules.afterExpiry(current)
+
+        /**
+         * APP-01: an unlocked phone with deadline 0 and nothing left in Room was never "due", so it never locked; lock it too.
+         */
+        fun lockDue(current: Int, r: ExpiryResult): Boolean =
+            r.didExpire ||
+                SessionRules.isUnlockedWithNothingLeft(current, r.sessionState.sessionExpiryDeadlineMs, r.sessionState.sessionTimeRemaining)
     }
 
     @Volatile
@@ -111,14 +119,7 @@ class KioskSessionSupervisor(
 
                         if (remainingSec <= 0) {
                             val expiryResult = paymentRepo.expireSessionIfDue()
-                            // APP-01: unlocked with deadline 0 and nothing left in Room was never "due", so it never locked.
-                            val sessionInRoom = expiryResult.sessionState
-                            val lockNow = expiryResult.didExpire || SessionRules.isUnlockedWithNothingLeft(
-                                curState,
-                                sessionInRoom.sessionExpiryDeadlineMs,
-                                sessionInRoom.sessionTimeRemaining,
-                            )
-                            if (lockNow) {
+                            if (lockDue(curState, expiryResult)) {
                                 val stateBefore = stateManager.appState.value
                                 val applied = stateManager.applySessionUpdate(
                                     deadlineMs = expiryResult.sessionState.sessionExpiryDeadlineMs,

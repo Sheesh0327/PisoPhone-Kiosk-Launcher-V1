@@ -741,15 +741,9 @@ class KioskEngine(
         // work hops to Main.
         scope.launch(Dispatchers.IO) {
             var consecutiveUnhealthy = 0
-            var lastSnapshotMs = 0L
             while (isActive) {
                 delay(10_000L)
                 try {
-                    val nowMs = System.currentTimeMillis()
-                    if (HealthSnapshot.isDue(lastSnapshotMs, nowMs)) {
-                        lastSnapshotMs = nowMs
-                        Log.i(TAG, HealthSnapshot.line(paymentRepo.receiptCount()))
-                    }
                     supervisor.ensureRunning()
                     val appState = stateManager.appState.value
                     if (SessionRules.isUnlocked(appState)) {
