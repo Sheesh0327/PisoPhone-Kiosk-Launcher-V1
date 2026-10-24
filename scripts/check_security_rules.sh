@@ -85,5 +85,11 @@ if grep -rnE --include='*.kt' -e 'Log\.[a-z]\(.*([Pp]in|PIN|[Ss]ecret).*\$\{?(it
     bad "a log line interpolates the admin PIN or a secret (lines above)"
 fi
 
+# 10. A signing or publishing step in a workflow runs from a copy of the approved commit, never from a tree that `git reset --hard`
+#     moved to a newer one (spec 01 CI-1, CI-2): a push after the owner's approval must not be able to change what gets signed.
+if ! python3 scripts/tests/test_workflow_signing.py; then
+    bad "a workflow runs a signing script after git reset --hard (lines above)"
+fi
+
 [ "$fail" -eq 0 ] && echo "security rules: all passed"
 exit "$fail"
