@@ -202,5 +202,27 @@
     "release": "none",
     "feature": "014-router-soak-harness",
     "implemented_in": "feat/014-router-soak-harness"
+  },
+  {
+    "id": "AO-11",
+    "area": "router",
+    "files": [
+      "tools/pisoportal/src/core.rs:1029,1086,1105,1173 (note_open)",
+      "tools/pisoportal/src/core.rs:1364 (recover)"
+    ],
+    "category": "logic",
+    "severity": "med",
+    "money_or_signing": true,
+    "confidence": "confirmed (found by feature 014's soak, 2026-10-23)",
+    "status": "owner-decision",
+    "problem": "A window's record is written to flash when the router first SEES a coin, not when the box is armed. A kill -9 or power cut after the box counted a coin and before the router noticed it (event about 0.3 s, poll up to 1 s) leaves the coin on the box with no record: recovery has nothing to credit, so the customer paid and the router never credits it. Measured: 9 of 527 pesos in 4 of 70 kills (kills aimed into windows).",
+    "fix": "not decided. Options for the owner: write the record at arm time (one small synced write per window); or on start ask the box for sessions it holds unacknowledged coins for (needs a box call that does not exist today); or leave it (the box keeps the coin, `reconcile` raises a mismatch alert and the box's revenue shows it).",
+    "test": {
+      "kind": "integration",
+      "where": "tools/pisoportal/tests/test_soak.py (--strict makes the stranded coins fail the run)",
+      "fails_before": true
+    },
+    "release": "router",
+    "feature": "(none yet; found by 014, to be taken by 015 or its own feature after the owner decides)"
   }
 ]

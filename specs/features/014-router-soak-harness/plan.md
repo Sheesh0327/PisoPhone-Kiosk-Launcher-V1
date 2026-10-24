@@ -14,11 +14,11 @@ Context manifest (constitution rule 1): `file | purpose | lines | est_tokens`. U
 
 ## Task groups
 - [x] 0. Spec and plan; AO-01 to AO-10 into `specs/spec_02_findings.json` (AO-10 takes feature 014).  (files: `specs/`; test: JSON loads; red result: n/a)
-- [ ] 1. `test_soak.py` skeleton: build/start, 40 devices (ARP file, `nds_client`), one coin window per loop, the ledger and paid-time
+- [x] 1. `test_soak.py` skeleton: build/start, 40 devices (ARP file, `nds_client`), one coin window per loop, the ledger and paid-time
       accounting, `--quick`, `--windows`, `--json`.  (test: 10 windows credit 10 coins; red result: n/a, new harness)
-- [ ] 2. Samples every 25 windows (`/proc/<pid>/status` VmRSS and Threads, `/proc/<pid>/fd`), file sizes under `DATA_DIR`, growth per
+- [x] 2. Samples every 25 windows (`/proc/<pid>/status` VmRSS and Threads, `/proc/<pid>/fd`), file sizes under `DATA_DIR`, growth per
       window and per simulated day, the resource pass rule.  (test: report fields present)
-- [ ] 3. Kills and power cuts: scheduled by a seeded random (`--seed`), some in the middle of a window; restart; wait for recovery; the
+- [x] 3. Kills and power cuts: scheduled by a seeded random (`--seed`), some in the middle of a window; restart; wait for recovery; the
       torn half-row; the coin accounting with a settle step at the end.  (test: `--quick --kills 5 --cuts 3` passes)
 - [ ] 4. Full default run in the background; read the last lines only. Fill `validation.md` with the numbers. Run `cargo test`,
       `tests/test_flow.py`, `router/tests/test_monitor.py`, `scripts/check_security_rules.sh`.
