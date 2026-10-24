@@ -51,6 +51,8 @@
             if (!/^[\x20-\x7E]{8,63}$/.test(raw.wifiPass)) fail('wifi password', '8-63 printable characters');
             out.wifiPass = raw.wifiPass;
         }
+        // "0" only: a PisoPhone-only shop's phones join the shop's normal, visible Wi-Fi. Anything else keeps the hidden PisoKiosk network.
+        if (raw.wifiHidden === '0') out.wifiHidden = false;
         return out;
     }
 
@@ -94,7 +96,7 @@
             "android.app.extra.PROVISIONING_WIFI_SSID": prov.wifiSsid || DEFAULT_SSID,
             "android.app.extra.PROVISIONING_WIFI_PASSWORD": prov.wifiPass,
             "android.app.extra.PROVISIONING_WIFI_SECURITY_TYPE": "WPA",
-            "android.app.extra.PROVISIONING_WIFI_HIDDEN": true,
+            "android.app.extra.PROVISIONING_WIFI_HIDDEN": prov.wifiHidden !== false,
             "android.app.extra.PROVISIONING_LEAVE_ALL_SYSTEM_APPS_ENABLED": true,
             "android.app.extra.PROVISIONING_SKIP_ENCRYPTION": true,
             "android.app.extra.PROVISIONING_ADMIN_EXTRAS_BUNDLE": extras

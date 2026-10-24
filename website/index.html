@@ -225,7 +225,7 @@
                 wifiPass.addEventListener('input', () => { $('wifiRemembered').classList.add('hidden'); $('wifiFromBox').classList.add('hidden'); });
             } catch (e) {}
             function currentProv() {
-                const prov = P.validateProvisioning({ ...linkProv, slot: linkProv.slot ? String(linkProv.slot) : '', wifiSsid: wifiSsid.value.trim() || P.DEFAULT_SSID, wifiPass: wifiPass.value });
+                const prov = P.validateProvisioning({ ...linkProv, slot: linkProv.slot ? String(linkProv.slot) : '', wifiSsid: wifiSsid.value.trim() || P.DEFAULT_SSID, wifiPass: wifiPass.value, wifiHidden: urlParams.get('wifi_hidden') || '' });
                 try { if (prov.wifiPass) { localStorage.setItem('pisoWifiPass', prov.wifiPass); localStorage.setItem('pisoWifiSsid', wifiSsid.value.trim()); } } catch (e) {}
                 return prov;
             }

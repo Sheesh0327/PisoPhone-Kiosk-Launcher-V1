@@ -25,6 +25,12 @@ check(throws(() => P.validateProvisioning({ wifiPass: 'short' })), 'a password u
 check(throws(() => P.validateProvisioning({ wifiPass: 'x'.repeat(64) })), 'a password over 63 characters is rejected');
 check(throws(() => P.validateProvisioning({ wifiSsid: 'x'.repeat(33), wifiPass: 'password123' })), 'a name over 32 characters is rejected');
 check(throws(() => P.validateProvisioning({ wifiSsid: 'café', wifiPass: 'password123' })), 'non-ASCII names are rejected');
+// feature 028: a PisoPhone-only shop's phones join its normal, visible Wi-Fi (the box's link carries wifi_hidden=0)
+const vis = P.validateProvisioning({ wifiSsid: 'ShopWifi', wifiPass: 'password123', wifiHidden: '0' });
+const visApp = { signatureChecksum: 'A'.repeat(43), url: 'https://example.test/app.apk' };
+check(P.buildQrPayload(vis, visApp, 'https://example.test/')['android.app.extra.PROVISIONING_WIFI_HIDDEN'] === false, 'a visible network is not marked hidden in the QR');
+check(P.buildQrPayload(P.validateProvisioning({ wifiSsid: 'ShopWifi', wifiPass: 'password123' }), visApp, 'https://example.test/')['android.app.extra.PROVISIONING_WIFI_HIDDEN'] === true, 'the default stays hidden');
+check(P.buildQrPayload(P.validateProvisioning({ wifiSsid: 'ShopWifi', wifiPass: 'password123', wifiHidden: 'x' }), visApp, 'https://example.test/')['android.app.extra.PROVISIONING_WIFI_HIDDEN'] === true, 'anything but 0 stays hidden');
 const q = P.buildProvisioningExtras(P.validateProvisioning({ wifiPass: "pa'ss$(id)word" }));
 check(q.includes("'pa'\\''ss$(id)word'"), 'shell metacharacters stay inside quotes: ' + q);
 check(!/wifi_pass [^']/.test(q), 'the password is always quoted');
