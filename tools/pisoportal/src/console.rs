@@ -390,10 +390,18 @@ impl Console {
             .lines()
             .find_map(|l| l.strip_prefix("MemAvailable:").map(|v| v.trim().trim_end_matches("kB").trim().to_string()))
             .unwrap_or_default();
+        // the monitor's alerts.txt, newest first, the last 5 (AO-06): the way an owner without Telegram is told
+        let alerts = read(&format!("{}/alerts.txt", cfg.data_dir))
+            .lines()
+            .rev()
+            .take(5)
+            .map(|l| format!("\"{}\"", json_esc(l)))
+            .collect::<Vec<_>>()
+            .join(",");
         let uptime = read("/proc/uptime").split_whitespace().next().unwrap_or("0").split('.').next().unwrap_or("0").to_string();
         format!(
             "{{\"version\":\"{}\",\"now\":{},\"online\":{},\"waiting\":{},\"wan_if\":\"{}\",\"rx_kbps\":{},\"tx_kbps\":{},\"rx_total\":{},\"tx_total\":{},\"history\":[{}],\
-             \"today\":{},\"week_total\":{},\"month_total\":{},\"total\":{},\"week\":[{}],\"box_ok\":{},\"box_signed\":{},\"ledger_ok\":{},\"ledger_lines\":{},\"mem_kb\":{},\"uptime\":{}}}",
+             \"today\":{},\"week_total\":{},\"month_total\":{},\"total\":{},\"week\":[{}],\"box_ok\":{},\"box_signed\":{},\"ledger_ok\":{},\"ledger_lines\":{},\"mem_kb\":{},\"uptime\":{},\"alerts\":[{}]}}",
             env!("CARGO_PKG_VERSION"),
             now,
             online,
@@ -414,7 +422,8 @@ impl Console {
             ledger_ok,
             ledger_lines,
             if mem.is_empty() { "0".into() } else { mem },
-            uptime
+            uptime,
+            alerts
         )
     }
 

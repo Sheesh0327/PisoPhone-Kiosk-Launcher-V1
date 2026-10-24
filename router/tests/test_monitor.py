@@ -32,6 +32,15 @@ class H(BaseHTTPRequestHandler):
             off = int(q.get("offset", ["0"])[0])
             res = [m for m in queue if m["update_id"] >= off]
             return self.reply({"ok": True, "result": res})
+        if u.path == "/ping":   # the portal program: answers "ok", or hangs while the test says so
+            if os.path.exists(f"{tmp}/pinghang"):
+                time.sleep(3)
+            b = b"ok"
+            try:
+                self.send_response(200); self.send_header("Content-Length", "2"); self.end_headers(); self.wfile.write(b)
+            except OSError:
+                pass   # the monitor gave up waiting (that is the point of the hang)
+            return
         if u.path == "/hc":
             hits.append("hc"); return self.reply({})
         self.reply({"ok": True})
@@ -67,7 +76,10 @@ os.chmod(fakends, 0o755)
 conf = os.path.join(tmp, "mon.conf")
 open(conf, "w").write(f"TG_TOKEN=T0K\nTG_CHAT=111\nSITE_NAME=Shop1\nREPORT_HOUR=0\nHEALTHCHECK_URL=http://127.0.0.1:{port}/hc\n")
 env = dict(os.environ, PISO_MONITOR_CONF=conf, TG_API=f"http://127.0.0.1:{port}", MON_STATE=f"{tmp}/state", PORTAL=fake,
-           PISO_SETUP=fakesetup, LOGREAD=fakelog, BOX_DOWN_AFTER="2", PORTAL_SERVICE=fakesvc, NDSCTL=fakends)
+           PISO_SETUP=fakesetup, LOGREAD=fakelog, BOX_DOWN_AFTER="2", PORTAL_SERVICE=fakesvc, NDSCTL=fakends,
+           PING_URL=f"http://127.0.0.1:{port}/ping", PING_TIMEOUT="1", ALERTS_FILE=f"{tmp}/alerts.txt", DF=f"{tmp}/df.sh")
+open(f"{tmp}/df.sh", "w").write("#!/bin/sh\necho 'Filesystem 1K-blocks Used Available Use% Mounted on'\necho \"overlayfs:/overlay 14000 1000 $(cat " + tmp + "/free 2>/dev/null || echo 9000) 7% /overlay\"\n")
+os.chmod(f"{tmp}/df.sh", 0o755)
 
 
 def mon(*a):
@@ -136,5 +148,65 @@ check(any("looking for an update" in t for t in texts()[n:]) and os.path.exists(
 queue.append({"update_id": 13, "message": {"chat": {"id": 999}, "text": "/update"}})
 n = len(sent); mon("poll", "1"); time.sleep(0.3)
 check(len(sent) == n and open(f"{tmp}/setup.calls").read() == "self-update\n", "/update from another chat does nothing")
+
+# ---- AO-01 / AO-05 / AO-06: the portal program, free flash, alerts without Telegram ---------------------------------------------
+def alerts():
+    return open(f"{tmp}/alerts.txt").read().splitlines() if os.path.exists(f"{tmp}/alerts.txt") else []
+
+
+def restarts():
+    return open(f"{tmp}/service.log").read().count("restart") if os.path.exists(f"{tmp}/service.log") else 0
+
+
+check(any("the router started" in l for l in alerts()) and any("has not answered" in l for l in alerts()), "AO-06: alerts are also written to alerts.txt: " + str(alerts()[:3]))
+mon("tick")   # settle: the portal answers, nothing pending
+base_restarts, n, na = restarts(), len(sent), len(alerts())
+open(f"{tmp}/pinghang", "w").close()
+mon("tick"); mon("tick")
+check(restarts() == base_restarts and not any("did not answer" in t for t in texts()[n:]), "AO-01: two failed pings are not enough to restart the portal")
+mon("tick")
+check(restarts() == base_restarts + 1 and sum("was restarted" in t for t in texts()[n:]) == 1, "AO-01: the third failed ping restarts the portal once and sends one alert")
+check(any("did not answer for 3 minutes" in l for l in alerts()[na:]), "and writes it to alerts.txt")
+n, na = len(sent), len(alerts())
+mon("tick"); mon("tick")
+check(restarts() == base_restarts + 1 and len(sent) == n and len(alerts()) == na, "AO-01: the next ticks restart nothing and alert nothing new (once in 10 minutes)")
+open(f"{tmp}/state/portal.restarted", "w").write(str(int(time.time()) - 700))   # ten minutes have passed and it still hangs
+mon("tick")
+check(restarts() == base_restarts + 2, "AO-01: after ten minutes a portal that still hangs is restarted again")
+check(sum("did not answer" in t for t in texts()[n:]) == 0, "but the alert is not repeated within the hour")
+os.remove(f"{tmp}/pinghang"); n, na = len(sent), len(alerts())
+mon("tick")
+check(any("answers again" in t for t in texts()[n:]) and any("answers again" in l for l in alerts()[na:]), "AO-01: an alert when the portal answers again")
+n = len(sent); mon("tick")
+check(len(sent) == n, "and only once")
+
+# free flash (AO-05): hourly, under 1 MB and under 256 KB, each once a day
+n, na = len(sent), len(alerts())
+open(f"{tmp}/free", "w").write("900"); os.remove(f"{tmp}/state/lastspace") if os.path.exists(f"{tmp}/state/lastspace") else None
+mon("tick")
+check(sum("less than 1 MB" in t for t in texts()[n:]) == 1 and not any("less than 256 KB" in t for t in texts()[n:]), "AO-05: under 1 MB of free flash is one alert")
+os.remove(f"{tmp}/state/lastspace"); n = len(sent); mon("tick")
+check(len(sent) == n, "AO-05: and not again the same day")
+open(f"{tmp}/free", "w").write("200"); os.remove(f"{tmp}/state/lastspace"); n = len(sent); mon("tick")
+check(sum("less than 256 KB" in t for t in texts()[n:]) == 1, "AO-05: under 256 KB is another alert")
+mon("tick"); n = len(sent); mon("tick")
+check(len(sent) == n, "AO-05: the check runs once an hour")
+open(f"{tmp}/free", "w").write("9000")
+
+# the last 20 lines only (AO-06)
+for i in range(25):
+    mon("note", f"line {i}")
+check(len(alerts()) == 20 and alerts()[-1].endswith("line 24") and alerts()[0].endswith("line 5"), "AO-06: alerts.txt keeps the last 20 lines: " + str(len(alerts())))
+
+# a shop without Telegram: no settings at all (AO-06, Q1)
+noconf = dict(env, PISO_MONITOR_CONF=f"{tmp}/does-not-exist.conf", MON_STATE=f"{tmp}/state2", ALERTS_FILE=f"{tmp}/alerts2.txt")
+n, base = len(sent), restarts()
+open(f"{tmp}/pinghang", "w").close()
+for _ in range(3):
+    subprocess.run(["sh", MON, "tick"], env=noconf, capture_output=True, text=True, timeout=60)
+a2 = open(f"{tmp}/alerts2.txt").read() if os.path.exists(f"{tmp}/alerts2.txt") else ""
+check(len(sent) == n, "no Telegram settings: nothing is sent")
+check(restarts() == base + 1 and "did not answer for 3 minutes" in a2 and "router started" in a2, "no Telegram settings: the portal is still restarted and the alerts are written: " + a2)
+os.remove(f"{tmp}/pinghang")
 print(f"{checks} checks, {failures} failures")
 sys.exit(1 if failures else 0)
