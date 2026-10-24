@@ -263,6 +263,12 @@ R"HTML(            <div class="panel" id="profiles_panel">
                     <span class="hint">A profile is a kind of rental device (a basic phone, a gaming phone, a tablet) with its own minutes per ₱1. Phones without a profile use the Coin rate above (Standard).</span>
                     <div id="profiles_list"></div>
                     <div class="actions">
+                        <span class="hint">Quick add (the name is also the title on that phone's lock and home screens):</span>
+                        <button type="button" class="btn sm" onclick="addPresetProfile('PisoPhone')">PisoPhone</button>
+                        <button type="button" class="btn sm" onclick="addPresetProfile('PisoTab')">PisoTab</button>
+                        <button type="button" class="btn sm" onclick="addPresetProfile('PisoPhone Pro')">PisoPhone Pro</button>
+                    </div>
+                    <div class="actions">
                         <button type="button" class="btn sm" id="profile_add" onclick="addProfileRow()">Add a profile</button>
                         <button type="button" class="btn primary sm" id="profile_save" onclick="saveProfiles()">Save profiles</button>
                     </div>

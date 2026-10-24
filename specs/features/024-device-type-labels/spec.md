@@ -1,6 +1,6 @@
 # Feature 024: each device's type on its lock and home screens
 
-Status: **draft (owner decisions recorded; waiting for approval to build)**   Branch: `feat/024-device-type-labels`   Area: firmware + app (one message contract, changed on both sides together)
+Status: **approved (owner, 2026-10-24)**   Branch: `feat/024-device-type-labels`   Area: firmware + app (one message contract, changed on both sides together)
 Backlog rows: owner request 2026-10-24 (builds on feature 013 branding and the phone profiles)   Release: firmware and app
 
 ## Intent
@@ -25,8 +25,7 @@ time changes.
 - Only owner-signed software: not touched. The new field rides the existing signed push.
 
 ## Constraints
-- The box <-> phone message contract changes on **both sides in one change** (`protocol/gen_vectors.py`,
-  `esp32_firmware/host_tests/protocol_contract_test.cpp`, the app's parser and its tests).
+- The box <-> phone message contract changes on **both sides in one change** (there is no vector of the branding params in `protocol/gen_vectors.py`; the contract here is `host_tests/device_label_test.cpp` on the box and the app's parser test).
 - **Old and new work together:** an old app with a new box ignores the new field; a new app with an old box shows the title as
   today. No phone is ever left without a header text.
 - The label is owner-typed: the same cleaning on both sides as the other branding text (control characters, `| ; " \ < > &` refused,
@@ -39,8 +38,11 @@ time changes.
    **PisoPhone Pro**, one tap each, and still accept any custom name; the admin page shows which label each slot has.
 2. **The slot's label reaches the phone.** The phone gets the label of its own slot in its branding push; a host test checks the
    message bytes against `protocol/gen_vectors.py` (red first: today no label exists).
-3. **The screens show it.** The lock screen and the home screen header show the slot's label as the title. A slot with no profile
-   (the standard one) shows the default label (Owner decision 1). A phone that never got a label (old box) shows today's title.
+3. **The screens show it.** The lock screen header and the home screen header show the slot's label as the title. A slot on the standard rate
+   (or whose profile was deleted) is sent **no label**, so its phone keeps showing the box-wide header title the owner set (feature 013) or the default
+   "PisoPhone" (this keeps a title you set from being overridden on phones that have no profile). On the home screen the header word is fixed
+   text today ("Piso" + "Phone") and ignores the box title: it shows the label when one was sent and is unchanged otherwise. A phone that
+   never got a label (old box) looks exactly as today.
 4. **No rate changes.** A host test: for every profile, rate lookup before and after setting, renaming or sending a label is identical.
 5. **Old and new together** (tested): new app with old box shows the box-wide title; old app with new box is unaffected (the
    parser tests ignore the extra field).
