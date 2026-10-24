@@ -9,8 +9,11 @@
 # Settings (/etc/piso-monitor.conf, written by "piso-setup telegram"):  TG_TOKEN  TG_CHAT  SITE_NAME  REPORT_HOUR
 #   HEALTHCHECK_URL (optional: pinged every minute, a service such as healthchecks.io alerts when the pings stop)
 #
-# Alerts: the router restarted, the coin box does not answer for 5 minutes (and when it is back), the revenue ledger and
-# the box disagree or the ledger was edited, a device keeps opening empty coin windows, a daily revenue report.
+# Alerts: the router restarted, the coin box does not answer for 5 minutes (and when it is back), the portal program does not
+# answer (it is restarted, at most once in 10 minutes), little free flash, the revenue ledger and the box disagree or the ledger
+# was edited, a device keeps opening empty coin windows, a daily revenue report. Every alert is also written to alerts.txt (the
+# last 20 lines) in the data folder, which the console and the setup program's Check-up show: a shop without Telegram still sees
+# them. This script runs on every router with the portal; with no Telegram settings it sends nothing and only checks and writes.
 # Commands, only from the owner's chat: /status /report [days] /reconcile /diag /restart /reboot /help.
 # Nothing here can change prices, passwords or Wi-Fi settings.
 
@@ -29,6 +32,14 @@ BOX_DOWN_AFTER="${BOX_DOWN_AFTER:-5}"        # minutes without an answer
 POLL_SECONDS="${POLL_SECONDS:-25}"
 TICK_SECONDS="${TICK_SECONDS:-60}"
 LOGREAD="${LOGREAD:-logread}"
+ALERTS_FILE="${ALERTS_FILE:-/etc/coinslot.d/alerts.txt}"
+COINSLOT_CONF="${COINSLOT_CONF:-/etc/coinslot.conf}"
+[ -n "$PORTAL_PORT" ] || PORTAL_PORT=$(sed -n "s/^PORTAL_PORT=['\"]\{0,1\}\([0-9]*\).*/\1/p" "$COINSLOT_CONF" 2> /dev/null | head -n 1)
+PING_URL="${PING_URL:-http://127.0.0.1:${PORTAL_PORT:-2080}/ping}"
+PING_TIMEOUT="${PING_TIMEOUT:-5}"
+PING_FAILS_TO_RESTART="${PING_FAILS_TO_RESTART:-3}"   # failed pings, a minute apart, before the portal is restarted
+RESTART_GAP="${RESTART_GAP:-600}"                      # seconds: the portal is restarted at most once in this time
+DF="${DF:-df}"
 mkdir -p "$S" 2> /dev/null
 
 now() { date +%s; }
@@ -42,12 +53,22 @@ tg_send() {
 		"$TG_API/bot$TG_TOKEN/sendMessage" | grep -q '^200$'
 }
 
-# alert <key> <cooldown seconds> <text>: sends at most once per cooldown for the same key.
+# note <text>: one line in alerts.txt (the last 20 are kept), whether or not Telegram is set up.
+note() {
+	[ -n "$ALERTS_FILE" ] || return 0
+	{ tail -n 19 "$ALERTS_FILE" 2> /dev/null; printf '%s %s\n' "$(date '+%F %H:%M')" "$(printf '%s' "$1" | tr '\n' ' ')"; } > "$ALERTS_FILE.tmp" 2> /dev/null && mv "$ALERTS_FILE.tmp" "$ALERTS_FILE" 2> /dev/null
+	return 0
+}
+
+# alert <key> <cooldown seconds> <text>: a new alert for the same key at most once per cooldown. It is written to alerts.txt at
+# once; it is sent to Telegram (when set up) every tick until Telegram takes it.
 alert() {
-	_f="$S/alert.$1"; _n=$(now)
-	if [ -r "$_f" ] && [ $((_n - $(cat "$_f"))) -lt "$2" ]; then return 0; fi
-	shift; _cd="$1"; shift
-	tg_send "$*" && echo "$_n" > "$_f"
+	_f="$S/alert.$1"; _n=$(now); _cd="$2"; shift 2
+	if [ ! -r "$_f" ] || [ $((_n - $(cat "$_f"))) -ge "$_cd" ]; then
+		echo "$_n" > "$_f"; note "$*"; printf '%s' "$*" > "$_f.tg"
+	fi
+	if [ -n "$TG_TOKEN" ] && [ -n "$TG_CHAT" ] && [ -s "$_f.tg" ] && tg_send "$(cat "$_f.tg")"; then rm -f "$_f.tg"; fi
+	return 0
 }
 
 box_ok() { "$PORTAL" box > /dev/null 2>&1; }
@@ -55,12 +76,46 @@ box_ok() { "$PORTAL" box > /dev/null 2>&1; }
 check_box() {
 	_fails=$(cat "$S/boxfails" 2> /dev/null); _fails=${_fails:-0}
 	if box_ok; then
-		if [ "$_fails" -ge "$BOX_DOWN_AFTER" ]; then tg_send "the coin box is back."; rm -f "$S/alert.boxdown"; fi
+		if [ "$_fails" -ge "$BOX_DOWN_AFTER" ]; then note "the coin box is back."; tg_send "the coin box is back."; rm -f "$S/alert.boxdown"; fi
 		echo 0 > "$S/boxfails"
 	else
 		_fails=$((_fails + 1)); echo "$_fails" > "$S/boxfails"
 		[ "$_fails" -ge "$BOX_DOWN_AFTER" ] && alert boxdown 21600 "the coin box has not answered for $_fails minutes (power, Wi-Fi or the box itself)."
 	fi
+}
+
+# The portal program itself: /ping with a time limit. After PING_FAILS_TO_RESTART failures in a row it is restarted (procd only
+# restarts one that died; this catches one that hangs), at most once in RESTART_GAP seconds. A coin window that was open is settled
+# from its record when the portal starts. One alert when it is restarted, one note when it answers again.
+portal_ok() { [ "$(curl -s -m "$PING_TIMEOUT" "$PING_URL" 2> /dev/null)" = ok ]; }
+
+check_portal() {
+	_fails=$(cat "$S/pingfails" 2> /dev/null); _fails=${_fails:-0}
+	if portal_ok; then
+		if [ -e "$S/portal.down" ]; then rm -f "$S/portal.down"; note "the portal answers again."; tg_send "the portal answers again."; fi
+		echo 0 > "$S/pingfails"; return 0
+	fi
+	_fails=$((_fails + 1)); echo "$_fails" > "$S/pingfails"
+	[ "$_fails" -ge "$PING_FAILS_TO_RESTART" ] || return 0
+	_last=$(cat "$S/portal.restarted" 2> /dev/null); _last=${_last:-0}
+	if [ $(($(now) - _last)) -ge "$RESTART_GAP" ]; then
+		now > "$S/portal.restarted"; : > "$S/portal.down"
+		"$PORTAL_SERVICE" restart > /dev/null 2>&1
+		alert portal 3600 "the portal program did not answer for $_fails minutes and was restarted (a coin window that was open is settled from its record)."
+	fi
+}
+
+# Free flash (the router's /overlay), at most once an hour: an alert under 1 MB and another under 256 KB, each at most once a day.
+# The portal keeps recording coins whatever the flash holds; this only tells the owner in time.
+check_space() {
+	_f="$S/lastspace"; _n=$(now)
+	[ -r "$_f" ] && [ $((_n - $(cat "$_f"))) -lt 3600 ] && return 0
+	echo "$_n" > "$_f"
+	_free=$($DF -k /overlay 2> /dev/null | awk 'NR == 2 { print $4 }')
+	case "$_free" in "" | *[!0-9]*) return 0 ;; esac
+	[ "$_free" -lt 1024 ] && alert flash1m 86400 "the router has less than 1 MB of free flash ($_free KB). Old months of the sales file can be downloaded and removed with the setup program's Owner tools."
+	[ "$_free" -lt 256 ] && alert flash256 86400 "the router has less than 256 KB of free flash ($_free KB): download and remove the oldest months of sales now."
+	return 0
 }
 
 check_ledger() {  # at most once an hour
@@ -94,8 +149,8 @@ $("$PORTAL" report 1 2>&1)"
 }
 
 do_tick() {
-	[ -e "$S/booted" ] || { : > "$S/booted"; tg_send "the router started (or this monitor did)."; }
-	check_box; check_ledger; check_grief; check_report
+	[ -e "$S/booted" ] || { : > "$S/booted"; note "the router started (or this monitor did)."; tg_send "the router started (or this monitor did)."; }
+	check_portal; check_box; check_space; check_ledger; check_grief; check_report
 	[ -n "$HEALTHCHECK_URL" ] && curl -fsS -m 10 -o /dev/null "$HEALTHCHECK_URL" 2> /dev/null
 	return 0
 }
@@ -122,7 +177,7 @@ handle_command() {  # handle_command <chat> <text>
 		/reconcile) tg_send "$("$PORTAL" reconcile 2>&1)" ;;
 		/diag) tg_send "$("$SETUP" diag 2>&1 | tail -c 3600)" ;;
 		/update) tg_send "looking for an update the owner signed (the router, then the coin box); the result follows."; { "$SETUP" box-update > /dev/null 2>&1; "$SETUP" self-update > /dev/null 2>&1; } & ;;   # (each tells you itself; the router's update restarts this monitor, so it goes last)
-		/restart) "$PORTAL_SERVICE" restart > /dev/null 2>&1; tg_send "portal restarted (a coin window that was open is settled from its record)." ;;
+		/restart) "$PORTAL_SERVICE" restart > /dev/null 2>&1; note "portal restarted by the owner."; tg_send "portal restarted (a coin window that was open is settled from its record)." ;;
 		/reboot)
 			if [ "$_arg" = confirm ] && [ -r "$S/reboot.ask" ] && [ $(($(now) - $(cat "$S/reboot.ask"))) -lt 120 ]; then
 				tg_send "rebooting the router now."; rm -f "$S/reboot.ask"; sleep 2; reboot
@@ -183,6 +238,7 @@ case "$1" in
 	tick) do_tick ;;
 	pair) do_pair ;;
 	send) shift; tg_send "$*" ;;
+	note) shift; note "$*" ;;             # for the setup program and tests
 	poll) poll_updates "${2:-1}" ;;       # for tests: one round
 	*) sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac

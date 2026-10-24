@@ -3,6 +3,7 @@ package com.pisophone.kiosk.service
 import android.content.Context
 import android.os.PowerManager
 import android.util.Log
+import com.pisophone.kiosk.repository.ExpiryResult
 import com.pisophone.kiosk.repository.PaymentRepository
 import com.pisophone.kiosk.security.KioskSecurity
 import com.pisophone.kiosk.util.GuestReset
@@ -11,6 +12,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
@@ -45,6 +47,13 @@ class KioskSessionSupervisor(
          * locked-waiting state 1 so coins being inserted are not lost; otherwise fully locked (0).
          */
         fun lockedStateFor(current: Int): Int = SessionRules.afterExpiry(current)
+
+        /**
+         * APP-01: an unlocked phone with deadline 0 and nothing left in Room was never "due", so it never locked; lock it too.
+         */
+        fun lockDue(current: Int, r: ExpiryResult): Boolean =
+            r.didExpire ||
+                SessionRules.isUnlockedWithNothingLeft(current, r.sessionState.sessionExpiryDeadlineMs, r.sessionState.sessionTimeRemaining)
     }
 
     @Volatile
@@ -85,9 +94,8 @@ class KioskSessionSupervisor(
                     val curState = stateManager.appState.value
                     // Session arming / waiting countdown
                     if (SessionRules.isArmed(curState)) {
-                        if (stateManager.paymentTimeout.value > 0) {
-                            stateManager.paymentTimeout.value -= 1
-                        }
+                        // atomic: a coin arming the window at the same moment must not be overwritten (APP-09)
+                        stateManager.paymentTimeout.update { if (it > 0) it - 1 else it }
                         if (stateManager.paymentTimeout.value == 0) {
                             if (stateManager.coinsInserted.value > 0) {
                                 onFinishPayment()
@@ -111,7 +119,7 @@ class KioskSessionSupervisor(
 
                         if (remainingSec <= 0) {
                             val expiryResult = paymentRepo.expireSessionIfDue()
-                            if (expiryResult.didExpire) {
+                            if (lockDue(curState, expiryResult)) {
                                 val stateBefore = stateManager.appState.value
                                 val applied = stateManager.applySessionUpdate(
                                     deadlineMs = expiryResult.sessionState.sessionExpiryDeadlineMs,

@@ -206,9 +206,13 @@ pub fn start(console: Arc<Console>) {
     let addr = format!("{}:{}", cfg.console_bind, cfg.console_port.saturating_add(1));
     std::thread::spawn(move || {
         let listener = bind_retry(&addr, "box page");
+        let limits = crate::http::console_limits();
         for stream in listener.incoming().flatten() {
+            // over the limit (in all, or from one address): turned away before a thread is started
+            let Some(slot) = stream.peer_addr().ok().and_then(|a| limits.take(a.ip())) else { continue };
             let c = Arc::clone(&console);
             std::thread::spawn(move || {
+                let _slot = slot;
                 if let Some((req, conn)) = read_request(stream, Duration::from_secs(5)) {
                     serve_one(&c, req, conn);
                 }

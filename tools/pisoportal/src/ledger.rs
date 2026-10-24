@@ -3,6 +3,9 @@
 //! box like any coin; redeeming the code later writes nothing) and voucher (older releases only: a printed slip booked when it
 //! was redeemed; sold for cash elsewhere, so the box never counted it). Each line ends with a short hash over the previous line's hash
 //! and its own text, so an edited, removed or inserted line is detectable. The first line chains from "0".
+//! Monthly segments (AO-02): the first row written in a new (UTC) month moves the file to revenue-YYYY-MM.csv and starts the new file
+//! with one `carry` row: `time,<last hash of the old file>,<running coin total>,0,carry,<hash>`. It chains from that hash, so a file
+//! verifies on its own (the cheap hourly check reads one month) and `verify_all` follows the whole chain across the segments.
 use crate::util::sha256_hex;
 use std::fs;
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -20,6 +23,13 @@ pub fn append(path: &str, now: u64, plan: &str, pesos: u32, minutes: u32, kind: 
     if let Some(dir) = std::path::Path::new(path).parent() {
         fs::create_dir_all(dir)?;
     }
+    // money first: a roll that fails for any reason never stops the sale row from being written
+    let _ = recover_roll(path);
+    let _ = roll_if_new_month(path, now);
+    append_row(path, now, plan, pesos, minutes, kind)
+}
+
+fn append_row(path: &str, now: u64, plan: &str, pesos: u32, minutes: u32, kind: &str) -> std::io::Result<()> {
     let prev = last_hash(path).unwrap_or("0".into());
     let rl = format!("{},{},{},{},{}", now, plan, pesos, minutes, kind);
     // the whole row is built first and written with one call (RT-04)
@@ -32,6 +42,78 @@ pub fn append(path: &str, now: u64, plan: &str, pesos: u32, minutes: u32, kind: 
     f.write_all(row.as_bytes())?;
     f.sync_all().ok();
     Ok(())
+}
+
+fn month_of(t: u64) -> String {
+    crate::util::civil((t / 86400) as i64)[..7].to_string()
+}
+
+fn segment_path(path: &str, month: &str) -> String {
+    let p = std::path::Path::new(path);
+    let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("revenue");
+    let ext = p.extension().and_then(|s| s.to_str()).unwrap_or("csv");
+    p.with_file_name(format!("{}-{}.{}", stem, month, ext)).to_string_lossy().into_owned()
+}
+
+/// A roll a power cut stopped half-way: the new file is complete (`.new`) but not yet in place, or it was never finished. Only the
+/// portal calls this (from `append`); readers use `effective` and change nothing.
+fn recover_roll(path: &str) -> std::io::Result<()> {
+    let tmp = format!("{}.new", path);
+    if !std::path::Path::new(&tmp).exists() {
+        return Ok(());
+    }
+    if std::path::Path::new(path).exists() {
+        fs::remove_file(&tmp) // cut before the old file was moved: the roll starts again
+    } else {
+        crate::util::rename_durable(&tmp, path) // cut after the old file was moved: finish it
+    }
+}
+
+/// The file to read now: the ledger, or its finished replacement while a roll is half-way.
+fn effective(path: &str) -> String {
+    let tmp = format!("{}.new", path);
+    if !std::path::Path::new(path).exists() && std::path::Path::new(&tmp).exists() {
+        tmp
+    } else {
+        path.to_string()
+    }
+}
+
+/// The first row of a new month moves the old file to its segment and starts a new one with a `carry` row (never losing a row:
+/// the new file is written and flushed first, then two renames; a cut between them is finished by `recover_roll`).
+fn roll_if_new_month(path: &str, now: u64) -> std::io::Result<()> {
+    let Some(last_t) = last_row_time(path) else { return Ok(()) };
+    let (old_m, new_m) = (month_of(last_t), month_of(now));
+    if new_m <= old_m {
+        return Ok(()); // same month, or the clock went back: nothing to roll
+    }
+    let seg = segment_path(path, &old_m);
+    if std::path::Path::new(&seg).exists() {
+        return Ok(()); // a segment of that month is already there: never overwrite it
+    }
+    let Ok(sc) = scan(path) else { return Ok(()) }; // a changed ledger is left alone for the alert
+    let rl = format!("{},{},{},0,carry", now, sc.last, sc.sum);
+    let tmp = format!("{}.new", path);
+    let _ = fs::remove_file(&tmp);
+    let mut f = fs::File::create(&tmp)?;
+    f.write_all(format!("{},{}\n", rl, chain(&sc.last, &rl)).as_bytes())?;
+    f.sync_all()?;
+    drop(f);
+    crate::util::rename_durable(path, &seg)?;
+    crate::util::rename_durable(&tmp, path)
+}
+
+fn last_row_time(path: &str) -> Option<u64> {
+    let mut f = fs::File::open(path).ok()?;
+    let len = f.metadata().ok()?.len();
+    f.seek(SeekFrom::Start(len.saturating_sub(512))).ok()?;
+    let mut tail = Vec::new();
+    f.read_to_end(&mut tail).ok()?;
+    String::from_utf8_lossy(&tail)
+        .lines()
+        .rev()
+        .find(|l| l.split(',').nth(5).is_some_and(hash_ok))
+        .and_then(|l| l.split(',').next()?.parse().ok())
 }
 
 /// True for a missing or empty file and for one whose last byte is a newline.
@@ -65,33 +147,126 @@ pub fn verify(path: &str) -> Result<(usize, u64), usize> {
 
 /// Like `verify`, and whether the last line was torn: a last line with no newline is skipped (a power failure cut the write) and
 /// reported, never taken for a changed ledger. A line cut inside its hash is skipped wherever it is: the row after it was
-/// written on a new line of its own and chains from the last whole row.
+/// written on a new line of its own and chains from the last whole row. Reads the one current file, line by line.
 pub fn verify_torn(path: &str) -> Result<(usize, u64, bool), usize> {
-    let Ok(text) = fs::read_to_string(path) else { return Ok((0, 0, false)) };
-    let torn = !text.is_empty() && !text.ends_with('\n');
-    let (mut prev, mut sum, mut n) = ("0".to_string(), 0u64, 0usize);
-    let total = text.lines().count();
-    for (i, l) in text.lines().enumerate() {
-        if torn && i + 1 == total {
+    scan(&effective(path)).map(|s| (s.n, s.sum, s.torn))
+}
+
+struct Scan {
+    n: usize,
+    sum: u64,
+    torn: bool,
+    /// The hash a leading `carry` row chains from (the previous segment's last hash).
+    start_prev: Option<String>,
+    /// The `pesos` of that carry row: the coin total of everything before this file.
+    carry: Option<u64>,
+    /// The hash of the last whole row ("0" for an empty file).
+    last: String,
+}
+
+/// One pass over a file, a line at a time (no whole-file read, AO-03).
+fn scan(path: &str) -> Result<Scan, usize> {
+    let Ok(file) = fs::File::open(path) else {
+        return Ok(Scan { n: 0, sum: 0, torn: false, start_prev: None, carry: None, last: "0".into() });
+    };
+    let mut r = std::io::BufReader::new(file);
+    let mut s = Scan { n: 0, sum: 0, torn: false, start_prev: None, carry: None, last: "0".into() };
+    let (mut first, mut buf) = (true, Vec::new());
+    loop {
+        buf.clear();
+        if std::io::BufRead::read_until(&mut r, b'\n', &mut buf).unwrap_or(0) == 0 {
             break;
         }
-        n = i + 1;
+        if buf.last() != Some(&b'\n') {
+            s.torn = true; // the last line has no newline: a power failure cut it
+            break;
+        }
+        s.n += 1;
+        let text = String::from_utf8_lossy(&buf);
+        let l = text.trim_end_matches(['\n', '\r']);
         let f: Vec<&str> = l.split(',').collect();
         if f.len() < 6 || !hash_ok(f[f.len() - 1]) {
             continue;
         }
-        let (t, h) = (f[..f.len() - 1].join(","), f[f.len() - 1]);
-        if chain(&prev, &t) != h {
-            return Err(i + 1);
+        if first && f.get(4) == Some(&"carry") {
+            s.start_prev = Some(f[1].to_string());
+            s.carry = f[2].parse().ok();
+            s.last = f[1].to_string();
         }
-        prev = h.to_string();
+        first = false;
+        let (t, h) = (f[..f.len() - 1].join(","), f[f.len() - 1]);
+        if chain(&s.last, &t) != h {
+            return Err(s.n);
+        }
+        s.last = h.to_string();
         // pesos from coins only: the box counts coins, so what the box did not count (a printed slip of an older release, sold for
         // cash elsewhere: kind "voucher") is not part of its reconciliation. A voucher bought with coins ("vbuy") is.
         if f.get(4) != Some(&"voucher") {
-            sum += f[2].parse::<u64>().unwrap_or(0);
+            s.sum += f[2].parse::<u64>().unwrap_or(0);
         }
     }
-    Ok((n, sum, torn))
+    Ok(s)
+}
+
+/// The closed monthly segments next to the ledger, oldest first.
+pub fn closed_segments(path: &str) -> Vec<String> {
+    let p = std::path::Path::new(path);
+    let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("revenue");
+    let ext = p.extension().and_then(|s| s.to_str()).unwrap_or("csv");
+    let Ok(dir) = fs::read_dir(p.parent().unwrap_or(std::path::Path::new("."))) else { return Vec::new() };
+    let mut v: Vec<String> = dir
+        .filter_map(|e| e.ok())
+        .filter_map(|e| {
+            let name = e.file_name().to_string_lossy().into_owned();
+            let mid = name.strip_prefix(&format!("{}-", stem))?.strip_suffix(&format!(".{}", ext))?;
+            let ok = mid.len() == 7 && mid.as_bytes()[4] == b'-' && mid.bytes().enumerate().all(|(i, c)| i == 4 || c.is_ascii_digit());
+            ok.then(|| e.path().to_string_lossy().into_owned())
+        })
+        .collect();
+    v.sort();
+    v
+}
+
+/// The whole chain across the closed segments and the current file: every file verifies, and each file's carry row names the last
+/// hash and the coin total of the one before it. Ok((lines, pesos, torn tail)) or Err(1) when the files do not follow each other.
+pub fn verify_all(path: &str) -> Result<(usize, u64, bool), usize> {
+    let mut files = closed_segments(path);
+    let cur = effective(path);
+    if std::path::Path::new(&cur).exists() {
+        files.push(cur);
+    }
+    let (mut prev, mut lines, mut torn): (Option<(String, u64)>, usize, bool) = (None, 0, false);
+    for f in &files {
+        let s = scan(f)?;
+        match (&prev, &s.start_prev) {
+            (Some((h, total)), Some(p)) if p == h && s.carry == Some(*total) => {}
+            (None, _) => {}
+            _ => return Err(1),
+        }
+        lines += s.n;
+        torn = s.torn;
+        prev = Some((s.last.clone(), s.sum));
+    }
+    Ok((lines, prev.map(|p| p.1).unwrap_or(0), torn))
+}
+
+/// The sales rows (carry rows left out) of the newest files, going back until a file reaches `since` (epoch seconds): what the
+/// reports need, without reading a year of segments.
+pub fn read_recent(path: &str, since: u64) -> String {
+    let mut files = closed_segments(path);
+    files.push(effective(path));
+    let mut parts: Vec<String> = Vec::new();
+    for f in files.iter().rev() {
+        let Ok(text) = fs::read_to_string(f) else { continue };
+        let rows: String = text.lines().filter(|l| l.split(',').nth(4) != Some("carry")).map(|l| format!("{}\n", l)).collect();
+        let first_t = rows.lines().next().and_then(|l| l.split(',').next()?.parse::<u64>().ok()).unwrap_or(0);
+        parts.push(rows);
+        if first_t > 0 && first_t < since {
+            break;
+        }
+    }
+    parts.reverse();
+    parts.concat()
 }
 
 /// Move timestamps of entries recorded in `since <= time < until` forward by `delta` seconds when the router clock jumps forward
@@ -104,13 +279,17 @@ pub fn shift(path: &str, since: u64, until: u64, delta: u64) -> usize {
     }
     let mut lines: Vec<String> = Vec::new();
     let mut prev = "0".to_string();
-    let mut moved = 0;
+    let (mut moved, mut first) = (0, true);
     for l in text.lines() {
         let f: Vec<&str> = l.split(',').collect();
         if f.len() < 6 || !hash_ok(f[f.len() - 1]) {
             lines.push(l.to_string());
             continue;
         }
+        if first && f[4] == "carry" {
+            prev = f[1].to_string(); // a rolled file chains from the previous segment's last hash
+        }
+        first = false;
         let mut ts = f[0].parse::<u64>().unwrap_or(0);
         if ts >= since && ts < until {
             ts += delta;
@@ -250,5 +429,167 @@ mod tests {
         assert!(rows[0].starts_with("100,hyper,5,30,new"));
         assert!(rows[1].starts_with("1200,endurance,10,60,topup"));
         assert!(rows[2].starts_with("1250,hyper,1,6,new"));
+    }
+
+    // ---- AO-02 / AO-03: monthly segments -------------------------------------------------------------------------------------
+    const DAY: u64 = 86400;
+    /// 2026-08-10 12:00 UTC; 31 days later is 2026-09-10, then 2026-10-11: three different months.
+    const AUG: u64 = 1_786_363_200;
+    fn at(month_offset: u64, n: u64) -> u64 {
+        AUG + month_offset * 31 * DAY + n * 60
+    }
+    fn tmpdir(name: &str) -> String {
+        let d = std::env::temp_dir().join(format!("pisoportal-roll-{}-{}", name, std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        d.join("revenue.csv").to_string_lossy().into_owned()
+    }
+    /// The same rows into a rolling ledger and into one big file that never rolls (what every release before this one did).
+    fn two_ledgers(name: &str, months: u64, per_month: u64) -> (String, String) {
+        let (a, b) = (tmpdir(&format!("{}-a", name)), tmpdir(&format!("{}-b", name)));
+        for m in 0..months {
+            for n in 0..per_month {
+                let (t, pesos) = (at(m, n), (n % 5 + 1) as u32);
+                append(&a, t, "hyper", pesos, pesos * 6, if n == 0 { "new" } else { "topup" }).unwrap();
+                append_row(&b, t, "hyper", pesos, pesos * 6, if n == 0 { "new" } else { "topup" }).unwrap();
+            }
+        }
+        (a, b)
+    }
+    fn fields(text: &str) -> Vec<String> {
+        text.lines().filter(|l| l.split(',').nth(4) != Some("carry")).map(|l| l.rsplit_once(',').unwrap().0.to_string()).collect()
+    }
+
+    #[test]
+    fn ao02_three_months_roll_into_segments_and_equal_one_big_file() {
+        let (a, b) = two_ledgers("three", 3, 40);
+        let segs = closed_segments(&a);
+        assert_eq!(segs.len(), 2, "two closed months and the current one: {:?}", segs);
+        assert!(segs[0].ends_with("revenue-2026-08.csv") && segs[1].ends_with("revenue-2026-09.csv"), "{:?}", segs);
+        let (whole_lines, whole_sum, _) = verify_torn(&b).unwrap();
+        assert_eq!(whole_lines, 120);
+        let (lines, sum, torn) = verify_all(&a).unwrap();
+        assert_eq!((sum, torn), (whole_sum, false), "the coin total across the segments is the one big file's total");
+        assert_eq!(lines, 120 + 2, "the same rows plus one carry row for each roll");
+        // the current file alone verifies (the cheap hourly check) and carries the total of the months before it
+        let (cur_lines, cur_sum) = verify(&a).unwrap();
+        assert_eq!((cur_lines, cur_sum), (41, whole_sum), "one carry row and this month's 40 rows; the sum starts from the carry");
+        // every real row is there, in order, with the same fields (only the hashes differ: the carry rows sit in the chain)
+        let all = read_recent(&a, 0);
+        assert_eq!(fields(&all), fields(&fs::read_to_string(&b).unwrap()));
+        // the carry row names the old file's last hash and its running total
+        let first = fs::read_to_string(&a).unwrap();
+        let carry: Vec<&str> = first.lines().next().unwrap().split(',').collect();
+        let old = fs::read_to_string(&segs[1]).unwrap();
+        let old_last = old.lines().last().unwrap().rsplit(',').next().unwrap();
+        assert_eq!((carry[4], carry[1]), ("carry", old_last));
+        assert_eq!(carry[2].parse::<u64>().unwrap(), verify_all(&segs[1]).unwrap().1);
+    }
+
+    #[test]
+    fn ao02_a_same_month_or_an_earlier_clock_never_rolls() {
+        let a = tmpdir("same");
+        append(&a, at(0, 0), "hyper", 5, 30, "new").unwrap();
+        append(&a, at(0, 9) + 20 * DAY, "hyper", 1, 6, "topup").unwrap(); // later in the same month
+        append(&a, at(0, 1), "hyper", 1, 6, "topup").unwrap(); // the clock went back
+        assert!(closed_segments(&a).is_empty());
+        assert_eq!(verify(&a), Ok((3, 7)));
+    }
+
+    #[test]
+    fn ao02_a_torn_row_at_the_roll_stays_in_the_old_segment_and_nothing_is_lost() {
+        let a = tmpdir("torn");
+        append(&a, at(0, 0), "hyper", 5, 30, "new").unwrap();
+        append(&a, at(0, 1), "hyper", 3, 18, "topup").unwrap();
+        let mut f = fs::OpenOptions::new().append(true).open(&a).unwrap();
+        write!(f, "{},hyper,9,54,top", at(0, 2)).unwrap(); // the power went in the middle of this row
+        drop(f);
+        append(&a, at(1, 0), "hyper", 2, 12, "new").unwrap();
+        let seg = &closed_segments(&a)[0];
+        assert_eq!(verify_torn(seg).map(|v| (v.1, v.2)), Ok((8, true)), "the fragment is the old segment's torn tail, not a row");
+        assert_eq!(verify_all(&a).map(|v| v.1), Ok(10), "8 pesos before, 2 after: the torn row never counted");
+    }
+
+    #[test]
+    fn ao02_a_power_cut_between_the_move_and_the_new_file_is_finished_by_the_next_row() {
+        let a = tmpdir("cut-after-move");
+        append(&a, at(0, 0), "hyper", 5, 30, "new").unwrap();
+        append(&a, at(0, 1), "hyper", 3, 18, "topup").unwrap();
+        // what the roll had done when the power went: the new file written and flushed, the old one moved, the new one not yet in place
+        let (old_last, total) = (last_hash(&a).unwrap(), verify(&a).unwrap().1);
+        let rl = format!("{},{},{},0,carry", at(1, 0), old_last, total);
+        fs::write(format!("{}.new", a), format!("{},{}\n", rl, chain(&old_last, &rl))).unwrap();
+        crate::util::rename_durable(&a, &segment_path(&a, "2026-08")).unwrap();
+        assert!(!std::path::Path::new(&a).exists());
+        assert_eq!(verify_all(&a).map(|v| v.1), Ok(8), "readers see the finished file while the roll is half done");
+        append(&a, at(1, 5), "hyper", 2, 12, "topup").unwrap(); // the next sale finishes the roll, then is written
+        assert!(!std::path::Path::new(&format!("{}.new", a)).exists());
+        assert_eq!(verify_all(&a).map(|v| v.1), Ok(10));
+        assert_eq!(verify(&a), Ok((2, 10)), "the carry row and the new sale");
+    }
+
+    #[test]
+    fn ao02_a_power_cut_before_the_old_file_moved_starts_the_roll_again() {
+        let a = tmpdir("cut-before-move");
+        append(&a, at(0, 0), "hyper", 5, 30, "new").unwrap();
+        fs::write(format!("{}.new", a), "garbage that never became the new file\n").unwrap();
+        append(&a, at(1, 0), "hyper", 2, 12, "new").unwrap();
+        assert_eq!(closed_segments(&a).len(), 1);
+        assert_eq!(verify_all(&a).map(|v| v.1), Ok(7));
+        assert!(!std::path::Path::new(&format!("{}.new", a)).exists());
+    }
+
+    #[test]
+    fn ao02_an_edited_closed_segment_or_a_missing_one_is_found() {
+        let (a, _b) = two_ledgers("tamper", 3, 10);
+        let segs = closed_segments(&a);
+        let t = fs::read_to_string(&segs[0]).unwrap();
+        let first_row_pesos = t.lines().next().unwrap().split(',').nth(2).unwrap().to_string();
+        let edited = t.replacen(&format!(",{},", first_row_pesos), ",99,", 1);
+        fs::write(&segs[0], edited).unwrap();
+        assert_eq!(verify_all(&a), Err(1), "a closed month that was edited");
+        fs::write(&segs[0], t).unwrap();
+        assert!(verify_all(&a).is_ok());
+        fs::remove_file(&segs[1]).unwrap();
+        assert_eq!(verify_all(&a), Err(1), "a month removed from the middle breaks the chain");
+    }
+
+    #[test]
+    fn ao02_the_oldest_months_can_be_removed_by_the_owner() {
+        // D1: the owner downloads the oldest months and deletes them; what remains still verifies and keeps the total
+        let (a, b) = two_ledgers("oldest", 3, 10);
+        fs::remove_file(&closed_segments(&a)[0]).unwrap();
+        assert_eq!(verify_all(&a).map(|v| v.1), verify_torn(&b).map(|v| v.1));
+    }
+
+    #[test]
+    fn ao02_the_clock_jump_shift_keeps_a_rolled_file_valid() {
+        let (a, _b) = two_ledgers("shift", 2, 5);
+        let before = verify_all(&a).unwrap().1;
+        assert!(shift(&a, at(1, 0), u64::MAX, 3600) > 0);
+        assert_eq!(verify(&a).map(|v| v.1), Ok(before));
+        assert_eq!(verify_all(&a).map(|v| v.1), Ok(before));
+    }
+
+    #[test]
+    fn ao03_a_hundred_thousand_rows_verify_by_streaming() {
+        let a = tmpdir("big");
+        let mut text = String::new();
+        let mut prev = "0".to_string();
+        for i in 0..100_000u64 {
+            let rl = format!("{},hyper,{},{},topup", 1_700_000_000 + i, i % 5 + 1, (i % 5 + 1) * 6);
+            let h = chain(&prev, &rl);
+            text.push_str(&format!("{},{}\n", rl, h));
+            prev = h;
+        }
+        fs::write(&a, &text).unwrap();
+        let t0 = std::time::Instant::now();
+        let r = verify(&a).unwrap();
+        let ms = t0.elapsed().as_millis();
+        assert_eq!(r.0, 100_000);
+        assert_eq!(r.1, (0..100_000u64).map(|i| i % 5 + 1).sum::<u64>());
+        // (this is a debug build; the release build does it in a few tens of milliseconds)
+        assert!(ms < 5000, "100,000 rows took {} ms", ms);
+        println!("100,000 rows verified in {} ms (debug build)", ms);
     }
 }

@@ -101,15 +101,17 @@ static bool isRelayCurrentlyActive = false;
 static const unsigned long RELAY_POWER_ON_BLANKING_MS = 400;
 static volatile unsigned long relayPowerOnMs = 0;
 
-static volatile bool isrPulseOpen = false; // a pulse has begun and the line has not gone high again
+static volatile bool isrPulseOpen = false;                   // a pulse has begun and the line has not gone high again
+static portMUX_TYPE pulseMux = portMUX_INITIALIZER_UNLOCKED; // the lock the ISR counts under (see universalCoinIsr)
 
+// FW-08: noInterrupts() stops only this core; the ISR can run on the other one. The reset takes the same lock the ISR counts under.
 void resetCoinDetectorStates() {
-    noInterrupts();
+    portENTER_CRITICAL(&pulseMux);
     isrUniversalPulseCount = 0;
     isrLastPulseTimeMs = 0;
     isrLastPulseTimeUs = 0;
     isrPulseOpen = false;
-    interrupts();
+    portEXIT_CRITICAL(&pulseMux);
 }
 
 void setRelayHardware(bool active) {
@@ -185,7 +187,6 @@ volatile bool isrPulseGuardOn = true;
 volatile uint32_t isrPulseMinUs = (uint32_t)PULSE_MIN_MS_DEFAULT * 1000UL;
 static volatile unsigned long isrPulseStartUs = 0;
 static PulseStats isrStats; // written by the ISR and read with the lock below
-static portMUX_TYPE pulseMux = portMUX_INITIALIZER_UNLOCKED;
 
 PulseStats coinPulseStats() {
     PulseStats copy;

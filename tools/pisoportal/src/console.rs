@@ -373,7 +373,12 @@ impl Console {
             )
         };
         let tz = tz_offset_secs(&read("/etc/TZ"));
-        let (today, total, week, week_total, month_total) = revenue_period_stats(&read(&cfg.revenue_path()), now, tz);
+        let (today, mut total, week, week_total, month_total) =
+            revenue_period_stats(&crate::ledger::read_recent(&cfg.revenue_path(), now.saturating_sub(40 * 86400)), now, tz);
+        if !crate::ledger::closed_segments(&cfg.revenue_path()).is_empty() {
+            total = crate::ledger::verify(&cfg.revenue_path()).map(|v| v.1).unwrap_or(total);
+            // the carry row holds the months before
+        }
         let link = BoxLink::new(&cfg.gw_box, &cfg.gw_key).remember_in(&format!("{}/box_signed", cfg.data_dir));
         let box_ok = link.challenge().is_some();
         let box_signed = link.signs_answers();
@@ -385,10 +390,18 @@ impl Console {
             .lines()
             .find_map(|l| l.strip_prefix("MemAvailable:").map(|v| v.trim().trim_end_matches("kB").trim().to_string()))
             .unwrap_or_default();
+        // the monitor's alerts.txt, newest first, the last 5 (AO-06): the way an owner without Telegram is told
+        let alerts = read(&format!("{}/alerts.txt", cfg.data_dir))
+            .lines()
+            .rev()
+            .take(5)
+            .map(|l| format!("\"{}\"", json_esc(l)))
+            .collect::<Vec<_>>()
+            .join(",");
         let uptime = read("/proc/uptime").split_whitespace().next().unwrap_or("0").split('.').next().unwrap_or("0").to_string();
         format!(
             "{{\"version\":\"{}\",\"now\":{},\"online\":{},\"waiting\":{},\"wan_if\":\"{}\",\"rx_kbps\":{},\"tx_kbps\":{},\"rx_total\":{},\"tx_total\":{},\"history\":[{}],\
-             \"today\":{},\"week_total\":{},\"month_total\":{},\"total\":{},\"week\":[{}],\"box_ok\":{},\"box_signed\":{},\"ledger_ok\":{},\"ledger_lines\":{},\"mem_kb\":{},\"uptime\":{}}}",
+             \"today\":{},\"week_total\":{},\"month_total\":{},\"total\":{},\"week\":[{}],\"box_ok\":{},\"box_signed\":{},\"ledger_ok\":{},\"ledger_lines\":{},\"mem_kb\":{},\"uptime\":{},\"alerts\":[{}]}}",
             env!("CARGO_PKG_VERSION"),
             now,
             online,
@@ -409,7 +422,8 @@ impl Console {
             ledger_ok,
             ledger_lines,
             if mem.is_empty() { "0".into() } else { mem },
-            uptime
+            uptime,
+            alerts
         )
     }
 
@@ -563,7 +577,7 @@ fn handle(c: &Console, req: Request, mut conn: Incoming) {
             if wait > 0 {
                 return json(&mut conn, "429 Too Many Requests", &format!("{{\"error\":\"LOCKED\",\"retry\":{}}}", wait), "");
             }
-            if c.password_ok(&crate::util::jget(&body, "password").replace("\\\"", "\"").replace("\\\\", "\\")) {
+            if c.password_ok(&crate::util::jget(&body, "password")) {
                 let token = c.new_session();
                 json(
                     &mut conn,
@@ -599,7 +613,12 @@ fn handle(c: &Console, req: Request, mut conn: Incoming) {
                 ("GET", "/api/sales") => {
                     let days: u64 = crate::util::query_get(&req.query, "days").and_then(|d| d.parse().ok()).unwrap_or(30);
                     let (now, tz) = (now_secs(), tz_offset_secs(&read("/etc/TZ")));
-                    let (rows, (h, e), k) = sales_report(&read(&c.core.cfg.revenue_path()), now, tz, days);
+                    let (rows, (h, e), k) = sales_report(
+                        &crate::ledger::read_recent(&c.core.cfg.revenue_path(), now.saturating_sub((days + 2) * 86400)),
+                        now,
+                        tz,
+                        days,
+                    );
                     let list: Vec<String> = rows
                         .iter()
                         .map(|r| {
@@ -799,9 +818,13 @@ pub fn start(core: Arc<Core>) {
     std::thread::spawn(move || {
         let cfg = &console.core.cfg;
         let listener = bind_retry(&format!("{}:{}", cfg.console_bind, cfg.console_port), "console");
+        let limits = crate::http::console_limits();
         for stream in listener.incoming().flatten() {
+            // over the limit (in all, or from one address): turned away before a thread is started
+            let Some(slot) = stream.peer_addr().ok().and_then(|a| limits.take(a.ip())) else { continue };
             let c = Arc::clone(&console);
             std::thread::spawn(move || {
+                let _slot = slot;
                 if let Some((req, conn)) = read_request(stream, Duration::from_secs(5)) {
                     handle(&c, req, conn);
                 }

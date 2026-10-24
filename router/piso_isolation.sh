@@ -28,16 +28,19 @@ command -v "$NFT" > /dev/null 2>&1 || exit 0
 
 cget() { sed -n "s/^$2='\\(.*\\)'\$/\\1/p" "$1" 2> /dev/null | tail -n 1; }
 
-# load <table> <rules file>: replaces the table; false when the router cannot load it
+# load <table> <rules file>: replaces the table; false when the router cannot load it. The old table is removed in the same nft
+# transaction that adds the new one ("table" first, so the delete works when there is none yet): when the load fails, the old
+# rules stay in place instead of leaving the network with none.
 load() {
-	"$NFT" delete table bridge "$1" > /dev/null 2>&1
-	"$NFT" -f "$2" > /dev/null 2>&1
+	{ echo "table bridge $1"; echo "delete table bridge $1"; cat "$2"; } > "$T2" 2> /dev/null || return 1
+	"$NFT" -f "$T2" > /dev/null 2>&1
 }
 
 fail() { logger -t piso-setup "$1"; }
 
 T=$(mktemp 2> /dev/null) || exit 0
-trap 'rm -f "$T"' EXIT
+T2=$(mktemp 2> /dev/null) || exit 0
+trap 'rm -f "$T" "$T2"' EXIT
 
 # ---- guests -------------------------------------------------------------------------------------------------------------------
 if [ -d "$SYS/$GUEST_BR" ]; then
@@ -78,11 +81,14 @@ if [ -d "$SYS/$LAN_BR" ]; then
 	BOX_MAC=$(cget "$COIN" GW_BOX_MAC | tr 'A-F' 'a-f')
 	BOX_IP=$(cget "$COIN" GW_BOX)
 	LAN_IP=$(cget "$COIN" CONSOLE_BIND)
+	# a console bound to every address (the default) names no address: use the router's own address on the LAN bridge
+	case "$LAN_IP" in "" | 0.0.0.0) LAN_IP=$("${PISO_IP:-ip}" -4 -o addr show dev "$LAN_BR" 2> /dev/null | awk '{sub(/\/.*/, "", $4); print $4; exit}') ;; esac
 	WIFI_ADMIN=$(cget "$CONF" WIFI_ADMIN)
 	# the console is the admin page (and the coin box's page one port up): offered on a LAN cable only, like the login pages
 	CONSOLE_PORT=$(cget "$COIN" CONSOLE_PORT)
 	case "$CONSOLE_PORT" in "" | *[!0-9]*) CONSOLE_PORT=8081 ;; esac
 	ADMIN_PORTS=$(echo "$ADMIN_PORTS $CONSOLE_PORT $((CONSOLE_PORT + 1))" | tr ' ' '\n' | awk '!seen[$0]++' | paste -sd, - | sed 's/,/, /g')
+	CONSOLE_PORTS=$(echo "$CONSOLE_PORT $((CONSOLE_PORT + 1))" | tr ' ' '\n' | awk '$0 != 80 && $0 != 443 && !seen[$0]++' | paste -sd, - | sed 's/,/, /g')
 	case "$BOX_MAC" in [0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]) ;; *) BOX_MAC="" ;; esac
 	case "$BOX_IP" in *[!0-9.]*) BOX_IP="" ;; esac
 	case "$LAN_IP" in *[!0-9.]*) LAN_IP="" ;; esac
@@ -104,9 +110,15 @@ if [ -d "$SYS/$LAN_BR" ]; then
 		echo "	chain input {"
 		echo "		type filter hook input priority -200; policy accept;"
 		# (only what is addressed to the router's kiosk address: a guest's web request to any website is not touched)
-		if [ "$WIFI_ADMIN" != on ] && [ -n "$LAN_IP" ]; then
+		if [ "$WIFI_ADMIN" != on ]; then
 			for _p in $WIFI_PORTS; do
-				echo "		iifname \"$_p\" ip daddr $LAN_IP tcp dport { $ADMIN_PORTS } counter drop comment \"the router's login pages are not offered on Wi-Fi\""
+				if [ -n "$LAN_IP" ]; then
+					echo "		iifname \"$_p\" ip daddr $LAN_IP tcp dport { $ADMIN_PORTS } counter drop comment \"the router's login pages are not offered on Wi-Fi\""
+				else
+					# the router's address is not known: close the console's own ports for any address (not 80 or 443, which
+					# are also the internet's web ports)
+					echo "		iifname \"$_p\" tcp dport { $CONSOLE_PORTS } counter drop comment \"the console is not offered on Wi-Fi\""
+				fi
 			done
 		fi
 		echo "	}"

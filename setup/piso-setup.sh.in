@@ -1227,7 +1227,7 @@ stage2() {
 	/etc/init.d/pisoportal enable; /etc/init.d/pisoportal restart
 	install_update_timer
 	keep_across_upgrades
-	[ -r /etc/piso-monitor.conf ] && { /etc/init.d/piso_monitor enable; /etc/init.d/piso_monitor restart; }
+	[ -x /etc/init.d/piso_monitor ] && { /etc/init.d/piso_monitor enable; /etc/init.d/piso_monitor restart; }
 	/etc/init.d/opennds enable; /etc/init.d/opennds stop > /dev/null 2>&1; /etc/init.d/opennds start; NDS_RESTORE=0
 	sleep 8
 
@@ -1278,6 +1278,7 @@ cmd_status() {
 	[ -r "$STATE" ] && echo "setup: $(cat "$STATE")"
 	DRY=1; check_all; _f=$?
 	box_name_notice   # (information only: it does not count as a failed check)
+	[ -s "$PISO_ROOT/etc/coinslot.d/alerts.txt" ] && { echo "Recent alerts (the router's monitor wrote them to /etc/coinslot.d/alerts.txt):"; tail -n 5 "$PISO_ROOT/etc/coinslot.d/alerts.txt" | sed 's/^/  /'; }
 	[ "$_f" = 0 ] && echo "All checks passed." || echo "$_f check(s) failed. Log: $LOG"
 	return "$_f"
 }
@@ -1508,7 +1509,7 @@ cmd_update() {
 	fi
 	install_update_timer
 	keep_across_upgrades
-	[ -r /etc/piso-monitor.conf ] && [ -x /etc/init.d/piso_monitor ] && { /etc/init.d/piso_monitor enable; /etc/init.d/piso_monitor restart; }
+	[ -x /etc/init.d/piso_monitor ] && { /etc/init.d/piso_monitor enable; /etc/init.d/piso_monitor restart; }
 	sleep 3
 	console_default
 	log "Updated to setup file version $VERSION. Customers' sessions and the revenue ledger were not touched."
@@ -1585,7 +1586,7 @@ rollback_update() {
 		if [ -e "$_b" ]; then cp -p "$_b" "$_f.new" && mv "$_f.new" "$_f"; fi
 	done
 	[ -x /etc/init.d/pisoportal ] && /etc/init.d/pisoportal start > /dev/null 2>&1
-	[ -r "$MONITOR_CONF" ] && [ -x /etc/init.d/piso_monitor ] && /etc/init.d/piso_monitor restart > /dev/null 2>&1
+	[ -x /etc/init.d/piso_monitor ] && /etc/init.d/piso_monitor restart > /dev/null 2>&1
 }
 
 # guests_online: customers openNDS has let online right now
@@ -2127,11 +2128,13 @@ cmd_export() {
 cmd_import() {
 	[ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"
 	_in="$1"; [ -f "$_in" ] || die "usage: piso-setup import <backup file>"
-	tar -tzf "$_in" > /tmp/piso-import.list 2> /dev/null || { rm -f /tmp/piso-import.list; die "that is not a PisoPhone backup"; }
-	if grep -vE '^(etc/piso-setup\.conf|etc/coinslot\.conf|etc/coinslot\.d(/.*)?|etc/piso-monitor\.conf)$' /tmp/piso-import.list | grep -q .; then
-		rm -f /tmp/piso-import.list; die "that backup holds files this command does not restore: refused"
+	_lst=$(mktemp 2> /dev/null) || die "cannot make a temporary file"
+	tar -tzf "$_in" > "$_lst" 2> /dev/null || { rm -f "$_lst"; die "that is not a PisoPhone backup"; }
+	# only these paths, and no ".." part anywhere (etc/coinslot.d/../x would pass the pattern and leave the folder)
+	if grep -vE '^(etc/piso-setup\.conf|etc/coinslot\.conf|etc/coinslot\.d(/.*)?|etc/piso-monitor\.conf)$' "$_lst" | grep -q . || grep -qE '(^|/)\.\.(/|$)' "$_lst"; then
+		rm -f "$_lst"; die "that backup holds files this command does not restore: refused"
 	fi
-	rm -f /tmp/piso-import.list
+	rm -f "$_lst"
 	if [ "$ASSUME_YES" != 1 ]; then printf 'Replace this router'"'"'s PisoPhone settings and ledger with the backup? [y/N] '; read -r _a; case "$_a" in y | Y) ;; *) echo "Cancelled."; return 0 ;; esac; fi
 	[ -x /etc/init.d/pisoportal ] && /etc/init.d/pisoportal stop > /dev/null 2>&1
 	tar -C "${PISO_ROOT:-/}" -xzf "$_in" || die "could not unpack the backup"

@@ -272,7 +272,8 @@ try:
     d.mark()
     d.send({"t": "start", "plan": "hyper"})
     ar = d.wait_state("armed", 20)
-    check(ar is not None and os.listdir(f"{env.data}/open") == [], "once the box acknowledges, the coins are settled and the next window opens")
+    rec_files = os.listdir(f"{env.data}/open")   # (since 021 the window that just opened has its own record from the moment it is armed)
+    check(ar is not None and len(rec_files) == 1 and not any(r.endswith(".rec") for r in rec_files), f"once the box acknowledges, the old coins are settled and the next window opens (only its own record is on flash: {rec_files})")
     check(env.revenue() == rev1, "and the earlier window was not credited again")
     d.send({"t": "done"})
     d.wait_state("empty", 10)
@@ -729,9 +730,10 @@ try:
     # ---- RT-04: a ledger row cut short by a power failure is a torn tail, not "LEDGER WAS CHANGED"; the next row starts on its own line -----------
     e6 = Env(offset=55, EMPTY_COOLDOWN="1")
     try:
-        rl = "1700000000,hyper,5,30,new"
+        t6 = int(time.time()) - 5   # (a recent time: an old file would be rolled into its month's segment by the first sale, see test_ledger_roll below)
+        rl = f"{t6},hyper,5,30,new"
         h1 = hashlib.sha256(f"0|{rl}".encode()).hexdigest()[:12]
-        open(f"{e6.data}/revenue.csv", "w").write(f"{rl},{h1}\n" + "1700000100,hyper,3,18,new,ab")   # the second row was cut inside its hash
+        open(f"{e6.data}/revenue.csv", "w").write(f"{rl},{h1}\n" + f"{t6 + 1},hyper,3,18,new,ab")   # the second row was cut inside its hash
         rc, out = e6.cli("verify")
         check(rc == 0 and out.startswith("OK 1 5") and "torn_tail=true" in out, "RT-04: a torn last row is skipped and reported, not BAD: " + out)
         rc, out = e6.cli("reconcile")
@@ -746,7 +748,7 @@ try:
         check(fin is not None and fin["online"] is True, f"RT-04: a payment after the torn tail still works: {fin}")
         c.close()
         rows = e6.revenue().split("\n")
-        check(rows[1] == "1700000100,hyper,3,18,new,ab" and rows[2].count(",") == 5 and ",hyper,2,12,new," in rows[2],
+        check(rows[1] == f"{t6 + 1},hyper,3,18,new,ab" and rows[2].count(",") == 5 and ",hyper,2,12,new," in rows[2],
               "RT-04: the new row is on a line of its own, after the fragment: " + repr(e6.revenue()))
         rc, out = e6.cli("verify")
         check(rc == 0 and out.startswith("OK 3 7") and "torn_tail" not in out, "RT-04: the chain holds and the tail is whole again: " + out)

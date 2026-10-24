@@ -242,6 +242,8 @@ pub struct Core {
     pub files: Mutex<()>,
     /// one recovery at a time (the maintenance thread and a customer's start can both ask for one)
     recovering: Mutex<()>,
+    /// RT-17: a recovery thread is running (set before it starts, so two maintenance rounds never start two)
+    recover_running: std::sync::atomic::AtomicBool,
     /// the prices now in force (the settings file's, or what the owner set in the console) and a counter that rises with every change
     pricing: RwLock<Arc<Pricing>>,
     pricing_stamp: AtomicU32,
@@ -300,6 +302,7 @@ impl Core {
             cv: Condvar::new(),
             files: Mutex::new(()),
             recovering: Mutex::new(()),
+            recover_running: std::sync::atomic::AtomicBool::new(false),
             vchoice,
             clock: Mutex::new((now_secs(), Instant::now(), now_secs())),
             started: Instant::now(),
@@ -997,6 +1000,9 @@ impl Core {
             }
         });
         log!("timing {} armed events={} in {} ms", &sid[..8], events, t_arm.elapsed().as_millis());
+        // AO-11: the record goes to flash now, while the box is armed, not when the first coin is seen. A kill or power cut between
+        // the box counting a coin and the router noticing it used to leave that coin on the box with nothing to recover it.
+        self.note_open(sid, &mac, plan, &wid, forfeit, voucher);
         let mut last = first;
         let mut noted = false;
         let poll = Duration::from_millis(if events { cfg.poll_ms } else { 250 });
@@ -1109,6 +1115,7 @@ impl Core {
                 return;
             }
             log!("window {} closed with no coins", &sid[..8]);
+            let _ = fs::remove_file(self.open_file(sid)); // nothing to recover: the box held no coin for it
             self.finish_window(sid, View::Empty, Some(false));
             return;
         }
@@ -1168,9 +1175,12 @@ impl Core {
         format!("{}/{}", self.cfg.open_dir(), sid)
     }
 
-    /// The first coin leaves a record on flash, kept until the box is acknowledged: if the router restarts mid-window,
-    /// recovery credits the coins. Nothing is granted yet.
+    /// A window leaves a record on flash from the moment the box is armed, kept until the box is acknowledged (or the window ends with
+    /// no coin at all): if the router restarts mid-window, recovery credits what the box holds. Nothing is granted yet. Written once.
     fn note_open(&self, sid: &str, mac: &str, plan: Plan, wid: &str, forfeit: bool, voucher: bool) {
+        if std::path::Path::new(&self.open_file(sid)).exists() {
+            return;
+        }
         let _ = fs::create_dir_all(self.cfg.open_dir());
         // (records of earlier releases have four fields: no voucher). Flushed to flash: a power cut right after a coin must not lose it.
         if let Err(e) =
@@ -1530,9 +1540,21 @@ impl Core {
     }
 
     /// Housekeeping: settle leftovers, forget old sessions and old results.
-    pub fn maintenance(&self) {
+    pub fn maintenance(self: &Arc<Self>) {
         self.check_clock();
-        self.recover();
+        // RT-17: settling leftovers asks the coin box, which can take seconds to answer (or never); it runs on its own thread so
+        // the clock check, the fair-use tick and the housekeeping below are not held up. One recovery at a time.
+        use std::sync::atomic::Ordering;
+        if self.recover_running.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire).is_ok() {
+            let me = Arc::clone(self);
+            let started = std::thread::Builder::new().name("recover".into()).spawn(move || {
+                me.recover();
+                me.recover_running.store(false, Ordering::Release);
+            });
+            if started.is_err() {
+                self.recover_running.store(false, Ordering::Release);
+            }
+        }
         {
             let _g = self.files.lock().unwrap();
             roll::purge(&self.cfg.roll_path(), now_secs());
@@ -1790,5 +1812,42 @@ mod tests {
     fn rt07_a_second_late_round_of_the_same_window_has_its_own_id() {
         assert_eq!(late_wid("w9", 3), "w9L3");
         assert_ne!(late_wid("w9", 3), late_wid("w9", 5), "two late rounds must not look like the same window");
+    }
+
+    #[test]
+    fn rt17_a_box_that_never_answers_does_not_hold_up_maintenance() {
+        // a "box" that accepts the connection and says nothing; two windows are waiting to be settled
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = l.local_addr().unwrap().to_string();
+        let held = std::thread::spawn(move || {
+            let mut socks = Vec::new();
+            while let Ok((s, _)) = l.accept() {
+                socks.push(s);
+            }
+        });
+        let d = std::env::temp_dir().join(format!("pisoportal-rt17-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(d.join("open")).unwrap();
+        fs::write(d.join("open/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), format!("{} hyper w1 0 0\n", MAC_A)).unwrap();
+        fs::write(d.join("open/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"), format!("{} hyper w2 0 0\n", MAC_B)).unwrap();
+        let mut cfg = Config::from_map(std::collections::HashMap::new());
+        cfg.data_dir = d.to_string_lossy().into_owned();
+        cfg.ndsctl = "/nonexistent/ndsctl".into();
+        cfg.gw_box = addr;
+        cfg.gw_key = "test-gateway-key-123456".into();
+        let core = Core::new(cfg);
+        let t0 = Instant::now();
+        core.maintenance();
+        let took = t0.elapsed();
+        assert!(took < Duration::from_millis(1500), "maintenance waited {:?} for a box that never answers", took);
+        // and a second round while the first recovery is still waiting does not start another one
+        let t1 = Instant::now();
+        core.maintenance();
+        assert!(t1.elapsed() < Duration::from_millis(1500));
+        assert!(
+            core.recover_running.load(std::sync::atomic::Ordering::Acquire),
+            "the first recovery is still waiting on the box, on its own thread"
+        );
+        drop(held);
     }
 }

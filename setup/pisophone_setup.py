@@ -2615,10 +2615,22 @@ def read_box_network(ssh, host):
     return r.stdout.strip() or None if r.returncode == 0 else None
 
 
-def run_checkup(branch, probe=port_open, opener=urllib.request.urlopen, box_net=None):
+def read_router_alerts(ssh, host):
+    """The last lines of the router's alerts.txt (what its monitor noticed: a portal that was restarted, little free flash, the coin box
+    off), read-only over the login the session already holds. [] when there are none, None when the router cannot be asked."""
+    try:
+        r = ssh.run(host, "tail -n 5 /etc/coinslot.d/alerts.txt 2>/dev/null; true", "-T", capture_output=True, text=True, timeout=60,
+                    stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return [ln.strip() for ln in r.stdout.splitlines() if ln.strip()] if r.returncode == 0 else None
+
+
+def run_checkup(branch, probe=port_open, opener=urllib.request.urlopen, box_net=None, alerts=None):
     """The Check-up page: a read-only look at the router, the coin box, the update feed and the print server. Each item has
     a state (ok, bad, warn for a notice, or off for the optional print server), one line saying what was found and, when it is
-    not ok, the one-line fix. `box_net` (optional) tells the name of the router's coin box network."""
+    not ok, the one-line fix. `box_net` (optional) tells the name of the router's coin box network; `alerts` (optional) the last
+    lines of the router's alerts.txt (the way a shop without Telegram is told something is wrong)."""
     items = []
 
     def add(name, state, text, fix=""):
@@ -2642,6 +2654,16 @@ def run_checkup(branch, probe=port_open, opener=urllib.request.urlopen, box_net=
         if name == "PisoCoinBox":
             add("Coin box network", "warn", "Called PisoCoinBox, the shared setup name: a second router being set up nearby can take this box's place.",
                 "Log in to the router and run: piso-setup box-wifi-name")
+    if alerts is not None and probe(TARGET_IP, 22):
+        try:
+            lines = alerts()
+        except (OSError, subprocess.SubprocessError):
+            lines = None
+        if lines:
+            add("Router alerts", "warn", "The router's monitor noted: " + " | ".join(lines[-3:]),
+                "Read them; they stay in /etc/coinslot.d/alerts.txt and on the owner console's front page.")
+        elif lines is not None:
+            add("Router alerts", "ok", "Nothing noted by the router's monitor.")
     try:
         request = urllib.request.Request(site_url(branch) + "/update/router.json", headers={"User-Agent": USER_AGENT})
         with opener(request, timeout=8) as r:
@@ -3656,6 +3678,47 @@ def save_tool_page(name, html):
     return path
 
 
+SALES_MONTH_RE = re.compile(r"revenue-\d{4}-\d{2}\.csv")
+
+
+def move_sales_months(ssh, host, count, dest):
+    """Sales history (spec 02, D1): the router closes its sales file each month (revenue-YYYY-MM.csv in /etc/coinslot.d). This copies
+    the oldest `count` closed months to the folder `dest`, checks each copy against the router's own sha256, and only then removes
+    that month from the router. The current month is never touched, and nothing is removed that was not copied and checked.
+    Returns [(name, bytes)]. Raises ToolError when the router cannot be asked or a copy does not match."""
+    def run(cmd, text=True):
+        try:
+            return ssh.run(host, cmd, "-T", capture_output=True, text=text, timeout=300, stdin=subprocess.DEVNULL)
+        except (OSError, subprocess.SubprocessError) as e:
+            raise ToolError(f"The router did not answer ({e}). Is this computer plugged into it?") from e
+    if count < 1:
+        raise ToolError("Choose how many months to move (at least 1).")
+    r = run("ls -1 /etc/coinslot.d 2>/dev/null")
+    if r.returncode != 0:
+        raise ToolError("The router did not answer. Is this computer plugged into it and the login saved?")
+    months = sorted(n.strip() for n in r.stdout.splitlines() if SALES_MONTH_RE.fullmatch(n.strip()))
+    if not months:
+        raise ToolError("The router has no closed months of sales yet (the first one closes when a sale is made in a new month).")
+    os.makedirs(dest, exist_ok=True)
+    moved = []
+    for name in months[:count]:
+        remote = f"/etc/coinslot.d/{name}"
+        data = run(f"cat {remote}", text=False)
+        want = run(f"sha256sum {remote} | cut -d' ' -f1")
+        if data.returncode != 0 or want.returncode != 0 or hashlib.sha256(data.stdout).hexdigest() != want.stdout.strip():
+            raise ToolError(f"The copy of {name} did not match the router's file, so nothing was removed. Try again.")
+        path = os.path.join(dest, name)
+        with open(path, "wb") as f:
+            f.write(data.stdout)
+        with open(path, "rb") as f:
+            if hashlib.sha256(f.read()).hexdigest() != want.stdout.strip():
+                raise ToolError(f"{name} could not be saved on this computer, so nothing was removed.")
+        if run(f"rm -f {remote}").returncode != 0:
+            raise ToolError(f"{name} was saved to {path} but could not be removed from the router.")
+        moved.append((name, len(data.stdout)))
+    return moved
+
+
 def make_admin_qr(key=None):
     key = key or load_key("admin")
     text = admin_qr_text(key)
@@ -4408,7 +4471,8 @@ class Core:
         return box_online()
 
     def checkup(self):
-        return run_checkup(self.branch, box_net=lambda: read_box_network(self.ssh, TARGET_IP))
+        return run_checkup(self.branch, box_net=lambda: read_box_network(self.ssh, TARGET_IP),
+                           alerts=lambda: read_router_alerts(self.ssh, TARGET_IP))
 
     # -- PisoPhone only (no router) ---------------------------------------------------------------------------------------------
     def preflight_phone(self):
@@ -5125,6 +5189,19 @@ class Session:
                                     "note": f"Works until {r['until']} ({r['minutes']} minutes). On the phone's lock screen: admin entry > SCAN A RECOVERY CODE."}
         self._tool(work)
 
+    def do_tool_months(self, a):
+        def work():
+            try:
+                count = int(a.get("count") or 1)
+            except (TypeError, ValueError):
+                count = 0
+            dest = os.path.join(keys_home(), "pisophone_sales")
+            moved = move_sales_months(self.ssh, TARGET_IP, count, dest)
+            with self.lock:
+                self.tools["message"] = (f"Moved {len(moved)} month(s) of sales from the router to {dest}: " + ", ".join(n for n, _b in moved)
+                                         + ". Keep these files: they are your sales record. The router keeps checking the months it still has.")
+        self._tool(work)
+
     def do_tool_hide(self, a):
         with self.lock:
             self.tools["qr"] = None
@@ -5567,6 +5644,8 @@ a{color:var(--acc)}.hide{display:none!important}
    <div class="row"><div class="grow"><label for="cSx">Move the backs right (mm)</label><input id="cSx" type="number" step="0.5" value="0"></div><div class="grow"><label for="cSy">Move the backs down (mm)</label><input id="cSy" type="number" step="0.5" value="0"></div></div></details>
   <p style="margin-top:12px"><button class="primary" id="btnCards">Make the cards</button></p>
   <div id="cResult"></div><div id="cBoxList"></div></div>
+ <div class="card"><h2>Sales history on the router</h2><p class="mut">The router closes its sales file each month. When its flash is getting full (it tells you), copy the oldest months to this computer here: each copy is checked, and only then removed from the router. The current month is never touched.</p>
+  <div class="row"><div><label for="mCount" style="margin-top:0">Oldest months to move</label><input id="mCount" type="number" min="1" max="24" value="3" style="width:120px"></div><button id="btnMonths" style="align-self:flex-end">Copy to this computer, then remove from the router</button></div></div>
  <div class="card"><h2>Admin QR code</h2><p class="mut">The code that logs you in as super admin on every coin box (the box's login page, Scan admin QR).</p>
   <button id="btnAdminQr">Show my admin QR code</button><div id="qrResult"></div></div>
  <div class="card"><h2>Phone recovery code</h2><p class="mut">Scanned on a phone's lock screen, it removes PisoPhone from that phone (no cable needed). It works for a short time only.</p>
@@ -5845,6 +5924,7 @@ $('#btnLicenses').onclick=()=>act('tool_licenses',{box:$('#lBox').value,count:$(
 $('#btnReissue').onclick=()=>act('tool_reissue',{box:$('#lBox').value});
 $('#btnCards').onclick=()=>act('tool_cards',{box:$('#cBox').value,count:$('#cCount').value,hours:$('#cHours').value,note:$('#cNote').value,flip:$('#cFlip').value,shift_x:$('#cSx').value,shift_y:$('#cSy').value});
 $('#btnAdminQr').onclick=()=>act('tool_adminqr');
+$('#btnMonths').onclick=()=>act('tool_months',{count:$('#mCount').value});
 $('#btnRecovery').onclick=()=>act('tool_recovery',{minutes:$('#rMin').value});
 $('#btnKeyImport').onclick=()=>{act('tool_key',{kind:$('#kKind').value,mode:'import',path:$('#kPath').value,text:$('#kText').value,replace:$('#kReplace').checked});$('#kText').value=''};
 $('#btnKeyCreate').onclick=()=>{if(confirm('Make a NEW '+$('#kKind').selectedOptions[0].textContent.toLowerCase()+' key? Boxes only trust the key their firmware was built with.'))act('tool_key',{kind:$('#kKind').value,mode:'create',replace:$('#kReplace').checked})};

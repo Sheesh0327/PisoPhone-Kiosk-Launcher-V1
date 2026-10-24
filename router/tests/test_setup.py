@@ -198,7 +198,26 @@ r, nl, ll = run_iso()
 open(f"{iso}/nft-fail", "w").close()
 r, nl, ll = run_iso()
 check(r.returncode == 0 and ll.count("NOT active") == 2 and "guest isolation is NOT active" in ll and "phone isolation is NOT active" in ll, "a router that cannot load the bridge rules logs it and carries on (exit 0): " + ll)
+# RT-10: the old table is deleted in the same nft transaction that loads the new one, never on its own (a failed load leaves the old rules in place)
+check("ARGS delete table" not in nl, "RT-10: no separate `nft delete table` call: " + nl[:300])
+check(all(t in nl for t in ("table bridge piso_guest\ndelete table bridge piso_guest\ntable bridge piso_guest {", "table bridge piso_kiosk\ndelete table bridge piso_kiosk\ntable bridge piso_kiosk {")),
+      "RT-10: each rule file declares, deletes and re-creates its table in one file: " + nl[:500])
 os.remove(f"{iso}/nft-fail")
+# RT-18: a console bound to every address (CONSOLE_BIND 0.0.0.0 or empty) must still be closed on Wi-Fi
+open(f"{iso}/piso.conf", "w").write("")
+open(f"{iso}/bin/ip", "w").write('#!/bin/sh\n[ -e ' + iso + '/ip-fail ] && exit 1\necho "5: br-lan    inet 10.0.0.1/24 brd 10.0.0.255 scope global br-lan"\n'); os.chmod(f"{iso}/bin/ip", 0o755)
+for bind in ("0.0.0.0", ""):
+    open(f"{iso}/coin.conf", "w").write(f"GW_BOX='10.0.0.10'\nGW_BOX_MAC='AA:BB:CC:DD:EE:09'\nCONSOLE_BIND='{bind}'\n")
+    r, nl, ll = run_iso()
+    check('iifname "phy*" ip daddr 10.0.0.1 tcp dport { 22, 80, 443, 8080, 8443, 8081, 8082 } counter drop' in nl,
+          f"RT-18: CONSOLE_BIND '{bind}': the router's own address is read from br-lan: " + nl[-600:])
+open(f"{iso}/ip-fail", "w").close()
+for bind in ("0.0.0.0", ""):
+    open(f"{iso}/coin.conf", "w").write(f"GW_BOX='10.0.0.10'\nGW_BOX_MAC='AA:BB:CC:DD:EE:09'\nCONSOLE_BIND='{bind}'\n")
+    r, nl, ll = run_iso()
+    check('iifname "phy*" tcp dport { 8081, 8082 } counter drop' in nl and "ip daddr 0.0.0.0" not in nl and "dport { 22, 80" not in nl,
+          f"RT-18: CONSOLE_BIND '{bind}', router address unknown: the console ports are closed for any address, ports 80 and 443 are left alone: " + nl[-600:])
+os.remove(f"{iso}/ip-fail"); os.remove(f"{iso}/bin/ip")
 
 check("authenticated_users='block to" not in out and "authenticated_users='allow all'" not in out, "openNDS's own rules for paying guests are not replaced (1.5.5 did, and was taken back)")
 r = lib('ip() { echo "default via 192.168.0.1 dev wan"; }; modem_addresses')
@@ -819,6 +838,16 @@ for _label, _kv, _want in (
     check((NOTICE in summary_part) == _want, f"and the summary {'shows' if _want else 'does not show'} it: " + summary_part[-400:])
     check("rc=0" in r.stdout, "and the line does not make status fail")
 
+# ---- feature 015 (AO-06): status shows what the monitor wrote to alerts.txt, with or without Telegram --------------------------------
+aroot = f"{tmp}/alertsroot"
+os.makedirs(f"{aroot}/etc/coinslot.d", exist_ok=True)
+r = lib('check_all() { echo CHECKS; return 0; }; cmd_status; echo "rc=$?"', env={"PISO_ROOT": aroot})
+check("Recent alerts" not in r.stdout and "rc=0" in r.stdout, "status shows no alerts section when there is no alerts.txt: " + r.stdout[-300:])
+open(f"{aroot}/etc/coinslot.d/alerts.txt", "w").write("".join(f"2026-10-24 10:0{i} alert number {i}\n" for i in range(7)))
+r = lib('check_all() { echo CHECKS; return 0; }; cmd_status; echo "rc=$?"', env={"PISO_ROOT": aroot})
+check("Recent alerts" in r.stdout and "alert number 6" in r.stdout and "alert number 2" in r.stdout and "alert number 1" not in r.stdout and "rc=0" in r.stdout,
+      "status shows the last 5 alerts and does not fail because of them: " + r.stdout[-400:])
+
 # ---- feature 011 part B: the pairing tips say that another router nearby may answer the setup name ----------------------------
 PAIR_TIP = "another PisoHub router nearby may answer the setup name PisoCoinBox: switch it off for a few minutes, or run piso-setup box-wifi-name on it"
 cf = _bwn_conf("pairtips", KIOSK_PASS="kp-old-1")
@@ -1226,6 +1255,15 @@ open(f"{root}/etc/passwd", "w").write("x")
 _sp.run(["tar", "-C", root, "-czf", evil, "etc/passwd"])
 r = lib(f"ASSUME_YES=1; cmd_import {evil}", env={"PISO_ROOT": root, "PISO_TEST_NONROOT": "1"})
 check("refused" in r.stdout + r.stderr, "a backup with other files is refused: " + r.stdout + r.stderr)
+# RT-22: a path that climbs out of etc/coinslot.d with .. is refused, and nothing outside the backup's folders is written
+import tarfile as _tf
+dotdot = f"{tmp}/dotdot.tar.gz"
+with _tf.open(dotdot, "w:gz") as _t:
+    _info = _tf.TarInfo("etc/coinslot.d/../passwd"); _data = b"owned"; _info.size = len(_data)
+    import io as _io; _t.addfile(_info, _io.BytesIO(_data))
+open(f"{root}/etc/passwd", "w").write("x")
+r = lib(f"ASSUME_YES=1; cmd_import {dotdot}", env={"PISO_ROOT": root, "PISO_TEST_NONROOT": "1"})
+check("refused" in r.stdout + r.stderr and open(f"{root}/etc/passwd").read() == "x", "RT-22: a backup entry with .. in its path is refused and writes nothing: " + r.stdout + r.stderr)
 summ = f"{tmp}/summary.txt"
 open(summ, "w").write("passwords")
 r = lib("ASSUME_YES=1; cmd_forget_summary", env={"PISO_SUMMARY": summ, "PISO_TEST_NONROOT": "1"})
