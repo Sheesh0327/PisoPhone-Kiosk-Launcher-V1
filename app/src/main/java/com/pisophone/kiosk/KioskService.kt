@@ -22,8 +22,10 @@ import com.pisophone.kiosk.security.AutoUpdatePolicy
 import com.pisophone.kiosk.security.KioskActivationManager
 import com.pisophone.kiosk.security.KioskSecurity
 import com.pisophone.kiosk.security.KioskUpdateManager
+import com.pisophone.kiosk.service.HealthSnapshot
 import com.pisophone.kiosk.service.KioskEngine
 import com.pisophone.kiosk.service.KioskStateManager
+import kotlin.concurrent.thread
 
 /**
  * Foreground Service wrapper maintaining Android process priority and wake locks.
@@ -227,7 +229,11 @@ class KioskService : Service() {
                 }
                 engine?.triggerCandidateDiscovery()
             }
-            ACTION_HEALTH_CHECK -> engine?.runHealthRepair()
+            ACTION_HEALTH_CHECK -> {
+                engine?.runHealthRepair()
+                // AO-08: once an hour, how many receipts the phone holds (measure only). Off the main thread: it reads Room.
+                engine?.let { e -> thread { lastHealthSnapshotMs = HealthSnapshot.logIfDue(lastHealthSnapshotMs, e.paymentRepo::receiptCount) } }
+            }
         }
 
         if (Settings.canDrawOverlays(this)) {
@@ -235,6 +241,8 @@ class KioskService : Service() {
         }
         return START_STICKY
     }
+
+    @Volatile private var lastHealthSnapshotMs = 0L
 
     override fun onBind(intent: Intent?): IBinder? = null
 
