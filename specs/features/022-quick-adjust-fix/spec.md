@@ -1,6 +1,6 @@
 # Feature 022: quick add / subtract time on the box's admin page (through the router console)
 
-Status: **draft (cause found, owner answers recorded 2026-10-24; waiting for approval)**   Branch: `feat/022-quick-adjust-fix`   Area: **router**
+Status: **done on the branch (CI result pending)**   Branch: `feat/022-quick-adjust-fix`   Area: **router**
 Backlog rows: owner bug report 2026-10-24 (no spec row)   Release: router 1.5.20
 
 ## Intent

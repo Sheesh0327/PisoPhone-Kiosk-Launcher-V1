@@ -4,6 +4,9 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: the CI build number, shown as hundreds.tens.ones, build 466 is 4.6.6; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Router 1.5.20, **the Quick time adjust buttons work from the router console (feature 022).** Not tried on a real router; hardware check RS47 in `docs/REAL_WORLD_TESTING.md`.
+  - **Add and Subtract on the coin box's admin page no longer say "refused: this request came from another page"** when you open that page from the link inside the router's console. The console told the browser not to send where a page came from, and a browser then labels a plain form post as coming from nowhere, which the console's own safety check refused. It now tells the browser to send that only to the same site. Posts from another website are still refused.
+  - Money and time: not touched. The time change itself (its own transaction number, credited once) works as before; it could not reach the box before.
 - Router 1.5.19, **a router that keeps running day and night (feature 015).** Not tried on a real router; hardware check RS44 in `docs/REAL_WORLD_TESTING.md`.
   - **A portal that hangs is restarted by itself.** The router's monitor now asks the portal program every minute whether it is alive; after 3 missed answers in a row it restarts it (at most once in 10 minutes) and tells you once. A coin window that was open is settled from its record when the portal starts. It runs on every router now, not only after you connected Telegram.
   - **Alerts even without Telegram.** Every alert is also written to a small file on the router (the last 20). The owner console's front page shows the newest ones, `piso-setup status` shows the last five, and the setup program's Check-up has an *Router alerts* line.
