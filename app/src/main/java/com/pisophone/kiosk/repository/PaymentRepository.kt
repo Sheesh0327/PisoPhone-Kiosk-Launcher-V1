@@ -81,6 +81,9 @@ class PaymentRepository(
 
     private val paymentDao = db.paymentDao()
 
+    /** How many receipts the phone holds (AO-08: measured and logged, never pruned). */
+    fun receiptCount(): Int = paymentDao.countReceipts()
+
     /**
      * [holdClock]: a coin put in while the phone is still locked adds its time to the balance without starting the clock. The
      * time starts when the customer finishes paying ([startHeldClock]), so the minutes spent putting in more coins are not
