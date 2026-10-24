@@ -31,6 +31,7 @@
 #include "Diagnostics.h"
 #include "WebServerAuth.h"
 #include "HealthPolicy.h"
+#include "WorkerLiveness.h"
 #include "WifiLink.h"
 #include "RevenueVault.h"
 #include "OtaRollback.h"
@@ -143,6 +144,23 @@ static void processSystemHealthAndAutoMaintenance() {
     // Never restart with a coin session open or a payment that only exists in RAM.
     bool safe = getCoinSlotState() == CoinSlotState::IDLE && !hasUnpersistedPayments();
     health::Action action = healthMonitor.evaluate(now, freeHeap, largestBlock, now, getCurrentMasterTimeMs(), safe);
+
+#if PISO_HAS_PHONES
+    // AO-07: the AuthWorker (signed pushes and acks to phones) is not on the task watchdog. If it stops taking requests while some wait,
+    // payments stay safely queued but phones are not told: after 60 s the box restarts, through the same guard as every other restart.
+    static liveness::Watch authWatch;
+    bool authStalled =
+        authQueue != NULL && authWatch.stalled(now, authWorkerPasses, uxQueueMessagesWaiting(authQueue) > 0);
+    if (authStalled) {
+        static unsigned long lastStallLogMs = 0;
+        if (lastStallLogMs == 0 || now - lastStallLogMs >= 60000UL) {
+            lastStallLogMs = now;
+            diagLog("[HEALTH GUARD] AuthWorker made no progress for 60 s with %u request(s) waiting.\n",
+                    (unsigned)uxQueueMessagesWaiting(authQueue));
+        }
+        if (action == health::Action::None) action = health::workerStallAction(true, safe && canPerformRebootOrOta());
+    }
+#endif
     if (action == health::Action::None) return;
 
     diagLog("[HEALTH GUARD] Restarting (%s): heap free=%u largest=%u, up %lus\n", health::actionName(action),

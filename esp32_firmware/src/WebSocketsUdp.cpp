@@ -1,6 +1,7 @@
 // WebSocket server for phones: slot arming and encrypted coin events (UDP discovery is in Discovery.cpp,
 // the serial command line in SerialCli.cpp).
 
+#include "PushParams.h"
 #include "WebSocketsUdp.h"
 #include "CoinSlotManager.h"
 #include "ControllerWebSocket.h"
@@ -264,179 +265,209 @@ String readWsText(WiFiClient& client) {
     return assembledText;
 }
 
-void processWebSocketServer() {
-    if (wsServer.hasClient()) {
-        WiFiClient newClient = wsServer.available();
-        if (newClient) {
-            newClient.setTimeout(500);
+// FW-07: a handshake is read a little on every pass of loop() instead of in one blocking loop of up to 2 s, so a connection that sends
+// nothing (a port scan, `nc <box> 81`) cannot stall coin handling. One handshake at a time; a second client waits in the server's backlog.
+// (a pointer, deleted after routing: the connection then lives exactly as the local `newClient` used to, and its socket is closed by
+// the same stop() calls as before, not held open by a second long-lived copy)
+static WiFiClient* hsClient = nullptr;
+static String hsRequest, hsSecKey, hsLine;
+static bool hsActive = false;
+static unsigned long hsStartMs = 0;
 
-            String request = "";
-            String secKey = "";
+// True when the headers are complete (a blank line), a read error or a too long line ends it early with what was read.
+static bool pumpHandshake() {
+    while (hsClient->connected() && hsClient->available()) {
+        int c = hsClient->read();
+        if (c < 0) break;
+        if (c != '\n') {
+            if (hsLine.length() < 512) hsLine += (char)c;
+            continue;
+        }
+        String line = hsLine;
+        hsLine = "";
+        if (hsRequest.length() == 0) hsRequest = line;
+        line.trim();
+        String lowerLine = line;
+        lowerLine.toLowerCase();
+        if (lowerLine.startsWith("sec-websocket-key:")) {
+            hsSecKey = line.substring(18);
+            hsSecKey.trim();
+        }
+        if (line.length() == 0) return true; // Blank line signals end of headers
+    }
+    return false;
+}
 
-            unsigned long hsStart = millis();
-            while (newClient.connected() && (millis() - hsStart < 2000)) {
-                if (newClient.available()) {
-                    String line = newClient.readStringUntil('\n');
-                    if (request.length() == 0) request = line;
-                    line.trim();
-                    String lowerLine = line;
-                    lowerLine.toLowerCase();
-                    if (lowerLine.startsWith("sec-websocket-key:")) {
-                        secKey = line.substring(18);
-                        secKey.trim();
-                    }
-                    if (line.length() == 0) break; // Blank line signals end of headers
-                } else {
-                    delay(5);
-                }
-            }
+// The rest of a handshake once its request line and headers are read: route it, check the phone, and arm the coin slot.
+static void routeWebSocketHandshake(WiFiClient& newClient, const String& request, const String& secKey) {
+    // Extract URI Path from HTTP Request line (e.g., "GET /ws/coinslot?session_id=... HTTP/1.1")
+    String reqPath = "";
+    int firstSpace = request.indexOf(' ');
+    if (firstSpace != -1) {
+        int secondSpace = request.indexOf(' ', firstSpace + 1);
+        String fullUri =
+            (secondSpace != -1) ? request.substring(firstSpace + 1, secondSpace) : request.substring(firstSpace + 1);
+        int qMark = fullUri.indexOf('?');
+        reqPath = (qMark != -1) ? fullUri.substring(0, qMark) : fullUri;
+    }
+    reqPath.trim();
 
-            // Extract URI Path from HTTP Request line (e.g., "GET /ws/coinslot?session_id=... HTTP/1.1")
-            String reqPath = "";
-            int firstSpace = request.indexOf(' ');
-            if (firstSpace != -1) {
-                int secondSpace = request.indexOf(' ', firstSpace + 1);
-                String fullUri = (secondSpace != -1) ? request.substring(firstSpace + 1, secondSpace)
-                                                     : request.substring(firstSpace + 1);
-                int qMark = fullUri.indexOf('?');
-                reqPath = (qMark != -1) ? fullUri.substring(0, qMark) : fullUri;
-            }
-            reqPath.trim();
+    // Strict Endpoint Routing:
+    // 1. Controller endpoints: /coinslot or /ws/coinslot (never registers to trackedDevices or pairing queue)
+    if (reqPath == "/coinslot" || reqPath == "/ws/coinslot") {
+        handleControllerWebSocketHandshake(newClient, request, secKey);
+        return;
+    }
 
-            // Strict Endpoint Routing:
-            // 1. Controller endpoints: /coinslot or /ws/coinslot (never registers to trackedDevices or pairing queue)
-            if (reqPath == "/coinslot" || reqPath == "/ws/coinslot") {
-                handleControllerWebSocketHandshake(newClient, request, secKey);
-                return;
-            }
+    // 2. PisoPhone Terminal endpoints: must target /ws (or /ws/terminal)
+    if (reqPath != "/ws" && reqPath != "/ws/terminal" && reqPath != "/") {
+        Serial.printf("[-] WS Rejected: Unknown endpoint '%s'\n", reqPath.c_str());
+        newClient.print("HTTP/1.1 404 Not Found\r\n\r\nInvalid WebSocket Endpoint");
+        newClient.stop();
+        return;
+    }
 
-            // 2. PisoPhone Terminal endpoints: must target /ws (or /ws/terminal)
-            if (reqPath != "/ws" && reqPath != "/ws/terminal" && reqPath != "/") {
-                Serial.printf("[-] WS Rejected: Unknown endpoint '%s'\n", reqPath.c_str());
-                newClient.print("HTTP/1.1 404 Not Found\r\n\r\nInvalid WebSocket Endpoint");
-                newClient.stop();
-                return;
-            }
+    String reqDeviceId = extractUrlParam(request, "device_id=");
+    String tsStr = extractUrlParam(request, "ts=");
+    String sig = extractUrlParam(request, "sig=");
+    reqDeviceId.trim();
+    tsStr.trim();
+    sig.trim();
 
-            String reqDeviceId = extractUrlParam(request, "device_id=");
-            String tsStr = extractUrlParam(request, "ts=");
-            String sig = extractUrlParam(request, "sig=");
-            reqDeviceId.trim();
-            tsStr.trim();
-            sig.trim();
+    if (reqDeviceId.length() == 0 || tsStr.length() == 0 || sig.length() == 0 || secKey.length() == 0) {
+        newClient.print("HTTP/1.1 400 Bad Request\r\n\r\nMissing auth/WebSocket headers");
+        newClient.stop();
+        return;
+    }
 
-            if (reqDeviceId.length() == 0 || tsStr.length() == 0 || sig.length() == 0 || secKey.length() == 0) {
-                newClient.print("HTTP/1.1 400 Bad Request\r\n\r\nMissing auth/WebSocket headers");
-                newClient.stop();
-                return;
-            }
+    // 1. Verify HMAC Signature
+    if (getSharedSecret().length() > 0) {
+        String expectedSig = calculateHMAC(reqDeviceId + ":" + tsStr, getSharedSecret());
+        if (!signatureMatches(sig, expectedSig)) {
+            Serial.printf("[-] WS Auth Failed for %s: Signature Mismatch\n", reqDeviceId.c_str());
+            newClient.print("HTTP/1.1 403 Forbidden\r\n\r\nInvalid Signature");
+            newClient.stop();
+            return;
+        }
+    }
 
-            // 1. Verify HMAC Signature
-            if (getSharedSecret().length() > 0) {
-                String expectedSig = calculateHMAC(reqDeviceId + ":" + tsStr, getSharedSecret());
-                if (!signatureMatches(sig, expectedSig)) {
-                    Serial.printf("[-] WS Auth Failed for %s: Signature Mismatch\n", reqDeviceId.c_str());
-                    newClient.print("HTTP/1.1 403 Forbidden\r\n\r\nInvalid Signature");
-                    newClient.stop();
-                    return;
-                }
-            }
+    // 1b. Freshness, then nonce recording: a captured handshake must not open the coin slot again later
+    unsigned long long ts = strtoull(tsStr.c_str(), NULL, 10);
+    if (getSharedSecret().length() > 0 && !checkReplayProtection(reqDeviceId, ts)) {
+        Serial.printf("[-] WS Auth Failed for %s: stale or replayed timestamp\n", reqDeviceId.c_str());
+        newClient.print("HTTP/1.1 403 Forbidden\r\n\r\nStale Timestamp");
+        newClient.stop();
+        return;
+    }
+    if (ts > 0) {
+        recordDeviceNonce(reqDeviceId, ts);
+    }
 
-            // 1b. Freshness, then nonce recording: a captured handshake must not open the coin slot again later
-            unsigned long long ts = strtoull(tsStr.c_str(), NULL, 10);
-            if (getSharedSecret().length() > 0 && !checkReplayProtection(reqDeviceId, ts)) {
-                Serial.printf("[-] WS Auth Failed for %s: stale or replayed timestamp\n", reqDeviceId.c_str());
-                newClient.print("HTTP/1.1 403 Forbidden\r\n\r\nStale Timestamp");
-                newClient.stop();
-                return;
-            }
-            if (ts > 0) {
-                recordDeviceNonce(reqDeviceId, ts);
-            }
+    // 1c. Verify Slot Expiration & Lockdown
+    String clientIp = newClient.remoteIP().toString();
+    int wsSlotIdx = findSlotIndexForDevice(reqDeviceId, clientIp);
+    if (wsSlotIdx < 0) {
+        updateDynamicDeviceList(reqDeviceId, clientIp);
+        Serial.printf("[-] WS Mutex Rejected for %s (%s): Device is not paired to any slot on this ESP32\n",
+                      reqDeviceId.c_str(), clientIp.c_str());
+        newClient.print(
+            "HTTP/1.1 423 Locked\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: 29\r\n\r\n{\"error\":\"SLOT_NOT_PAIRED\"}");
+        delay(10);
+        newClient.stop();
+        return;
+    }
+    bool wsIsActive = isSlotActive(wsSlotIdx);
+    if (!wsIsActive) {
+        Serial.printf("[-] WS Mutex Rejected for %s: Slot Expired / Lockdown Active (Slot #%d)\n", reqDeviceId.c_str(),
+                      phoneSlots[wsSlotIdx].slotNum);
+        newClient.print(
+            "HTTP/1.1 423 Locked\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: 26\r\n\r\n{\"error\":\"SLOT_EXPIRED\"}");
+        delay(10);
+        newClient.stop();
+        return;
+    }
 
-            // 1c. Verify Slot Expiration & Lockdown
-            String clientIp = newClient.remoteIP().toString();
-            int wsSlotIdx = findSlotIndexForDevice(reqDeviceId, clientIp);
-            if (wsSlotIdx < 0) {
-                updateDynamicDeviceList(reqDeviceId, clientIp);
-                Serial.printf("[-] WS Mutex Rejected for %s (%s): Device is not paired to any slot on this ESP32\n",
-                              reqDeviceId.c_str(), clientIp.c_str());
-                newClient.print(
-                    "HTTP/1.1 423 Locked\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: 29\r\n\r\n{\"error\":\"SLOT_NOT_PAIRED\"}");
-                delay(10);
-                newClient.stop();
-                return;
-            }
-            bool wsIsActive = isSlotActive(wsSlotIdx);
-            if (!wsIsActive) {
-                Serial.printf("[-] WS Mutex Rejected for %s: Slot Expired / Lockdown Active (Slot #%d)\n",
-                              reqDeviceId.c_str(), phoneSlots[wsSlotIdx].slotNum);
-                newClient.print(
-                    "HTTP/1.1 423 Locked\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: 26\r\n\r\n{\"error\":\"SLOT_EXPIRED\"}");
-                delay(10);
-                newClient.stop();
-                return;
-            }
+    // 2. Hardware Mutex Check (Single-Client Lock)
+    if (isCoinSlotBusy(reqDeviceId, CoinSlotOwnerType::PHONE)) {
+        Serial.printf("[-] WS Mutex Rejected for %s: Slot BUSY with %s\n", reqDeviceId.c_str(),
+                      getActiveCoinSessionId().c_str());
+        newClient.print(
+            "HTTP/1.1 409 Conflict\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: 23\r\n\r\n{\"event\":\"SLOT_BUSY\"}");
+        delay(10);
+        newClient.stop();
+        return;
+    }
 
-            // 2. Hardware Mutex Check (Single-Client Lock)
-            if (isCoinSlotBusy(reqDeviceId, CoinSlotOwnerType::PHONE)) {
-                Serial.printf("[-] WS Mutex Rejected for %s: Slot BUSY with %s\n", reqDeviceId.c_str(),
-                              getActiveCoinSessionId().c_str());
-                newClient.print(
-                    "HTTP/1.1 409 Conflict\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: 23\r\n\r\n{\"event\":\"SLOT_BUSY\"}");
-                delay(10);
-                newClient.stop();
-                return;
-            }
+    // Mutex passed, slot acquired. Save the nonce and synchronize master clock.
+    recordDeviceNonce(reqDeviceId, ts);
+    if (ts > 0) updateMasterTime(ts, reqDeviceId);
 
-            // Mutex passed, slot acquired. Save the nonce and synchronize master clock.
-            recordDeviceNonce(reqDeviceId, ts);
-            if (ts > 0) updateMasterTime(ts, reqDeviceId);
+    // 3. Complete RFC6455 Handshake
+    String acceptKey = computeSecWebSocketAccept(secKey);
+    String response = "HTTP/1.1 101 Switching Protocols\r\n";
+    response += "Upgrade: websocket\r\n";
+    response += "Connection: Upgrade\r\n";
+    response += "Sec-WebSocket-Accept: " + acceptKey + "\r\n\r\n";
 
-            // 3. Complete RFC6455 Handshake
-            String acceptKey = computeSecWebSocketAccept(secKey);
-            String response = "HTTP/1.1 101 Switching Protocols\r\n";
-            response += "Upgrade: websocket\r\n";
-            response += "Connection: Upgrade\r\n";
-            response += "Sec-WebSocket-Accept: " + acceptKey + "\r\n\r\n";
+    newClient.print(response);
+    newClient.setNoDelay(true);
 
-            newClient.print(response);
-            newClient.setNoDelay(true);
+    if (isWsConnected && wsClient.connected()) {
+        wsClient.stop();
+    }
+    wsClient = newClient;
+    isWsConnected = true;
+    wsSessionDeviceId = reqDeviceId;
 
+    bool reserved = reserveCoinSlot(
+        reqDeviceId, CoinSlotOwnerType::PHONE, ARM_TTL,
+        [](const String& devId, int pulses) { triggerUniversalCoinEvent(pulses, devId); },
+        [](const String& devId, const char* reason) {
             if (isWsConnected && wsClient.connected()) {
+                if (strcmp(reason, "TTL_EXPIRED") == 0 || strcmp(reason, "MAX_DURATION") == 0) {
+                    sendWsText(wsClient, "{\"event\":\"TIMEOUT\"}");
+                }
                 wsClient.stop();
             }
-            wsClient = newClient;
-            isWsConnected = true;
-            wsSessionDeviceId = reqDeviceId;
+            isWsConnected = false;
+            wsSessionDeviceId = "";
+        });
 
-            bool reserved = reserveCoinSlot(
-                reqDeviceId, CoinSlotOwnerType::PHONE, ARM_TTL,
-                [](const String& devId, int pulses) { triggerUniversalCoinEvent(pulses, devId); },
-                [](const String& devId, const char* reason) {
-                    if (isWsConnected && wsClient.connected()) {
-                        if (strcmp(reason, "TTL_EXPIRED") == 0 || strcmp(reason, "MAX_DURATION") == 0) {
-                            sendWsText(wsClient, "{\"event\":\"TIMEOUT\"}");
-                        }
-                        wsClient.stop();
-                    }
-                    isWsConnected = false;
-                    wsSessionDeviceId = "";
-                });
+    if (!reserved) {
+        sendWsText(wsClient, "{\"event\":\"ERROR\",\"reason\":\"SLOT_UNAVAILABLE\"}");
+        wsClient.stop();
+        isWsConnected = false;
+        wsSessionDeviceId = "";
+        Serial.printf("[-] WS reservation failed for %s after handshake.\n", reqDeviceId.c_str());
+        return;
+    }
 
-            if (!reserved) {
-                sendWsText(wsClient, "{\"event\":\"ERROR\",\"reason\":\"SLOT_UNAVAILABLE\"}");
-                wsClient.stop();
-                isWsConnected = false;
-                wsSessionDeviceId = "";
-                Serial.printf("[-] WS reservation failed for %s after handshake.\n", reqDeviceId.c_str());
-                return;
-            }
+    diagCount(DiagCounter::WsConnects);
+    diagLog("[⚡ WS Port 81] WebSocket ARMED securely for %s (TTL: %lu s)\n", reqDeviceId.c_str(), ARM_TTL / 1000);
+    sendWsText(wsClient, "{\"event\":\"ARMED\"}");
+}
 
-            diagCount(DiagCounter::WsConnects);
-            diagLog("[⚡ WS Port 81] WebSocket ARMED securely for %s (TTL: %lu s)\n", reqDeviceId.c_str(),
-                    ARM_TTL / 1000);
-            sendWsText(wsClient, "{\"event\":\"ARMED\"}");
+void processWebSocketServer() {
+    if (!hsActive && wsServer.hasClient()) {
+        WiFiClient accepted = wsServer.available();
+        if (accepted) {
+            hsClient = new WiFiClient(accepted);
+            hsClient->setTimeout(500);
+            hsRequest = "";
+            hsSecKey = "";
+            hsLine = "";
+            hsStartMs = millis();
+            hsActive = true;
+        }
+    }
+    if (hsActive) {
+        bool complete = pumpHandshake();
+        if (complete || !hsClient->connected() || millis() - hsStartMs >= 2000) {
+            hsActive = false;
+            WiFiClient* done = hsClient;
+            hsClient = nullptr;
+            routeWebSocketHandshake(*done, hsRequest, hsSecKey);
+            delete done;
         }
     }
 
@@ -463,7 +494,8 @@ void processWebSocketServer() {
                     refreshCoinSlotTtl(boundDevId, CoinSlotOwnerType::PHONE, ARM_TTL);
                 }
 
-                StaticJsonDocument<256> ackDoc;
+                StaticJsonDocument<pushparams::kAckDocBytes>
+                    ackDoc; // FW-13: the largest legal ACK is more than 256 bytes
                 DeserializationError ackErr = deserializeJson(ackDoc, frameText);
                 if (!ackErr && String(ackDoc["event"] | "") == "ACK") {
                     String ackDevId = String(ackDoc["device_id"] | "");
