@@ -1000,6 +1000,9 @@ impl Core {
             }
         });
         log!("timing {} armed events={} in {} ms", &sid[..8], events, t_arm.elapsed().as_millis());
+        // AO-11: the record goes to flash now, while the box is armed, not when the first coin is seen. A kill or power cut between
+        // the box counting a coin and the router noticing it used to leave that coin on the box with nothing to recover it.
+        self.note_open(sid, &mac, plan, &wid, forfeit, voucher);
         let mut last = first;
         let mut noted = false;
         let poll = Duration::from_millis(if events { cfg.poll_ms } else { 250 });
@@ -1112,6 +1115,7 @@ impl Core {
                 return;
             }
             log!("window {} closed with no coins", &sid[..8]);
+            let _ = fs::remove_file(self.open_file(sid)); // nothing to recover: the box held no coin for it
             self.finish_window(sid, View::Empty, Some(false));
             return;
         }
@@ -1171,9 +1175,12 @@ impl Core {
         format!("{}/{}", self.cfg.open_dir(), sid)
     }
 
-    /// The first coin leaves a record on flash, kept until the box is acknowledged: if the router restarts mid-window,
-    /// recovery credits the coins. Nothing is granted yet.
+    /// A window leaves a record on flash from the moment the box is armed, kept until the box is acknowledged (or the window ends with
+    /// no coin at all): if the router restarts mid-window, recovery credits what the box holds. Nothing is granted yet. Written once.
     fn note_open(&self, sid: &str, mac: &str, plan: Plan, wid: &str, forfeit: bool, voucher: bool) {
+        if std::path::Path::new(&self.open_file(sid)).exists() {
+            return;
+        }
         let _ = fs::create_dir_all(self.cfg.open_dir());
         // (records of earlier releases have four fields: no voucher). Flushed to flash: a power cut right after a coin must not lose it.
         if let Err(e) =
