@@ -338,7 +338,12 @@ void handleApiStatus() {
             qualityStatus = "Weak";
     }
 
-    String json = "{";
+    // FW-18: built in one buffer that is kept between calls (the dashboard asks every few seconds): a fresh String that grows by
+    // appending reallocated several times a call and chopped the heap into pieces that, after days, were too small for a TLS handshake.
+    // Only the loop task runs web handlers, so one shared buffer is safe.
+    static String json;
+    json = "{";
+    json.reserve(3072);
     json += "\"admin_qr\":" + String(SUPER_ADMIN_PUBKEY_LEN > 0 ? "true" : "false") + ",";
     json += "\"default_credentials\":" + String(defaultCredentialsActive() ? "true" : "false") + ",";
 #if PISO_HAS_PHONES

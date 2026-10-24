@@ -32,6 +32,7 @@ extern bool isWsConnected;
 extern String wsSessionDeviceId;
 extern WiFiUDP udpServer;
 extern QueueHandle_t authQueue;
+extern volatile uint32_t authWorkerPasses; // AO-07: the AuthWorker's progress counter (WebServerAuth.cpp)
 #endif
 
 void setupWebServer();

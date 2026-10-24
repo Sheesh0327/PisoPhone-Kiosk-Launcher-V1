@@ -1,6 +1,7 @@
 // Outbound payment and time delivery to phones: turns a detected coin into a queued payment,
 // pushes it over WebSocket and HTTP, and re-sends queued payments on request.
 
+#include "PushParams.h"
 #include "DeviceNetwork.h"
 #if PISO_HAS_PHONES
 #include "PhoneProfileStore.h"
@@ -181,6 +182,13 @@ bool retryPhonePayment(const String& targetDeviceId, int pulses, int creditSecon
 
 bool sendAuthenticated(String ip, int port, String actionPath, String challengePath, String params, int timeoutMs) {
     if (WiFi.status() != WL_CONNECTED || authQueue == NULL || ip.length() == 0) return false;
+    if (!pushparams::paramsFit(params.length())) {
+        // FW-12: it used to be cut by strncpy without a word, and the phone got a different message (a cut signature, a wrong amount).
+        // The payment stays queued on the box and is offered again; the line says why it can never be delivered.
+        diagLog("[AUTH QUEUE] Refused %s for %s: %u bytes of parameters, the buffer holds %u.\n", actionPath.c_str(),
+                ip.c_str(), (unsigned)params.length(), (unsigned)(pushparams::kParamsBytes - 1));
+        return false;
+    }
 
     AuthRequest req;
     memset(&req, 0, sizeof(AuthRequest));
