@@ -5,6 +5,8 @@ Behaviour is driven by a JSON control file (path in FAKEBOX_CTL) that tests rewr
   "events": false                         # do not push coin events (an older box); "drop_events": true loses them all
   "status_fail": true                     # the box's link is lost for status calls (answers 503); "extra": n more pesos the box
                                           # counted than its coin times say (coins the router never saw)
+  "expire": true                          # like the real box, an armed window ends by itself when the arm's duration has passed
+                                          # (a portal that was killed never releases it); off by default
   "sign": "good" | "none" | "bad"         # sign the answers like the firmware (default), send them unsigned (older firmware), or with a wrong signature
 Coin events (GatewayEvent.h): an arm with wid & evport makes it push signed UDP lines to the caller, like the box.
 The action log is appended to FAKEBOX_LOG (one action per line)."""
@@ -103,6 +105,8 @@ class H(BaseHTTPRequestHandler):
             f.write(f"{action} {sid}\n")
         s = sessions.setdefault(sid, {"armed_at": None, "released": False, "acked": 0, "rel_at": 0})
         c = ctl()
+        if c.get("expire") and action != "arm" and s["armed_at"] and not s["released"] and s.get("until") and time.time() > s["until"]:
+            s["released"], s["rel_at"] = True, s["until"]
         if action == "arm":
             if c.get("busy"):
                 return self.send(409, {"success": False, "error": "SLOT_BUSY"})
@@ -121,6 +125,8 @@ class H(BaseHTTPRequestHandler):
                     for t in c.get("coins_at", []):
                         if s["armed_at"] + t >= s["settle_until"]:
                             later(t + 0.3, "coin")   # the box knows the coin's value 280 ms after its last pulse
+        if action == "arm" and q.get("duration"):
+            s["until"] = time.time() + float(q["duration"])
         if action == "release" and not s["released"]:
             s["released"], s["rel_at"] = True, time.time()
             if s.get("ev"):
