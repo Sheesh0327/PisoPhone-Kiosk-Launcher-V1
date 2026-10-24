@@ -1,6 +1,6 @@
 # Feature 025: a fresh page never sees the last result first
 
-Status: **approved (owner asked for this task in the session, 2026-10-24)**   Branch: `feat/025-fresh-page-first-view`   Area: router
+Status: **done on the branch (CI result pending)**   Branch: `feat/025-fresh-page-first-view`   Area: router
 Backlog rows: found by CI and by local runs of `tools/pisoportal/tests/test_flow.py` (check "a fresh page's first view is its own, not the last result", failed 3 times, passed on re-run)   Release: router 1.5.21
 
 ## Intent
