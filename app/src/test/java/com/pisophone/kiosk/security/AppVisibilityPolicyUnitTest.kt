@@ -47,7 +47,7 @@ class AppVisibilityPolicyUnitTest {
         // the phone's own needs still win: the messages app is the default SMS app on many phones
         assertEquals(Action.HIDE_IN_LAUNCHER, decide("com.google.android.apps.messaging", system = true, critical = true))
         assertEquals(Action.HIDE_IN_LAUNCHER, decide("com.google.android.gms", system = true))
-        assertEquals(Action.HIDE_IN_LAUNCHER, decide("com.google.android.settings.intelligence", system = true))
+        assertEquals(Action.DISABLE, decide("com.google.android.settings.intelligence", system = true)) // as before this feature
     }
 
     @Test
