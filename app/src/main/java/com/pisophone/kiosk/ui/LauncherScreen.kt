@@ -53,6 +53,8 @@ fun LauncherScreen(
     onAppClick: (AppInfo) -> Unit,
     /** The shop's look from the coin box (feature 013); by default what the phone last heard, nothing set is today's screen. */
     branding: Branding = ShopBranding.observe(LocalContext.current).collectAsState().value,
+    /** The clock the header reads. The screenshot tests pin it, so the picture of this screen is the same every time. */
+    now: () -> Date = { Date() },
 ) {
     val context = LocalContext.current
     val currentTheme = remember(branding.palette) { LauncherThemeColors.forBranding(branding.palette) }
@@ -83,9 +85,9 @@ fun LauncherScreen(
             val timeFormat = SimpleDateFormat("h:mm a", Locale.getDefault())
             val dateFormat = SimpleDateFormat("EEEE, MMMM d", Locale.getDefault())
             while (isActive) {
-                val now = Date()
-                time = timeFormat.format(now)
-                date = dateFormat.format(now)
+                val instant = now()
+                time = timeFormat.format(instant)
+                date = dateFormat.format(instant)
                 delay(1000)
             }
         }
