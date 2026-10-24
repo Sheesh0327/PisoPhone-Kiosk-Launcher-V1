@@ -1,6 +1,6 @@
 # Feature 024: each device's type on its lock and home screens
 
-Status: **draft**   Branch: `feat/024-device-type-labels`   Area: firmware + app (one message contract, changed on both sides together)
+Status: **draft (owner decisions recorded; waiting for approval to build)**   Branch: `feat/024-device-type-labels`   Area: firmware + app (one message contract, changed on both sides together)
 Backlog rows: owner request 2026-10-24 (builds on feature 013 branding and the phone profiles)   Release: firmware and app
 
 ## Intent
@@ -53,10 +53,10 @@ time changes.
 Different rates per preset (the presets use the standard rate; the owner can still set a rate per profile as today), per-phone
 shop names, the marquee (feature 023), icons or pictures per device type, renaming by the phone itself.
 
-## Owner decisions (please answer; defaults in bold)
-1. **Which wins in the header, the slot's label or the box-wide header title?** My proposal: **the slot's label wins; the box-wide
-   title stays as the fallback for a phone with no label.** The standard profile (no name) shows the default label **"PisoPhone"**.
-2. Should the label also appear in the pairing list on the box page and on the phone's setup screens? **Only on the lock and home
-   screens plus the box's slot list.**
-3. Presets: exactly those three, **or** more (for example "PisoTab Lite")? **Three.**
-4. May an owner delete a preset profile once created (as any profile today)? **Yes, as today.**
+## Owner decisions (answered 2026-10-24)
+1. **The slot's label wins** in the header; the box-wide title is only the fallback for a phone with no label. The standard profile
+   (no name) shows **"PisoPhone"**.
+2. The label is shown on the lock screen, the home screen and the box's slot list (not on the phone's setup screens).
+3. **Three presets**: PisoPhone, PisoTab, PisoPhone Pro, plus any custom name (up to 20 characters).
+4. A preset profile can be deleted like any profile (not answered; the proposal stands).
+Order: built together with feature 023 in one app build, after 022.
