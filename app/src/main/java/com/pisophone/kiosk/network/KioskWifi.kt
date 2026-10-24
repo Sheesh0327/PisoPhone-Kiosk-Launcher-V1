@@ -52,6 +52,25 @@ object KioskWifi {
     /** What [join] found or did, for the status line shown on the phone ([statusText]). */
     enum class Join { NOT_SAVED, ALREADY_ON, JOINING, NEEDS_APPROVAL, REFUSED, ERROR }
 
+    /**
+     * What to report when Android turned down adding or updating the network (feature 027). A network of that name that is already
+     * saved (the owner's own router, saved when the phone was set up or by hand) belongs to the system, not to this app, so Android
+     * refuses to change it: switching it on as it is still joins it ([existingEnabled]). Otherwise the suggestion made just before is
+     * the way in ([suggested]): a device owner's suggestion needs no approval. Only with neither is it a real refusal.
+     */
+    fun afterRefused(existingEnabled: Boolean, suggested: Boolean): Join = when {
+        existingEnabled -> Join.JOINING
+        suggested -> Join.JOINING
+        else -> Join.REFUSED
+    }
+
+    private fun isDeviceOwner(context: Context): Boolean = try {
+        val dpm = context.applicationContext.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager
+        dpm?.isDeviceOwnerApp(context.applicationContext.packageName) == true
+    } catch (_: Exception) {
+        false
+    }
+
     /** The phone's own Wi-Fi address (IPv4), or "" when it has none. */
     fun wifiAddress(): String {
         try {
@@ -76,7 +95,10 @@ object KioskWifi {
             Join.ALREADY_ON -> "Wi-Fi: connected to $ssid" + if (ip.isNotBlank()) " ($ip)" else " (no address yet)"
             Join.JOINING -> "Wi-Fi: joining $ssid..." + if (ip.isNotBlank()) " (now on $ip)" else ""
             Join.NEEDS_APPROVAL -> "Wi-Fi: $ssid was suggested; approve it in Android's notification (this phone is not the device owner)"
-            Join.REFUSED -> "Wi-Fi: Android refused to add $ssid"
+            Join.REFUSED -> {
+                val owner = if (isDeviceOwner(context)) "device owner" else "not the device owner"
+                "Wi-Fi: Android refused to add $ssid (Android ${Build.VERSION.SDK_INT}, $owner)"
+            }
             Join.ERROR -> "Wi-Fi: could not join $ssid"
         }
     }
@@ -160,11 +182,12 @@ object KioskWifi {
                     allowedKeyManagement.set(WifiConfiguration.KeyMgmt.WPA_PSK)
                     status = WifiConfiguration.Status.ENABLED
                 }
-                var id = try {
+                val existingId = try {
                     wm.configuredNetworks?.firstOrNull { it.SSID == config.SSID }?.networkId ?: -1
                 } catch (e: SecurityException) {
                     -1
                 }
+                var id = existingId
                 if (id >= 0) {
                     config.networkId = id
                     id = wm.updateNetwork(config)
@@ -177,8 +200,7 @@ object KioskWifi {
                     Log.i(TAG, "Joined the saved kiosk Wi-Fi \"$ssid\"")
                     return if (isOnNetwork(wm, ssid)) Join.ALREADY_ON else Join.JOINING
                 }
-                Log.w(TAG, "Android refused to add the kiosk Wi-Fi \"$ssid\"")
-                return Join.REFUSED
+                return rescueRefused(wm, ssid, existingId, suggested)
             }
             if (suggested) Join.NEEDS_APPROVAL else Join.REFUSED
         } catch (e: Exception) {
@@ -230,6 +252,21 @@ object KioskWifi {
             Thread.sleep(3_000)
         }
         return false
+    }
+
+    /** Android turned down adding the network: switch on a copy that was saved before, else rely on the suggestion ([afterRefused]). */
+    @Suppress("DEPRECATION")
+    private fun rescueRefused(wm: WifiManager, ssid: String, existingId: Int, suggested: Boolean): Join {
+        Log.w(TAG, "Android refused to add the kiosk Wi-Fi \"$ssid\" (saved before: ${existingId >= 0}, suggested: $suggested)")
+        var enabled = false
+        if (existingId >= 0) {
+            enabled = try {
+                wm.enableNetwork(existingId, true).also { if (it) wm.reconnect() }
+            } catch (e: Exception) {
+                false
+            }
+        }
+        return afterRefused(enabled, suggested)
     }
 
     /** [join], then the status line on the screen. Call from a background thread. */
