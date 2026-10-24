@@ -4,6 +4,8 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: the CI build number, shown as hundreds.tens.ones, build 466 is 4.6.6; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Firmware 3.12.2, **a new PisoPhone-only board no longer restarts in a loop (feature 026).** Not tried on a real board yet; hardware check RS50 in `docs/REAL_WORLD_TESTING.md`.
+  - A board with no Wi-Fi saved (every new one) crashed a moment after it started (`Invalid mbox`, then a restart, again and again), so the setup program on your computer never got an answer and stopped with "No PisoPhone software answered on the board". The board now starts its Wi-Fi without connecting, as it did not before, and stays up for the setup. Boxes that already have a Wi-Fi saved are not affected. Money and time: not touched.
 - Router 1.5.19, **a router that keeps running day and night (feature 015).** Not tried on a real router; hardware check RS44 in `docs/REAL_WORLD_TESTING.md`.
   - **A portal that hangs is restarted by itself.** The router's monitor now asks the portal program every minute whether it is alive; after 3 missed answers in a row it restarts it (at most once in 10 minutes) and tells you once. A coin window that was open is settled from its record when the portal starts. It runs on every router now, not only after you connected Telegram.
   - **Alerts even without Telegram.** Every alert is also written to a small file on the router (the last 20). The owner console's front page shows the newest ones, `piso-setup status` shows the last five, and the setup program's Check-up has an *Router alerts* line.
