@@ -31,8 +31,9 @@ What else the router needs:
 - **Wi-Fi 5 or 6 dual band** is better for customers (the 5 GHz band carries more people), but only 2.4 GHz is required.
 
 What is checked: every family's program runs its self-test, and the portal's own test suite passes, in an emulator (QEMU) in CI and here, including the
-big-endian MIPS build (byte order is where a port goes wrong). That is not the same as a real router of each kind: only the 360T6M
-(`mipsel`) has run on real hardware. Tell the owner which router you tried and what `piso-setup status` said.
+big-endian MIPS build (byte order is where a port goes wrong). That is not the same as a real router of each kind. So far only a Qihoo 360 T6
+router (`mipsel`) has run the program on real hardware, according to the owner's test log (`docs/REAL_WORLD_TESTING.md`). The other
+families are checked in emulation only. When you try a router, record which one it was and what `piso-setup status` said.
 
 The router's own changes are the same everywhere (setup script, console, backups, updates); only the program and its folder on the website
 differ: `mipsel` is at `https://pisophone.pages.dev/update/`, the others at `https://pisophone.pages.dev/update/<family>/`.
