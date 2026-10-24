@@ -4,6 +4,8 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: the CI build number, shown as hundreds.tens.ones, build 466 is 4.6.6; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Phone app, **YouTube, Chrome, Maps, Photos and Google's other apps are no longer switched off (feature 029).** Not tried on a phone yet (hardware check RS53).
+  - The first-sign-in clean-up used to disable every pre-installed app it did not know, which took out YouTube and the Google apps. Google's apps for customers are now left alone (Google's settings and device-management apps stay out of sight), and phones cleaned up earlier get theirs back once after the update. The idle wipe of app data is unchanged. Money and time: not touched.
 - Phone app, **the shop name is now a big running band on the lock and home screens (feature 023).** Not tried on a phone yet (hardware check RS48).
   - A full-width band in the shop palette with the name in 28 sp bold, glowing, with a slow shine, running across without a stop (about 60 dp a second); a short name repeats so the band is never empty. A phone with no shop name shows **PisoPhone** in the same band.
   - Unchanged safety: on a hot, nearly flat or power-saving phone, with animations off or density off, the name stands still, centred and whole. Money and time: not touched.

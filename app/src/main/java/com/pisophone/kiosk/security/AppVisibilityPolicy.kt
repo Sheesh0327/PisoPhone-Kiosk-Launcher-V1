@@ -27,6 +27,7 @@ object AppVisibilityPolicy {
     private const val PREFS = "kiosk_app_visibility"
     private const val KEY_DISABLED = "disabled_apps"
     private const val KEY_HIDDEN = "hidden_in_launcher"
+    private const val KEY_GOOGLE_REINSTATED = "google_apps_reinstated"
 
     enum class Action { KEEP_VISIBLE, HIDE_IN_LAUNCHER, DISABLE }
 
@@ -92,6 +93,43 @@ object AppVisibilityPolicy {
         "vendor.",
     )
 
+    /**
+     * Google's own apps the owner wants customers to keep: YouTube, Chrome, Maps, Photos, Gmail, Drive and the rest of the
+     * `com.google.android.apps.` family (feature 029). They are never disabled and never hidden. Exact names, or prefixes ending in '.'.
+     */
+    private val KEEP_GOOGLE = listOf(
+        "com.google.android.youtube",
+        "com.google.android.gm",
+        "com.android.chrome",
+        "com.google.android.googlequicksearchbox",
+        "com.google.android.videos",
+        "com.google.android.music",
+        "com.google.android.keep",
+        "com.google.android.apps.",
+    )
+
+    /** Google apps that are settings or device management, not apps for customers: they stay out of sight as before. */
+    private val GOOGLE_NOT_FOR_CUSTOMERS = listOf(
+        "com.google.android.apps.wellbeing",
+        "com.google.android.apps.turbo",
+        "com.google.android.apps.pixel.",
+        "com.google.android.apps.restore",
+        "com.google.android.apps.setupwizard",
+        "com.google.android.apps.work.",
+        "com.google.android.apps.tips",
+        "com.google.android.apps.safetyhub",
+        "com.google.android.apps.privacy.",
+        "com.google.android.apps.carrier.",
+        "com.google.android.apps.stargate",
+    )
+
+    private fun matches(packageName: String, list: List<String>) =
+        list.any { packageName == it || (it.endsWith(".") && packageName.startsWith(it)) }
+
+    /** True for a Google app customers should keep (YouTube, Chrome, Maps, Photos...). */
+    fun isKeptGoogleApp(packageName: String): Boolean =
+        matches(packageName, KEEP_GOOGLE) && !matches(packageName, GOOGLE_NOT_FOR_CUSTOMERS)
+
     fun isNeverDisabled(packageName: String): Boolean =
         NEVER_DISABLE.any { packageName == it || (it.endsWith(".") && packageName.startsWith(it)) }
 
@@ -99,7 +137,9 @@ object AppVisibilityPolicy {
     fun decide(packageName: String, isSystem: Boolean, isCritical: Boolean, ownPackage: String): Action = when {
         packageName == ownPackage -> Action.KEEP_VISIBLE
         !isSystem -> Action.KEEP_VISIBLE
-        isCritical || isNeverDisabled(packageName) -> Action.HIDE_IN_LAUNCHER
+        isCritical -> Action.HIDE_IN_LAUNCHER
+        isKeptGoogleApp(packageName) -> Action.KEEP_VISIBLE
+        isNeverDisabled(packageName) -> Action.HIDE_IN_LAUNCHER
         else -> Action.DISABLE
     }
 
@@ -204,6 +244,37 @@ object AppVisibilityPolicy {
             .commit()
         Log.i(TAG, "First-boot app clean-up: ${disabled.size} disabled, ${hidden.size} hidden from the launcher, ${failed.size} could not be disabled.")
         return Result(disabled, hidden, failed)
+    }
+
+    /**
+     * A phone cleaned up before feature 029 has YouTube, Chrome, Maps, Photos... switched off. Brings them back once: re-enables the Google apps
+     * [apply] disabled and shows again those it hid (unless the phone needs them in the background: [criticalPackages]). Safe to repeat.
+     */
+    fun reinstateGoogleApps(context: Context): Int {
+        val p = prefs(context)
+        if (p.getBoolean(KEY_GOOGLE_REINSTATED, false)) return 0
+        val adminPair = admin(context) ?: return 0
+        val (dpm, component) = adminPair
+        val critical = criticalPackages(context)
+        val disabled = p.getStringSet(KEY_DISABLED, emptySet()).orEmpty()
+        val hidden = p.getStringSet(KEY_HIDDEN, emptySet()).orEmpty()
+        val back = disabled.filter { isKeptGoogleApp(it) && it !in critical }
+        for (pkg in back) {
+            try {
+                dpm.setApplicationHidden(component, pkg, false)
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not re-enable $pkg: ${e.message}")
+            }
+        }
+        val shown = hidden.filter { isKeptGoogleApp(it) && it !in critical }
+        if (shown.isNotEmpty()) KioskSecurity.setHiddenApps(context, KioskSecurity.getHiddenApps(context) - shown.toSet())
+        p.edit()
+            .putStringSet(KEY_DISABLED, disabled - back.toSet())
+            .putStringSet(KEY_HIDDEN, hidden - shown.toSet())
+            .putBoolean(KEY_GOOGLE_REINSTATED, true)
+            .commit()
+        Log.i(TAG, "Brought back ${back.size} Google apps and showed ${shown.size} again.")
+        return back.size + shown.size
     }
 
     /** Undoes [apply]: re-enables what it disabled and shows again what it hid. Run before the device owner is removed. */
