@@ -31,7 +31,7 @@ restart a hung portal safely, bound its own files, watch the flash, and tell the
 
 ## Owner decisions (waiting for the owner; recommended answer first)
 - **D1: split `revenue.csv` by month?** **Answered: yes.** Closed months stay on flash as `revenue-YYYY-MM.csv`; when free flash is under 256 KB the owner is alerted and the setup program's Owner tools download and then delete the oldest months; **never deleted automatically.** Without D1 the file keeps growing and AO-02 and AO-03's second half are dropped (only the streaming read of AO-03 stays).
-- **D2: may the monitor restart a hung portal by itself?** *Waiting for the owner.* Recommended: **yes**, after 3 failed `/ping` a minute apart, at most once in 10 minutes; an open coin window is settled from its record on start, as today. Without D2 the monitor only alerts.
+- **D2: may the monitor restart a hung portal by itself?** *Waiting for the owner.* **Answered: yes**, after 3 failed `/ping` a minute apart, at most once in 10 minutes; an open coin window is settled from its record on start, as today. Without D2 the monitor only alerts.
 - **D3: alerts without Telegram?** **Answered: `/etc/coinslot.d/alerts.txt`** (the last 20 lines, a small file) shown on the console front page and in the setup program's Check-up.
 
 Questions found while planning (not in the epic; the recommended answer is mine):
