@@ -1,6 +1,6 @@
 # Feature 023: the shop name as a bold running marquee
 
-Status: **draft**   Branch: `feat/023-shop-name-marquee`   Area: app
+Status: **draft (owner decisions recorded; waiting for approval to build)**   Branch: `feat/023-shop-name-marquee`   Area: app
 Backlog rows: owner request 2026-10-24 (extends feature 013)   Release: app
 
 ## Intent
@@ -50,11 +50,10 @@ So today the owner sees a small, mostly still line, which is not what was asked 
 A logo or picture, sound, the "by TechNet Solutions" credit, the header title text and the device-type label (feature 024), changes to
 the box's admin page (the shop name field exists), per-phone names.
 
-## Owner decisions (please answer; defaults in bold)
-1. The "revert to PisoPhone": **the marquee itself shows "PisoPhone"** when no shop name is set (so the band is always there). Or should
-   the band disappear and only the plain title remain?
-2. Keep the safety ladder (**yes: it stills the band on a hot, flat or power-saving phone**) or run it always? It is cheap text, but a
-   phone left on a lock screen all day in a hot shop is the case it protects.
-3. Short names: **scroll too** (as asked), or only names longer than the screen?
-4. Colours: **from the chosen palette** (gold on dark for the default), or one fixed gold for every palette?
-5. Speed: **about 60 dp per second** (readable from a metre away) or slower / faster?
+## Owner decisions (answered 2026-10-24)
+1. No shop name set: **the band shows "PisoPhone"** (the band is always there).
+2. The safety rule **stays**: the name stands still, centred and whole, on a hot, nearly flat or power-saving phone, with animations off, or at density `off`.
+3. Short names **scroll too** (the name repeats with a gap so the band is never empty).
+4. Colours **follow the chosen palette** (the default palette: gold on dark).
+5. Speed: about 60 dp per second (not answered; the proposal stands unless you say otherwise).
+Order: built together with feature 024 in one app build, after 022.
