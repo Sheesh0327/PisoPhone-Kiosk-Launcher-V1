@@ -26,7 +26,7 @@ interface KioskServerDelegate {
      * The shop's branding the box pushed with the config (feature 013). A value is `null` when the box did not send it; the
      * default does nothing, so a delegate written before this feature keeps compiling and an old box changes nothing.
      */
-    fun onBrandingUpdated(palette: String?, shopName: String?, title: String?, density: String?) {}
+    fun onBrandingUpdated(palette: String?, shopName: String?, title: String?, density: String?, deviceLabel: String? = null) {}
     fun onTriggerAction(action: String, slotNum: Int? = null, extra: Map<String, String>? = null)
     fun getCrashLog(): String?
 }
@@ -54,7 +54,7 @@ class KioskHttpServer(
         private val CONFIG_PARAMS = listOf("price", "minutes", "device_name", "admin_pin", "slot", "slot_num")
 
         /** The optional branding params of the box's /config push (feature 013). */
-        internal val BRANDING_PARAMS = listOf("palette", "shop_name", "brand_title", "anim_density")
+        internal val BRANDING_PARAMS = listOf("palette", "shop_name", "brand_title", "anim_density", "device_label")
 
         /** A branding value is at most this long on the wire (the longest allowed name is 32 characters, up to 12 bytes encoded each). */
         private const val MAX_BRANDING_WIRE_CHARS = 512
@@ -352,6 +352,7 @@ class KioskHttpServer(
                         shopName = decodeBrandingValue(decryptedParams["shop_name"]),
                         title = decodeBrandingValue(decryptedParams["brand_title"]),
                         density = decodeBrandingValue(decryptedParams["anim_density"]),
+                        deviceLabel = decodeBrandingValue(decryptedParams["device_label"]),
                     )
                 }
                 createResponse(Response.Status.OK, "text/plain", "OK")

@@ -1,6 +1,7 @@
 // Rental phone profiles stored on the box. The rules (names, rates, the text format) are in PhoneProfiles.h.
 
 #include "PhoneProfileStore.h"
+#include "DeviceLabel.h"
 
 #include "Config.h"
 #include "DeviceNetwork.h"
@@ -106,12 +107,30 @@ String phoneProfilesJson() {
     return json;
 }
 
+// Feature 024: the phone's title is the name of its slot's profile. A /config push of its own (the branding push's buffer is nearly full).
+// `clearIfBlank`: a slot on the standard rate sends a blank label, so a phone that just lost its profile drops the old label; it is false
+// at pairing, where a blank push would only make an app that knows no labels show its "config synced" toast.
+void pushDeviceLabelToSlotIndex(int slotIdx, bool clearIfBlank) {
+    if (slotIdx < 0 || slotIdx >= MAX_SUPPORTED_SLOTS) return;
+    const PhoneSlot& slot = phoneSlots[slotIdx];
+    if (slot.deviceId.length() == 0 || slot.ip.length() == 0 || slot.ip == "127.0.0.1") return;
+    phoneprofiles::Profile list[phoneprofiles::MAX_PROFILES];
+    int n = phoneProfileList(list, phoneprofiles::MAX_PROFILES);
+    std::string label = devicelabel::labelFor(list, n, phoneProfileIdForSlotIndex(slotIdx));
+    if (label.empty() && !clearIfBlank) return;
+    if (!devicelabel::fitsInPush(label)) return;
+    String params = String(devicelabel::pushBody(label).c_str());
+    sendAuthenticated(slot.ip, targetPort, "/config", "/challenge", params, 1000);
+}
+
 void pushRateToSlotIndex(int slotIdx) {
     if (slotIdx < 0 || slotIdx >= MAX_SUPPORTED_SLOTS) return;
     const PhoneSlot& slot = phoneSlots[slotIdx];
     if (slot.deviceId.length() == 0 || slot.ip.length() == 0 || slot.ip == "127.0.0.1") return;
     String params = "minutes=" + String(minutesPerCoinForSlotIndex(slotIdx)) + "&price=1.0";
     sendAuthenticated(slot.ip, targetPort, "/config", "/challenge", params, 1000);
+    pushDeviceLabelToSlotIndex(
+        slotIdx, true); // profile changes (saved, assigned) come through here: the label follows the profile
 }
 
 void pushRatesToPhones() {

@@ -65,7 +65,6 @@ import com.pisophone.kiosk.ui.theme.BrandPalette
 import com.pisophone.kiosk.ui.theme.TechNet
 import com.pisophone.kiosk.ui.video.LockScreenPresence
 import com.pisophone.kiosk.util.Branding
-import com.pisophone.kiosk.util.ShopBranding
 import kotlin.math.roundToInt
 
 /** "COINSLOT BUSY" as the box names it, said the way the screen says everything else: "Coinslot busy". */
@@ -247,7 +246,7 @@ fun BlockScreen(
                         Box(modifier = Modifier.weight(0.4f).fillMaxHeight(), contentAlignment = Alignment.Center) { halo() }
                         Column(modifier = Modifier.weight(0.6f).fillMaxHeight().verticalScroll(rememberScrollState())) {
                             LockPanel {
-                                LockUpHeader(slot, title = branding.title ?: ShopBranding.DEFAULT_TITLE, titleColor = palette.accent, showMakerWord = branding.title == null)
+                                LockUpHeader(slot, title = branding.displayTitle, titleColor = palette.accent, showMakerWord = branding.title == null)
                                 if (shopName != null) BrandMarquee(shopName, palette.accent, marqueeScrolls)
                                 Spacer(Modifier.height(8.dp))
                                 body()
@@ -259,7 +258,7 @@ fun BlockScreen(
                         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                     ) {
-                        LockUpHeader(slot, modifier = Modifier.widthIn(max = 420.dp), title = branding.title ?: ShopBranding.DEFAULT_TITLE, titleColor = palette.accent, showMakerWord = branding.title == null)
+                        LockUpHeader(slot, modifier = Modifier.widthIn(max = 420.dp), title = branding.displayTitle, titleColor = palette.accent, showMakerWord = branding.title == null)
                         // the shop name runs under the title, in the header band the stickers keep out of
                         if (shopName != null) {
                             BrandMarquee(shopName, palette.accent, marqueeScrolls, modifier = Modifier.widthIn(max = 420.dp).height(MARQUEE_ROW_HEIGHT))

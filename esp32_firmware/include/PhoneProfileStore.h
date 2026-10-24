@@ -31,5 +31,8 @@ String phoneProfilesJson();
 void pushRatesToPhones();
 // Tells one phone its rate.
 void pushRateToSlotIndex(int slotIdx);
+// Tells one phone its label (the name of its slot's profile; see DeviceLabel.h). Nothing is sent for a slot on the standard rate unless
+// `clearIfBlank`.
+void pushDeviceLabelToSlotIndex(int slotIdx, bool clearIfBlank);
 
 #endif

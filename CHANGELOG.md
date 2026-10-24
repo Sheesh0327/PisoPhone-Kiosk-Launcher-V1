@@ -4,6 +4,10 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: the CI build number, shown as hundreds.tens.ones, build 466 is 4.6.6; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Firmware 3.12.3 and the phone app, **each rental device shows its own type on the lock and home screens (feature 024).** Not tried on a real box or phone; hardware check RS49 in `docs/REAL_WORLD_TESTING.md`.
+  - **Pick a type for each phone slot.** On the box's admin page, *Phone profiles* now has three one-tap presets, **PisoPhone**, **PisoTab** and **PisoPhone Pro** (a gaming phone), each a new profile at your standard rate that you can rename or give another rate, or add any name of your own (up to 20 characters). Give each slot its profile as before.
+  - **The phone shows it.** A phone whose slot has a profile shows that name as the title of its lock screen and at the top of its home screen. A phone on the standard rate shows what it showed before: the header title you set under Shop branding, or PisoPhone. A phone moved back to the standard rate drops its old label.
+  - Old boxes and old phones keep working together: a phone that gets no label looks exactly as before. Money and time: not touched. A label only changes the words on the screen; a profile's minutes per peso are never changed by it.
 - Router 1.5.20, **the Quick time adjust buttons work from the router console (feature 022).** Not tried on a real router; hardware check RS47 in `docs/REAL_WORLD_TESTING.md`.
   - **Add and Subtract on the coin box's admin page no longer say "refused: this request came from another page"** when you open that page from the link inside the router's console. The console told the browser not to send where a page came from, and a browser then labels a plain form post as coming from nowhere, which the console's own safety check refused. It now tells the browser to send that only to the same site. Posts from another website are still refused.
   - Money and time: not touched. The time change itself (its own transaction number, credited once) works as before; it could not reach the box before.

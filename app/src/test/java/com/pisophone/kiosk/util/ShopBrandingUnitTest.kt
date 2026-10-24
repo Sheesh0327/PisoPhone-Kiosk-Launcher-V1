@@ -160,4 +160,38 @@ class ShopBrandingUnitTest {
         assertNull("a blank name clears it on the screen too", flow.value.shopName)
         assertEquals("berde", flow.value.palette)
     }
+
+    // ---- feature 024: the label of the phone's profile ----
+
+    @Test
+    fun theTitleIsTheLabelThenTheShopTitleThenPisoPhone() {
+        assertEquals("PisoPhone", Branding().displayTitle)
+        assertEquals("Piso Net", Branding(title = "Piso Net").displayTitle)
+        assertEquals("PisoTab", Branding(title = "Piso Net", deviceLabel = "PisoTab").displayTitle)
+        assertEquals("PisoTab", Branding(deviceLabel = "PisoTab").displayTitle)
+    }
+
+    @Test
+    fun aLabelIsStoredAndComesBackAndABlankOneClearsIt() {
+        ShopBranding.applyFromBox(context, null, null, null, null, 1_000L, deviceLabel = "PisoPhone Pro")
+        assertEquals("PisoPhone Pro", ShopBranding.read(context).deviceLabel)
+        ShopBranding.applyFromBox(context, null, null, null, null, 2_000L, deviceLabel = "")
+        assertNull(ShopBranding.read(context).deviceLabel)
+    }
+
+    @Test
+    fun aLabelIsCutAt20CharactersAndAPushWithNoLabelLeavesItAlone() {
+        ShopBranding.applyFromBox(context, null, null, null, null, 1_000L, deviceLabel = "X".repeat(25))
+        assertEquals("X".repeat(ShopBranding.MAX_LABEL), ShopBranding.read(context).deviceLabel)
+        push(palette = "dagat")
+        assertEquals("X".repeat(ShopBranding.MAX_LABEL), ShopBranding.read(context).deviceLabel)
+    }
+
+    @Test
+    fun aPushThatCarriesOnlyALabelCountsAsHeardFromTheBox() {
+        val stored = ShopBranding.applyFromBox(context, null, null, null, null, 5_000L, deviceLabel = "PisoTab")
+        assertTrue(stored)
+        assertEquals(5_000L, ShopBranding.read(context).receivedAtMs)
+        assertFalse("a label alone is not shop branding", ShopBranding.read(context).isSet)
+    }
 }
