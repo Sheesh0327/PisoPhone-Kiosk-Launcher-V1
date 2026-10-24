@@ -171,7 +171,7 @@ jobs:
           name: coin-box-images
           path: ${{ runner.temp }}/built
       - name: Install the signing library
-        run: pip install cryptography
+        run: pip install cryptography==44.0.0
       - name: Commit the images to the branch
         env:
           # only a run on main is ever handed the key
@@ -190,6 +190,14 @@ jobs:
           elif [ "$GITHUB_REF_NAME" = main ]; then
             echo "::warning::OWNER_SIGNING_KEY_B64 is not in the production-signing Environment: the over-the-air images are published UNSIGNED (docs/RELEASE.md, Protect the signing keys)."
           fi
+          # What was approved and built is $GITHUB_SHA. The loop below rebases onto the newest branch tip to push, but only the
+          # website/ output is taken from there: every script that signs or publishes runs from this copy of $GITHUB_SHA
+          # ($TRUSTED), and so do the version and the public key it reads. The built images must come from this very commit.
+          [ "$(git rev-parse HEAD)" = "$GITHUB_SHA" ] || { echo "::error::the checkout is not $GITHUB_SHA"; exit 1; }
+          BUILT_COMMIT=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['commit'])" "$RUNNER_TEMP/flash/manifest.json")
+          [ "$BUILT_COMMIT" = "$GITHUB_SHA" ] || { echo "::error::the build artifact is from $BUILT_COMMIT, not $GITHUB_SHA: nothing signed"; exit 1; }
+          TRUSTED="$RUNNER_TEMP/trusted"
+          git worktree add -q --detach "$TRUSTED" "$GITHUB_SHA"
           ota_failed=0
           for attempt in 1 2 3 4 5; do
             git fetch -q origin "$GITHUB_REF_NAME"
@@ -201,7 +209,7 @@ jobs:
               # (a failure here must not hold back the coin box images, but it still fails the run, after they are pushed)
               ota_ok=1
               for PRODUCT in full phone wifi; do
-                if ! python3 scripts/publish_firmware_ota.py --product "$PRODUCT" --images "$RUNNER_TEMP/ota/$PRODUCT" ${KEY:+--key "$KEY"}; then
+                if ! python3 "$TRUSTED/scripts/publish_firmware_ota.py" --product "$PRODUCT" --images "$RUNNER_TEMP/ota/$PRODUCT" ${KEY:+--key "$KEY"}; then
                   ota_ok=0
                 fi
               done

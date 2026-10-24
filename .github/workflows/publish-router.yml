@@ -46,7 +46,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Install the signing library
-        run: pip install cryptography
+        run: pip install cryptography==44.0.0
       - name: Check the keys
         env:
           OWNER_SIGNING_KEY_B64: ${{ secrets.OWNER_SIGNING_KEY_B64 }}
@@ -80,11 +80,17 @@ jobs:
           # What was approved is this run's commit: the router files and the signing script are fingerprinted now, and the loop below
           # (which rebases onto the newest main to push) signs only when they are still exactly these. Anything pushed to main after
           # the approval is never signed by this run.
-          APPROVED=$(sha256sum setup/piso-setup*.sh scripts/sign_router.py scripts/owner_key.py)
+          # The fingerprint also covers the console script, its signing script and this workflow file. And every signing script runs
+          # from $TRUSTED, a copy of $GITHUB_SHA, never from the tree the loop has moved to the newest main.
+          FILES="setup/piso-setup*.sh scripts/sign_router.py scripts/sign_console_ui.py scripts/owner_key.py tools/pisoportal/src/console-ui.js .github/workflows/publish-router.yml"
+          [ "$(git rev-parse HEAD)" = "$GITHUB_SHA" ] || { echo "::error::the checkout is not $GITHUB_SHA"; exit 1; }
+          APPROVED=$(sha256sum $FILES)
+          TRUSTED="$RUNNER_TEMP/trusted"
+          git worktree add -q --detach "$TRUSTED" "$GITHUB_SHA"
           for attempt in 1 2 3 4 5; do
             git fetch -q origin main
             git reset -q --hard origin/main
-            if [ "$(sha256sum setup/piso-setup*.sh scripts/sign_router.py scripts/owner_key.py)" != "$APPROVED" ]; then
+            if [ "$(sha256sum $FILES)" != "$APPROVED" ]; then
               if [ "$GITHUB_EVENT_NAME" = push ]; then
                 # (the push that changed them started its own run, which asks for its own approval)
                 echo "::notice::main has newer router files than this run's commit ($GITHUB_SHA): nothing signed here, the run of the newer push signs them."
@@ -98,7 +104,7 @@ jobs:
                && { [ -z "$ROLLOUT_SET" ] || python3 -c "import json,sys; sys.exit(0 if str(json.load(open('website/update/router.json')).get('rollout')) == sys.argv[1] else 1)" "$ROLLOUT" 2> /dev/null; }; then
               echo "Router release $RELEASE is already published."
             else
-              python3 scripts/sign_router.py --private "$KEY" --rollout "$ROLLOUT" --changelog "$CHANGELOG"
+              python3 "$TRUSTED/scripts/sign_router.py" --private "$KEY" --setup setup/piso-setup.sh --out-dir website/update --rollout "$ROLLOUT" --changelog "$CHANGELOG"
             fi
             # the other CPU families: setup/piso-setup-<family>.sh is signed into website/update/<family>/
             for F in setup/piso-setup-*.sh; do
@@ -108,13 +114,13 @@ jobs:
                  && { [ -z "$ROLLOUT_SET" ] || python3 -c "import json,sys; sys.exit(0 if str(json.load(open('website/update/$FAM/router.json')).get('rollout')) == sys.argv[1] else 1)" "$ROLLOUT" 2> /dev/null; }; then
                 echo "$FAM release $RELEASE is already published."
               else
-                python3 scripts/sign_router.py --private "$KEY" --setup "$F" --out-dir "website/update/$FAM" --rollout "$ROLLOUT" --changelog "$CHANGELOG"
+                python3 "$TRUSTED/scripts/sign_router.py" --private "$KEY" --setup "$F" --out-dir "website/update/$FAM" --rollout "$ROLLOUT" --changelog "$CHANGELOG"
               fi
               git add -f "website/update/$FAM/router.json" "website/update/$FAM/router-setup.sh"
             done
             # the console page's script (routers use a newer signed one from the website): sign it when it changed
             if ! cmp -s tools/pisoportal/src/console-ui.js website/console/ui.js 2> /dev/null; then
-              python3 scripts/sign_console_ui.py --private "$KEY"
+              python3 "$TRUSTED/scripts/sign_console_ui.py" --private "$KEY" --src tools/pisoportal/src/console-ui.js --out-dir website/console
             fi
             git add -f website/update/router.json website/update/router-setup.sh
             [ ! -f website/console/ui.json ] || git add -f website/console/ui.js website/console/ui.json
