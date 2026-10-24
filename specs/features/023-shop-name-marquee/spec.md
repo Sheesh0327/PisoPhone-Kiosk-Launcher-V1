@@ -1,6 +1,6 @@
 # Feature 023: the shop name as a bold running marquee
 
-Status: **draft (owner decisions recorded; waiting for approval to build)**   Branch: `feat/023-shop-name-marquee`   Area: app
+Status: **approved 2026-10-24 (owner said "Approved"); built**   Branch: `feat/023-shop-name-marquee`   Area: app
 Backlog rows: owner request 2026-10-24 (extends feature 013)   Release: app
 
 ## Intent

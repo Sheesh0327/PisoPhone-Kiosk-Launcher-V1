@@ -4,6 +4,9 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: the CI build number, shown as hundreds.tens.ones, build 466 is 4.6.6; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Phone app, **the shop name is now a big running band on the lock and home screens (feature 023).** Not tried on a phone yet (hardware check RS48).
+  - A full-width band in the shop palette with the name in 28 sp bold, glowing, with a slow shine, running across without a stop (about 60 dp a second); a short name repeats so the band is never empty. A phone with no shop name shows **PisoPhone** in the same band.
+  - Unchanged safety: on a hot, nearly flat or power-saving phone, with animations off or density off, the name stands still, centred and whole. Money and time: not touched.
 - Router 1.5.21, **a customer's page no longer flashes the last result when it opens (feature 025).** Not tried on a real router.
   - A page that asked for a fresh start could, now and then, be shown the result of its previous coin window for a moment before the portal cleared it, if something else changed on the router in that instant. The portal now sends a page nothing until the page has said hello and its old result is cleared. Money and time: not touched; this is only what a page is first shown.
 - Firmware 3.12.3 and the phone app, **each rental device shows its own type on the lock and home screens (feature 024).** Not tried on a real box or phone; hardware check RS49 in `docs/REAL_WORLD_TESTING.md`.

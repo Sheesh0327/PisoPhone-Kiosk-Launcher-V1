@@ -13,11 +13,11 @@ Context manifest (constitution rule 1). Unresolved ledger entries loaded: none r
 ## Task groups
 Test first. The Android unit tests and the Roborazzi goldens run in CI (`build-apk.yml`); there is no Android SDK in the agent's cloud
 session, so ktlint and detekt run locally with the CI jars (as in features 013 and 018) and the rest is the CI result.
-- [ ] 1. **Pure rules, test first.** `MarqueeText.kt`: the text to show (name, or "PisoPhone" for blank), whether it repeats, and the
+- [x] 1. **Pure rules, test first.** `MarqueeText.kt`: the text to show (name, or "PisoPhone" for blank), whether it repeats, and the
   contrast check for the six palettes. Unit tests: red today (a blank name gives nothing; a short name does not repeat). (red result logged: no)
-- [ ] 2. **The band.** `BrandMarquee.kt` rewritten: full-width strip, gradient text, glow, slow shine, repeated text with a gap, one
+- [x] 2. **The band.** `BrandMarquee.kt` rewritten: full-width strip, gradient text, glow, slow shine, repeated text with a gap, one
   infinite transition that stops when `MarqueeRule` says stop; the still version wraps, never clips.
-- [ ] 3. **Use it on both screens** (`BlockScreen.kt`, `LauncherScreen.kt`): always drawn (the default when no name), above the
+- [x] 3. **Use it on both screens** (`BlockScreen.kt`, `LauncherScreen.kt`): always drawn (the default when no name), above the
   existing content without pushing the timer, rate, button or card link off the smallest golden phone.
 - [ ] 4. **Goldens and checks.** Push the branch so CI re-records the goldens; the owner looks at the difference pictures. ktlint and
   detekt with the CI jars; CI's unit tests.

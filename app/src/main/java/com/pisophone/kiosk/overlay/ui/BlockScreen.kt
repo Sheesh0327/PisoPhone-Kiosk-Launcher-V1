@@ -71,7 +71,7 @@ import kotlin.math.roundToInt
 private const val PANEL_ALPHA = 0.55f
 
 /** The height the shop-name row takes in the header band; the sticker band starts below it. */
-private val MARQUEE_ROW_HEIGHT = 24.dp
+private val MARQUEE_ROW_HEIGHT = MarqueeText.BAND_MIN_HEIGHT_DP.dp
 
 private fun sentenceCase(text: String): String = text.lowercase().replaceFirstChar { it.uppercase() }
 
@@ -167,7 +167,7 @@ fun BlockScreen(
                 landscape = isLandscape,
                 effects = effects,
                 budget = budget,
-                bandTopExtra = if (shopName != null) MARQUEE_ROW_HEIGHT else 0.dp,
+                bandTopExtra = MARQUEE_ROW_HEIGHT,
             )
         }
         Column(modifier = Modifier.fillMaxSize().systemBarsPadding()) {
@@ -247,7 +247,7 @@ fun BlockScreen(
                         Column(modifier = Modifier.weight(0.6f).fillMaxHeight().verticalScroll(rememberScrollState())) {
                             LockPanel {
                                 LockUpHeader(slot, title = branding.displayTitle, titleColor = palette.accent, showMakerWord = branding.title == null)
-                                if (shopName != null) BrandMarquee(shopName, palette.accent, marqueeScrolls)
+                                BrandMarquee(shopName, palette.accent, palette.top, palette.bottom, marqueeScrolls)
                                 Spacer(Modifier.height(8.dp))
                                 body()
                             }
@@ -260,9 +260,7 @@ fun BlockScreen(
                     ) {
                         LockUpHeader(slot, modifier = Modifier.widthIn(max = 420.dp), title = branding.displayTitle, titleColor = palette.accent, showMakerWord = branding.title == null)
                         // the shop name runs under the title, in the header band the stickers keep out of
-                        if (shopName != null) {
-                            BrandMarquee(shopName, palette.accent, marqueeScrolls, modifier = Modifier.widthIn(max = 420.dp).height(MARQUEE_ROW_HEIGHT))
-                        }
+                        BrandMarquee(shopName, palette.accent, palette.top, palette.bottom, marqueeScrolls, modifier = Modifier.widthIn(max = 420.dp))
                         // the mascot hangs over the top edge of the panel: the panel itself starts halfway down his halo
                         Box(modifier = Modifier.widthIn(max = 420.dp).fillMaxWidth()) {
                             LockPanel(modifier = Modifier.padding(top = stage / 2)) {

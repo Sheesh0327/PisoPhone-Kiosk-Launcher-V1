@@ -225,8 +225,9 @@ fun LauncherScreen(
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 TimeDateDisplay()
-                // the shop's name runs under the clock and date; no name, no row
-                BrandMarquee(branding.shopName, currentTheme.primary, marqueeScrolls)
+                // the shop's name runs under the clock and date; no name shows the plain "PisoPhone"
+                val bandPalette = BrandPalette.of(branding.palette)
+                BrandMarquee(branding.shopName, bandPalette.accent, bandPalette.top, bandPalette.bottom, marqueeScrolls)
             }
 
             HorizontalDivider(color = currentTheme.border.copy(alpha = 0.6f), thickness = 1.dp)
