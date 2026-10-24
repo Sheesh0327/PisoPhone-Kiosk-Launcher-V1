@@ -2,7 +2,7 @@
   "version": "1.5.21",
   "sha256": "e7be36f07504b84b5fc923412d064424b013e72b8e76aa108e1e173817a82211",
   "size": 1653953,
-  "rollout": 0,
-  "changelog": "Router software release 1.5.21",
-  "sig": "MEUCIQCZ/3L2Z/e5nK/cx8OEVgMPJLf6ZPYzfbuLakx/+7qa9QIgFMEtYxHlowh0Je40SxTwEaxLTumdrHexW2mxqFGadbk="
+  "rollout": 100,
+  "changelog": "Router 1.5.21: Quick time buttons work from the router console; a fresh customer page no longer shows the old result.",
+  "sig": "MEUCIAJTQR0C7RupnK5/EggmRcfnTZZpYCwf9jsULk5vdiCbAiEA5oRRkIDrwHcQLyKvAfMFSkhxRGcMPKMxb4ssKJp5aI0="
 }
