@@ -122,6 +122,12 @@ D6 = not asked, the recommended answer stands (advice in `docs/` only). Build no
 (router 1.5.19), 017 (firmware 3.12.1), then the signing rows CI-1 and CI-2 (spec 01 R2) as feature 020. The fake-box fix
 (HARDENING_PLAN item 3, a protocol change) is **later, its own spec**. No release, no merge to `main`, no rollout: the owner does those.
 
+**Owner's answers, 2026-10-24 (after feature 014):** Q1 = the monitor runs on every router with the portal; without Telegram it
+sends nothing and only checks, restarts and writes `alerts.txt`. AO-11 (a coin stranded by a kill or power cut before the router
+notices it) = **its own router feature 021**: write the window's record to flash, synced, when the box is armed; a test that
+fails first (`test_soak.py --strict`) and a power-cut hardware check; it ships in the same router 1.5.19 as 015 and 016.
+Approved now: the spec and plan of 015 with D1, D2, D3 and Q1 as answered here.
+
 - **D0** May the agent merge `main` into `beta` (step 0)? *Recommended: yes, on a branch `chore/sync-main-into-beta`, the owner
   merges it.* Until then every feature branch starts from a `beta` that lacks the app's goldens fix.
 - **D1** Split `revenue.csv` by month? *Recommended: yes, closed months stay on flash; when free flash is under 256 KB the owner is
