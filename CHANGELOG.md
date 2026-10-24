@@ -4,6 +4,8 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: the CI build number, shown as hundreds.tens.ones, build 466 is 4.6.6; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Phone app, **a new phone on a PisoPhone-only shop no longer stops at "refused to add <your network>" (feature 027).** Not tried on a phone yet (hardware check RS51).
+  - When Android would not let the app change a Wi-Fi network that was already saved on the phone (usually the shop's own router), the app now switches that network on as it is, or uses the suggestion it made, instead of giving up. If it still cannot, the line on the screen now also says the Android version and whether the phone is the device owner, so the cause can be named. Money and time: not touched.
 - Router 1.5.21, **a customer's page no longer flashes the last result when it opens (feature 025).** Not tried on a real router.
   - A page that asked for a fresh start could, now and then, be shown the result of its previous coin window for a moment before the portal cleared it, if something else changed on the router in that instant. The portal now sends a page nothing until the page has said hello and its old result is cleared. Money and time: not touched; this is only what a page is first shown.
 - Firmware 3.12.3 and the phone app, **each rental device shows its own type on the lock and home screens (feature 024).** Not tried on a real box or phone; hardware check RS49 in `docs/REAL_WORLD_TESTING.md`.
