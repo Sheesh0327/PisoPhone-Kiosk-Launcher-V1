@@ -1530,9 +1530,14 @@ impl Core {
     }
 
     /// Housekeeping: settle leftovers, forget old sessions and old results.
-    pub fn maintenance(&self) {
+    pub fn maintenance(self: &Arc<Self>) {
         self.check_clock();
-        self.recover();
+        // RT-17: settling leftovers asks the coin box, which can take seconds to answer (or never); it runs on its own thread so
+        // the clock check, the fair-use tick and the housekeeping below are not held up. One recovery at a time.
+        if self.recovering.try_lock().is_ok() {
+            let me = Arc::clone(self);
+            let _ = std::thread::Builder::new().name("recover".into()).spawn(move || me.recover());
+        }
         {
             let _g = self.files.lock().unwrap();
             roll::purge(&self.cfg.roll_path(), now_secs());
@@ -1790,5 +1795,39 @@ mod tests {
     fn rt07_a_second_late_round_of_the_same_window_has_its_own_id() {
         assert_eq!(late_wid("w9", 3), "w9L3");
         assert_ne!(late_wid("w9", 3), late_wid("w9", 5), "two late rounds must not look like the same window");
+    }
+
+    #[test]
+    fn rt17_a_box_that_never_answers_does_not_hold_up_maintenance() {
+        // a "box" that accepts the connection and says nothing; two windows are waiting to be settled
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = l.local_addr().unwrap().to_string();
+        let held = std::thread::spawn(move || {
+            let mut socks = Vec::new();
+            while let Ok((s, _)) = l.accept() {
+                socks.push(s);
+            }
+        });
+        let d = std::env::temp_dir().join(format!("pisoportal-rt17-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(d.join("open")).unwrap();
+        fs::write(d.join("open/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), format!("{} hyper w1 0 0\n", MAC_A)).unwrap();
+        fs::write(d.join("open/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"), format!("{} hyper w2 0 0\n", MAC_B)).unwrap();
+        let mut cfg = Config::from_map(std::collections::HashMap::new());
+        cfg.data_dir = d.to_string_lossy().into_owned();
+        cfg.ndsctl = "/nonexistent/ndsctl".into();
+        cfg.gw_box = addr;
+        cfg.gw_key = "test-gateway-key-123456".into();
+        let core = Core::new(cfg);
+        let t0 = Instant::now();
+        core.maintenance();
+        let took = t0.elapsed();
+        assert!(took < Duration::from_millis(1500), "maintenance waited {:?} for a box that never answers", took);
+        // and a second round while the first recovery is still waiting does not start another one
+        let t1 = Instant::now();
+        core.maintenance();
+        assert!(t1.elapsed() < Duration::from_millis(1500));
+        assert!(core.recovering.try_lock().is_err(), "the first recovery is still waiting on the box, on its own thread");
+        drop(held);
     }
 }
