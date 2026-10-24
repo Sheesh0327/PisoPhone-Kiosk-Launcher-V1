@@ -1,10 +1,10 @@
 {
-  "versionCode": 524,
-  "versionName": "5.2.4-dev",
+  "versionCode": 525,
+  "versionName": "5.2.5-dev",
   "channel": "dev",
   
   "signatureChecksum": "DiFF_STFcP7MrUKtszkGshMCDzo8YHv1Q1jtomQFpLU",
-  "sha256": "0d3525a24eb2796c40acd0f43769c660436da3e0e82d8431e2fac531cdabb390",
+  "sha256": "306b2def5cf5e80b12d46da5eef0e91e572b10a7a28af58aaff2409bf0657837",
   "size": 3549180,
   "releaseDate": "2026-10-24"
 }
