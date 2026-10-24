@@ -304,6 +304,17 @@ window.addProfileRow = function() {
     renderProfiles();
 };
 
+// A preset is a new profile with the preset's name and the standard rate (change the rate and the name freely, then Save). The name
+// is also the title on the lock and home screens of the phones in that profile (feature 024).
+window.addPresetProfile = function(name) {
+    const edited = readProfileRows();
+    if (edited.length >= profileState.max) { notify('There is room for ' + profileState.max + ' profiles.', 'bad'); return; }
+    if (edited.some(r => r.name.toLowerCase() === name.toLowerCase())) { notify('There is already a profile named ' + name + '.', 'bad'); return; }
+    profileState.profiles = edited.map(r => ({ id: parseInt(r.id, 10) || 0, name: r.name, minutes: parseInt(r.minutes, 10) || 0 }));
+    profileState.profiles.push({ id: 0, name: name, minutes: profileState.standard });
+    renderProfiles();
+};
+
 window.removeProfileRow = function(i) {
     const edited = readProfileRows();
     const gone = edited[i];

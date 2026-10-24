@@ -30,6 +30,7 @@ class KioskHttpServerUnitTest {
     private var lastConfigPrice: Double? = null
     private var lastConfigDeviceName: String? = null
     private val brandingPushes = mutableListOf<List<String?>>()
+    private var lastDeviceLabel: String? = null
     private var storeBrandingForReal = false
 
     private val fakeDelegate = object : KioskServerDelegate {
@@ -52,9 +53,10 @@ class KioskHttpServerUnitTest {
             lastConfigPrice = price
             lastConfigDeviceName = deviceName
         }
-        override fun onBrandingUpdated(palette: String?, shopName: String?, title: String?, density: String?) {
+        override fun onBrandingUpdated(palette: String?, shopName: String?, title: String?, density: String?, deviceLabel: String?) {
             brandingPushes += listOf(palette, shopName, title, density)
-            if (storeBrandingForReal) ShopBranding.applyFromBox(context, palette, shopName, title, density)
+            lastDeviceLabel = deviceLabel
+            if (storeBrandingForReal) ShopBranding.applyFromBox(context, palette, shopName, title, density, deviceLabel = deviceLabel)
         }
         override fun onTriggerAction(action: String, slotNum: Int?, extra: Map<String, String>?) {
             triggeredActions += action
@@ -76,6 +78,7 @@ class KioskHttpServerUnitTest {
         lastConfigPrice = null
         lastConfigDeviceName = null
         brandingPushes.clear()
+        lastDeviceLabel = null
         storeBrandingForReal = false
         context.createDeviceProtectedStorageContext().getSharedPreferences("shop_branding", android.content.Context.MODE_PRIVATE)
             .edit().clear().commit()
@@ -495,6 +498,67 @@ class KioskHttpServerUnitTest {
         assertEquals("Tindahan", b.shopName)
         assertEquals("Piso", b.title)
         assertEquals("high", b.density)
+    }
+
+    // ---- feature 024: the label of this phone's profile on the box (its own /config push) ----
+
+    @Test
+    fun aLabelOnlyPushIsNotAConfigUpdateAndIsStored() {
+        storeBrandingForReal = true
+        val response = pushConfig("device_label=PisoTab")
+        assertEquals(200, response.status.requestStatus)
+        assertEquals("a label alone is not a config update (no \"Config Synced\" toast, no slot rewrite)", 0, configPushes)
+        assertEquals("PisoTab", lastDeviceLabel)
+        assertEquals("PisoTab", ShopBranding.read(context).deviceLabel)
+        assertEquals("PisoTab", ShopBranding.read(context).displayTitle)
+    }
+
+    @Test
+    fun aLabelIsDecodedLikeTheOtherBrandingText() {
+        storeBrandingForReal = true
+        pushConfig("device_label=PisoPhone+Pro")
+        assertEquals("PisoPhone Pro", ShopBranding.read(context).deviceLabel)
+    }
+
+    @Test
+    fun aLabelPushLeavesTheShopBrandingAlone() {
+        storeBrandingForReal = true
+        pushConfig("palette=rosas&shop_name=Tindahan&brand_title=Piso+Net&anim_density=low")
+        pushConfig("device_label=PisoTab")
+        val b = ShopBranding.read(context)
+        assertEquals("rosas", b.palette)
+        assertEquals("Tindahan", b.shopName)
+        assertEquals("Piso Net", b.title)
+        assertEquals("low", b.density)
+        assertEquals("PisoTab", b.deviceLabel)
+    }
+
+    @Test
+    fun aBlankLabelClearsItAndTheBoxTitleShowsAgain() {
+        storeBrandingForReal = true
+        pushConfig("brand_title=Piso+Net")
+        pushConfig("device_label=PisoTab")
+        assertEquals("the label wins over the box-wide title", "PisoTab", ShopBranding.read(context).displayTitle)
+        pushConfig("device_label=")
+        assertEquals(null, ShopBranding.read(context).deviceLabel)
+        assertEquals("a slot back on the standard rate shows the title the owner set", "Piso Net", ShopBranding.read(context).displayTitle)
+    }
+
+    @Test
+    fun anOldBoxThatSendsNoLabelLeavesTheStoredLabelAlone() {
+        storeBrandingForReal = true
+        pushConfig("device_label=PisoTab")
+        pushConfig("palette=dagat")
+        assertEquals("PisoTab", ShopBranding.read(context).deviceLabel)
+    }
+
+    @Test
+    fun aTooLongOrControlCharacterLabelIsCleanedAndCut() {
+        storeBrandingForReal = true
+        pushConfig("device_label=" + "A".repeat(30))
+        assertEquals("A".repeat(20), ShopBranding.read(context).deviceLabel)
+        pushConfig("device_label=Pi%0Aso%00Tab")
+        assertEquals("PisoTab", ShopBranding.read(context).deviceLabel)
     }
 
     @Test

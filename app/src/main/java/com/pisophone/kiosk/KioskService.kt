@@ -144,6 +144,8 @@ class KioskService : Service() {
     private val wifiKeeper = object : Runnable {
         override fun run() {
             Thread { com.pisophone.kiosk.network.KioskWifi.joinAndReport(applicationContext) }.start()
+            // once per phone (a flag inside): YouTube, Chrome, Maps... that an older clean-up switched off come back (feature 029)
+            Thread { com.pisophone.kiosk.security.AppVisibilityPolicy.reinstateGoogleApps(applicationContext) }.start()
             wifiHandler.postDelayed(this, WIFI_CHECK_MS)
         }
     }

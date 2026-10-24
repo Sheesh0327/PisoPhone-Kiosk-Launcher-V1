@@ -57,7 +57,7 @@ details .btn{margin:8px 0 12px}
 <p class="sub" id="pzc"></p>
 </div>
 <div class="pick" id="pk">
-<input type="radio" name="p" id="rh" value="hyper" checked><input type="radio" name="p" id="re" value="endurance">
+<input type="radio" name="p" id="rh" value="hyper"><input type="radio" name="p" id="re" value="endurance" checked>
 <div class="seg"><label for="rh">HyperSpeed</label><label for="re">Endurance</label></div>
 <div class="card tiers">
 <div class="th"><p class="mut">Full speed &middot; slows after %FAIR_GB% GB</p><div class="rows">%TIERS_H%</div></div>
@@ -120,7 +120,7 @@ details .btn{margin:8px 0 12px}
 <script>
 (function(){
 var FIRST=%FIRST%;
-var A=window.AudioContext||window.webkitAudioContext,ctx=null,ws=null,tk=null,left=0,total=FIRST,cont="",plan="hyper",pes=0,fas=location.search.replace(/^.*[?&]fas=([^&]*).*$/,"$1");
+var A=window.AudioContext||window.webkitAudioContext,ctx=null,ws=null,tk=null,left=0,total=FIRST,cont="",plan="endurance",pes=0,fas=location.search.replace(/^.*[?&]fas=([^&]*).*$/,"$1");
 if(fas===location.search)fas="";
 var SS=window.speechSynthesis,SU=window.SpeechSynthesisUtterance,keep=[],voice=null,unl=0,sq=0,vch=false,rt=0,rx=0,lc=0,cw=0;
 function el(i){return document.getElementById(i)}
@@ -177,7 +177,7 @@ function msg(t,btns){put("mtext",t);var b=el("mbtns");b.innerHTML="";var i,x;for
 function again(){clearTimeout(wk);wk=null;send({t:"hello",fas:fas,reset:true})}
 function startPlan(p,f,v){plan=p;if(woke){woke=false;try{history.replaceState(null,"",location.pathname+clean())}catch(e){}}send({t:"start",plan:p,forfeit:!!f,mode:v?"voucher":"now"})}
 function wait(p){show("live");put("lplan",pn(p));put("lsub","Getting the coin slot ready");put("lpes","");put("lmin","Please wait, do not insert coins yet");el("lcd").style.display="none";el("ldone").style.display="none";el("lhint").style.display="none"}
-var go=function(){var r=document.querySelector("input[name=p]:checked");var p=r?r.value:"hyper";wait(p);startPlan(p,false,vch&&el("mv").checked);later(prime)};
+var go=function(){var r=document.querySelector("input[name=p]:checked");var p=r?r.value:"endurance";wait(p);startPlan(p,false,vch&&el("mv").checked);later(prime)};
 el("go").onclick=go;
 el("ldone").onclick=function(){this.disabled=true;this.textContent="Closing…";send({t:"done"})};
 el("lcancel").onclick=function(){send({t:"done"})};

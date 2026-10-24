@@ -45,7 +45,7 @@ pub(crate) fn host_of(host_header: &str) -> Option<String> {
 /// Headers added to what the box answers: the page may be shown by the console (same host, console port) and by nobody else.
 pub(crate) fn frame_policy(host: &str, console_port: u16) -> String {
     format!(
-        "Content-Security-Policy: frame-ancestors http://{}:{}\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: no-referrer\r\n",
+        "Content-Security-Policy: frame-ancestors http://{}:{}\r\nX-Content-Type-Options: nosniff\r\nReferrer-Policy: same-origin\r\n",
         host, console_port
     )
 }
@@ -300,5 +300,27 @@ mod tests {
         assert!(same_site_post(&req("POST", "/", "", &[("host", "r:8082"), ("origin", "http://r:8082")])));
         assert!(!same_site_post(&req("POST", "/", "", &[("host", "r:8082"), ("origin", "http://evil.test")])));
         assert!(same_site_post(&req("POST", "/", "", &[("host", "r:8082")])));
+    }
+
+    #[test]
+    fn the_box_pages_send_their_real_origin_on_their_own_posts() {
+        // `no-referrer` makes a browser send `Origin: null` on a plain form post (the Quick time adjust form), which the check
+        // below must refuse; `same-origin` sends the real Origin to this site and nothing to any other (feature 022).
+        let policy = frame_policy("10.0.0.1", 8081);
+        assert!(policy.contains("Referrer-Policy: same-origin\r\n"), "{}", policy);
+        assert!(!policy.contains("no-referrer"), "{}", policy);
+    }
+
+    #[test]
+    fn the_dashboards_own_form_post_passes_and_every_foreign_post_still_fails() {
+        let own = req("POST", "/add_time", "", &[("host", "10.0.0.1:8082"), ("origin", "http://10.0.0.1:8082")]);
+        assert!(same_site_post(&own));
+        // what a browser sends under `no-referrer`, or from a sandboxed or redirected page
+        assert!(!same_site_post(&req("POST", "/add_time", "", &[("host", "10.0.0.1:8082"), ("origin", "null")])));
+        // another site, another port of this host, another scheme, a look-alike host
+        assert!(!same_site_post(&req("POST", "/add_time", "", &[("host", "10.0.0.1:8082"), ("origin", "http://evil.test")])));
+        assert!(!same_site_post(&req("POST", "/add_time", "", &[("host", "10.0.0.1:8082"), ("origin", "http://10.0.0.1:8081")])));
+        assert!(!same_site_post(&req("POST", "/add_time", "", &[("host", "10.0.0.1:8082"), ("origin", "https://10.0.0.1:8082")])));
+        assert!(!same_site_post(&req("POST", "/add_time", "", &[("host", "10.0.0.1:8082"), ("origin", "http://10.0.0.1:8082.evil.test")])));
     }
 }

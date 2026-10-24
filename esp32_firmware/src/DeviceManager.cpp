@@ -4,6 +4,7 @@
 
 #include "InputSafety.h"
 #include "DeviceManager.h"
+#include "PhoneProfileStore.h"
 #include "Diagnostics.h"
 #include "ReplayCheck.h"
 #include "SecretMode.h"
@@ -92,6 +93,8 @@ bool pairDeviceToSlot(int slotNum, String devId, String ip, String name) {
             pushParams += "&admin_pin=" + webPassword;
         sendAuthenticated(ip, targetPort, "/config", "/challenge", pushParams, 1000);
         pushBrandingToIp(ip); // the shop's look in a push of its own, if the owner set one
+        pushDeviceLabelToSlotIndex(targetIdx,
+                                   false); // its profile's name as its title, if its slot has a profile (feature 024)
     }
     return true;
 }

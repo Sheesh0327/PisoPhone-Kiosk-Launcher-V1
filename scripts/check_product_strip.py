@@ -30,7 +30,7 @@ PRODUCTS = {
         "has": {"PISO_HAS_GATEWAY": 1, "PISO_HAS_PHONES": 0},
         "defined": {"PISO_PRODUCT_WIFI"},
         "skip": [],   # filled from envs/products.ini
-        "skip_headers": ["Accounts.h", "AccountProtocol.h", "AccountStorage.h", "PhoneProfiles.h", "PhoneProfileStore.h", "SlotLicense.h",
+        "skip_headers": ["Accounts.h", "AccountProtocol.h", "AccountStorage.h", "PhoneProfiles.h", "PhoneProfileStore.h", "DeviceLabel.h", "SlotLicense.h",
                          "CardCodec.h", "CardPubKey.h", "DeviceManager.h", "WebSocketsUdp.h", "ControllerWebSocket.h",
                          "WebAssetsPhones.h", "WebServerAccounts.h", "WebServerProfiles.h", "WebServerTelemetry.h", "WebServerCoinslot.h", "ReplayCheck.h"],
         "words": r"phone|kiosk|rental|licen[cs]e|slotlic|profile|account|\bpair|android|\bapp\b|trackeddevice|deviceslot|deviceconfig|devicetelemetry|devicecap|websocket|discovery|slotnum|slotactiv|slotcloud",

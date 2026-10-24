@@ -166,21 +166,35 @@ fun LauncherScreen(
                             tint = currentTheme.primary,
                             modifier = Modifier.size(24.dp),
                         )
-                        Row {
+                        val deviceLabel = branding.deviceLabel
+                        if (deviceLabel != null) {
+                            // this phone's profile on the box (PisoTab, PisoPhone Pro, ...), as set by the owner (feature 024)
                             Text(
-                                text = stringResource(R.string.ui_piso),
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Black,
-                                letterSpacing = 1.sp,
-                                color = currentTheme.textPrimary,
-                            )
-                            Text(
-                                text = stringResource(R.string.ui_phone),
+                                text = deviceLabel,
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Black,
                                 letterSpacing = 1.sp,
                                 color = currentTheme.primary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                             )
+                        } else {
+                            Row {
+                                Text(
+                                    text = stringResource(R.string.ui_piso),
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Black,
+                                    letterSpacing = 1.sp,
+                                    color = currentTheme.textPrimary,
+                                )
+                                Text(
+                                    text = stringResource(R.string.ui_phone),
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Black,
+                                    letterSpacing = 1.sp,
+                                    color = currentTheme.primary,
+                                )
+                            }
                         }
                         Surface(
                             color = currentTheme.primary.copy(alpha = 0.12f),
@@ -211,8 +225,9 @@ fun LauncherScreen(
                 }
                 Spacer(modifier = Modifier.height(8.dp))
                 TimeDateDisplay()
-                // the shop's name runs under the clock and date; no name, no row
-                BrandMarquee(branding.shopName, currentTheme.primary, marqueeScrolls)
+                // the shop's name runs under the clock and date; no name shows the plain "PisoPhone"
+                val bandPalette = BrandPalette.of(branding.palette)
+                BrandMarquee(branding.shopName, bandPalette.accent, bandPalette.top, bandPalette.bottom, marqueeScrolls)
             }
 
             HorizontalDivider(color = currentTheme.border.copy(alpha = 0.6f), thickness = 1.dp)

@@ -18,8 +18,13 @@ data class Branding(
     val density: String? = null,
     /** When the box last sent these, in milliseconds since 1970; 0 when it never did. */
     val receivedAtMs: Long = 0L,
+    /** The name of this phone's profile on the box (PisoTab, PisoPhone Pro, ...), or `null` when its slot has none (feature 024). */
+    val deviceLabel: String? = null,
 ) {
     val isSet: Boolean get() = palette != null || shopName != null || title != null || density != null
+
+    /** The title of the lock and home screens: this phone's label, else the shop's header title, else the default. */
+    val displayTitle: String get() = deviceLabel ?: title ?: ShopBranding.DEFAULT_TITLE
 }
 
 /**
@@ -34,6 +39,7 @@ object ShopBranding {
     private const val KEY_NAME = "shop_name"
     private const val KEY_TITLE = "title"
     private const val KEY_DENSITY = "density"
+    private const val KEY_LABEL = "device_label"
     private const val KEY_RECEIVED = "received_at"
 
     /** The header title of a phone nobody renamed. */
@@ -41,6 +47,9 @@ object ShopBranding {
 
     const val MAX_NAME = 32
     const val MAX_TITLE = 20
+
+    /** A device label is a profile name on the box: 1 to 20 characters. */
+    const val MAX_LABEL = 20
 
     /** The animation density words, as the box's admin page offers them. `normal` is today's screen. */
     val DENSITY_WORDS: List<String> = listOf("off", "low", "normal", "high")
@@ -91,6 +100,7 @@ object ShopBranding {
             title = cleanText(p.getString(KEY_TITLE, null), MAX_TITLE),
             density = cleanDensity(p.getString(KEY_DENSITY, null)),
             receivedAtMs = p.getLong(KEY_RECEIVED, 0L),
+            deviceLabel = cleanText(p.getString(KEY_LABEL, null), MAX_LABEL),
         )
     }
 
@@ -107,8 +117,9 @@ object ShopBranding {
         title: String?,
         density: String?,
         nowMs: Long = System.currentTimeMillis(),
+        deviceLabel: String? = null,
     ): Boolean {
-        if (palette == null && shopName == null && title == null && density == null) return false
+        if (listOf(palette, shopName, title, density, deviceLabel).all { it == null }) return false
         val edit = prefs(context).edit()
         if (palette != null) {
             if (palette.isBlank()) {
@@ -119,6 +130,8 @@ object ShopBranding {
         }
         if (shopName != null) putText(edit, KEY_NAME, cleanText(shopName, MAX_NAME))
         if (title != null) putText(edit, KEY_TITLE, cleanText(title, MAX_TITLE))
+        // a blank label (the box sends one when the slot went back to the standard rate) clears it
+        if (deviceLabel != null) putText(edit, KEY_LABEL, cleanText(deviceLabel, MAX_LABEL))
         if (density != null) {
             if (density.isBlank()) {
                 edit.remove(KEY_DENSITY)

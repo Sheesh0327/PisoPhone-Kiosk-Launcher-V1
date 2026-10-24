@@ -159,9 +159,9 @@ class KioskServerCoordinator(
         }
     }
 
-    override fun onBrandingUpdated(palette: String?, shopName: String?, title: String?, density: String?) {
+    override fun onBrandingUpdated(palette: String?, shopName: String?, title: String?, density: String?, deviceLabel: String?) {
         // stored in the device-protected preferences so the lock screen shows it before unlock; nothing here touches money or time
-        val stored = ShopBranding.applyFromBox(context, palette, shopName, title, density)
+        val stored = ShopBranding.applyFromBox(context, palette, shopName, title, density, deviceLabel = deviceLabel)
         Log.d(TAG, "Master pushed branding: stored=$stored")
     }
 
