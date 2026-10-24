@@ -199,7 +199,7 @@ class Env:
 class Cust:
     """A customer's page: one WebSocket to the portal, from its own source address (the portal maps it to a MAC via ARP)."""
 
-    def __init__(self, ip="127.0.0.1", port=PORTAL_PORT, fas="", reset=False, origin=None):
+    def __init__(self, ip="127.0.0.1", port=PORTAL_PORT, fas="", reset=False, origin=None, send_hello=True):
         self.ip, self.msgs, self.closed, self.lock, self.since = ip, [], False, threading.Lock(), 0
         self.s = socket.create_connection(("127.0.0.1", port), source_address=(ip, 0), timeout=10)
         key = base64.b64encode(os.urandom(16)).decode()
@@ -217,7 +217,12 @@ class Cust:
         self.s.settimeout(None)
         if self.ok:
             threading.Thread(target=self._read, daemon=True).start()
-            self.send({"t": "hello", "fas": fas, "reset": reset})
+            if send_hello:
+                self.hello(fas, reset)
+
+    def hello(self, fas="", reset=False):
+        """The page's first message (a page made with send_hello=False says it later, to test what the portal sends before it)."""
+        self.send({"t": "hello", "fas": fas, "reset": reset})
 
     def _rd(self, n):
         b = b""

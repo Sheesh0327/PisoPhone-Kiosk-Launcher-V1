@@ -4,6 +4,8 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: the CI build number, shown as hundreds.tens.ones, build 466 is 4.6.6; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Router 1.5.21, **a customer's page no longer flashes the last result when it opens (feature 025).** Not tried on a real router.
+  - A page that asked for a fresh start could, now and then, be shown the result of its previous coin window for a moment before the portal cleared it, if something else changed on the router in that instant. The portal now sends a page nothing until the page has said hello and its old result is cleared. Money and time: not touched; this is only what a page is first shown.
 - Firmware 3.12.3 and the phone app, **each rental device shows its own type on the lock and home screens (feature 024).** Not tried on a real box or phone; hardware check RS49 in `docs/REAL_WORLD_TESTING.md`.
   - **Pick a type for each phone slot.** On the box's admin page, *Phone profiles* now has three one-tap presets, **PisoPhone**, **PisoTab** and **PisoPhone Pro** (a gaming phone), each a new profile at your standard rate that you can rename or give another rate, or add any name of your own (up to 20 characters). Give each slot its profile as before.
   - **The phone shows it.** A phone whose slot has a profile shows that name as the title of its lock screen and at the top of its home screen. A phone on the standard rate shows what it showed before: the header title you set under Shop branding, or PisoPhone. A phone moved back to the standard rate drops its old label.

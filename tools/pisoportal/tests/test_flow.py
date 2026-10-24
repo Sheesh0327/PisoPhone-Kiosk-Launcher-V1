@@ -576,6 +576,29 @@ try:
         b.close()
 
     # ---- a page that asks for a fresh start never sees the previous result first --------------------------------------------------------
+    # The portal sent a page its view from a thread started before the page's hello was read, so a change of state in between sent
+    # the old result first (feature 025). Here the change is made on purpose: a result is waiting for the address, a page connects but
+    # waits with its hello, another page connects (the state changes), and only then does the first page ask for a fresh start.
+    env.reset_device(MAC_B)
+    env.set_box(busy=False, coins_at=[0.5])
+    b = Cust("127.0.0.2", reset=True)
+    b.wait_state("idle", 5)
+    b.mark()
+    b.send({"t": "start", "plan": "hyper"})
+    fin = b.wait_state("final", 30)
+    check(fin is not None and fin["pulses"] == 1, f"a result is waiting for the address: {fin}")
+    b.close()
+    slow = Cust("127.0.0.2", send_hello=False)
+    other = Cust("127.0.0.1", reset=True)
+    other.wait_state("idle", 5)
+    time.sleep(0.6)
+    check(slow.ok and slow.states() == [], f"a page that has not said hello is sent no view, least of all the old result: {slow.states()}")
+    slow.hello(reset=True)
+    first = slow.wait(lambda m: m.get("t") == "state", 5)
+    check(first is not None and first["s"] == "idle", f"after hello with reset the first view is its own: {first}")
+    slow.close()
+    other.close()
+
     b = Cust("127.0.0.2", reset=True)
     first = b.wait(lambda m: True, 5)
     check(first is not None and first["s"] == "idle", f"a fresh page's first view is its own, not the last result: {first}")

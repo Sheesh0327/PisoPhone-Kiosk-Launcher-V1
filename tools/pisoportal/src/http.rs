@@ -395,6 +395,9 @@ fn ws_session(core: Arc<Core>, mut conn: Incoming, key: &str, mac: String) {
 
     // the writer: pushes this device's view whenever it changed, and pings a quiet page
     let (c2, w2, cl2, m2) = (Arc::clone(&core), Arc::clone(&writer), Arc::clone(&closed), mac.clone());
+    // set by the hello handler once an old result is cleared: until then the writer sends no view (feature 025)
+    let hello_done = Arc::new(AtomicBool::new(false));
+    let hello_done2 = Arc::clone(&hello_done);
     // (from the version now: the first view answers the page's hello, which may first clear an old result)
     let start_ver = core.version();
     let spawned = std::thread::Builder::new().stack_size(96 * 1024).spawn(move || {
@@ -406,7 +409,9 @@ fn ws_session(core: Arc<Core>, mut conn: Incoming, key: &str, mac: String) {
             if cl2.load(Ordering::Relaxed) {
                 break;
             }
-            let json = c2.view_for(&m2).to_json();
+            // Nothing is sent before the page's hello has been handled: its first view is the one the hello handler sends after the
+            // reset, so a change of state in between can never show the page the result of a window that is over (feature 025).
+            let json = if hello_done2.load(Ordering::Acquire) { c2.view_for(&m2).to_json() } else { last_sent.clone() };
             if json != last_sent {
                 if !ws_send(&w2, 1, json.as_bytes()) {
                     break;
@@ -451,6 +456,8 @@ fn ws_session(core: Arc<Core>, mut conn: Incoming, key: &str, mac: String) {
                             core.clear_result(&mac);
                         }
                         core.reconnect(&mac);
+                        // from here on the writer may push changes; set before the view below is made, so no change falls between
+                        hello_done.store(true, Ordering::Release);
                         ws_send(&writer, 1, core.view_for(&mac).to_json().as_bytes());
                     }
                     "start" => {
