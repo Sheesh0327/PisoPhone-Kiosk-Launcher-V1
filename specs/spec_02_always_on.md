@@ -1,6 +1,6 @@
 # Spec 02: always on (a shop that runs 24 hours a day, every day, for a year)
 
-Status: **draft (waiting for the owner's approval of section 8)**   Written: 2026-10-23 against `main` at `3d822f6` (`beta` at `a994cd4`)
+Status: **approved by the owner 2026-10-24 (answers in section 8)**   Written: 2026-10-23 against `main` at `3d822f6` (`beta` at `a994cd4`)
 Related: `specs/spec_01_codebase_refactor.md` (R3 reliability rows are taken over here), `docs/maintainers/HARDENING_PLAN.md`
 section 3, `specs/roadmap.md` phase 6, `docs/REAL_WORLD_TESTING.md` section 8 (soak).
 
@@ -113,6 +113,15 @@ new sizes in `validation.md`; if a budget would be passed, stop and ask the owne
   `bash scripts/check_security_rules.sh`; say plainly what could not be run.
 
 ## 8. Owner decisions (recommended answer first)
+
+**Owner's answers, 2026-10-24:** D0 = the agent merges `main` into `beta` itself (not via a pull request), only when no Code
+quality run on `beta` is in flight and taking `main`'s app goldens; D1 = monthly segments, never deleted automatically (the
+recommended answer); D2 = yes, 3 failed `/ping`, at most once in 10 minutes; D3 = `alerts.txt` in the console and the Check-up;
+D4 = no pruning, measure only; D5 = the agent opens pull requests into `beta` and fixes CI until green, **the owner merges**;
+D6 = not asked, the recommended answer stands (advice in `docs/` only). Build now, in this order: 018 (app money rows), 015 + 016
+(router 1.5.19), 017 (firmware 3.12.1), then the signing rows CI-1 and CI-2 (spec 01 R2) as feature 020. The fake-box fix
+(HARDENING_PLAN item 3, a protocol change) is **later, its own spec**. No release, no merge to `main`, no rollout: the owner does those.
+
 - **D0** May the agent merge `main` into `beta` (step 0)? *Recommended: yes, on a branch `chore/sync-main-into-beta`, the owner
   merges it.* Until then every feature branch starts from a `beta` that lacks the app's goldens fix.
 - **D1** Split `revenue.csv` by month? *Recommended: yes, closed months stay on flash; when free flash is under 256 KB the owner is
