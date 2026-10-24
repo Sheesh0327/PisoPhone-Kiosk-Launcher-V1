@@ -366,7 +366,7 @@ void setupWebServer() {
         Serial.printf("[!] Port 80: Management at http://%s:80\n", WiFi.localIP().toString().c_str());
 #if PISO_HAS_PHONES
         Serial.printf("[!] Port 81: WebSocket at ws://%s:81/ws\n\n", WiFi.localIP().toString().c_str());
-        sendUdpDiscoveryResponse(IPAddress(255, 255, 255, 255), UDP_DISCOVERY_PORT);
+        sendUdpDiscoveryResponse(IPAddress(255, 255, 255, 255), UDP_DISCOVERY_PORT, false);
 #endif
     } else {
         Serial.printf("[!] Wi-Fi disconnected. Waiting for hotspot '%s' to become available...\n", wifiSsid.c_str());

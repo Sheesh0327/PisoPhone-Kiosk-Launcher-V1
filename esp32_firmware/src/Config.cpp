@@ -23,6 +23,7 @@
 #include "CredGen.h"
 #include "SecretMode.h"
 #include "TxId.h"
+#include "MasterClock.h"
 #include "ConfigMigration.h"
 #include <esp_random.h>
 #include <bootloader_random.h>
@@ -161,14 +162,24 @@ int trackedDeviceCount = 0;
 #endif
 
 // Monotonic Master Clock derived from synchronized Android telemetry timestamps
-static uint64_t lastMasterTimestamp = 0;
-static unsigned long lastMasterMillis = 0;
+// The time and the millis() stamp are one pair: a read between the two writes mixed an old time with a new stamp (FW-10). Both
+// are read and written inside a critical section, and the arithmetic is MasterClock.h (host_tests/master_clock_test.cpp).
+static masterclock::Stamp masterStamp;
+static portMUX_TYPE masterClockMux = portMUX_INITIALIZER_UNLOCKED;
+
+static void setMasterStamp(uint64_t ts, unsigned long nowMs) {
+    portENTER_CRITICAL(&masterClockMux);
+    masterStamp.ts = ts;
+    masterStamp.ms = (uint32_t)nowMs;
+    portEXIT_CRITICAL(&masterClockMux);
+}
 
 uint64_t getCurrentMasterTimeMs() {
-    if (lastMasterTimestamp > 0) {
-        return lastMasterTimestamp + (uint64_t)(millis() - lastMasterMillis);
-    }
-    return 0;
+    masterclock::Stamp copy;
+    portENTER_CRITICAL(&masterClockMux);
+    copy = masterStamp;
+    portEXIT_CRITICAL(&masterClockMux);
+    return masterclock::now(copy, (uint32_t)millis());
 }
 
 // The box's clock as a JSON field, so a phone whose own clock is wrong can sign with the box's time instead of being
@@ -194,6 +205,13 @@ static void initTxIdBootCounter() {
     counter.end();
 }
 
+// FW-11: without the boot counter every id would restart at b0 after a reboot and could repeat an id a phone already credited, so a
+// coin window is not armed until the counter exists. One more try here, in case flash was busy at start.
+bool txBootCounterReady() {
+    if (txBootCount == 0) initTxIdBootCounter();
+    return txBootCount != 0;
+}
+
 String generateTxId(const char* prefix) {
     uint32_t seq = __atomic_add_fetch(&txSeq, 1, __ATOMIC_RELAXED);
     return String(txid::make(prefix, txBootCount, seq, esp_random()).c_str());
@@ -215,10 +233,7 @@ void updateMasterTime(uint64_t ts, const String& sourceId) {
     uint64_t current = getCurrentMasterTimeMs();
 
     if (current == 0 || absDiff(ts, current) <= MASTER_CLOCK_WINDOW_MS) {
-        if (ts > current) {
-            lastMasterTimestamp = ts;
-            lastMasterMillis = nowMs;
-        }
+        if (ts > current) setMasterStamp(ts, nowMs);
         return;
     }
 
@@ -231,8 +246,7 @@ void updateMasterTime(uint64_t ts, const String& sourceId) {
         if (absDiff(ts, projected) <= MASTER_CLOCK_AGREE_MS) {
             diagLog("[CLOCK] Master clock re-synced (%llu -> %llu) after agreement from '%s' and '%s'.\n", current, ts,
                     outlierSource.c_str(), sourceId.c_str());
-            lastMasterTimestamp = ts;
-            lastMasterMillis = nowMs;
+            setMasterStamp(ts, nowMs);
             outlierTimestamp = 0;
             outlierSource = "";
             return;
