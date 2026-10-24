@@ -14,12 +14,14 @@ Pass: every coin put in is credited exactly once (ledger total, no gaps, `verify
 half of the run (no kills there, one process) memory, threads and open files stay within 10% of the middle of that stretch. File
 growth is reported, never judged (the expected result for AO-02 to AO-04).
 
-  python3 test_soak.py [--windows N] [--kills N] [--cuts N] [--quick] [--period N] [--seed N] [--devices N] [--strict] [--json PATH]"""
+  python3 test_soak.py [--windows N] [--kills N] [--cuts N] [--quick] [--period N] [--seed N] [--devices N] [--strict] [--bounded] [--json PATH]"""
 import argparse
 import json
 import os
 import random
+import signal
 import statistics
+import subprocess
 import time
 
 from harness import *
@@ -34,6 +36,8 @@ ap.add_argument("--per-day", type=int, default=300, help="windows that make one 
 ap.add_argument("--devices", type=int, default=40)
 ap.add_argument("--seed", type=int, default=1)
 ap.add_argument("--strict", action="store_true", help="also fail on coins stranded by a kill before the router noted the window (finding AO-11)")
+ap.add_argument("--bounded", action="store_true",
+                help="also judge file growth in the undisturbed half (feature 015), and hang the portal (SIGSTOP) to see the monitor restart it once")
 ap.add_argument("--json", help="write the report here as JSON")
 A = ap.parse_args()
 WINDOWS = A.windows or (36 if A.quick else 240)
@@ -287,6 +291,64 @@ try:
     else:
         print("note: the undisturbed stretch has fewer than 4 samples; resource growth is reported, not judged")
 
+    # ---- feature 015: bounded files, and a hung portal restarted once by the monitor (AC2) --------------------------------------
+    bounded = {}
+    if A.bounded:
+        # Files that must stop growing in the undisturbed half. revenue.csv is left out here on purpose: it is bounded by the monthly
+        # roll, which needs a month to pass; `cargo test` (ledger.rs) and test_flow.py prove the roll. It is reported below instead.
+        half = [s for s in samples if s["life"] == samples[-1]["life"] and s["tag"] == "period"]
+        if len(half) >= 3:
+            for name in sorted({k for s in half for k in s["files"]} - {"revenue.csv"} - {k for k in final_sample["files"] if k.startswith("revenue-")}):
+                mid, end = half[len(half) // 2]["files"].get(name, 0), half[-1]["files"].get(name, 0)
+                bounded[name] = {"middle": mid, "end": end}
+                check(end <= mid * 1.1 + 4096, f"{name} is bounded in the undisturbed half: {mid} B in the middle, {end} B at the end")
+        hang_pid = env.portal.pid
+        mon_env = dict(os.environ, PISO_MONITOR_CONF=f"{env.tmp}/none.conf", MON_STATE=f"{env.tmp}/mon", ALERTS_FILE=f"{env.data}/alerts.txt",
+                       PING_URL=f"http://127.0.0.1:{env.PP}/ping", PING_TIMEOUT="2", PORTAL_SERVICE=f"{env.tmp}/service.sh", DF="true",
+                       PORTAL=f"{env.tmp}/none", LOGREAD="true", REPORT_HOUR="99")
+        with open(f"{env.tmp}/service.sh", "w") as sf:
+            sf.write(f"#!/bin/sh\necho \"$1\" >> {env.tmp}/service.log\n")
+        os.chmod(f"{env.tmp}/service.sh", 0o755)
+        monitor = os.path.join(HERE, "..", "..", "..", "router", "piso_monitor.sh")
+
+        def tick():
+            subprocess.run(["sh", monitor, "tick"], env=mon_env, capture_output=True, timeout=120, check=False)
+
+        def read(path):
+            if not os.path.exists(path):
+                return ""
+            with open(path) as rf:
+                return rf.read()
+
+        def restarts():
+            return read(f"{env.tmp}/service.log").count("restart")
+
+        tick()   # the portal answers
+        check(restarts() == 0, "the monitor leaves a healthy portal alone")
+        os.kill(hang_pid, signal.SIGSTOP)
+        tick()
+        tick()
+        check(restarts() == 0, "two failed pings do not restart the portal")
+        tick()
+        check(restarts() == 1, "the third failed ping restarts it, once")
+        tick()
+        tick()
+        check(restarts() == 1, "and not again within 10 minutes")
+        alerts = read(f"{env.data}/alerts.txt")
+        check(alerts.count("did not answer") == 1, "one alert is written to alerts.txt: " + alerts.replace("\n", " | "))
+        env.stop()   # what the service restart does
+        check(start_portal(), "the portal starts again")
+        tick()
+        alerts = read(f"{env.data}/alerts.txt")
+        check("answers again" in alerts, "and the monitor notes that it answers again")
+        before = ledger_total()[0]
+        credited_before = coins_in
+        one_window(WINDOWS, None)
+        check(ledger_total()[0] - before == coins_in - credited_before, "a coin put in after the restart is credited")
+        final_sample = sample("after hang")
+        credited, rows = ledger_total()
+        verify_out = env.cli("verify")[1]
+
     # ---- the report ---------------------------------------------------------------------------------------------------------
     sizes_end = final_sample["files"]
     per_day = A.per_day / WINDOWS
@@ -311,7 +373,7 @@ try:
             json.dump({"windows": WINDOWS, "per_day": A.per_day, "minutes": round(elapsed / 60, 2), "seed": A.seed, "devices": A.devices,
                        "process_starts": life["n"], "kills": kills_done, "power_cuts": cuts_done, "coins_in": coins_in, "credited": credited,
                        "ledger_rows": rows, "busy_answers": busy_total[0], "stranded_pesos": stranded, "stranded": stranded_log,
-                       "verify": verify_out, "files": files, "resource_verdicts": verdicts, "incidents": incidents, "samples": samples},
+                       "verify": verify_out, "files": files, "resource_verdicts": verdicts, "bounded": bounded, "incidents": incidents, "samples": samples},
                       jf, indent=1)
 finally:
     env.close()
