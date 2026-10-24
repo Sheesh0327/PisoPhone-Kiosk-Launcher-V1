@@ -96,6 +96,9 @@ static void startWifiConnect() {
 #if !PISO_HAS_GATEWAY
     if (wifiSsid.length() == 0) {
         diagLog("[WIFI] No Wi-Fi is set yet: run the setup program (pisophone_setup.py) with the box on USB.\n");
+        // The network stack (lwIP) starts with the first WiFi.mode(). Without it the web, WebSocket and UDP ports opened next in setup()
+        // assert ("Invalid mbox") and the board restarts in a loop, so a new board could never answer the setup program (feature 026).
+        WiFi.mode(WIFI_STA);
         return;
     }
 #endif
