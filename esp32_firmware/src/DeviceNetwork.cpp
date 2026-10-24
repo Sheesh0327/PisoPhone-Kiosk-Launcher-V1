@@ -1,8 +1,9 @@
 // Outbound payment and time delivery to phones: turns a detected coin into a queued payment,
 // pushes it over WebSocket and HTTP, and re-sends queued payments on request.
 
-#include "PushParams.h"
 #include "DeviceNetwork.h"
+#include "PushParams.h"
+#include "Diagnostics.h"
 #if PISO_HAS_PHONES
 #include "PhoneProfileStore.h"
 #include "PaymentQueueManager.h"
