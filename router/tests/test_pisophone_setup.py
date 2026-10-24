@@ -815,12 +815,12 @@ class Feed:
     def read(self, n=-1): return self.body
 
 
-def checkup(up=(), feed=b'{"version": "1.5.4", "rollout": 100}', box_net=None):
+def checkup(up=(), feed=b'{"version": "1.5.4", "rollout": 100}', box_net=None, alerts=None):
     def opener(request, timeout=0):
         if feed is None:
             raise urllib.error.URLError("offline")
         return Feed(feed)
-    return {i["name"]: i for i in ps.run_checkup("main", probe=lambda h, p=22, timeout=2.0: (h, p) in up, opener=opener, box_net=box_net)}
+    return {i["name"]: i for i in ps.run_checkup("main", probe=lambda h, p=22, timeout=2.0: (h, p) in up, opener=opener, box_net=box_net, alerts=alerts)}
 
 
 everything = checkup(up={("10.0.0.1", 22), ("10.0.0.10", 80), ("10.0.0.95", 80)})
@@ -840,6 +840,62 @@ check(net and net["state"] == "warn" and "shared setup name" in net["text"] and 
       "check-up: a box network still called PisoCoinBox is a notice with the command that fixes it: " + str(net))
 check("Coin box network" not in checkup(up=_router_up, box_net=lambda: "PisoCoinBox-a1b2"), "check-up: a box network with its own name has no such line")
 check("Coin box network" not in checkup(up=_router_up, box_net=lambda: None) and "Coin box network" not in checkup(up=_router_up), "check-up: no login (or no way to ask) means no such line")
+
+
+# AO-06: the Check-up shows what the router's monitor wrote to alerts.txt (a shop without Telegram)
+al = checkup(up=_router_up, alerts=lambda: ["2026-10-24 10:00 the portal program did not answer for 3 minutes and was restarted"])["Router alerts"]
+check(al["state"] == "warn" and "was restarted" in al["text"] and al["fix"], "check-up: the router's alerts are a notice with the lines: " + str(al))
+check(checkup(up=_router_up, alerts=lambda: [])["Router alerts"]["state"] == "ok", "check-up: no alerts is an ok line")
+check("Router alerts" not in checkup(up=_router_up, alerts=lambda: None) and "Router alerts" not in checkup(up=_router_up), "check-up: no login (or not asked) means no such line")
+check("Router alerts" not in checkup(up={("192.168.1.1", 22)}, alerts=lambda: ["x"]), "check-up: a router that does not answer at 10.0.0.1 is not asked for alerts")
+
+
+# D1 (feature 015): the Owner tools move the oldest closed months of sales to the computer, checked, then off the router
+class FakeRouterSsh:
+    """Runs the commands against a folder that stands in for /etc/coinslot.d."""
+    def __init__(self, folder, fail_cat=False):
+        self.folder, self.fail_cat, self.commands = folder, fail_cat, []
+
+    def run(self, host, cmd, *flags, **kw):
+        self.commands.append(cmd)
+        if self.fail_cat and cmd.startswith("cat "):
+            return subprocess.CompletedProcess(cmd, 0, b"truncated", b"")   # a copy that does not match the router's file
+        return subprocess.run(["sh", "-c", cmd.replace("/etc/coinslot.d", self.folder)], capture_output=kw.get("capture_output", False),
+                              text=kw.get("text", False), stdin=subprocess.DEVNULL, check=False)
+
+
+sales = tempfile.mkdtemp()
+for name in ("revenue-2026-06.csv", "revenue-2026-07.csv", "revenue-2026-08.csv", "revenue.csv", "revenue-2026-08.csv.bak", "vouchers.txt"):
+    with open(os.path.join(sales, name), "w") as f:
+        f.write("rows of " + name + "\n" * 3)
+dest = tempfile.mkdtemp()
+moved = ps.move_sales_months(FakeRouterSsh(sales), "10.0.0.1", 2, dest)
+check([m[0] for m in moved] == ["revenue-2026-06.csv", "revenue-2026-07.csv"], "sales months: the two OLDEST closed months are moved: " + str(moved))
+check(sorted(os.listdir(dest)) == ["revenue-2026-06.csv", "revenue-2026-07.csv"] and open(os.path.join(dest, "revenue-2026-06.csv")).read().startswith("rows of revenue-2026-06"),
+      "sales months: they are on this computer")
+left = sorted(os.listdir(sales))
+check(left == ["revenue-2026-08.csv", "revenue-2026-08.csv.bak", "revenue.csv", "vouchers.txt"], "sales months: only those two left the router; the newest closed month, the current file and other files stay: " + str(left))
+dest2 = tempfile.mkdtemp()
+bad = FakeRouterSsh(sales, fail_cat=True)
+try:
+    ps.move_sales_months(bad, "10.0.0.1", 1, dest2)
+    err = ""
+except ps.ToolError as e:
+    err = str(e)
+check("did not match" in err and os.path.exists(os.path.join(sales, "revenue-2026-08.csv")) and not any(c.startswith("rm ") for c in bad.commands),
+      "sales months: a copy that does not match the router's file removes nothing: " + err)
+try:
+    ps.move_sales_months(FakeRouterSsh(tempfile.mkdtemp()), "10.0.0.1", 1, dest2)
+    err = ""
+except ps.ToolError as e:
+    err = str(e)
+check("no closed months" in err, "sales months: a router with no closed month says so: " + err)
+try:
+    ps.move_sales_months(FakeRouterSsh(sales), "10.0.0.1", 0, dest2)
+    err = ""
+except ps.ToolError as e:
+    err = str(e)
+check("at least 1" in err, "sales months: zero months is refused")
 
 
 def _no_call():
