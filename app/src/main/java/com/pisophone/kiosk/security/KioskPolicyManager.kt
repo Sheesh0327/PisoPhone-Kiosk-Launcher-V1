@@ -72,7 +72,7 @@ object KioskPolicyManager {
 
     /**
      * Applies only the policies that differ between renter mode and an admin maintenance
-     * window: the lock task allowlist and the Wi-Fi configuration restriction.
+     * window: the lock task allowlist, the Wi-Fi configuration restriction and the app removal restriction.
      */
     fun applyMaintenanceAccess(context: Context) {
         val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as? DevicePolicyManager ?: return
@@ -85,6 +85,7 @@ object KioskPolicyManager {
         }
         applyPowerMenu(context, dpm, componentName)
         applyWifiConfigRestriction(context, dpm, componentName)
+        applyAppRemovalRestriction(context, dpm, componentName)
         // the single-network lock is lifted while the window is open and back on as soon as it ends
         com.pisophone.kiosk.network.KioskWifi.lockToKioskNetwork(context)
     }
@@ -105,6 +106,26 @@ object KioskPolicyManager {
             dpm.setLockTaskFeatures(componentName, features)
         } catch (e: Exception) {
             Log.w(TAG, "Could not set the lock task features: ${e.message}")
+        }
+    }
+
+    /**
+     * Customers cannot remove or stop apps, but the owner can during an admin maintenance window (feature 031): Settings, Apps,
+     * Uninstall works while the window is open and is blocked again as soon as it ends.
+     */
+    fun appRemovalAllowed(maintenanceActive: Boolean): Boolean = maintenanceActive
+
+    private fun applyAppRemovalRestriction(context: Context, dpm: DevicePolicyManager, componentName: ComponentName) {
+        try {
+            if (appRemovalAllowed(AdminMaintenanceMode.isActive(context))) {
+                dpm.clearUserRestriction(componentName, UserManager.DISALLOW_UNINSTALL_APPS)
+                dpm.clearUserRestriction(componentName, UserManager.DISALLOW_APPS_CONTROL)
+            } else {
+                dpm.addUserRestriction(componentName, UserManager.DISALLOW_UNINSTALL_APPS)
+                dpm.addUserRestriction(componentName, UserManager.DISALLOW_APPS_CONTROL)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not update the app removal restrictions: ${e.message}")
         }
     }
 
@@ -226,8 +247,6 @@ object KioskPolicyManager {
                     dpm.clearUserRestriction(componentName, UserManager.DISALLOW_MODIFY_ACCOUNTS)
                     dpm.addUserRestriction(componentName, UserManager.DISALLOW_USB_FILE_TRANSFER)
                     dpm.addUserRestriction(componentName, UserManager.DISALLOW_MOUNT_PHYSICAL_MEDIA)
-                    dpm.addUserRestriction(componentName, UserManager.DISALLOW_APPS_CONTROL)
-                    dpm.addUserRestriction(componentName, UserManager.DISALLOW_UNINSTALL_APPS)
                     dpm.addUserRestriction(componentName, UserManager.DISALLOW_INSTALL_UNKNOWN_SOURCES)
                     dpm.addUserRestriction(componentName, UserManager.DISALLOW_SYSTEM_ERROR_DIALOGS)
                     dpm.addUserRestriction(componentName, UserManager.DISALLOW_NETWORK_RESET)
@@ -235,6 +254,7 @@ object KioskPolicyManager {
                     Log.w(TAG, "Could not apply user restrictions: ${e.message}")
                 }
                 applyWifiConfigRestriction(context, dpm, componentName)
+                applyAppRemovalRestriction(context, dpm, componentName)
 
                 applyPowerMenu(context, dpm, componentName)
 

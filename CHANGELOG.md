@@ -4,6 +4,8 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: the CI build number, shown as hundreds.tens.ones, build 466 is 4.6.6; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Phone app, **the owner can remove apps from a rental phone (feature 031).** Not tried on a phone yet (hardware check RS55).
+  - Uninstalling was blocked for good. Now it works while the admin maintenance window is open (admin PIN, then Settings, Apps, Uninstall) and is blocked again when the window ends; customers still cannot remove or stop apps. Money and time: not touched.
 - Phone app, **a phone that is already on the shop Wi-Fi no longer shows "Wi-Fi: joining ..." every minute (feature 030).** Not tried on a phone yet (hardware check RS54).
   - When Android hides the network name from the app, a connected phone with an address is now recognised as being on the kiosk network, so the toast says "connected" rarely and the phone is no longer reconnected every minute. Money and time: not touched.
 - Phone app, **YouTube, Chrome, Maps, Photos and Google's other apps are no longer switched off (feature 029).** Not tried on a phone yet (hardware check RS53).
