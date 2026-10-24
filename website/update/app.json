@@ -1,10 +1,10 @@
 {
-  "versionCode": 526,
-  "versionName": "5.2.6-dev",
-  "channel": "dev",
+  "versionCode": 531,
+  "versionName": "5.3.1",
+  "channel": "stable",
   
-  "signatureChecksum": "DiFF_STFcP7MrUKtszkGshMCDzo8YHv1Q1jtomQFpLU",
-  "sha256": "9e366df63d733643a85908b869bfa138413d08787e9556765b5ab86abdf441d5",
-  "size": 3549180,
+  "signatureChecksum": "Un0usqLMwnmeaowrY2g21EgRVWe4bTRDLUi2RH12WbE",
+  "sha256": "ee4a58acfa4e955562700dbee43ebbf1b3e2a321726ebf6b79700d279d9581c4",
+  "size": 3549182,
   "releaseDate": "2026-10-24"
 }
