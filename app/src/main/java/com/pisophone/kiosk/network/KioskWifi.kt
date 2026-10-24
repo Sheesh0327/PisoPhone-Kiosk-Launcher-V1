@@ -163,8 +163,9 @@ object KioskWifi {
         return try {
             val wm = app.getSystemService(Context.WIFI_SERVICE) as? WifiManager ?: return Join.ERROR
             if (!wm.isWifiEnabled) wm.isWifiEnabled = true
-            lockToKioskNetwork(app) // before joining: the allowlist must know the (possibly new) network first
-            if (isOnNetwork(wm, ssid)) return Join.ALREADY_ON
+            // before joining: the allowlist must know the (possibly new) network first
+            val locked = lockToKioskNetwork(app) && Build.VERSION.SDK_INT >= 33
+            if (isOnNetwork(wm, ssid, locked)) return Join.ALREADY_ON
 
             var suggested = false
             if (Build.VERSION.SDK_INT >= 29) {
@@ -198,7 +199,7 @@ object KioskWifi {
                     wm.enableNetwork(id, true)
                     wm.reconnect()
                     Log.i(TAG, "Joined the saved kiosk Wi-Fi \"$ssid\"")
-                    return if (isOnNetwork(wm, ssid)) Join.ALREADY_ON else Join.JOINING
+                    return if (isOnNetwork(wm, ssid, locked)) Join.ALREADY_ON else Join.JOINING
                 }
                 return rescueRefused(wm, ssid, existingId, suggested)
             }
@@ -276,19 +277,32 @@ object KioskWifi {
         KioskStatusToast.show(context, statusText(context, result), if (result == Join.ALREADY_ON) 600_000L else 60_000L)
     }
 
+    /**
+     * The phone is connected and Android hides the network's name from the app (no location permission: "<unknown ssid>"). It is on the
+     * kiosk network when the saved kiosk network is the one in use, or when it cannot be anything else: the allowlist holds the phone to the kiosk
+     * network, or the app is not allowed to see the saved networks at all (a network saved by the system, as the setup QR code does) and the
+     * phone has an address ([feature 030]). Pure, so it is tested without a phone.
+     */
+    fun connectedWithoutName(completed: Boolean, hasAddress: Boolean, lockedByAllowlist: Boolean, savedListVisible: Boolean, idMatches: Boolean): Boolean =
+        completed && hasAddress && (idMatches || lockedByAllowlist || !savedListVisible)
+
     @Suppress("DEPRECATION")
-    private fun isOnNetwork(wm: WifiManager, ssid: String): Boolean {
+    private fun isOnNetwork(wm: WifiManager, ssid: String, lockedByAllowlist: Boolean): Boolean {
         val info = wm.connectionInfo ?: return false
         if (info.supplicantState != SupplicantState.COMPLETED) return false
         // The name is hidden from apps without the location permission ("<unknown ssid>"): then the saved network's id decides.
         val name = info.ssid?.trim('"') ?: ""
         if (name == ssid) return true
         if (name.isNotEmpty() && name != WifiManager.UNKNOWN_SSID) return false
-        return try {
-            val id = wm.configuredNetworks?.firstOrNull { it.SSID == "\"$ssid\"" }?.networkId ?: -1
-            id >= 0 && info.networkId == id
+        var visible = true
+        var matches = false
+        try {
+            val saved = wm.configuredNetworks
+            visible = !saved.isNullOrEmpty()
+            matches = saved?.firstOrNull { it.SSID == "\"$ssid\"" }?.networkId?.let { it >= 0 && info.networkId == it } == true
         } catch (e: SecurityException) {
-            false
+            visible = false
         }
+        return connectedWithoutName(true, wifiAddress().isNotBlank(), lockedByAllowlist, visible, matches)
     }
 }
