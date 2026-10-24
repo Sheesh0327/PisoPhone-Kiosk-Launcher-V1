@@ -1,8 +1,8 @@
 {
-  "version": "1.5.18",
-  "sha256": "25361aa15f6260c074dd23adeef40e126fb49c4274fb2044a60742f01782ee60",
-  "size": 1673514,
-  "rollout": 100,
-  "changelog": "Setup without the router's internet, and each coin box network gets a name of its own (1.5.18).",
-  "sig": "MEUCIDfyz5He4lT6IIWv0iwtcpzpCLcIDfxPgdq896rRDFzqAiEAwUfL+zhJWvN7y8BWNGR73RvmSFIURJmKHk6FtSqqB2I="
+  "version": "1.5.19",
+  "sha256": "dc56962d5663d8fbd8365e6050d4df956090b50de0bb027d90737dd4d43fc400",
+  "size": 1678856,
+  "rollout": 0,
+  "changelog": "Router software release 1.5.19",
+  "sig": "MEQCIAgJCmKYZOIC4nXmwASQUYCoUlKdDeM/U3T2UbzIW8TuAiBLo+DorIkrL1ouSYKIbWqkbBM3PrkFYqEj32pch/P75w=="
 }
