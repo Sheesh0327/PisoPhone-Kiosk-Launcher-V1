@@ -2,7 +2,7 @@
   "version": "1.5.23",
   "sha256": "98c99c8bd57ce352d6cd2f4d01b457493385474c96e664e275951c8ade57a685",
   "size": 1457480,
-  "rollout": 0,
-  "changelog": "Router software release 1.5.23",
-  "sig": "MEUCIFaMl1QhvZ698+W5iAPDHZ4bYME/yszqTqtsq1EWSSmNAiEA38K5/6PMcr1oXxRjH2sdKbBrMtQHJb8F/Qfv6ooI9zI="
+  "rollout": 100,
+  "changelog": "Change Wifi mode default.",
+  "sig": "MEYCIQCo7GSLGTD+kOP4CPPXN3HJc4nQhnR0D/Ex1Yc3V8tHhAIhAI/BJntp10i076jSwLGqUSs+NHWuSYBe5NLJPPvURwQL"
 }
