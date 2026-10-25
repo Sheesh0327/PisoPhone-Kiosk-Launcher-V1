@@ -5,8 +5,8 @@ seriously.
 
 ## Reporting a vulnerability
 Please **do not open a public issue**. Use GitHub's private reporting: the repository's **Security** tab, **Report a
-vulnerability**. Include what you found, the firmware / app / router release it affects (`PISO_FW_VERSION`, the app version
-name, `PISO_RELEASE`), and how to reproduce it. If private reporting is not available to you, contact the repository owner
+vulnerability**. Include what you found, the firmware / app / router release it affects (`PISO_FW_VERSION` in `esp32_firmware/include/FirmwareVersion.h`,
+the app version name, the router release in `setup/RELEASE`), and how to reproduce it. If private reporting is not available to you, contact the repository owner
 through their GitHub profile and ask for a private channel before sharing details.
 
 You can expect an acknowledgement within a few days. Please give us reasonable time to fix a problem before you publish it.

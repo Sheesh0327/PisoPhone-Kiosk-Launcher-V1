@@ -16,7 +16,7 @@ file by themselves; a file for another CPU refuses to run before changing anythi
 (for example `riscv64_*`, older ARM) is refused with a clear message.
 
 What else the router needs:
-- **OpenWrt 23.05 or newer** with the `opennds` package, a **2.4 GHz** Wi-Fi radio (the coin box is 2.4 GHz only) and a LAN you can run SSH on.
+- **OpenWrt 23.05 or newer** with the `opennds` package (ImmortalWrt 23.05, an OpenWrt fork, is what the owner's 360T6M runs: `DISTRIB_DESCRIPTION` reads `ImmortalWrt 23.05.0`; other forks are not checked), a **2.4 GHz** Wi-Fi radio (the coin box is 2.4 GHz only) and a LAN you can run SSH on.
 - **Room (sizes from the builds; flash use is an estimate, not a reading from a router):** the portal program is 0.7 to 1.1 MB (about 0.57 MB on
   flash once compressed), the installed `piso-setup` command about 0.1 MB (about 0.05 MB), and an update keeps a backup of the old program (another
   ~0.9 MB) until the new one proves itself; the update file itself (1.1 to 1.7 MB) is held in memory, or in flash on a router with little free
@@ -31,8 +31,9 @@ What else the router needs:
 - **Wi-Fi 5 or 6 dual band** is better for customers (the 5 GHz band carries more people), but only 2.4 GHz is required.
 
 What is checked: every family's program runs its self-test, and the portal's own test suite passes, in an emulator (QEMU) in CI and here, including the
-big-endian MIPS build (byte order is where a port goes wrong). That is not the same as a real router of each kind: only the 360T6M
-(`mipsel`) has run on real hardware. Tell the owner which router you tried and what `piso-setup status` said.
+big-endian MIPS build (byte order is where a port goes wrong). That is not the same as a real router of each kind. So far only a Qihoo 360 T6
+router (`mipsel`) has run the program on real hardware, according to the owner's test log (`docs/REAL_WORLD_TESTING.md`). The other
+families are checked in emulation only. When you try a router, record which one it was and what `piso-setup status` said.
 
 The router's own changes are the same everywhere (setup script, console, backups, updates); only the program and its folder on the website
 differ: `mipsel` is at `https://pisophone.pages.dev/update/`, the others at `https://pisophone.pages.dev/update/<family>/`.
