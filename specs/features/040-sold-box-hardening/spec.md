@@ -1,6 +1,9 @@
 # Feature 040: prove the hardening of a box that leaves your hands (GATE 1)
 
 Status: **approved by the owner 2026-10-28 (epic D18). Runs first, in parallel with the deletions (epic D24).**
+Groups 1-2 attempted 2026-10-28: the bootloader could not be built in a cloud container (see `validation.md`); `bench.md` is
+written. The criterion 3 correction below is **accepted**. **Blocked before any bench work** on the open question in
+`docs/PROVISIONING_SOLD_UNIT.md` section 4 step 5 (the `SPI_BOOT_CRYPT_CNT` ordering).
 Branch: `feat/040-sold-box-hardening`   Area: firmware (bench work)   Epic: `specs/spec_03_overhaul.md` feature 040
 Release: **none** — this feature ships no software.
 
@@ -46,7 +49,9 @@ the procedure it proves. It writes **no source code** and produces **no release*
    `CONFIG_SECURE_FLASH_ENC_ENABLED` / Secure Boot V2 starts the irreversible steps itself on its first boot (it generates or
    uses a key, encrypts the flash, burns the eFuses), so it can never run on a board "with no eFuses burned". GATE 1 therefore
    runs on the bootloader the boxes already use, which has the same two rollback options; the hardened bootloader is first
-   run in step 4, where the rollback checks are repeated. The owner confirms this edit before the bench work.)*
+   run in step 4, where the rollback checks are repeated. **Accepted by the owner 2026-10-28.** The original criterion 3 was
+   impossible as written: a bootloader built with flash encryption in Release mode and Secure Boot V2 performs the irreversible
+   eFuse burns itself on its first boot, so there is no way to run it and leave the board unburned.)*
 4. Only once GATE 1 passes: run the eFuse steps on the sacrificial board and confirm a hardened board still updates.
 5. Record every result in the table at the end of `PROVISIONING_SOLD_UNIT.md`.
 
