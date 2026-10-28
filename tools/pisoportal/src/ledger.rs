@@ -20,13 +20,39 @@ fn hash_ok(h: &str) -> bool {
 }
 
 pub fn append(path: &str, now: u64, plan: &str, pesos: u32, minutes: u32, kind: &str) -> std::io::Result<()> {
+    append_with(path, now, plan, pesos, minutes, kind, &Budget::default())
+}
+
+/// The size budget (`LEDGER_MAX_KB`, `LEDGER_KEEP_MONTHS`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Budget {
+    pub max_kb: u64,
+    pub keep_months: u64,
+}
+
+impl Default for Budget {
+    fn default() -> Self {
+        Budget { max_kb: 1024, keep_months: 3 }
+    }
+}
+
+fn append_with(path: &str, now: u64, plan: &str, pesos: u32, minutes: u32, kind: &str, budget: &Budget) -> std::io::Result<()> {
     if let Some(dir) = std::path::Path::new(path).parent() {
         fs::create_dir_all(dir)?;
     }
     // money first: a roll that fails for any reason never stops the sale row from being written
     let _ = recover_roll(path);
-    let _ = roll_if_new_month(path, now);
-    append_row(path, now, plan, pesos, minutes, kind)
+    let rolled = roll_if_new_month(path, now).unwrap_or(false);
+    let row = append_row(path, now, plan, pesos, minutes, kind);
+    // the sale is on flash (or has failed) before anything is deleted; a prune that fails changes nothing about the sale
+    if rolled {
+        match prune(path, budget) {
+            Ok(r) if !r.reached => eprintln!("ledger: could not bring the revenue files inside {} KB ({} months deleted)", budget.max_kb, r.deleted.len()),
+            Err(e) => eprintln!("ledger: pruning old months failed: {}", e),
+            Ok(_) => {}
+        }
+    }
+    row
 }
 
 fn append_row(path: &str, now: u64, plan: &str, pesos: u32, minutes: u32, kind: &str) -> std::io::Result<()> {
@@ -81,17 +107,17 @@ fn effective(path: &str) -> String {
 
 /// The first row of a new month moves the old file to its segment and starts a new one with a `carry` row (never losing a row:
 /// the new file is written and flushed first, then two renames; a cut between them is finished by `recover_roll`).
-fn roll_if_new_month(path: &str, now: u64) -> std::io::Result<()> {
-    let Some(last_t) = last_row_time(path) else { return Ok(()) };
+fn roll_if_new_month(path: &str, now: u64) -> std::io::Result<bool> {
+    let Some(last_t) = last_row_time(path) else { return Ok(false) };
     let (old_m, new_m) = (month_of(last_t), month_of(now));
     if new_m <= old_m {
-        return Ok(()); // same month, or the clock went back: nothing to roll
+        return Ok(false); // same month, or the clock went back: nothing to roll
     }
     let seg = segment_path(path, &old_m);
     if std::path::Path::new(&seg).exists() {
-        return Ok(()); // a segment of that month is already there: never overwrite it
+        return Ok(false); // a segment of that month is already there: never overwrite it
     }
-    let Ok(sc) = scan(path) else { return Ok(()) }; // a changed ledger is left alone for the alert
+    let Ok(sc) = scan(path) else { return Ok(false) }; // a changed ledger is left alone for the alert
     let rl = format!("{},{},{},0,carry", now, sc.last, sc.sum);
     let tmp = format!("{}.new", path);
     let _ = fs::remove_file(&tmp);
@@ -100,7 +126,8 @@ fn roll_if_new_month(path: &str, now: u64) -> std::io::Result<()> {
     f.sync_all()?;
     drop(f);
     crate::util::rename_durable(path, &seg)?;
-    crate::util::rename_durable(&tmp, path)
+    crate::util::rename_durable(&tmp, path)?;
+    Ok(true)
 }
 
 fn last_row_time(path: &str) -> Option<u64> {
@@ -386,6 +413,47 @@ fn pruned_append(path: &str, p: &Pruned) -> std::io::Result<()> {
     let summary = Pruned { month: "earlier".into(), rows: all.iter().map(|x| x.rows).sum(), pesos: last.pesos, hash: last.hash };
     let text: String = std::iter::once(&summary).chain(rest.iter()).map(pruned_line).collect();
     crate::util::write_atomic(&rec, text.as_bytes())
+}
+
+/// What a prune did: the segments it deleted, and whether the files are now inside the budget.
+#[derive(Debug, PartialEq)]
+pub struct PruneReport {
+    pub deleted: Vec<String>,
+    pub reached: bool,
+}
+
+/// `(last hash, running total)` named by the carry row that starts a file, if it starts with one. Reads one line.
+fn first_carry(path: &str) -> Option<(String, u64)> {
+    let mut line = String::new();
+    std::io::BufRead::read_line(&mut std::io::BufReader::new(fs::File::open(path).ok()?), &mut line).ok()?;
+    let f: Vec<&str> = line.trim_end().split(',').collect();
+    (f.len() == 6 && f[4] == "carry").then(|| Some((f[1].to_string(), f[2].parse().ok()?)))?
+}
+
+/// Delete the oldest closed months until the files are inside the budget. Each month is written to `revenue-pruned.txt` and flushed
+/// first, then deleted, so a power cut at any point leaves a ledger that verifies (a recorded month whose file is still there is
+/// finished by the next prune). A segment that does not verify, or that the next file does not follow, is left alone: that is for the
+/// alert, not for deletion. Streams each file; reads no file whole (AO-03).
+fn prune(path: &str, budget: &Budget) -> std::io::Result<PruneReport> {
+    let mut report = PruneReport { deleted: Vec::new(), reached: true };
+    let (plan, _) = prune_plan(path, budget.max_kb);
+    let all = closed_segments(path);
+    for seg in plan {
+        let Ok(s) = scan(&seg) else { break };
+        let next = all.iter().position(|x| *x == seg).and_then(|i| all.get(i + 1)).cloned().unwrap_or_else(|| effective(path));
+        if first_carry(&next) != Some((s.last.clone(), s.sum)) {
+            break;
+        }
+        let month = seg.strip_suffix(".csv").and_then(|x| x.get(x.len().saturating_sub(7)..)).unwrap_or("").to_string();
+        if pruned_read(path).last().map(|p| p.month != month).unwrap_or(true) {
+            let rows = (s.n - usize::from(s.start_prev.is_some())) as u64;
+            pruned_append(path, &Pruned { month, rows, pesos: s.sum, hash: s.last })?;
+        }
+        fs::remove_file(&seg)?;
+        report.deleted.push(seg);
+    }
+    report.reached = prune_plan(path, budget.max_kb).1;
+    Ok(report)
 }
 
 #[cfg(test)]
@@ -780,5 +848,88 @@ mod tests {
         assert_eq!((got[0].pesos, got[0].hash.clone()), (pr(last_dropped).pesos, pr(last_dropped).hash), "total and hash of the newest folded month");
         assert_eq!(*got.last().unwrap(), pr(months - 1));
         assert_eq!(&got[1..], &(months - kept..months).map(pr).collect::<Vec<_>>()[..]);
+    }
+
+    // ---- feature 032 group 3: the prune at the month roll ------------------------------------------------------------------------
+    fn busy(a: &str, b: &Budget, months: u64, per_month: u64) {
+        for m in 0..months {
+            for n in 0..per_month {
+                let pesos = (n % 5 + 1) as u32;
+                append_with(a, at(m, n), "hyper", pesos, pesos * 6, "topup", b).unwrap();
+            }
+        }
+    }
+
+    #[test]
+    fn f032_g3_24_months_are_pruned_to_the_budget_and_keep_at_least_three() {
+        let a = tmpdir("g3-24");
+        let b = Budget { max_kb: 1024, keep_months: 3 };
+        busy(&a, &b, 23, 2000);
+        append_with(&a, at(23, 0), "hyper", 1, 6, "topup", &b).unwrap(); // the first sale of month 24: the roll, then the prune
+        assert!(all_size(&a) <= 1024 * 1024, "{} bytes", all_size(&a));
+        assert!(closed_segments(&a).len() >= 3, "{:?}", closed_segments(&a));
+        assert!(pruned_read(&a).len() >= 10, "months were really pruned: {}", pruned_read(&a).len());
+        assert_eq!(verify(&a).map(|v| v.0), Ok(2), "revenue.csv is the new month: a carry row and the sale");
+    }
+
+    #[test]
+    fn f032_g3_the_ledger_never_holds_more_than_the_budget_plus_one_month() {
+        let a = tmpdir("g3-peak");
+        let b = Budget { max_kb: 128, keep_months: 3 };
+        let month = 2000 * 45;
+        for m in 0..10 {
+            busy_month(&a, &b, m, 2000);
+            assert!(all_size(&a) <= 128 * 1024 + month + 4096, "month {}: {} bytes", m, all_size(&a));
+        }
+    }
+    fn busy_month(a: &str, b: &Budget, m: u64, per_month: u64) {
+        for n in 0..per_month {
+            let pesos = (n % 5 + 1) as u32;
+            append_with(a, at(m, n), "hyper", pesos, pesos * 6, "topup", b).unwrap();
+        }
+    }
+
+    #[test]
+    fn f032_g3_a_power_cut_between_the_record_and_the_delete_is_finished_by_the_next_roll() {
+        let a = tmpdir("g3-cut");
+        let b = Budget { max_kb: 10, keep_months: 3 };
+        busy(&a, &Budget { max_kb: 0, keep_months: 3 }, 4, 100); // 3 closed months, none pruned
+        let oldest = closed_segments(&a)[0].clone();
+        let s = scan(&oldest).unwrap();
+        // the record is written and flushed, then the power goes: the file is still there
+        pruned_append(&a, &Pruned { month: "2026-08".into(), rows: s.n as u64, pesos: s.sum, hash: s.last.clone() }).unwrap();
+        assert!(std::path::Path::new(&oldest).exists());
+        assert!(verify_all(&a).is_ok(), "a recorded month whose file is still there is no error");
+        append_with(&a, at(4, 0), "hyper", 1, 6, "topup", &b).unwrap();
+        assert!(!std::path::Path::new(&oldest).exists(), "the next roll finishes the prune");
+        let months: Vec<String> = pruned_read(&a).into_iter().map(|p| p.month).collect();
+        assert_eq!(months.iter().filter(|m| *m == "2026-08").count(), 1, "the finished prune does not write the month twice: {:?}", months);
+        assert!(verify_all(&a).is_ok());
+    }
+
+    #[test]
+    fn f032_g3_zero_deletes_nothing_and_a_busy_shop_is_pruned_below_three_months() {
+        let a = tmpdir("g3-zero");
+        busy(&a, &Budget { max_kb: 0, keep_months: 3 }, 6, 200);
+        assert_eq!(closed_segments(&a).len(), 5);
+        assert!(!std::path::Path::new(&pruned_path(&a)).exists());
+        let b = tmpdir("g3-busy");
+        let bud = Budget { max_kb: 14, keep_months: 3 }; // about 9 KB a month: 3 months do not fit
+        busy(&b, &bud, 6, 200);
+        append_with(&b, at(6, 0), "hyper", 1, 6, "topup", &bud).unwrap();
+        assert!(closed_segments(&b).len() < 3, "the budget wins over the months wanted (D2): {}", closed_segments(&b).len());
+        assert!(all_size(&b) <= 14 * 1024);
+    }
+
+    #[test]
+    fn f032_g3_a_prune_that_fails_never_stops_the_sale_row() {
+        let a = tmpdir("g3-fail");
+        let b = Budget { max_kb: 5, keep_months: 3 };
+        busy(&a, &Budget { max_kb: 0, keep_months: 3 }, 4, 100);
+        fs::create_dir(pruned_path(&a)).unwrap(); // the record cannot be written: a directory sits where the file should be
+        let before = verify_all(&a).unwrap().1;
+        append_with(&a, at(4, 0), "hyper", 7, 42, "topup", &b).unwrap();
+        assert_eq!(closed_segments(&a).len(), 4, "nothing was deleted without a record");
+        assert_eq!(verify_all(&a).map(|v| v.1), Ok(before + 7), "and the sale was written");
     }
 }

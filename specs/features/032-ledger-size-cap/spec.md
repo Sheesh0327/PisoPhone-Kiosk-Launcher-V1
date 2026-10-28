@@ -77,7 +77,10 @@ cannot be told from one that never had them.
 ## When pruning runs
 Only at a month roll, inside `append`, immediately after `roll_if_new_month` succeeds and **after** the new sale row is written.
 A month cannot by itself exceed a 1 MB budget (about 20,000 rows, roughly 66 days at 300 sales a day), so a monthly check is
-enough and keeps the common `append` path untouched. Errors are swallowed exactly as `roll_if_new_month`'s are.
+enough and keeps the common `append` path untouched.
+The budget is checked at the roll, with the new month almost empty, so the files fit the budget right after a roll and the current
+month then grows on top: the most the ledger can hold between two rolls is **the budget plus one month of rows** (about 380 KB
+for 300 sales a day, so about 1.4 MB, still inside the 2 MB of flash). Criterion 1 is measured right after a roll. Errors are swallowed exactly as `roll_if_new_month`'s are.
 
 Order of operations, so that any power cut is safe:
 1. Compute the total size of all ledger files. While it is over the budget and more than `LEDGER_KEEP_MONTHS` closed segments
