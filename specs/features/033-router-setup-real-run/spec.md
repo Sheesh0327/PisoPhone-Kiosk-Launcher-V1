@@ -1,6 +1,6 @@
 # Feature 033: the router installer in a real shop
 
-Status: **draft: waiting for the owner to approve this spec and plan**   Branch: `feat/033-router-setup-real-run` (from `origin/main` plus the epic commit, as for 032)   Area: router (`setup/install.sh`, `setup/src/*.sh`, `router/piso_monitor.sh`, the setup program's answer line)
+Status: **approved by the owner 2026-10-28 (spec, plan and Q1 to Q3); in progress**   Branch: `feat/033-router-setup-real-run` (from `origin/main` plus the epic commit, as for 032)   Area: router (`setup/install.sh`, `setup/src/*.sh`, `router/piso_monitor.sh`, the setup program's answer line)
 Backlog rows: SU-03, SU-11, SU-06b, SU-05, SU-07, SU-08 (`specs/spec_03_findings.json`; SU-08 may close `wont-fix` on RS57 (c) evidence)   Release: router (`setup/RELEASE` 1.5.23 -> 1.5.24; CI signs and publishes at 0%, the owner raises it)
 
 ## Intent
@@ -56,6 +56,7 @@ Each becomes a line in `validation.md`; ids follow spec 03 section 7.
 
 ## Owner decisions
 Spec 03 D1 to D8 are answered. For this feature:
-- **Q1** (spec 03) Which routers should `docs/ROUTERS.md` list as supported besides the 360T6M? Recommended: only models someone has set up, each with the OpenWrt release used.
-- **Q2** If the 150 KB limit of the installed command is reached, may the limit be raised in `test_footprint.py`? Recommended: first make the code smaller; raise by at most 10 KB only with your word.
-- **Q3** SU-08 is decided by evidence: write the test first; if the session survives on the 360T6M (RS57 (c)) the row closes `wont-fix`. Recommended: yes.
+Answered by the owner on 2026-10-28 (all three as recommended):
+- **Q1** `docs/ROUTERS.md` lists only models someone has set up, each with the OpenWrt release used (today the 360T6M).
+- **Q2** Make the code smaller first; the 150 KB limit is raised only with the owner's word (at most 10 KB).
+- **Q3** SU-08 is decided by evidence: test first; fix only if the setup is cut, else `wont-fix` with the RS57 (c) result.
