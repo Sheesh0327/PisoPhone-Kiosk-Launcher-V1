@@ -63,7 +63,9 @@ tools/pisoportal/tests/test_wheel_graphics.py
 ```
 tools/pisoportal/tests/test_soak.py          (drop any wheel step; the soak must still run)
 router/tests/test_footprint.py               (the size expectations change: the program gets smaller)
-website/console/ui.js                        (remove the wheel panel)   <- NOT generated, safe to edit
+tools/pisoportal/src/console-ui.js           (remove the wheel panel script; 8 lines)
+tools/pisoportal/src/console.html            (remove the wheel card and the responsibility dialog; 8 lines)
+tools/pisoportal/src/page.html               (remove the "Spin the wheel" link, line 117)
 website/manual.html                          (remove the wheel section)
 docs/ARCHITECTURE.md                         (section 5 table row, and the wheel paragraph)
 docs/ROUTERS.md                              (any wheel mention)
@@ -71,6 +73,7 @@ docs/REAL_WORLD_TESTING.md                   (RS34: mark removed with a one-line
 specs/RELEASE_STATE.md                       (the wheel paragraph; say it was removed in this release)
 CHANGELOG.md                                 (one owner-readable line)
 ```
+`website/console/ui.js` and `ui.json` are NOT edited by hand (corrected 2026-10-28: they are the signed copy that `publish-router.yml` makes from `src/console-ui.js`; a hand edit would break the signature). The three `src/` files above are the real source, and criterion 1 needs them clean.
 Check `website/js/VENDORED.md` is untouched, and **never hand-edit** anything in `CLAUDE.md` section 4's generated list.
 
 ## Routers that turned the wheel on
@@ -95,8 +98,9 @@ exists:
 
 ## Success criteria
 Each becomes a line in `validation.md` with real command output.
-1. `rg -n "wheel|WHEEL" tools/pisoportal/src/ router/ setup/src/` returns **nothing** (the word is gone from the program and the
-   installer). Documentation and `CHANGELOG.md` may still mention it historically.
+1. `rg -n "wheel|WHEEL" tools/pisoportal/src/ router/ setup/src/` returns **only** the two places the other criteria require (corrected 2026-10-28, the spec contradicted itself): the
+   `WHEEL=` guard test in `config.rs` (criterion 7) and the one-time notice that reads `wheel-confirm.txt` and writes `alerts.txt`
+   (criterion 13). Every other match is a leftover and fails. Documentation and `CHANGELOG.md` may still mention it historically.
 2. `cd tools/pisoportal && cargo test` passes, with no wheel tests remaining and no test merely `#[ignore]`d.
 3. `cd tools/pisoportal && python3 tests/test_flow.py` passes.
 4. `python3 router/tests/test_setup.py`, `test_pisophone_setup.py`, `test_setup_web.py`, `test_setup_tools.py` pass.
