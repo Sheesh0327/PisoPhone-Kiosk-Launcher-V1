@@ -3,7 +3,7 @@
 commands here with sh, against a fake router (fake wget serving the repository's files from a folder, fake uci, ubus and
 jsonfilter), with the real one-line installer (setup/install.sh) and a stand-in setup file.
 Run with:  python3 router/tests/test_pisophone_setup.py"""
-import base64, hashlib, importlib.util, io, os, re, shutil, subprocess, sys, tempfile, time, types, urllib.error, urllib.parse
+import base64, hashlib, importlib.util, io, json, os, re, shutil, subprocess, sys, tempfile, time, types, urllib.error, urllib.parse
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 spec = importlib.util.spec_from_file_location("pisophone_setup", f"{ROOT}/setup/pisophone_setup.py")
@@ -1141,6 +1141,135 @@ r = offline_run(inet=True)
 check(r.err and "apk" in r.err and "25.12.0" in r.err and "ROUTERS.md" in r.err and "Nothing was changed" in r.err, "an apk router: refused, naming its release and the supported ones: " + str(r.err))
 check(r.wget == "" and "SETUP-RAN" not in r.out and r.uci == "" and not any("ping -c 1" in c for c in commands(r)) and not any("cat >" in c for c in commands(r)),
       "and nothing was tried on it (no download, no internet test, no copy, no setup, no change)")
+# feature 032 (SU-02): the computer's internet goes through the router's cable and the router has none: ask to unplug it for the download
+class Clock:
+    def __init__(self): self.t = 0.0
+    def now(self): return self.t
+    def sleep(self, seconds): self.t += seconds
+
+
+def site_opener(state):
+    def opener(request, timeout=None):
+        if state["cable_in"]:
+            raise urllib.error.URLError("no route to host")
+        return urllib.request.urlopen(request, timeout=timeout)
+    return opener
+
+
+clock = Clock()
+st = {"cable_in": False}
+notes = []
+check(ps.wait_for_site(WEB, site_opener(st), notes.append, lambda t: None, clock.sleep, clock.now) is False and notes == [], "the website answers: no prompt, nothing unplugged")
+serve_offline_site()
+st["cable_in"] = True
+notes = []
+
+
+def unplug_on_ask(msg):
+    notes.append(msg)
+    if msg.startswith("Unplug the network cable"):
+        st["cable_in"] = False
+
+
+check(ps.wait_for_site(WEB, site_opener(st), unplug_on_ask, lambda t: None, clock.sleep, clock.now) is True and len(notes) == 1 and "router" in notes[0],
+      "the website does not answer: the cable is asked to be unplugged, and it is noted that it was: " + str(notes))
+st["cable_in"] = True
+notes = []
+try:
+    ps.wait_for_site(WEB, site_opener(st), notes.append, lambda t: None, clock.sleep, clock.now, wait=30)
+    why = "did not raise"
+except ps.OfflineNotPossible as e:
+    why = e.reason
+check("website" in why and "unplug" in why.lower() and clock.now() >= 30, "nobody unplugs it: after the wait it gives up with the reason (the router's internet decides): " + why)
+rec = []
+probes = iter([False, False, True])
+ps.wait_for_router("10.0.0.1", lambda h: next(probes), rec.append, lambda t: None, clock.sleep, clock.now)
+check(len(rec) == 1 and rec[0].startswith("Plug the network cable back"), "then it asks for the cable to be plugged back in and waits until the router answers: " + str(rec))
+try:
+    ps.wait_for_router("10.0.0.1", lambda h: False, lambda t: None, lambda t: None, clock.sleep, clock.now, wait=20)
+    why = "did not raise"
+except ps.SetupError as e:
+    why = str(e)
+check("router" in why and "plug" in why.lower(), "a router that never answers again: it stops and says so: " + why)
+
+# end to end: install() with the cable on the router, no internet that way; the owner unplugs, the bundle is downloaded, the cable goes back
+router_knows(serve_offline_site())
+open(f"{tmp}/lan", "w").write("10.0.0.1")
+open(f"{tmp}/probe", "w").write("configured")
+open(f"{tmp}/result", "w").write("ok")
+open(f"{tmp}/inet", "w").write("0")
+if os.path.exists(f"{tmp}/needpw"):
+    os.remove(f"{tmp}/needpw")
+st = {"cable_in": True}
+events, emitted = [], []
+
+
+def cable_notify(msg):
+    events.append(msg)
+    if msg.startswith("Unplug the network cable"):
+        st["cable_in"] = False
+    elif msg.startswith("Plug the network cable back"):
+        st["cable_in"] = True
+
+
+ssh_ = ps.Ssh(tmp)
+ssh_.set_password("")
+out_ = tempfile.mkdtemp()
+result = ps.install(ssh_, "10.0.0.1", {k: "Aa12345678" for k in ps.ANSWER_ORDER}, "main", out_, emitted.append, lambda: True, online=False, offline_site=OFFLINE_SITE,
+                    opener=site_opener(st), notify=cable_notify, probe=lambda h: True, sleep=clock.sleep, clock=clock.now)
+check(result["ok"] and [e.split(" ")[0] for e in events] == ["Unplug", "Plug"], "install(): asked to unplug, then to plug back in, and finished the setup: " + str(events))
+check(st["cable_in"] and not os.path.exists(f"{fake_root}/tmp/piso-offline"), "the cable is back in and the bundle is gone from the router")
+# the early download at Start (the coin box software for every chip, the installer files and app.json) and the copy used when the website is out of reach later
+fw_bytes = {"a.bin": b"image-a" * 10, "b.bin": b"image-b" * 10}
+served_site = {"/flash/manifest.json": json.dumps({"builds": [
+    {"chip": "esp32c3", "file": n, "size": len(b), "sha256": hashlib.sha256(b).hexdigest(), "product": "full"} for n, b in fw_bytes.items()]}).encode(),
+    "/update/app.json": b'{"version": 1}', "/install.sh": b"#!/bin/sh\necho install\n"}
+for n, b in fw_bytes.items():
+    served_site["/flash/" + n] = b
+for n in ps.ROUTER_INSTALLERS:
+    served_site["/setup/" + n] = b"setup " + n.encode()
+    served_site["/setup/" + n + ".sha256"] = hashlib.sha256(b"setup " + n.encode()).hexdigest().encode()
+
+
+class FakeBody:
+    def __init__(self, body): self.body = body
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+    def read(self, n=-1): return self.body
+
+
+def fake_site(request, timeout=None):
+    path = request.full_url.split("pisophone.pages.dev", 1)[1]
+    if path not in served_site:
+        raise urllib.error.HTTPError(request.full_url, 404, "not found", {}, None)
+    return FakeBody(served_site[path])
+
+
+fw_dir, site_dir = tempfile.mkdtemp(), tempfile.mkdtemp()
+problems = ps.prefetch_site("main", fw_dir, site_dir, opener=fake_site)
+check(problems == [] and len(os.listdir(fw_dir)) == 3, f"the early download keeps the software list and the image of every chip: {problems} {os.listdir(fw_dir)}")
+check(all(os.path.exists(os.path.join(site_dir, *rel.split("/"))) for rel in ("update/app.json", "install.sh", "setup/piso-setup.sh", "setup/piso-setup-x86_64.sh.sha256")),
+      "and app.json, install.sh and the setup file of every router family")
+fw_dir2, site_dir2 = tempfile.mkdtemp(), tempfile.mkdtemp()
+check(ps.prefetch_site("main", fw_dir2, site_dir2, with_router=False, opener=fake_site) == [] and not os.path.exists(os.path.join(site_dir2, "install.sh"))
+      and os.path.exists(os.path.join(site_dir2, "update", "app.json")), "PisoPhone only: no router files")
+
+
+def dead_site(request, timeout=None):
+    raise urllib.error.URLError("no route to host")
+
+
+check(len(ps.prefetch_site("main", tempfile.mkdtemp(), tempfile.mkdtemp(), opener=dead_site)) >= 2, "with no website the early download reports what failed and does not raise")
+quiet = []
+check(ps.site_file("https://pisophone.pages.dev", "/install.sh", "install.sh", dead_site, site_dir, quiet.append) == served_site["/install.sh"] and quiet and "kept" in quiet[0],
+      "later, with the website out of reach, the copy kept from the start is used and said so: " + str(quiet))
+try:
+    ps.site_file("https://pisophone.pages.dev", "/install.sh", "install.sh", dead_site, tempfile.mkdtemp(), quiet.append)
+    why = "did not raise"
+except ps.OfflineNotPossible as e:
+    why = e.reason
+check("install.sh" in why, "and with no copy kept it fails naming the file: " + why)
+
 # too little memory is a reason to fall back, found before the router is touched
 router_knows(serve_offline_site(), mem=24000)
 r = offline_run(inet=True)

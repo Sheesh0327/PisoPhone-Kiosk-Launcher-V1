@@ -2211,7 +2211,99 @@ def download_bytes(url, name, opener=urllib.request.urlopen, timeout=120):
         raise OfflineNotPossible(f"{name} could not be downloaded ({e})")
 
 
-def build_offline_bundle(info, branch, out_dir, opener=urllib.request.urlopen, site=None, emit=None):
+ROUTER_INSTALLERS = ("piso-setup.sh", "piso-setup-mips.sh", "piso-setup-aarch64.sh", "piso-setup-armv7.sh", "piso-setup-x86_64.sh")
+SITE_WAIT = 300   # seconds the setup waits for the owner to unplug the router's cable (for the download) and to plug it back in
+
+
+def site_cache_dir():
+    """Where the website's files are kept from the start of the setup (next to the coin box software cache)."""
+    return os.path.join(default_out_dir(), "site-cache")
+
+
+def site_file(site, path, name, opener=urllib.request.urlopen, site_cache=None, emit=None):
+    """A file of the website: downloaded; when that fails, the copy kept at the start of the setup (said so), else OfflineNotPossible."""
+    try:
+        return download_bytes(site.rstrip("/") + path, name, opener)
+    except OfflineNotPossible:
+        if site_cache:
+            try:
+                with open(os.path.join(site_cache, *path.strip("/").split("/")), "rb") as f:
+                    data = f.read()
+                (emit or (lambda line: None))(f"{name} could not be downloaded now: using the copy this computer kept from the start.")
+                return data
+            except OSError:
+                pass
+        raise
+
+
+def prefetch_site(branch, firmware_cache, site_cache, with_router=True, opener=urllib.request.urlopen, emit=None):
+    """At the start of the setup, while this computer's own internet works: keeps the coin box software (the list and the image of every
+    chip), app.json and, for a router setup, install.sh and the setup file of every router family. Returns what could not be
+    downloaded (a list of texts); it never raises, and a later step downloads again what is missing."""
+    problems = []
+    site = site_url(branch)
+    try:
+        for build in flash_manifest(branch, firmware_cache, opener, emit=lambda line: None)["builds"]:
+            try:
+                fetch_image(branch, build, firmware_cache, opener)
+            except SetupError as e:
+                problems.append(str(e))
+    except SetupError as e:
+        problems.append(str(e))
+    wanted = ["/update/app.json"]
+    if with_router:
+        wanted += ["/install.sh"] + [f"/setup/{n}{ext}" for n in ROUTER_INSTALLERS for ext in ("", ".sha256")]
+    for path in wanted:
+        try:
+            data = download_bytes(site + path, path.lstrip("/"), opener, timeout=60)
+            target = os.path.join(site_cache, *path.strip("/").split("/"))
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            with open(target + ".part", "wb") as f:
+                f.write(data)
+            os.replace(target + ".part", target)
+        except (OfflineNotPossible, OSError) as e:
+            problems.append(e.reason if isinstance(e, OfflineNotPossible) else str(e))
+    return problems
+
+
+def wait_for_site(site, opener, notify, emit, sleep=time.sleep, now=time.monotonic, wait=SITE_WAIT):
+    """True when the website did not answer and the owner unplugged the router's cable (so this computer's own internet works);
+    False when it answered at once. With the cable still in, a computer sends its internet through the router, and a router
+    that is not on the internet yet gives it none. Raises OfflineNotPossible when it still does not answer after `wait` seconds."""
+    def answers():
+        try:
+            with opener(urllib.request.Request(site.rstrip("/") + "/install.sh", headers={"User-Agent": USER_AGENT}), timeout=10) as r:
+                r.read(1)
+            return True
+        except (OSError, ValueError, http.client.HTTPException):
+            return False
+    if answers():
+        return False
+    notify("Unplug the network cable from the router now: this computer needs its own internet to download the router's software, and "
+           "its internet goes through the router, which has none. The installation continues by itself.")
+    end = now() + wait
+    while now() < end:
+        sleep(3)
+        if answers():
+            return True
+    raise OfflineNotPossible("this computer cannot reach the website (pisophone.pages.dev), also not after the router's network cable was "
+                             "asked to be unplugged: check this computer's own internet")
+
+
+def wait_for_router(host, probe, notify, emit, sleep=time.sleep, now=time.monotonic, wait=SITE_WAIT):
+    """After the download: asks for the cable to be plugged back in and waits until the router answers again."""
+    notify("Plug the network cable back into the router. The installation continues by itself.")
+    end = now() + wait
+    while now() < end:
+        if probe(host):
+            emit("The router answers again.")
+            return
+        sleep(3)
+    raise SetupError(f"the router at {host} does not answer. Plug this computer's network cable back into one of its LAN ports and try again: "
+                     "nothing was changed on the router.")
+
+
+def build_offline_bundle(info, branch, out_dir, opener=urllib.request.urlopen, site=None, emit=None, site_cache=None):
     """Prepares, on this computer, everything the router needs for a first setup without its internet, in `out_dir`:
     install.sh, the setup file for the router's CPU with its .sha256, and pkgs/ with the packages the router is missing (downloaded
     from the router's own package sources and checked against their lists here too), each used source's Packages and Packages.sig,
@@ -2220,6 +2312,7 @@ def build_offline_bundle(info, branch, out_dir, opener=urllib.request.urlopen, s
     emit = emit or (lambda line: None)
     site = site or site_url(branch)
     get = lambda url, name: download_bytes(url, name, opener)
+    get_site = lambda path, name: site_file(site, path, name, opener, site_cache, emit)
     raw, skipped = {}, []
     for name, url in info["feeds"]:
         if not re.fullmatch(r"[A-Za-z0-9_.-]+", name):
@@ -2266,13 +2359,13 @@ def build_offline_bundle(info, branch, out_dir, opener=urllib.request.urlopen, s
     put("pkgs/order.txt", "".join(n + "\n" for n in names).encode())
     setup_file = installer_file_for(info["arch"])
     emit(f"Downloading {setup_file}")
-    data = get(f"{site}/setup/{setup_file}", setup_file)
-    want = get(f"{site}/setup/{setup_file}.sha256", f"{setup_file}.sha256")
+    data = get_site(f"/setup/{setup_file}", setup_file)
+    want = get_site(f"/setup/{setup_file}.sha256", f"{setup_file}.sha256")
     if hashlib.sha256(data).hexdigest() != want.decode("utf-8", "replace").strip()[:64]:
         raise OfflineNotPossible(f"{setup_file} does not match its sha256 (a damaged download: try again)")
     put(setup_file, data)
     put(f"{setup_file}.sha256", want)
-    put("install.sh", get(f"{site}/install.sh", "install.sh"))
+    put("install.sh", get_site("/install.sh", "install.sh"))
     files = []
     for root, _dirs, found in os.walk(out_dir):
         for f in found:
@@ -2434,7 +2527,7 @@ def renew_address():
 
 
 def install(ssh, host, answers, branch, out_dir, emit, wait_move, stage=lambda n: None, online=False, offline_site=None,
-            opener=urllib.request.urlopen):
+            opener=urllib.request.urlopen, notify=None, site_cache=None, probe=port_open, sleep=time.sleep, clock=time.monotonic):
     """The installation: on a factory router the installer first moves it to 10.0.0.1 (wait_move() waits for that), then
     the setup runs with the answers. Returns the result (ok, state, saved files, summary); raises SetupError when it could
     not run to its end.
@@ -2446,6 +2539,7 @@ def install(ssh, host, answers, branch, out_dir, emit, wait_move, stage=lambda n
     state = {"local": False, "pushed": False, "moved": False}
     work = None
     info = bundle = None
+    notify = notify or emit
     if ssh.env is not None and login_refused(ssh, host):   # (a terminal ssh asks for the password itself)
         raise SetupError(login_refused_message(ssh))
 
@@ -2475,7 +2569,10 @@ def install(ssh, host, answers, branch, out_dir, emit, wait_move, stage=lambda n
                 info = read_router_feeds(ssh, host)
                 emit("Preparing the router's packages on this computer, so that the router does not need the internet...")
                 work = tempfile.mkdtemp(prefix="piso-offline-")
-                bundle = build_offline_bundle(info, branch, work, opener=opener, site=offline_site, emit=emit)
+                unplugged = wait_for_site(offline_site or site_url(branch), opener, notify, emit, sleep, clock)
+                bundle = build_offline_bundle(info, branch, work, opener=opener, site=offline_site, emit=emit, site_cache=site_cache)
+                if unplugged:
+                    wait_for_router(host, probe, notify, emit, sleep, clock)
                 check_offline_memory(info["mem_kb"], bundle)
                 state["local"] = True
             except ApkRouter:
@@ -4562,7 +4659,12 @@ class Core:
 
     def install(self, host, answers, out_dir, emit, stage, notify):
         return install(self.ssh, host, answers, self.branch, out_dir, emit,
-                       lambda: wait_for_move(renew=renew_address, notify=notify), stage, online=self.router_online)
+                       lambda: wait_for_move(renew=renew_address, notify=notify), stage, online=self.router_online, notify=notify,
+                       site_cache=site_cache_dir())
+
+    def prefetch(self, with_router, emit):
+        """The early download at Start (see prefetch_site): what could not be downloaded."""
+        return prefetch_site(self.branch, flash_cache_dir(), site_cache_dir(), with_router=with_router, emit=emit)
 
     def run(self, host, password, command, emit):
         """A command on the router (the root password is known by now): its output line by line; returns its exit status."""
@@ -4685,6 +4787,7 @@ class Session:
         self.mode = None           # None until the owner chooses at the start: "full" (the router, customer Wi-Fi and phones), "wifi" (PisoWiFi only) or "phone" (PisoPhone only)
         self.checks = None
         self.deps = {"running": False, "lines": []}
+        self.prefetched = []   # which early downloads were started (with the router files or not)
         self.country = "PH"
         # the owner tools do not belong to one unit: they stay when the next unit starts
         self.tools = {"error": None, "message": None, "batch": None, "licenses": None, "qr": None, "prep": {"running": False, "lines": []}}
@@ -4771,6 +4874,26 @@ class Session:
                 checks = [("checks", False, str(e))]
             with self.lock:
                 self.checks = checks
+        self.spawn(work)
+        self.start_prefetch()
+
+    def start_prefetch(self):
+        """The early download: the coin box software, app.json and (for a router setup) the installer files, while this computer's own internet
+        works. Once for each kind of setup; what fails is downloaded again when it is needed."""
+        with self.lock:
+            if self.mode is None:
+                return   # (the owner has not chosen yet: the choice runs the checks again)
+            with_router = self.mode != "phone"
+            if with_router in self.prefetched:
+                return
+            self.prefetched.append(with_router)
+
+        def work():
+            try:
+                for problem in self.core.prefetch(with_router, self.setup_log.write) or []:
+                    self.setup_log.write(f"early download: {problem}")
+            except Exception as e:
+                self.setup_log.write(f"early download stopped: {e}")
         self.spawn(work)
 
     def do_recheck(self, a):
@@ -5108,7 +5231,10 @@ class Session:
 
         def notify(msg):
             self.log(msg)
-            if "Unplug" in msg:
+            if msg.startswith(("Unplug the network cable from the router now", "Plug the network cable back")):
+                with self.lock:
+                    self.install["banner"] = ("warn", msg)
+            elif "Unplug" in msg:
                 with self.lock:
                     self.install["banner"] = ("warn", "Unplug this computer's network cable from the router, wait 5 seconds and "
                                                       "plug it back in. The installation continues by itself.")
