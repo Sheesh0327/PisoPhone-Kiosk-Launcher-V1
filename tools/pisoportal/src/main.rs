@@ -220,7 +220,7 @@ fn main() {
         "update-verify" => update::cmd_verify(&args[2..]),
         "report" => cmd_report(&config::Config::load(), args.get(2).and_then(|d| d.parse().ok()).unwrap_or(7)),
         _ => {
-            eprintln!("usage: pisoportal [serve|box|reconcile [rebase]|verify|report [days]|update-check|update-verify|selftest|version]");
+            eprintln!("usage: pisoportal [serve|box|reconcile [rebase]|verify|ledger|report [days]|update-check|update-verify|selftest|version]");
             2
         }
     };
