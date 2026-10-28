@@ -79,7 +79,30 @@ except ps.SetupError:
 # ---- finding the router, waiting for the move -----------------------------------------------------------------------------
 check(ps.find_router(lambda h: h == "192.168.1.1") == "192.168.1.1", "a factory router is found")
 check(ps.find_router(lambda h: True) == "10.0.0.1", "10.0.0.1 is preferred")
-check(ps.find_router(lambda h: False) is None, "no router: None")
+check(ps.find_router(lambda h: False, gateways=lambda: []) is None, "no router: None")
+# feature 032 (SU-04): a router with another factory address is found at the gateway the cable's lease names
+WINDOWS_ROUTES = """IPv4 Route Table
+Active Routes:
+Network Destination        Netmask          Gateway       Interface  Metric
+          0.0.0.0          0.0.0.0      192.168.8.1    192.168.8.50     25
+          0.0.0.0          0.0.0.0         On-link     192.168.1.20    300
+        127.0.0.0        255.0.0.0         On-link         127.0.0.1    331
+"""
+LINUX_ROUTES = "default via 192.168.8.1 dev eth0 proto dhcp src 192.168.8.50 metric 100\n192.168.8.0/24 dev eth0 proto kernel scope link src 192.168.8.50\ndefault via 192.168.1.1 dev wlan0 metric 600\n"
+MAC_ROUTES = "Routing tables\n\nInternet:\nDestination        Gateway            Flags           Netif Expire\ndefault            192.168.8.1        UGScg             en0\n127                127.0.0.1          UCS               lo0\n"
+for label, text in (("Windows", WINDOWS_ROUTES), ("Linux", LINUX_ROUTES), ("macOS", MAC_ROUTES)):
+    got = ps.parse_gateways(text)
+    check(got[0] == "192.168.8.1" and all(re.fullmatch(r"\d+\.\d+\.\d+\.\d+", g) for g in got), f"{label}: the default gateway is read from the routes: {got}")
+check(ps.parse_gateways("") == [] and ps.parse_gateways("default via fe80::1 dev eth0") == [], "no routes, or only an IPv6 one: nothing")
+seen_probe = []
+found = ps.find_router(lambda h: seen_probe.append(h) or h == "192.168.8.1", gateways=lambda: ["192.168.8.1", "192.168.1.1"])
+check(found == "192.168.8.1" and seen_probe == ["10.0.0.1", "192.168.1.1", "192.168.8.1"], f"a router at the lease's gateway is found; the usual two addresses are tried first once each: {seen_probe}")
+check(ps.find_router(lambda h: h == "10.0.0.1", gateways=lambda: ["192.168.8.1"]) == "10.0.0.1", "10.0.0.1 is still preferred")
+def broken_run(command, **kw): raise FileNotFoundError(command[0])
+check(ps.default_gateways({"kind": "linux"}, run=broken_run) == [], "a missing route command: no gateways, no error")
+ran_cmd = []
+check(ps.default_gateways({"kind": "windows"}, run=lambda c, **kw: ran_cmd.append(c) or types.SimpleNamespace(stdout=WINDOWS_ROUTES.encode())) == ["192.168.8.1"] and ran_cmd[0][0] == "route",
+      "Windows: asks route print")
 clock = [0.0]
 seen = []
 sys.stdout = out = io.StringIO()
@@ -1078,6 +1101,10 @@ r = offline_run(inet=False)
 check(r.err and "signature" in r.err and "internet" in r.err and "Nothing was changed" in r.err, "no way to prepare and no internet: it stops with both reasons: " + str(r.err))
 check(open(f"{tmp}/lan").read().strip() == "192.168.1.1" and r.uci == "" and not any("install" in c and "--yes" in c for c in commands(r)) and not os.path.exists(f"{fake_root}/tmp/piso-offline"),
       "and the router was not changed (same address, nothing installed, nothing copied)")
+# feature 032 (SU-04): a router found at another address (here 192.168.8.1) is moved to 10.0.0.1 like a factory one
+r = e2e(lan="192.168.8.1", router="192.168.8.1", answers=("Tindahan WiFi", "Aling Nena", "y", "n"), secrets_=("routerpass1", "routerpass1", "kioskpass1", "kioskpass1", "boxadmin99", "boxadmin99"))
+check(r.rc == 0 and r.err is None and "set network.lan.ipaddr=10.0.0.1" in r.uci and open(f"{tmp}/lan").read().strip() == "10.0.0.1", f"a router at 192.168.8.1 is moved to 10.0.0.1 and set up ({r.err}): " + r.out[-500:])
+check("Router found at 192.168.8.1" in r.out and "moving it to 10.0.0.1" in r.out, "and the address it was found at is named: " + r.out[:300])
 # feature 032 (SU-06a): an apk router (OpenWrt 25.x) is refused before anything is changed, even when it has internet (the online way fails at opkg)
 router_knows([], apk="yes", release="25.12.0")
 open(f"{tmp}/lan", "w").write("192.168.1.1")

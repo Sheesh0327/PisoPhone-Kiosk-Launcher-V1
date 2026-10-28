@@ -26,7 +26,7 @@ Run the router tests in the background and read the last lines only.
 - [x] 2. SU-09 + SU-10 *Try again* uses the saved router password; a refused login gets its own message (`Core.__init__` ~4426, `do_search`/`saved_login`, `install()` ~2436; test: the fake `Core` models a router whose password changes after the first run, and a refusing fake ssh; red result logged: yes)
 - [x] 3. SU-06a refuse an apk / no-`opkg` router before any change (`parse_router_feeds`, `install()` `fall_back`; test: `@@APK yes` stops with nothing changed; red result logged: yes)
 - [x] 4. SU-17 + SU-21 `USER_AGENT` on the coin box list and image; `install_service` copies the program to `/var/lib/pisophone-setup/` (tests: the request carries it; `install_service` with a temp state dir; red result logged: yes)
-- [ ] 5. SU-04 find the router at the cable's DHCP gateway too (`find_router` takes an injectable lease/gateway reader for Windows, Linux, macOS; test: 192.168.8.1 found and named; red result logged: yes/no)
+- [x] 5. SU-04 find the router at the cable's DHCP gateway too (`find_router` takes an injectable lease/gateway reader for Windows, Linux, macOS; test: 192.168.8.1 found, named and moved to 10.0.0.1; red result logged: yes)
 - [ ] 6. SU-01 detect two 192.168.1.x networks and stop with the hotspot advice; README "Which network?" (test: fake address tables for the three systems; red result logged: yes/no)
 - [ ] 7. SU-02 download early at Start, then the website check and the unplug-the-cable prompt before the router packages (test: page asks when the opener fails, continues after; red result logged: yes/no)
 - [ ] 8. SU-15 the Phones step waits for the router to reach the app's address (test: page test with a router that has no internet; red result logged: yes/no)

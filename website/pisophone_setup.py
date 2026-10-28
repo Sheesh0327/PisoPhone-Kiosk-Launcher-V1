@@ -1728,9 +1728,34 @@ def port_open(host, port=22, timeout=2.0):
         return False
 
 
-def find_router(probe=port_open):
-    """The router's address: 10.0.0.1 (moved already) or 192.168.1.1 (factory), or None."""
-    for host in (TARGET_IP, FACTORY_IP):
+def parse_gateways(text):
+    """The IPv4 default gateways in the output of `ip -4 route` (Linux), `netstat -rn -f inet` (macOS) or `route print -4` (Windows)."""
+    found = []
+    for line in text.splitlines():
+        m = (re.match(r"\s*default\s+via\s+(\d+\.\d+\.\d+\.\d+)\s", line + " ")
+             or re.match(r"\s*default\s+(\d+\.\d+\.\d+\.\d+)\s", line + " ")
+             or re.match(r"\s*0\.0\.0\.0\s+0\.0\.0\.0\s+(\d+\.\d+\.\d+\.\d+)\s", line + " "))
+        if m and m.group(1) not in found:
+            found.append(m.group(1))
+    return found
+
+
+def default_gateways(system=None, run=subprocess.run):
+    """The gateways this computer's networks name (the router's address when it hands out addresses on the cable); [] when unknown."""
+    kind = (system or {}).get("kind") or ("windows" if os.name == "nt" else "linux")
+    command = (["route", "print", "-4"] if kind == "windows" else ["netstat", "-rn", "-f", "inet"] if kind == "mac" else ["ip", "-4", "route"])
+    try:
+        done = run(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=10, check=False)
+        return parse_gateways(done.stdout.decode("utf-8", "replace"))
+    except (OSError, subprocess.SubprocessError):
+        return []
+
+
+def find_router(probe=port_open, gateways=default_gateways):
+    """The router's address: 10.0.0.1 (moved already) or 192.168.1.1 (factory), else the gateway this computer's cable was given
+    (vendor firmware on OpenWrt starts at 192.168.8.1, 192.168.10.1 ...: the OpenWrt check comes after, in probe_router), or None."""
+    tried = [TARGET_IP, FACTORY_IP]
+    for host in tried + [g for g in gateways() if g not in tried]:
         if probe(host):
             return host
     return None
@@ -2411,7 +2436,7 @@ def install(ssh, host, answers, branch, out_dir, emit, wait_move, stage=lambda n
                 raise
             except OfflineNotPossible as e:
                 fall_back(e.reason)
-        if host == FACTORY_IP:
+        if host != TARGET_IP:   # (the factory address, or the one this router started at: the installer moves it)
             stage(0)
             if state["local"]:
                 try:
@@ -3050,7 +3075,7 @@ def run_setup(args, ssh, read=input, read_secret=getpass.getpass, probe=port_ope
     if not getattr(args, "no_flash", False):
         flash_in_terminal(args, read, board_finder, flasher)
     say()
-    if host == FACTORY_IP:
+    if host != TARGET_IP:
         say(f"Step 1 of 2: downloading the setup to the router and moving it to {TARGET_IP}...")
     else:
         say("Step 1 of 2: the router is at its address already.")
@@ -5410,7 +5435,7 @@ class Session:
                 "usb": {"boards": self.usb, "skip": self.skip_flash, "flashed": self.flashed},
                 "install": inst, "stages": INSTALL_STAGES, "final": self.passwords(), "saved": [[l, os.path.basename(p)] for l, p in self.saved],
                 "review": {"public_wifi": self.answers()["GUEST_SSID"], "site": self.answers()["SITE_NAME"], "country": self.country,
-                           "router": f"{self.router['host'] or '?'} -> {TARGET_IP}" if self.router["host"] == FACTORY_IP else TARGET_IP},
+                           "router": f"{self.router['host'] or '?'} -> {TARGET_IP}" if self.router["host"] not in (None, TARGET_IP) else TARGET_IP},
                 "phones": dict(self.prov, box_up=self.box_up, box_ip=BOX_IP, kiosk_ssid=(self.final or {}).get("KIOSK_SSID_NAME") or KIOSK_SSID),
                 "p": {"settings": {"values": dict(self.p["values"]), "problems": {k: v for k, v in self.psettings_problems().items() if v}},
                       "review": {"wifi": self.p["values"]["WIFI_NAME"].strip()}, "flashed": self.p["flashed"], "erase_needed": self.p["erase_needed"],
