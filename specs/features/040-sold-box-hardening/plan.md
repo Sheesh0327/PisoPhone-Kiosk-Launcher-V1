@@ -33,5 +33,5 @@ to 6 need a board on the owner's bench.
 **None.** No `setup/RELEASE`, no `PISO_FW_VERSION`, no app build. This feature ships nothing to any device in the field.
 
 ## Hardware check
-This feature *is* a hardware check. Add it to `docs/REAL_WORLD_TESTING.md` as **RS54** ("a sold box is hardened and still
+This feature *is* a hardware check. Add it to `docs/REAL_WORLD_TESTING.md` as the next free RS number (**RS54 and RS55 are taken by features 030 and 031**; it was RS56 on 2026-10-28) ("a sold box is hardened and still
 updates"), so the log records it alongside the others.
