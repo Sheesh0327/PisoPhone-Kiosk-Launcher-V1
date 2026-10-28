@@ -42,7 +42,7 @@ Reference counts from `main` at `9a92c33`. **Re-grep before editing; do not trus
 | `website/install.sh` | 0 direct | check `--local` handling; remove it if present (it is generated from `setup/src/`, so change the **source**, never the generated file) |
 | `router/tests/test_setup.py` | 14 | remove the offline tests; keep every other test passing |
 | `router/tests/test_pisophone_setup.py` | 38 | same — this is the largest block, work through it carefully |
-| `router/tests/test_install.py` | 0 | confirm it still passes |
+| `router/tests/test_install.py` | 0 by the long pattern, but ~35 lines test `--local` | **remove the `--local` tests** (the section "--local <folder>") and put in their place one test that a folder is never used. *Added during implementation: the grep pattern did not contain `--local`, so "0" was wrong.* |
 | `router/tests/test_offline_setup.py` | whole file | **delete the file** (it tests only the deleted bundle functions) and remove its step from `.github/workflows/quality.yml` (~line 354). *Added during implementation: the first version of this table missed it; without the workflow edit CI would run a test file that no longer exists.* |
 
 **Also update:**
@@ -74,6 +74,10 @@ network name are untouched — if you find yourself editing those, stop, you are
 ## Success criteria
 1. `rg -n "PISO_LOCAL_PKGS|local-packages|router-online|router_online" setup/ website/ router/tests/ tools/` returns nothing
    outside documentation and `CHANGELOG.md`.
+   *Note added during implementation (same lesson as feature 033): "nothing" is too strict. Two hits remain on purpose: the
+   negative assertions in `router/tests/test_setup.py` and `test_pisophone_setup.py` that prove the option and the variable are
+   gone (criterion 6 needs `--router-online` to be refused), and `website/update/*`, the signed copies of the previous release
+   that CI replaces when this one is published (`CLAUDE.md` section 4: never edited by hand). Everything else must be clean.*
 2. `python3 router/tests/test_setup.py`, `test_pisophone_setup.py`, `test_setup_web.py`, `test_setup_tools.py`,
    `test_install.py`, `test_phone_only.py`, `test_setup_phone_web.py` all pass.
 3. `cd tools/pisoportal && cargo test && python3 tests/test_flow.py` pass (unchanged by this feature — prove it).
