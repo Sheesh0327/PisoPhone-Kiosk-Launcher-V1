@@ -176,6 +176,7 @@ fn serve() {
     if cfg.gw_key.len() < 16 {
         eprintln!("coinslot: GW_KEY is not set (run piso-setup): the coin box cannot be reached");
     }
+    util::note_wheel_removed(&cfg.data_dir, util::now_secs());
     let core = core::Core::new(cfg);
     {
         let c = std::sync::Arc::clone(&core);
