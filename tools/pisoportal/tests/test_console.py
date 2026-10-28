@@ -201,7 +201,7 @@ try:
     check(s["vouchers"] == {"redeemed": 0, "waiting": 0}, f"sales: vouchers redeemed and waiting come from the voucher records (the one voucher is cancelled): {s['vouchers']}")
     # ---- settings: the voucher choice ----------------------------------------------------------------------------------------------------------
     code, body, _h = call("/api/settings", cookie=cookie)
-    check(code == 200 and json.loads(body) == {"voucher_choice": True, "game_minutes": 10, "file_send": True, "file_send_key": True}, f"settings: the voucher choice is on, the mini-game has 10 minutes and file sending is on by default: {body}")
+    check(code == 200 and json.loads(body) == {"voucher_choice": True, "game_minutes": 10, "file_send": True, "file_send_key": True, "ledger_max_kb": 1024, "ledger_keep_months": 3}, f"settings: the voucher choice is on, the mini-game has 10 minutes, file sending is on and the revenue ledger has 1024 KB for 3 wanted months by default: {body}")
     check(call("/api/settings", cookie="piso_console=x")[0] == 401, "settings need a session")
     check(call("/api/settings", {"voucher_choice": "off"}, cookie=cookie, headers={"X-Piso": "0"})[0] == 403, "changing a setting needs the page's header")
     check(call("/api/settings", {}, cookie=cookie)[0] == 400, "a change that names nothing is refused")
@@ -214,6 +214,20 @@ try:
     c9.close()
     call("/api/settings", {"voucher_choice": True}, cookie=cookie)
     check(json.loads(call("/api/settings", cookie=cookie)[1])["voucher_choice"] is True, "and on again")
+    # feature 032: the revenue ledger's size budget (0 = never delete old months) and the months the owner would like to keep
+    for bad in ("abc", "-1", "100", "255", "16385", "1.5"):
+        code, body, _h = call("/api/settings", {"ledger_max_kb": bad}, cookie=cookie)
+        check(code == 400 and b"BAD_LEDGER_KB" in body, f"refused: ledger_max_kb {bad!r}")
+    for bad in ("abc", "0", "-1", "61", "2.5"):
+        code, body, _h = call("/api/settings", {"ledger_keep_months": bad}, cookie=cookie)
+        check(code == 400 and b"BAD_MONTHS" in body, f"refused: ledger_keep_months {bad!r}")
+    code, body, _h = call("/api/settings", {"ledger_max_kb": "2048", "ledger_keep_months": "6"}, cookie=cookie)
+    check(code == 200 and json.loads(body)["ledger_max_kb"] == 2048 and json.loads(body)["ledger_keep_months"] == 6, f"the owner sets 2048 KB and 6 months: {body}")
+    check("LEDGER_MAX_KB=2048" in open(f"{env.data}/settings.txt").read() and "LEDGER_KEEP_MONTHS=6" in open(f"{env.data}/settings.txt").read(), "and both are kept in the data folder")
+    code, body, _h = call("/api/settings", {"ledger_max_kb": "0"}, cookie=cookie)
+    check(code == 200 and json.loads(body)["ledger_max_kb"] == 0, "0 turns the pruning off and is accepted")
+    call("/api/settings", {"ledger_max_kb": "1024", "ledger_keep_months": "3"}, cookie=cookie)
+    check(json.loads(call("/api/settings", cookie=cookie)[1])["ledger_max_kb"] == 1024, "and back to the default")
     # the mini-game minutes a device gets per day (0 = no game), live
     check(env.get("/game")[0] == 200, "the mini-game page is served by default")
     for bad in ("abc", "-1", "121", "1.5"):

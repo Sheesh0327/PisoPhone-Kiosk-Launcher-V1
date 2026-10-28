@@ -20,7 +20,7 @@ fn hash_ok(h: &str) -> bool {
 }
 
 pub fn append(path: &str, now: u64, plan: &str, pesos: u32, minutes: u32, kind: &str) -> std::io::Result<()> {
-    append_with(path, now, plan, pesos, minutes, kind, &Budget::default())
+    append_with(path, now, plan, pesos, minutes, kind, &Budget::load(path))
 }
 
 /// The size budget (`LEDGER_MAX_KB`, `LEDGER_KEEP_MONTHS`).
@@ -36,6 +36,25 @@ impl Default for Budget {
     }
 }
 
+/// The smallest and largest budget the owner can set in KB (0 = never delete), and the most months they can ask to keep.
+pub const MIN_KB: u64 = 256;
+pub const MAX_KB: u64 = 16384;
+pub const MAX_KEEP_MONTHS: u64 = 60;
+
+impl Budget {
+    /// The owner's settings (LEDGER_MAX_KB, LEDGER_KEEP_MONTHS in settings.txt next to the ledger); anything missing or out of range
+    /// is the default.
+    pub fn load(path: &str) -> Budget {
+        let dir = std::path::Path::new(path).parent().map(|d| d.to_string_lossy().into_owned()).unwrap_or_default();
+        let get = |k: &str| crate::config::override_get(&dir, k).parse::<u64>().ok();
+        let d = Budget::default();
+        Budget {
+            max_kb: get("LEDGER_MAX_KB").filter(|v| *v == 0 || (MIN_KB..=MAX_KB).contains(v)).unwrap_or(d.max_kb),
+            keep_months: get("LEDGER_KEEP_MONTHS").filter(|v| (1..=MAX_KEEP_MONTHS).contains(v)).unwrap_or(d.keep_months),
+        }
+    }
+}
+
 fn append_with(path: &str, now: u64, plan: &str, pesos: u32, minutes: u32, kind: &str, budget: &Budget) -> std::io::Result<()> {
     if let Some(dir) = std::path::Path::new(path).parent() {
         fs::create_dir_all(dir)?;
@@ -47,7 +66,9 @@ fn append_with(path: &str, now: u64, plan: &str, pesos: u32, minutes: u32, kind:
     // the sale is on flash (or has failed) before anything is deleted; a prune that fails changes nothing about the sale
     if rolled {
         match prune(path, budget) {
-            Ok(r) if !r.reached => eprintln!("ledger: could not bring the revenue files inside {} KB ({} months deleted)", budget.max_kb, r.deleted.len()),
+            Ok(r) if !r.reached => {
+                eprintln!("ledger: could not bring the revenue files inside {} KB ({} months deleted)", budget.max_kb, r.deleted.len())
+            }
             Err(e) => eprintln!("ledger: pruning old months failed: {}", e),
             Ok(_) => {}
         }
@@ -868,7 +889,11 @@ mod tests {
         assert_eq!(got.iter().map(|p| p.rows).sum::<u64>(), (0..months).map(|i| 100 + i).sum::<u64>(), "no deleted row is forgotten");
         let kept = got.len() as u64 - 1;
         let last_dropped = months - kept - 1;
-        assert_eq!((got[0].pesos, got[0].hash.clone()), (pr(last_dropped).pesos, pr(last_dropped).hash), "total and hash of the newest folded month");
+        assert_eq!(
+            (got[0].pesos, got[0].hash.clone()),
+            (pr(last_dropped).pesos, pr(last_dropped).hash),
+            "total and hash of the newest folded month"
+        );
         assert_eq!(*got.last().unwrap(), pr(months - 1));
         assert_eq!(&got[1..], &(months - kept..months).map(pr).collect::<Vec<_>>()[..]);
     }
@@ -1124,12 +1149,56 @@ mod tests {
         assert!(closed_segments(&a).is_empty() && !std::path::Path::new(&pruned_path(&a)).exists());
         assert_eq!(verify_all(&a).map(|v| v.1), Ok(written));
         append(&a, at(1, 0), "hyper", 4, 24, "topup").unwrap(); // the first sale of the next month rolls the file, then prunes it
-        assert!(closed_segments(&a).is_empty(), "the old single file was the only closed month and is over the budget: {:?}", closed_segments(&a));
+        assert!(
+            closed_segments(&a).is_empty(),
+            "the old single file was the only closed month and is over the budget: {:?}",
+            closed_segments(&a)
+        );
         let rec = pruned_read(&a);
         assert_eq!((rec.len(), rec[0].month.as_str(), rec[0].pesos), (1, "2026-08", written));
         assert_eq!(verify_all(&a).map(|v| v.1), Ok(written + 4), "the lifetime total moved by the sale and by nothing else");
         assert_eq!(verify(&a), Ok((2, written + 4)), "revenue.csv alone carries it: the carry row and the sale");
         append(&a, at(1, 5), "hyper", 1, 6, "topup").unwrap();
         assert_eq!(verify_all(&a).map(|v| v.1), Ok(written + 5));
+    }
+
+    #[test]
+    fn f032_g6_the_owners_settings_are_read_and_junk_or_out_of_range_is_the_default() {
+        let a = tmpdir("g6-settings");
+        let dir = std::path::Path::new(&a).parent().unwrap().to_string_lossy().into_owned();
+        assert_eq!(Budget::load(&a), Budget { max_kb: 1024, keep_months: 3 }, "nothing set: 1024 KB, 3 months");
+        let set = |k: &str, v: &str| assert!(crate::config::override_set(&dir, k, v));
+        set("LEDGER_MAX_KB", "2048");
+        set("LEDGER_KEEP_MONTHS", "6");
+        assert_eq!(Budget::load(&a), Budget { max_kb: 2048, keep_months: 6 });
+        set("LEDGER_MAX_KB", "0");
+        assert_eq!(Budget::load(&a).max_kb, 0, "0 is the off switch");
+        for bad in ["100", "255", "16385", "abc", "-5", ""] {
+            set("LEDGER_MAX_KB", bad);
+            assert_eq!(Budget::load(&a).max_kb, 1024, "{:?} is not a budget", bad);
+        }
+        for bad in ["0", "61", "x"] {
+            set("LEDGER_KEEP_MONTHS", bad);
+            assert_eq!(Budget::load(&a).keep_months, 3, "{:?} is not a number of months", bad);
+        }
+    }
+
+    #[test]
+    fn f032_g6_append_follows_the_owners_budget_from_settings_txt() {
+        let a = tmpdir("g6-append");
+        let dir = std::path::Path::new(&a).parent().unwrap().to_string_lossy().into_owned();
+        seed(&a, 6, 3000); // about 130 KB a month
+        assert!(crate::config::override_set(&dir, "LEDGER_MAX_KB", "0"));
+        append(&a, at(6, 0), "hyper", 1, 6, "topup").unwrap();
+        assert_eq!(closed_segments(&a).len(), 6, "0 = nothing deleted");
+        assert!(crate::config::override_set(&dir, "LEDGER_MAX_KB", "256"));
+        append(&a, at(7, 0), "hyper", 1, 6, "topup").unwrap();
+        assert!(
+            all_size(&a) <= 256 * 1024 && closed_segments(&a).len() < 6,
+            "256 KB: {} bytes in {} segments",
+            all_size(&a),
+            closed_segments(&a).len()
+        );
+        assert!(verify_all(&a).is_ok());
     }
 }
