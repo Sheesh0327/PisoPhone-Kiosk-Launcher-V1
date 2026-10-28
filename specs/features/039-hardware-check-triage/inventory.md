@@ -73,3 +73,39 @@ They cannot be retired, because there is nothing to retire. See the notes in the
 Unticked (12): B9, C3b, C8, F8, S1, S2, S3, S4, S5, S6, H2, R4.
 Ticked (46): B1, B2, B3, B4, B5, B6, B7, B8, P1, P2, P3, P4, P5, P6, P8, P7, C1, C2, C3, M3a, M3b, C4, C5, C6, C7, F1, F2, F3, F4, F5, F6, F7, K1, K2, K4, K5, H4a, H4b, H4c, H4d, R1, R2, R3, R5, L1, L2.
 Section 10 ("PisoPhone only setup") has 5 unticked lines with no id at all (lines 198 to 202).
+
+# Task group 2: the judgment
+
+Only the three reasons in `spec.md` ("What obsolete means here") count: (1) the thing it tested is gone, (2) a later check on a newer
+release covers the same ground and I can name it, (3) the code was replaced, not changed, and the new code has its own check.
+Anything else stays owed. **Result: 0 rows retired in this feature. 1 row was already retired (RS34). 11 are done. 38 are owed.**
+(11 + 1 + 38 = 50, the number of rows.)
+
+## Done (11): RS1 RS2 RS3 RS4 RS5 RS8 RS9 RS11 RS12 RS15 RS18
+Evidence: the `[x]` in the document, from the owner's session of 2026-10-10/11 (Test setup table: firmware 3.3.3, APK 411, Infinix
+Hot 40i, 360T6M with ImmortalWrt 23.05.0), committed in `72c68c7` (2026-10-24); the Baseline summary rows of 2026-10-11 and 2026-10-16
+count them. Two limits, said plainly: the only evidence is the tick (no output was attached), and it was a release long before the
+current one, so "done" means "ran once on that release", not "still true on 3.12.x / router 1.5.25".
+
+## Retired (1): RS34
+Already retired by feature 033 (router 1.5.25, reason 1: the wheel was deleted before it ran). Untouched.
+
+## Owed (38), and the ones I looked at twice
+None of the three reasons applies to any owed row. Where a retirement was plausible, I wrote down why it did not hold:
+
+| RS | Looked at because | Why it stays owed | Unsure? |
+|---|---|---|---|
+| RS24, RS25 | RS25 (1.5.12) changed how the console is opened, which RS24 (1.5.11) also exercises | RS25 only mentions the Rental phones tab in passing; RS24's single sign-in, 401 and isolation steps are not repeated in it | yes: run RS24 first, it is the same screen |
+| RS22, RS23 | RS25 also says a rental phone cannot open the router pages | RS22/RS23 are about phones and guests not reaching each other, which RS25 does not test | no |
+| RS38, RS48 | feature 023 (RS48) rewrote the shop-name row feature 013 (RS38) described | 023 extended 013, it did not replace the branding; RS38 still owns palette, title, validation, survive-restart, the vault card. Only its (f), (g), (g2) wording about the name standing still is older than 023 | yes: run RS38 and RS48 together; wording left as is |
+| RS33 | mentions "a built-in game" | the mini-game is **still in this checkout** (feature 034 has not merged: `game.rs` is still there). 034 will change this wording | no, expected |
+| RS39, RS53, RS46(g) | each needs an old version (phone build 495, a box on 3.11.1, a phone set up before feature 029, a box on 3.12.0) | "awkward to get" is not a reason | yes: may be impossible to arrange; the owner should say so |
+| RS35 | its last sentence is about the one-line installer on a factory router, which feature 041 will touch | 041 has not started; RS35's other parts are the 16 MB router, not the offline path | yes |
+| RS44(d), RS56, RS32 | three month-roll tests | different code (alerts and rolling, size cap, clock jump); but they can be run on the same router in one go | no |
+| RS50, B9, section 10 | all write a board over USB | RS50 does not cover the classic ESP32 image or the old-Wi-Fi erase (B9) nor the saved summary file and ERASE prompt (section 10) | no |
+
+## Mini-game and offline-setup rows (as the task asked)
+- **Mini-game:** the document has no row that tests it on its own. RS34 (retired) mentions it; RS33 mentions "a built-in game". Both
+  stay as they are; feature 034 will adjust RS33's wording when it merges.
+- **RS36 (offline setup):** **there is no RS36 row in the document** (nor RS37, RS40 to RS43, see above). Feature 041 will want to
+  retire it; there is nothing to retire. Reported in the document's notes, not invented.
