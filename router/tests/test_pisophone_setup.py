@@ -1006,11 +1006,11 @@ def serve_offline_site(sources=None):
     return list(sources)
 
 
-def router_knows(sources, installed="libc - 1\nuclient-fetch - 1\n", conf="option check_signature\n", mem=90000):
+def router_knows(sources, installed="libc - 1\nuclient-fetch - 1\n", conf="option check_signature\n", mem=90000, apk="no", release="23.05.5"):
     feeds = "".join(f"src/gz {n} {WEB}/feeds/{n}\n" for n in sources)
     open(f"{tmp}/feeds_output", "w").write(
-        f"@@RELEASE\nDISTRIB_RELEASE='23.05.5'\nDISTRIB_ARCH='mipsel_24kc'\nDISTRIB_TARGET='ramips/mt7621'\n@@FEEDS\n{feeds}@@INSTALLED\n{installed}"
-        f"@@CONF\n{conf}@@USIGN\nyes\n@@KEYS\n/etc/opkg/keys/abcd\n@@APK\nno\n@@MEM\n{mem}\n")
+        f"@@RELEASE\nDISTRIB_RELEASE='{release}'\nDISTRIB_ARCH='mipsel_24kc'\nDISTRIB_TARGET='ramips/mt7621'\n@@FEEDS\n{feeds}@@INSTALLED\n{installed}"
+        f"@@CONF\n{conf}@@USIGN\nyes\n@@KEYS\n/etc/opkg/keys/abcd\n@@APK\n{apk}\n@@MEM\n{mem}\n")
 
 
 def commands(r):
@@ -1078,6 +1078,13 @@ r = offline_run(inet=False)
 check(r.err and "signature" in r.err and "internet" in r.err and "Nothing was changed" in r.err, "no way to prepare and no internet: it stops with both reasons: " + str(r.err))
 check(open(f"{tmp}/lan").read().strip() == "192.168.1.1" and r.uci == "" and not any("install" in c and "--yes" in c for c in commands(r)) and not os.path.exists(f"{fake_root}/tmp/piso-offline"),
       "and the router was not changed (same address, nothing installed, nothing copied)")
+# feature 032 (SU-06a): an apk router (OpenWrt 25.x) is refused before anything is changed, even when it has internet (the online way fails at opkg)
+router_knows([], apk="yes", release="25.12.0")
+open(f"{tmp}/lan", "w").write("192.168.1.1")
+r = offline_run(inet=True)
+check(r.err and "apk" in r.err and "25.12.0" in r.err and "ROUTERS.md" in r.err and "Nothing was changed" in r.err, "an apk router: refused, naming its release and the supported ones: " + str(r.err))
+check(r.wget == "" and "SETUP-RAN" not in r.out and r.uci == "" and not any("ping -c 1" in c for c in commands(r)) and not any("cat >" in c for c in commands(r)),
+      "and nothing was tried on it (no download, no internet test, no copy, no setup, no change)")
 # too little memory is a reason to fall back, found before the router is touched
 router_knows(serve_offline_site(), mem=24000)
 r = offline_run(inet=True)

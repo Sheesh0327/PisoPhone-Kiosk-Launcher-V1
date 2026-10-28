@@ -1941,6 +1941,17 @@ class OfflineNotPossible(SetupError):
         self.reason = reason
 
 
+class ApkRouter(OfflineNotPossible):
+    """A router that installs packages with apk (OpenWrt 25.x or a snapshot) or has no opkg: neither the offline way nor the online way
+    works on it yet, so the setup stops before anything is changed (it is not a reason to fall back to the online way)."""
+
+    def __init__(self, release):
+        SetupError.__init__(self, f"this router runs OpenWrt {release or '(release unknown)'}, which has no opkg (OpenWrt 25.x and snapshots install "
+                                  "packages with apk), and this setup only supports routers with opkg (OpenWrt 23.05 and 24.10; the list is in "
+                                  "docs/ROUTERS.md). Nothing was changed on the router.")
+        self.reason = str(self)
+
+
 # one ssh command that prints what offline mode needs to know, each part after its marker line
 READ_FEEDS_COMMAND = (
     "echo @@RELEASE; cat /etc/openwrt_release 2>/dev/null; "
@@ -1950,6 +1961,7 @@ READ_FEEDS_COMMAND = (
     "echo @@USIGN; if command -v usign >/dev/null 2>&1; then echo yes; else echo no; fi; "
     "echo @@KEYS; for k in /etc/opkg/keys/*; do [ -f \"$k\" ] && echo \"$k\"; done; "
     "echo @@APK; if command -v apk >/dev/null 2>&1; then echo yes; else echo no; fi; "
+    "echo @@OPKG; if command -v opkg >/dev/null 2>&1; then echo yes; else echo no; fi; "
     "echo @@MEM; sed -n 's/^MemAvailable: *\\([0-9]*\\) kB.*/\\1/p' /proc/meminfo 2>/dev/null | head -n 1")
 
 
@@ -1987,8 +1999,8 @@ def parse_router_feeds(text):
     keys = len([k for k in parts.get("KEYS", []) if k.strip()])
     mem = word("MEM")
     if not feeds:
-        if word("APK") == "yes":
-            raise OfflineNotPossible("this router uses apk (OpenWrt 25.x or a snapshot), which the setup without internet does not support yet")
+        if word("APK") == "yes" or word("OPKG") == "no":
+            raise ApkRouter(release.get("DISTRIB_RELEASE", ""))
         raise OfflineNotPossible("the router lists no package sources (/etc/opkg/distfeeds.conf)")
     if not signed:
         raise OfflineNotPossible("this router does not check package signatures (no 'option check_signature' in /etc/opkg.conf), so copied packages could not be checked")
@@ -2395,6 +2407,8 @@ def install(ssh, host, answers, branch, out_dir, emit, wait_move, stage=lambda n
                 bundle = build_offline_bundle(info, branch, work, opener=opener, site=offline_site, emit=emit)
                 check_offline_memory(info["mem_kb"], bundle)
                 state["local"] = True
+            except ApkRouter:
+                raise
             except OfflineNotPossible as e:
                 fall_back(e.reason)
         if host == FACTORY_IP:

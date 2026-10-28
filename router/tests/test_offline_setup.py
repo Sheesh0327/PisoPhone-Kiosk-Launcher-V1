@@ -126,13 +126,13 @@ def not_possible(call, *words):
 
 
 # ---- criterion 7: reading the router --------------------------------------------------------------------------------------------
-def router_output(release=None, feeds=None, installed=None, conf=None, usign=True, keys=("6a7d3e1b2c4f5a90",), apk=False, mem=96000):
+def router_output(release=None, feeds=None, installed=None, conf=None, usign=True, keys=("6a7d3e1b2c4f5a90",), apk=False, mem=96000, opkg=True):
     release = "DISTRIB_ID='OpenWrt'\nDISTRIB_RELEASE='23.05.5'\nDISTRIB_ARCH='mipsel_24kc'\nDISTRIB_TARGET='ramips/mt7621'\n" if release is None else release
     feeds = "".join(f"src/gz {n} {u}\n" for n, u in FEEDS_A) if feeds is None else feeds
     installed = "".join(f"{n} - {v}\n" for n, v in INSTALLED_A.items()) if installed is None else installed
     conf = "dest root /\ndest ram /tmp\nlists_dir ext /var/opkg-lists\noption overlay_root /overlay\noption check_signature\n" if conf is None else conf
     return (f"@@RELEASE\n{release}@@FEEDS\n{feeds}@@INSTALLED\n{installed}@@CONF\n{conf}@@USIGN\n{'yes' if usign else 'no'}\n"
-            f"@@KEYS\n{''.join(k + chr(10) for k in keys)}@@APK\n{'yes' if apk else 'no'}\n@@MEM\n{mem}\n")
+            f"@@KEYS\n{''.join(k + chr(10) for k in keys)}@@APK\n{'yes' if apk else 'no'}\n@@OPKG\n{'yes' if opkg else 'no'}\n@@MEM\n{mem}\n")
 
 
 class FakeSsh:
@@ -158,7 +158,6 @@ check(got["feeds"] == FEEDS_A, "and the router's own package sources in order: "
 check(got["installed"] == INSTALLED_A, "and what is installed: " + str(got["installed"]))
 check(got["mem_kb"] == 96000 and got["keys"] == 1, "and the free memory and the number of signing keys")
 for label, kw, words in (
-    ("an apk router (OpenWrt 25.x)", {"feeds": "", "apk": True, "installed": ""}, ("apk",)),
     ("no package sources and no apk", {"feeds": ""}, ("sources",)),
     ("no signature checking (the line is commented out)", {"conf": "option overlay_root /overlay\n# option check_signature\n"}, ("signature",)),
     ("no signature checking (no line at all)", {"conf": "option overlay_root /overlay\n"}, ("signature",)),
@@ -168,6 +167,18 @@ for label, kw, words in (
 ):
     ok, text = not_possible(lambda kw=kw: ps.read_router_feeds(FakeSsh(router_output(**kw)), "10.0.0.1"), *words)
     check(ok, f"{label}: 'offline setup not possible: <reason>': {text}")
+# feature 032 (SU-06a): an apk router (or one without opkg) is refused outright: not a reason to fall back to the online way
+for label, kw in (("an apk router (OpenWrt 25.x)", {"feeds": "", "apk": True, "installed": "", "release": "DISTRIB_RELEASE='25.12.0'\n"}),
+                  ("a router without opkg", {"feeds": "", "installed": "", "opkg": False, "release": "DISTRIB_RELEASE='25.12.0'\n"})):
+    try:
+        ps.read_router_feeds(FakeSsh(router_output(**kw)), "10.0.0.1")
+        text = "did not raise"
+    except ps.ApkRouter as e:
+        text = str(e)
+    except Exception as e:  # noqa: BLE001
+        text = f"raised {type(e).__name__}: {e}"
+    check("25.12.0" in text and "ROUTERS.md" in text and "Nothing was changed" in text and "opkg" in text, f"{label}: refused with the release and the supported ones: {text}")
+check(issubclass(ps.ApkRouter, ps.SetupError), "and it is a SetupError")
 check(ps.read_router_feeds(FakeSsh(router_output(conf="option check_signature 1\n")), "h")["keys"] == 1, "'option check_signature 1' counts as on")
 ok, text = not_possible(lambda: ps.read_router_feeds(FakeSsh("", code=255), "10.0.0.1"), "router")
 check(ok, "a router that cannot be asked: " + text)
