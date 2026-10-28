@@ -42,7 +42,11 @@ the procedure it proves. It writes **no source code** and produces **no release*
 2. Keep `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y` and `CONFIG_APP_ROLLBACK_ENABLE=y`. The firmware relies on them
    (`OtaRollback.cpp`). A bootloader without them still boots, and nothing in the build says so — the dashboard's
    `ota_image_state` is how you tell (it must read `pending_verify` for about a minute after an OTA, then `valid`).
-3. Flash the signed build to a spare board with **no eFuses burned** and run GATE 1.
+3. Run GATE 1 on a spare board with **no eFuses burned**. *(Spec edit 2026-10-28: a bootloader built with
+   `CONFIG_SECURE_FLASH_ENC_ENABLED` / Secure Boot V2 starts the irreversible steps itself on its first boot (it generates or
+   uses a key, encrypts the flash, burns the eFuses), so it can never run on a board "with no eFuses burned". GATE 1 therefore
+   runs on the bootloader the boxes already use, which has the same two rollback options; the hardened bootloader is first
+   run in step 4, where the rollback checks are repeated. The owner confirms this edit before the bench work.)*
 4. Only once GATE 1 passes: run the eFuse steps on the sacrificial board and confirm a hardened board still updates.
 5. Record every result in the table at the end of `PROVISIONING_SOLD_UNIT.md`.
 
@@ -52,14 +56,15 @@ Each becomes a line in `validation.md`, with the actual console output.
    `CONFIG_SECURE_FLASH_ENCRYPTION_MODE_RELEASE` and `CONFIG_SECURE_UART_ROM_DL_MODE` **builds**, by whichever of the guide's
    two routes was chosen. Say which route and why.
 2. Both rollback options are enabled in that build. Show the sdkconfig lines.
-3. The board **boots** the signed app under that bootloader with no eFuses burned.
+3. The board **boots** the signed app with no eFuses burned, on the stock bootloader (see scope 3 for why not the hardened one).
 4. A **signed OTA succeeds** on that board.
 5. The box's **coin queue survives the update**: queue a payment, update, confirm it is still there and is credited exactly
    once afterwards. This is the `CLAUDE.md` section 6 money check for this feature — say exactly how you checked it.
 6. A **deliberately bad update is reverted** (`docs/REAL_WORLD_TESTING.md` item H4), and `ota_image_state` was observed going
    `pending_verify` → `valid` after a good one. If it never shows `pending_verify`, the bootloader has no rollback: **stop,
    GATE 1 has failed.**
-7. Only after 1-6: the eFuse steps run on the sacrificial board, and it still boots, runs a signed OTA and keeps its queue.
+7. Only after 1-6: the eFuse steps run on the sacrificial board, and it still boots, runs a signed OTA, keeps its queue, shows
+   `pending_verify` → `valid` after a good update and reverts a bad one (criteria 4 to 6 again, now on the hardened bootloader).
 8. Secure download mode is on (`ENABLE_SECURITY_DOWNLOAD`); `DIS_DOWNLOAD_MODE` is **not** burned, so there is a way back
    until OTA recovery is proven on a hardened board. JTAG disabled (`DIS_USB_JTAG`, `DIS_PAD_JTAG`).
 9. The result table in `docs/PROVISIONING_SOLD_UNIT.md` is filled in, including the board, chip revision
