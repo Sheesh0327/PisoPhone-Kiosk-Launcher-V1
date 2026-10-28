@@ -45,6 +45,8 @@ tools/pisoportal/tests/test_console.py       (the GAME_MINUTES setting is gone)
 tools/pisoportal/tests/test_flow.py          (any game step)
 router/tests/test_footprint.py               (size expectations: smaller again)
 docs/ARCHITECTURE.md                         (section 5 table row for game.rs)
+.github/workflows/quality.yml                 (the line that runs the deleted test_game_browser.py; only that line)
+website/manual.html                          (the mini-game section and the console Settings bullet: hand-written, not generated)
 specs/RELEASE_STATE.md, CHANGELOG.md         (one owner-readable line each)
 ```
 

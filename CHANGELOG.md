@@ -4,6 +4,10 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: the CI build number, shown as hundreds.tens.ones, build 466 is 4.6.6; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Router 1.5.25, **PisoWiFi: the free mini-game (Coin Catch) is gone (feature 034).** Not tried on a router yet. Unlike the wheel, the game was **on by default** (10 minutes a day per device), so customers will notice: the *Play a mini-game* button and the "Mini-game: N min left today" line no longer appear on the coin page, and the old `/game` address now just shows the coin page.
+  - Nobody's paid time changes and no sales figure moves: the game only counted play minutes against a soft limit and never wrote to `revenue.csv` or the roll. A customer in the middle of a game loses nothing.
+  - The console's *Mini-game: minutes per device per day* setting is gone. If your `/etc/coinslot.d/settings.txt` has a `GAME_MINUTES` line it stays there untouched and is ignored; you do not need to remove it.
+  - Goes out with features 033, 035 and 041 as one router release (same number, 1.5.25).
 - Router 1.5.25, **PisoWiFi: the spinning wheel is removed (feature 033).** Not tried on a router yet. The wheel was off on every router and never ran on real hardware, so no customer sees a change.
   - The Spin the wheel button, the wheel page and the console's *Spinning wheel* card are gone. Nobody's paid time changes and no sales figure moves: the wheel never wrote to `revenue.csv`.
   - If you had ever turned the wheel on, your records `wheel-confirm.txt`, `wheel.log` and `wheel.log.1` stay in `/etc/coinslot.d` untouched, and the console's alerts say so once. A spin that was half done at the moment of the update is not finished.

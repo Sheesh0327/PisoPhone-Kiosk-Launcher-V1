@@ -23,7 +23,7 @@ What else the router needs:
   memory. The one-line installer keeps its 1.6 MB copy in memory (`/tmp`) and the setup deletes it after a good install, so it no longer sits on
   flash. By that estimate our own files take about 0.6 MB of flash; the packages (`opennds`, `curl`, `ca-bundle`, `jsonfilter`,
   `libmicrohttpd-no-ssl`) were not measured. The setup prints the flash chip it found and the free space (`piso-setup space`, and the summary) and
-  warns under 2 MB free. The full PisoWiFi (game included) is the same program on every router; there is no cut-down build. Routers with
+  warns under 2 MB free. The full PisoWiFi is the same program on every router; there is no cut-down build. Routers with
   **16 MB flash and 128 MB RAM or more** should be comfortable (reports say 6 to 8 MB writable after OpenWrt with LuCI; some boards about 4 MB, which is
   tight). Routers with 4 or 8 MB flash have too little room left after OpenWrt and openNDS (not tried on one).
 - **Which product:** *PisoWiFi only* (`SHOP_PRODUCT=wifi`) leaves out the rental phones' hidden Wi-Fi and its password; the coin box and its Wi-Fi, the
