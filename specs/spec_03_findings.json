@@ -248,7 +248,7 @@
     "severity": "high",
     "money_or_signing": false,
     "confidence": "confirmed",
-    "status": "open",
+    "status": "fixed",
     "problem": "After the move to 10.0.0.1 only Windows asks for a new address by itself (`ipconfig /renew`). Linux, macOS and the headless Armbian box keep their 192.168.1.x address until someone replugs the cable; after 4 minutes the setup stops.",
     "fix": "after network restart switch every LAN port off for 3 s and on (DSA: ip link; swconfig: the switch command) so every computer asks for a new address (D3)",
     "test": {
@@ -271,7 +271,7 @@
     "severity": "high",
     "money_or_signing": true,
     "confidence": "reported",
-    "status": "open",
+    "status": "fixed",
     "problem": "Pairing takes the first station that joins `PisoCoinBox` with the public default password. With two freshly written boxes switched on at the bench (*Set up the next unit*), a router can pair the other unit's box and trust it with its gateway key.",
     "fix": "program reads mac= from PISO-HELLO after writing (the Wi-Fi station MAC, esp32_firmware/src/main.cpp:228-235) and sends BOX_EXPECT_MAC; pair_box admits only that MAC; empty = any box as today (D4)",
     "test": {
@@ -293,7 +293,7 @@
     "severity": "med",
     "money_or_signing": false,
     "confidence": "confirmed",
-    "status": "open",
+    "status": "fixed",
     "problem": "The router side has the same apk gap for a setup by hand (`wget ... install.sh | sh`).",
     "fix": "install.sh and preflight stop with a clear message when opkg is missing, before any download or move",
     "test": {
@@ -315,7 +315,7 @@
     "severity": "med",
     "money_or_signing": false,
     "confidence": "confirmed",
-    "status": "open",
+    "status": "fixed",
     "problem": "The modem-range checks compare only the first three numbers of the address with 10.0.0 or 10.0.30, ignore the netmask (a 10.x.x.x/8 lease clashes too) and run only when the WAN is up at that moment: after a setup without the router's internet a modem plugged in later can clash in silence.",
     "fix": "compare WAN and LAN/guest ranges with the netmask; status and the monitor re-check once the WAN is up and alert",
     "test": {
@@ -336,7 +336,7 @@
     "severity": "low",
     "money_or_signing": false,
     "confidence": "reported",
-    "status": "open",
+    "status": "fixed",
     "problem": "A router whose release feeds no longer answer (an old release moved to the archive, a vendor build) fails at `opkg update` with \"no internet or DNS?\" although it has internet.",
     "fix": "when opkg update fails but the ping works, say the release's package sources do not answer, name the release, point to docs/ROUTERS.md",
     "test": {
@@ -358,7 +358,7 @@
     "severity": "med",
     "money_or_signing": false,
     "confidence": "uncertain",
-    "status": "open",
+    "status": "fixed",
     "problem": "`restart_router_access` restarts dropbear and uhttpd **before** the `DONE` state is written and the summary is sent. If the restart ends the setup's own ssh session, the setup stops half way and the computer gets no summary.",
     "fix": "write the state and send the results first, then restart dropbear and uhttpd in the background; or wont-fix with RS57 (c) evidence",
     "test": {

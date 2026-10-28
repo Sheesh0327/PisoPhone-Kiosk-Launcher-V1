@@ -1,6 +1,6 @@
 # Feature 033: the router installer in a real shop
 
-Status: **approved by the owner 2026-10-28 (spec, plan and Q1 to Q3); in progress**   Branch: `feat/033-router-setup-real-run` (from `origin/main` plus the epic commit, as for 032)   Area: router (`setup/install.sh`, `setup/src/*.sh`, `router/piso_monitor.sh`, the setup program's answer line)
+Status: **built and validated on a computer 2026-10-28; waits for the owner's RS57 bench run (D8)**   Branch: `feat/033-router-setup-real-run` (from `origin/main` plus the epic commit, as for 032)   Area: router (`setup/install.sh`, `setup/src/*.sh`, `router/piso_monitor.sh`, the setup program's answer line)
 Backlog rows: SU-03, SU-11, SU-06b, SU-05, SU-07, SU-08 (`specs/spec_03_findings.json`; SU-08 may close `wont-fix` on RS57 (c) evidence)   Release: router (`setup/RELEASE` 1.5.23 -> 1.5.24; CI signs and publishes at 0%, the owner raises it)
 
 ## Intent

@@ -93,7 +93,7 @@ PASSWORDS = [  # (environment name read by the setup, what it is, min, max, gene
     ("KIOSK_PASSWORD", f"{KIOSK_SSID} Wi-Fi password (for the rental phones' setup)", 8, 63, 12),
     ("BOX_NEW_ADMIN_PASSWORD", "coin box admin password (the box's page; also the phones' admin PIN)", 8, 32, 16),
 ]
-ANSWER_ORDER = [env for env, *_ in PASSWORDS] + ["GUEST_SSID", "SITE_NAME", "COUNTRY", "SHOP_PRODUCT"]
+ANSWER_ORDER = [env for env, *_ in PASSWORDS] + ["GUEST_SSID", "SITE_NAME", "COUNTRY", "SHOP_PRODUCT", "BOX_EXPECT_MAC"]   # (BOX_EXPECT_MAC: the MAC of the board just written, or empty: the router then pairs any box)
 PRODUCTS = [("wifi", "PisoWiFi", "customer Wi-Fi sold by the coin (an OpenWrt router and the coin box; no rental phones)"),
             ("phone", "PisoPhone", "rental phones with the coin box on your shop's normal router (nothing is installed on the router)"),
             ("both", "both", "PisoWiFi and PisoPhone (an OpenWrt router, the coin box and the rental phones)")]
@@ -2970,10 +2970,11 @@ def flash_in_terminal(args, read, board_finder, flasher):
         say("Skipped writing the coin box.")
         return
     flasher(port, say)
+    return port
 
 
 def run_setup(args, ssh, read=input, read_secret=getpass.getpass, probe=port_open, wait=wait_for_move, open_page=open_url,
-              board_finder=usb_boards, flasher=None, offline_site=None):
+              board_finder=usb_boards, flasher=None, offline_site=None, mac_reader=None):
     if flasher is None:
         def flasher(port, emit):
             return flash_box(args.branch, port, emit, flash_cache_dir(), product="wifi" if getattr(args, "product", None) == "wifi" else "full")
@@ -3014,7 +3015,12 @@ def run_setup(args, ssh, read=input, read_secret=getpass.getpass, probe=port_ope
             return 1
 
     if not getattr(args, "no_flash", False):
-        flash_in_terminal(args, read, board_finder, flasher)
+        written = flash_in_terminal(args, read, board_finder, flasher)
+        if written:   # the router pairs only this board (a second unit on the bench cannot be paired by mistake)
+            try:
+                answers["BOX_EXPECT_MAC"] = (mac_reader or (lambda port: read_board_mac(lambda: current_device(board_finder, port))))(written)
+            except SetupError:
+                pass
     say()
     if host == FACTORY_IP:
         say(f"Step 1 of 2: downloading the setup to the router and moving it to {TARGET_IP}...")
@@ -4218,6 +4224,25 @@ def box_summary(status, wifi_name, admin_password):
     ])
 
 
+def read_board_mac(find_port, opener=BoxLink.open, sleep=time.sleep, tries=4):
+    """The Wi-Fi MAC the board just written reports in its hello, in capitals; "" when it does not say (no answer, no port, no MAC).
+    The router is told to pair only this board, so a second unit switched on at the bench cannot be paired by mistake."""
+    for _ in range(tries):
+        sleep(3)   # (the board restarts after it is written; its USB port goes away and comes back, sometimes under another name)
+        try:
+            link = opener(find_port())
+        except SetupError:
+            continue
+        try:
+            status = link.hello(8)
+        finally:
+            link.close()
+        mac = ((status or {}).get("mac") or "").upper()
+        if re.fullmatch(r"([0-9A-F]{2}:){5}[0-9A-F]{2}", mac) and mac != "00:00:00:00:00:00":
+            return mac
+    return ""
+
+
 def provision_new_box(find_port, wifi_name, wifi_password, admin_password, emit=say, opener=BoxLink.open, waiter=wait_online,
                       sleep=time.sleep, stage=lambda n: None):
     """After the software is written (or on a board that has it and is new): gives the board the shop's Wi-Fi and the admin password
@@ -4470,6 +4495,10 @@ class Core:
     def box_online(self):
         return box_online()
 
+    def board_mac(self, port):
+        """The MAC the board on `port` (just written) reports, or "" (see read_board_mac)."""
+        return read_board_mac(lambda: current_device(usb_boards, port))
+
     def checkup(self):
         return run_checkup(self.branch, box_net=lambda: read_box_network(self.ssh, TARGET_IP),
                            alerts=lambda: read_router_alerts(self.ssh, TARGET_IP))
@@ -4538,6 +4567,7 @@ class Session:
             self.usb = None            # None: not looked yet, else [(port, description)]
             self.skip_flash = False
             self.flashed = False
+            self.box_mac = ""          # the MAC of the board this page wrote in this unit: the router pairs only that one
             self.install = {"running": False, "stage": -1, "activity": "", "error": None, "banner": None, "ok": False, "lines": []}
             self.result = None
             self.final = {}
@@ -4750,7 +4780,8 @@ class Session:
 
     def install_answers(self):
         """What the router setup is sent: the new answers, or (a router set up before) only the country and the product."""
-        return kept_answers(self.country, self.product()) if self.kept() else self.answers()
+        answers = kept_answers(self.country, self.product()) if self.kept() else self.answers()
+        return dict(answers, BOX_EXPECT_MAC=self.box_mac)
 
     def do_set(self, a):
         with self.lock:
@@ -4927,8 +4958,14 @@ class Session:
                         raise SetupError("several USB boards are connected: unplug all but the coin box.")
                     stage(0)
                     self.core.flash_box(boards[0][0], self.log)
+                    try:
+                        mac = self.core.board_mac(boards[0][0])
+                    except Exception:
+                        mac = ""   # (without it the router pairs any box, as it always did)
                     with self.lock:
                         self.flashed = True
+                        self.box_mac = mac
+                        answers["BOX_EXPECT_MAC"] = mac
                 result = self.core.install(host, answers, self.out_dir, self.log, lambda n: stage(n + 1), notify)
             except SetupError as e:
                 error = str(e)
