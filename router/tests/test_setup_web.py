@@ -223,6 +223,7 @@ class FakeCore:
 
     def preflight(self): return self.preflight_result
     def find_router(self): return "192.168.1.1" if self.state == "factory" else "10.0.0.1"
+    def network_clash(self): return None
     def probe(self, host): return self.state
     def saved_login(self, host, out_dir): return None
     def usb_boards(self): return list(self.boards)
@@ -858,6 +859,32 @@ c.do("start_install")
 s = c.wait(lambda s: s["install"]["error"] and "Router step" in s["install"]["error"], "the retry names the Router step")
 check("password" in s["install"]["error"] and len([x for x in core.calls if x[0] == "install"]) == installs, "nothing was installed; it asks for the password: " + s["install"]["error"])
 check(not s["router"]["login_ok"], "the Router step asks for the password again")
+server.shutdown()
+
+# ---- feature 032 (SU-01): two networks in 192.168.1.x stop the search before any ssh, with the hotspot advice ---------------------------------
+class ClashCore(FakeCore):
+    def __init__(self):
+        super().__init__(state="factory")
+        self.advice, self.probed = "This computer is on two networks that use 192.168.1.x. Put its Wi-Fi on your phone's hotspot.", []
+
+    def network_clash(self): return self.advice
+    def probe(self, host):
+        self.probed.append(host)
+        return "factory"
+
+
+core, session, server = start(core=ClashCore(), mode="wifi")
+c = Client(server)
+c.call("POST", "/api/login", {"pin": "123456"})
+c.wait(lambda s: s["checks"] is not None, "checks")
+c.do("next")
+s = c.wait(lambda s: s["router"]["error"], "the clash is reported")
+check("hotspot" in s["router"]["error"] and s["router"]["host"] is None and not s["can_next"], "two networks in the same range: advice on the Router step, no router, no Next: " + str(s["router"]["error"]))
+check(core.probed == [] and not any(x[0] in ("login", "install", "run") for x in core.calls), "nothing was sent to any router (no probe, no login)")
+core.advice = None
+c.do("search")
+s = c.wait(lambda s: s["router"]["host"] == "192.168.1.1", "Check again finds the router once the clash is gone")
+check(s["router"]["error"] is None and s["can_next"], "and the advice is gone")
 server.shutdown()
 print(f"{checks} checks, {failures} failures")
 sys.exit(1 if failures else 0)

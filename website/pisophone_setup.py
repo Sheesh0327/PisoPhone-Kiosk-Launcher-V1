@@ -1751,6 +1751,52 @@ def default_gateways(system=None, run=subprocess.run):
         return []
 
 
+def parse_interface_addresses(text):
+    """(interface, IPv4 address) pairs from `ip -4 -o address` (Linux), `ifconfig` (macOS) or `ipconfig` (Windows)."""
+    found, current = [], ""
+    for line in text.splitlines():
+        m = re.match(r"\d+:\s+(\S+)\s+inet\s+(\d+\.\d+\.\d+\.\d+)/", line)
+        if m:
+            found.append((m.group(1), m.group(2)))
+            continue
+        head = re.match(r"(\S+?):\s+flags=", line) or re.match(r"(\S.*?(?:adapter|Adapter).*?):\s*$", line)
+        if head:
+            current = head.group(1)
+            continue
+        m = re.match(r"\s*inet\s+(\d+\.\d+\.\d+\.\d+)\s", line + " ") or re.match(r"\s*IPv4 Address[ .]*:\s*(\d+\.\d+\.\d+\.\d+)", line)
+        if m and current:
+            found.append((current, m.group(1)))
+    return found
+
+
+def local_interface_addresses(system=None, run=subprocess.run):
+    """The addresses of this computer's network connections, as (interface, address) pairs; [] when they cannot be read."""
+    kind = (system or {}).get("kind") or ("windows" if os.name == "nt" else "linux")
+    command = ["ipconfig"] if kind == "windows" else ["ifconfig"] if kind == "mac" else ["ip", "-4", "-o", "address"]
+    try:
+        done = run(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=10, check=False)
+        return parse_interface_addresses(done.stdout.decode("utf-8", "replace"))
+    except (OSError, subprocess.SubprocessError):
+        return []
+
+
+def network_clash_advice(addresses):
+    """Advice text when two of this computer's connections are in the same range (the factory router's cable and the shop modem's Wi-Fi
+    are both 192.168.1.x: the computer then cannot tell which one the router is on). None when there is no such pair."""
+    ranges = {}
+    for name, ip in addresses:
+        if ip.startswith(("127.", "169.254.", "0.")):
+            continue
+        ranges.setdefault(ip.rsplit(".", 1)[0], []).append(name)
+    for prefix, names in ranges.items():
+        names = list(dict.fromkeys(names))
+        if len(names) >= 2:
+            return (f"This computer is on two networks that use the same addresses ({prefix}.x): {' and '.join(names[:3])}. It cannot tell which "
+                    "one the router is on. Put this computer's Wi-Fi on your phone's hotspot (a different address range), or turn its Wi-Fi off, "
+                    "then press Search again. (A modem from your internet company is usually at 192.168.1.1, like a new router.)")
+    return None
+
+
 def find_router(probe=port_open, gateways=default_gateways):
     """The router's address: 10.0.0.1 (moved already) or 192.168.1.1 (factory), else the gateway this computer's cable was given
     (vendor firmware on OpenWrt starts at 192.168.8.1, 192.168.10.1 ...: the OpenWrt check comes after, in probe_router), or None."""
@@ -4493,6 +4539,10 @@ class Core:
     def probe(self, host):
         return probe_router(self.ssh, host)
 
+    def network_clash(self):
+        """Advice when two of this computer's networks are in the same range (None when not, or when it cannot be read)."""
+        return network_clash_advice(local_interface_addresses(detect_system()))
+
     def saved_login(self, host, out_dir):
         """The router password saved on this computer, when the router accepts it (else None)."""
         return use_saved_password(self.ssh, host, [out_dir, default_out_dir()], notify=lambda text: None)
@@ -4970,6 +5020,14 @@ class Session:
                 with self.lock:
                     if not self.router["searching"]:
                         return
+                try:
+                    clash = self.core.network_clash()
+                except Exception:
+                    clash = None   # (a check that cannot run never stops the search)
+                if clash:
+                    with self.lock:
+                        self.router.update(host=None, state=None, error=clash, searching=False)
+                    return
                 host = self.core.find_router()
                 if host:
                     try:

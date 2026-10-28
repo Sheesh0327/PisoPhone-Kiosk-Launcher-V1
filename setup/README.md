@@ -41,7 +41,10 @@ The page is served on the setup computer's own address, so the phone must be on 
 router has **no Wi-Fi yet**, so the phone cannot use that one. Two ways that work:
 - **The setup computer has a second connection** besides the cable to the router (its Wi-Fi, or another Ethernet port) on your own
   network, and the phone is on that network too. Keep that connection on: the program talks to the router through the cable only
-  (192.168.1.1, then 10.0.0.1).
+  (192.168.1.1, then 10.0.0.1). **Use your phone's hotspot for it, not the shop modem's Wi-Fi.** A modem from PLDT, Converge and
+  most internet companies is at 192.168.1.1 too, like a new router: the computer would then have two networks with the same
+  addresses and cannot tell which one the router is on. The setup page stops with this advice when it sees it; turn the computer's
+  Wi-Fi onto the phone's hotspot (or off), then press *Search again*.
 - **Or use the computer's own browser** (`http://127.0.0.1:8765`), when it has a screen.
 The setup page itself needs no internet on the phone, but the *phone setup page* in step 5 is on the PisoPhone website: open that
 link on a phone or laptop that has internet.

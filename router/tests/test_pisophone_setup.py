@@ -103,6 +103,35 @@ check(ps.default_gateways({"kind": "linux"}, run=broken_run) == [], "a missing r
 ran_cmd = []
 check(ps.default_gateways({"kind": "windows"}, run=lambda c, **kw: ran_cmd.append(c) or types.SimpleNamespace(stdout=WINDOWS_ROUTES.encode())) == ["192.168.8.1"] and ran_cmd[0][0] == "route",
       "Windows: asks route print")
+# feature 032 (SU-01): two networks in the same range (the shop modem's Wi-Fi and the factory router's cable are both 192.168.1.x)
+LINUX_ADDR = "1: lo    inet 127.0.0.1/8 scope host lo\n2: eth0    inet 192.168.1.50/24 brd 192.168.1.255 scope global dynamic eth0\n3: wlan0    inet 192.168.1.23/24 brd 192.168.1.255 scope global wlan0\n"
+MAC_ADDR = "lo0: flags=8049<UP,LOOPBACK> mtu 16384\n\tinet 127.0.0.1 netmask 0xff000000\nen0: flags=8863<UP> mtu 1500\n\tinet 192.168.1.50 netmask 0xffffff00 broadcast 192.168.1.255\nen1: flags=8863<UP> mtu 1500\n\tinet 192.168.1.23 netmask 0xffffff00 broadcast 192.168.1.255\n"
+WIN_ADDR = """Windows IP Configuration
+
+Ethernet adapter Ethernet:
+
+   Connection-specific DNS Suffix  . :
+   IPv4 Address. . . . . . . . . . . : 192.168.1.50(Preferred)
+   Subnet Mask . . . . . . . . . . . : 255.255.255.0
+
+Wireless LAN adapter Wi-Fi:
+
+   IPv4 Address. . . . . . . . . . . : 192.168.1.23(Preferred)
+   Subnet Mask . . . . . . . . . . . : 255.255.255.0
+"""
+for label, text in (("Linux", LINUX_ADDR), ("macOS", MAC_ADDR), ("Windows", WIN_ADDR)):
+    got = ps.parse_interface_addresses(text)
+    check(sorted(ip for _n, ip in got) == ["127.0.0.1", "192.168.1.23", "192.168.1.50"] or sorted(ip for _n, ip in got) == ["192.168.1.23", "192.168.1.50"],
+          f"{label}: the address of every interface is read: {got}")
+    advice = ps.network_clash_advice(got)
+    check(advice and "192.168.1" in advice and "hotspot" in advice and "Wi-Fi" in advice, f"{label}: two interfaces in 192.168.1.x: stop with the hotspot advice: {advice}")
+one_each = [("eth0", "192.168.1.50"), ("wlan0", "192.168.0.23"), ("lo", "127.0.0.1")]
+check(ps.network_clash_advice(one_each) is None and ps.network_clash_advice([("eth0", "192.168.1.50")]) is None and ps.network_clash_advice([]) is None,
+      "different ranges, one network, or nothing: no clash")
+check(ps.network_clash_advice([("eth0", "192.168.1.50"), ("eth0", "192.168.1.51")]) is None, "one interface with two addresses is not two networks")
+check(ps.local_interface_addresses({"kind": "linux"}, run=lambda c, **kw: types.SimpleNamespace(stdout=LINUX_ADDR.encode())) != [] and
+      ps.local_interface_addresses({"kind": "linux"}, run=broken_run) == [], "the table is read with the system's command; a missing command gives an empty table")
+
 clock = [0.0]
 seen = []
 sys.stdout = out = io.StringIO()
