@@ -982,6 +982,18 @@ r = lib(NONET + ostub + '(install_packages); echo "rc=$?"', env={"HAVE": ""})
 nl = open(f"{tmp}/nonet.log").read()
 check("opkg update" in nl and "opkg install" not in nl.split("opkg update")[0] and "LOCAL" not in nl, "without the setting install_packages still starts with opkg update (the online path is as before): " + nl)
 check("unset SHOP_PRODUCT PISO_LOCAL_PKGS" in text.split("main() {")[1], "a command other than the first setup (an update included) never uses PISO_LOCAL_PKGS")
+# feature 033 (SU-05): the modem's range is compared with the netmask, and the same rule answers `piso-setup wan-clash` later
+for wan, prefix, clash in (("10.0.0.5", 24, "10.0.0.1"), ("10.1.2.3", 8, "10.0.0.1"), ("10.0.30.7", 24, "10.0.30.1"), ("192.168.1.50", 24, ""), ("10.9.9.9", 24, ""), ("", 24, "")):
+    r = lib(f'wan_ip() {{ echo "{wan}"; }}; wan_prefix() {{ echo {prefix}; }}; wan_clash; echo "rc=$?"')
+    check(r.stdout.split()[0] == clash if clash else "rc=1" in r.stdout and "10." not in r.stdout.replace("rc=1", ""), f"WAN {wan}/{prefix}: overlaps {clash or 'nothing'}: {r.stdout}{r.stderr}")
+for wan, prefix in (("10.1.2.3", 8), ("10.0.0.5", 24)):
+    r = lib(NONET + f'wan_ip() {{ echo {wan}; }}; wan_prefix() {{ echo {prefix}; }}; (preflight_network); echo "rc=$?"', env={"PISO_LOCAL_PKGS": "/tmp/piso-offline/pkgs"})
+    check("rc=0" not in r.stdout and "overlap" in r.stdout + r.stderr, f"preflight refuses WAN {wan}/{prefix}: " + r.stdout + r.stderr)
+r = lib('wan_ip() { echo 10.1.2.3; }; wan_prefix() { echo 8; }; cmd_wan_clash; echo "rc=$?"')
+check(r.stdout.startswith("the modem's network (10.1.2.3/8)") and "rc=1" in r.stdout, "piso-setup wan-clash says what overlaps and fails: " + r.stdout + r.stderr)
+r = lib('wan_ip() { echo 192.168.1.50; }; wan_prefix() { echo 24; }; cmd_wan_clash; echo "rc=$?"')
+check(r.stdout.strip() == "rc=0", "and prints nothing when the ranges are apart: " + r.stdout + r.stderr)
+check("wan_clash" in open(SCRIPT).read().split("check_all() {")[1].split("\n}\n")[0], "the status checks include the modem's range")
 # feature 033 (SU-07): a failing opkg update on a router that has internet says the release's package sources do not answer
 old_root = tempfile.mkdtemp(dir=tmp)
 os.makedirs(f"{old_root}/etc")

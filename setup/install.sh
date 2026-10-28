@@ -84,9 +84,12 @@ wan_ip() {
 move_lan() {
 	_lan="$1"
 	_wan=$(wan_ip)
-	case "$_wan" in
-		10.0.0.*) fail "the modem gives this router the address $_wan, in the 10.0.0.x range the kiosk network needs. Change the modem's own LAN address (for example to 192.168.100.1), then run this again." ;;
-	esac
+	if [ -n "$_wan" ]; then   # compared by netmask: a 10.x.x.x/8 lease overlaps the kiosk network too
+		_wm=$(ubus call network.interface.wan status 2> /dev/null | jsonfilter -e '@["ipv4-address"][0].mask' 2> /dev/null); [ "${_wm:-24}" -le 24 ] 2> /dev/null || _wm=24
+		_o=$(echo "$_wan" | tr . ' '); set -- $_o
+		[ $((($1 << 24 | $2 << 16 | $3 << 8 | $4) >> (32 - _wm))) = $((167772160 >> (32 - _wm))) ] &&
+			fail "the modem gives this router the address $_wan/$_wm, in the 10.0.0.x range the kiosk network needs. Change the modem's own LAN address (for example to 192.168.100.1), then run this again."
+	fi
 	say ""
 	say "This router is at $_lan. PisoPhone needs it at $LAN_TARGET (the kiosk network is 10.0.0.x)."
 	if [ -z "$ASSUME_YES" ]; then

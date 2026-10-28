@@ -47,7 +47,7 @@ exit 0
 """)
 script("opkg", "exit 0\n")   # (a router with opkg; run(opkg=False) hides it)
 script("ubus", "echo '{}'\n")
-script("jsonfilter", 'echo "$FAKE_WAN"\n')
+script("jsonfilter", 'case "$*" in *mask*) echo "${FAKE_MASK:-24}" ;; *) echo "$FAKE_WAN" ;; esac\n')
 script("netinit", f'echo "$1" >> {tmp}/network.log\n')
 
 FAKE_SETUP = """#!/bin/sh
@@ -66,7 +66,7 @@ def publish(branch, data, sha=None):
     open(f"{d}/piso-setup.sh.sha256", "w").write((sha or hashlib.sha256(data).hexdigest()) + "  piso-setup.sh\n")
 
 
-def run(*args, lan="10.0.0.1", wan="192.168.1.50", answer="y", stdin_script=None, self_path=None, mem=None, install_dir=True, opkg=True):
+def run(*args, lan="10.0.0.1", wan="192.168.1.50", mask=24, answer="y", stdin_script=None, self_path=None, mem=None, install_dir=True, opkg=True):
     for f in ("wget.log", "uci.log", "network.log"):
         if os.path.exists(f"{tmp}/{f}"):
             os.remove(f"{tmp}/{f}")
@@ -80,7 +80,7 @@ def run(*args, lan="10.0.0.1", wan="192.168.1.50", answer="y", stdin_script=None
             if name != "opkg":
                 os.symlink(f"{bindir}/{name}", f"{path_dir}/{name}")
     env = dict(os.environ, PATH=f"{path_dir}:" + os.environ["PATH"], PISO_SITE_HOST="fake.test", PISO_INSTALL_DIR=home,
-               PISO_TTY=f"{tmp}/tty", PISO_TEST_NONROOT="1", PISO_NETWORK_INIT=f"{bindir}/netinit", FAKE_LAN=lan, FAKE_WAN=wan,
+               PISO_TTY=f"{tmp}/tty", PISO_TEST_NONROOT="1", PISO_NETWORK_INIT=f"{bindir}/netinit", FAKE_LAN=lan, FAKE_WAN=wan, FAKE_MASK=str(mask),
                PISO_SELF_PATH=self_path or f"{tmp}/no-such-piso-setup")
     if mem is not None:
         env["PISO_MEM_KB"] = str(mem)
@@ -196,6 +196,11 @@ check(log("network.log") == "restart\n", "the network is restarted (after the me
 check("ssh root@10.0.0.1" in r.stdout and f"sh {home}/piso-setup.sh" in r.stdout and "SETUP-RAN" not in r.stdout, "it says how to log in again and continue with sh <the saved path>, and does not run the setup yet")
 r = run(lan="192.168.1.1", wan="10.0.0.23", answer="y")
 check(r.returncode != 0 and "192.168.100.1" in r.stdout and "network.lan.ipaddr=10.0.0.1" not in log("uci.log"), "a modem on 10.0.0.x: it stops and says what to change")
+r = run(lan="192.168.1.1", wan="10.1.2.3", mask=8, answer="y")
+check(r.returncode != 0 and "192.168.100.1" in r.stdout and "network.lan.ipaddr=10.0.0.1" not in log("uci.log"), "feature 033 (SU-05): a modem lease of 10.1.2.3/8 overlaps the kiosk network too: refused by the netmask")
+r = run(lan="192.168.1.1", wan="10.9.9.9", mask=24, answer="y")
+time.sleep(3.6)
+check(r.returncode == 0 and "set network.lan.ipaddr=10.0.0.1" in log("uci.log"), "and 10.9.9.9/24 is another network: the router is moved: " + r.stdout)
 r = run("update", lan="192.168.1.1")
 check("SETUP-RAN args=[update]" in r.stdout and "set network.lan.ipaddr" not in log("uci.log"), "update never moves the router")
 # feature 033 (SU-06b): a router without opkg (OpenWrt 25.x, apk) is refused before anything is downloaded, moved or run

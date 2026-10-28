@@ -18,6 +18,7 @@ check_all() {  # prints PASS/FAIL lines, returns the number of failures
 	_ck "the router looks for signed updates every hour (scheduler running)" update_timer_ok
 	_ck "the hourly update check ran within the last 3 hours" update_check_recent
 	_ck "internet through the WAN" "ping -c 1 -W 3 1.1.1.1 || ping -c 1 -W 3 8.8.8.8"
+	_ck "the modem's network does not overlap the router's own (a modem plugged in later can)" "! wan_clash"
 	agree_all
 	return $((_bad + $?))
 }
