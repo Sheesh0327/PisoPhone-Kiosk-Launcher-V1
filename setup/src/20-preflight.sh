@@ -18,6 +18,7 @@ preflight() {
 		[ -f /etc/openwrt_release ] || die "this is not an OpenWrt router"
 	fi
 	command -v uci > /dev/null || die "uci not found"
+	command -v opkg > /dev/null || die "this router has no opkg (OpenWrt 25.x and snapshots install packages with apk). This setup supports OpenWrt 23.05 and 24.10 (see docs/ROUTERS.md). Nothing was changed."
 	check_arch
 	R24=""; R5=""
 	for r in $(radios); do

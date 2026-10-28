@@ -23,7 +23,7 @@ Unresolved ledger entries loaded: none for the router installer. Baseline (2026-
 Test first for each: see it fail, log it in `ledger/negative-constraints.md` (table form), fix in the source under `setup/src/` (never the generated `setup/piso-setup*.sh`), rebuild, one commit per group, no push to `beta`.
 Run the router tests with `< /dev/null` in the background and read the last lines only. After each group check `test_footprint.py`.
 
-- [ ] 1. SU-06b no opkg stops `install.sh` before anything is done, and preflight says it too (files: `setup/install.sh`, `setup/src/20-preflight.sh`; test: `test_install.py`; red result logged: yes/no)
+- [x] 1. SU-06b no opkg stops `install.sh` before anything is done, and preflight says it too (files: `setup/install.sh`, `setup/src/20-preflight.sh`; test: `test_install.py`; red result logged: yes)
 - [ ] 2. SU-07 a failing `opkg update` with a working ping names the release and `docs/ROUTERS.md` (files: `20-preflight.sh`; test: `test_setup.py` with a failing fake `opkg update`; red result logged: yes/no)
 - [ ] 3. SU-05 the modem-range check compares with the netmask and runs again once the WAN is up: alert and `piso-setup status` line (files: `install.sh`, `20-preflight.sh`, `router/piso_monitor.sh`, `80-commands.sh`; tests: WAN 10.0.0.5/24, 10.1.2.3/8, 10.0.30.7/24, none; `test_install.py`, `test_setup.py`, `test_monitor.py`; red result logged: yes/no)
 - [ ] 4. SU-11 pair only the board this program just wrote: `BOX_EXPECT_MAC` in the answers line and in `pair_box` (files: `setup/pisophone_setup.py` `ANSWER_ORDER`, `setup_command`, the MAC read from the board's `PISO-BOX` hello after writing; `setup/src/98-setup-flow.sh`, `50-coin-box.sh`; tests: wrong MAC first is not paired, the expected one is, none expected = first one; program sends the MAC; red result logged: yes/no)
@@ -35,3 +35,5 @@ Order: the confirmed rows first (SU-06b, SU-07, SU-05), then the money row SU-11
 
 ## Release
 Router: `setup/RELEASE` 1.5.23 -> 1.5.24. Regenerated, never edited: `setup/piso-setup*.sh` (+ `.sha256`), `website/setup/*`, `website/install.sh`, `website/pisophone_setup.py`. CI signs and publishes at 0% after the merge; the owner raises it to 100% (`CLAUDE.md` section 5, `docs/RELEASE.md`). No push to `beta`, no pull request and no merge from here: the feature waits for the owner's RS57 bench run (D8).
+
+Generated files (`setup/piso-setup*`, `website/setup/*`, `website/install.sh`, `website/pisophone_setup.py`) are rebuilt for the tests after each group but committed once, at the close-out (group 7), so the branch does not carry ten copies of 10 MB; a commit before that has stale generated files.

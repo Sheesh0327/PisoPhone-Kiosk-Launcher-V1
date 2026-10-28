@@ -20,6 +20,8 @@ def check(cond, msg):
 tmp = tempfile.mkdtemp()
 bindir = f"{tmp}/bin"
 os.makedirs(bindir)
+open(f"{bindir}/opkg", "w").write("#!/bin/sh\nexit 0\n")   # (the preflight wants opkg; the tests that use it have their own)
+os.chmod(f"{bindir}/opkg", 0o755)
 
 
 def fake_uci(radios, ifaces=3, lan=None):
@@ -980,6 +982,17 @@ r = lib(NONET + ostub + '(install_packages); echo "rc=$?"', env={"HAVE": ""})
 nl = open(f"{tmp}/nonet.log").read()
 check("opkg update" in nl and "opkg install" not in nl.split("opkg update")[0] and "LOCAL" not in nl, "without the setting install_packages still starts with opkg update (the online path is as before): " + nl)
 check("unset SHOP_PRODUCT PISO_LOCAL_PKGS" in text.split("main() {")[1], "a command other than the first setup (an update included) never uses PISO_LOCAL_PKGS")
+# feature 033 (SU-07): a failing opkg update on a router that has internet says the release's package sources do not answer
+old_root = tempfile.mkdtemp(dir=tmp)
+os.makedirs(f"{old_root}/etc")
+open(f"{old_root}/etc/openwrt_release", "w").write("DISTRIB_ID='OpenWrt'\nDISTRIB_RELEASE='21.02.7'\nDISTRIB_ARCH='mipsel_24kc'\n")
+FAILING = 'opkg() { return 1; }; step() { :; }; '
+r = lib(FAILING + 'ping() { return 0; }; (install_packages); echo "rc=$?"', env={"PISO_ROOT": old_root})
+out = r.stdout + r.stderr
+check("rc=0" not in out and "21.02.7" in out and "do not answer" in out and "ROUTERS.md" in out and "no internet" not in out,
+      "opkg update fails but the ping works: it names the release and the supported ones: " + out)
+r = lib(FAILING + 'ping() { return 1; }; (install_packages); echo "rc=$?"', env={"PISO_ROOT": old_root})
+check("rc=0" not in r.stdout and "no internet or DNS" in r.stdout + r.stderr, "opkg update fails and there is no ping answer: the old message: " + r.stdout + r.stderr)
 # ---- box-diag: where the router <-> box link breaks -----------------------------------------------------------------------------
 def box_diag(setup_code):
     return lib(setup_code + "; cmd_box_diag", env={"BOX_IP": "127.0.0.1:1"})   # nothing listens there: the box does not answer

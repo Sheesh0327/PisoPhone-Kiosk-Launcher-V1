@@ -45,6 +45,7 @@ script("uci", f"""echo "$*" >> {tmp}/uci.log
 case "$1" in get) [ "$2" = network.lan.ipaddr ] && echo "${{FAKE_LAN}}/24" ;; esac
 exit 0
 """)
+script("opkg", "exit 0\n")   # (a router with opkg; run(opkg=False) hides it)
 script("ubus", "echo '{}'\n")
 script("jsonfilter", 'echo "$FAKE_WAN"\n')
 script("netinit", f'echo "$1" >> {tmp}/network.log\n')
@@ -65,12 +66,20 @@ def publish(branch, data, sha=None):
     open(f"{d}/piso-setup.sh.sha256", "w").write((sha or hashlib.sha256(data).hexdigest()) + "  piso-setup.sh\n")
 
 
-def run(*args, lan="10.0.0.1", wan="192.168.1.50", answer="y", stdin_script=None, self_path=None, mem=None, install_dir=True):
+def run(*args, lan="10.0.0.1", wan="192.168.1.50", answer="y", stdin_script=None, self_path=None, mem=None, install_dir=True, opkg=True):
     for f in ("wget.log", "uci.log", "network.log"):
         if os.path.exists(f"{tmp}/{f}"):
             os.remove(f"{tmp}/{f}")
     open(f"{tmp}/tty", "w").write(answer + "\n")
-    env = dict(os.environ, PATH=f"{bindir}:" + os.environ["PATH"], PISO_SITE_HOST="fake.test", PISO_INSTALL_DIR=home,
+    path_dir = bindir
+    if not opkg:   # the same fake commands without opkg (OpenWrt 25.x uses apk)
+        path_dir = f"{tmp}/bin-no-opkg"
+        shutil.rmtree(path_dir, ignore_errors=True)
+        os.makedirs(path_dir)
+        for name in os.listdir(bindir):
+            if name != "opkg":
+                os.symlink(f"{bindir}/{name}", f"{path_dir}/{name}")
+    env = dict(os.environ, PATH=f"{path_dir}:" + os.environ["PATH"], PISO_SITE_HOST="fake.test", PISO_INSTALL_DIR=home,
                PISO_TTY=f"{tmp}/tty", PISO_TEST_NONROOT="1", PISO_NETWORK_INIT=f"{bindir}/netinit", FAKE_LAN=lan, FAKE_WAN=wan,
                PISO_SELF_PATH=self_path or f"{tmp}/no-such-piso-setup")
     if mem is not None:
@@ -189,6 +198,12 @@ r = run(lan="192.168.1.1", wan="10.0.0.23", answer="y")
 check(r.returncode != 0 and "192.168.100.1" in r.stdout and "network.lan.ipaddr=10.0.0.1" not in log("uci.log"), "a modem on 10.0.0.x: it stops and says what to change")
 r = run("update", lan="192.168.1.1")
 check("SETUP-RAN args=[update]" in r.stdout and "set network.lan.ipaddr" not in log("uci.log"), "update never moves the router")
+# feature 033 (SU-06b): a router without opkg (OpenWrt 25.x, apk) is refused before anything is downloaded, moved or run
+r = run(lan="192.168.1.1", answer="y", opkg=False)
+check(r.returncode != 0 and "opkg" in r.stdout + r.stderr and "ROUTERS.md" in r.stdout + r.stderr and "Nothing was changed" in r.stdout + r.stderr,
+      "no opkg: it stops and says which routers are supported: " + r.stdout + r.stderr)
+check(log("wget.log") == "" and "network.lan.ipaddr" not in log("uci.log") and "SETUP-RAN" not in r.stdout and log("network.log") == "",
+      "and nothing was downloaded, moved, restarted or run")
 
 # ---- feature 010: the installer copy lives in RAM (/tmp) unless memory is short (then /root); PISO_INSTALL_DIR overrides both ---------
 publish("main", FAKE_SETUP.encode())
