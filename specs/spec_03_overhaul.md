@@ -46,53 +46,118 @@ against `9a92c33`; if the finding is already fixed, say so, mark the feature `wo
 
 Each is one branch, one area, one chat. **Do them in this order**; later ones assume earlier ones landed.
 
-| # | name | area | why it is here | release |
-|---|---|---|---|---|
-| **033** | Remove the spinning wheel | router | 5 Rust files + `wheel.html` (~99 KB source), 57 references across `core/http/config/main/console`, 5 test files. It is **off on every router**, has **never run on hardware** (RS34 never run), and its warning text has **never had a legal review** (roadmap 8.3). In the Philippines a paid spin for a prize is PAGCOR-adjacent. It is the largest block of unproven complexity in the product. | router |
-| **034** | Remove the mini-game | router | `game.rs` + `game.html`, 50 references. The wheel was built to *replace* it, and feature 005's own notes record removing it as agreed and never done. With 033 landed it is the last of the two. | router |
-| **035** | Say which routers are actually supported | docs + setup | Five CPU families ship; **only `mipsel` has ever run on real hardware**. Claiming five is five times the surface that cannot be verified. Demote `mips`, `armv7`, `x86_64` to "untested" in the docs and warn at setup; keep building them. | router (docs only) |
-| **036** | The site status panel | router | Two real gaps left after spec 02: (a) `reconcile` agreement is computed and alerted on, but a shop owner cannot *see* it — it is the one claim no competitor can make, and it is invisible; (b) nothing notices when the app, firmware and router feeds drift (the build-495-vs-firmware-3.12.0 skew, whose workaround was "do not fill in Shop branding on any box"). | router |
-| **037** | Setup asks fewer questions | setup | `SHOP_PRODUCT` is asked when it can be inferred; there are four setup entry points (`website/install.sh`, `pisophone_setup.py`, the Start-here pages, the Check-up). Every question removed is a support call avoided. | router + site |
-| **038** | Phone-led setup (spec only this cycle) | app + firmware + setup | The decisive competitive move: no computer, no SSH, no Python. The owner's phone already has the app, a camera and Wi-Fi. **Specify it, do not build it yet** — it is worth building only on a base whose hardware checks are current. | none yet |
+| # | name | area | release |
+|---|---|---|---|
+| **033** | Remove the spinning wheel | router | router |
+| **034** | Remove the mini-game | router | router |
+| **035** | Say which routers are actually supported | docs + setup | router (docs only) |
+| **036** | The site status panel (money agreement + version skew) | router + firmware | router + firmware |
+| **037** | Setup asks fewer questions, one front door | setup + router | router + site |
+| **038** | Phone-led setup | app + firmware + router | app + firmware + router |
+| **039** | Triage the owed hardware checks | docs | none |
 
-**Specs 033 and 034 are written in full** (`specs/features/033-remove-wheel/`, `034-remove-minigame/`). 035 to 038 are specified
-here at the level above and get their own full spec **when their turn comes** — writing them now guarantees they are stale when
-they run, which is exactly what happened to spec 02's AO-01, AO-06 and AO-07 (section 2).
+Specs 033 and 034 are **written in full** (`specs/features/033-remove-wheel/`, `034-remove-minigame/`). 035 to 039 have their
+design decided in section 6 and get their full spec **when their turn comes** — a spec written three features early is stale by
+the time it runs, which is exactly what happened to spec 02's AO-01, AO-05, AO-06 and AO-07 (section 2).
 
-## 6. What is deliberately NOT in this epic, and why
-- **Slot licensing** (`SlotLicense.h`, `getDeviceCap`, P500 keys, the 12-slot cap, grandfathering). It is revenue-protection
-  machinery for revenue that does not exist yet, so it looks like a deletion candidate — but it runs in live firmware and
-  governs whether a phone may pair. Removing it changes behaviour on boxes in shops. **Owner decision D3** below.
-- **`boxview.rs`** (the reverse proxy that frames the box's admin page inside the console). Well built; probably more code than a
-  plain link to the box's address would need. Not worth the churn until someone complains. Revisit at the next replan.
-- **Thinning the spec system itself.** `STATUS.md`, `RELEASE_STATE.md`, `roadmap.md`, `REPLAN.md`, `notes/` and `findings.json`
-  overlap and are maintained by hand; section 2 of this epic exists only because two of them were wrong. Worth fixing, but it is a
-  process change for a replan (`/sdd-replan`), not a feature.
+## 6. The decided design of each feature
+All of this was decided with the owner on 2026-10-28. A feature that contradicts its paragraph here must change this epic first.
 
-## 7. Owner decisions (needed before 033 starts)
-- **D1 — the wheel: remove, or keep and finish?** Removing it drops ~99 KB of source and 5 test files, and closes the legal
-  question (roadmap 8.3) by making it moot. Keeping it means paying for the legal review and running RS34 before it can ever be
-  switched on. **Proposed: remove.** It can be brought back from git history if a market for it appears.
-- **D2 — the mini-game: remove with the wheel, or keep as the only free thing on the portal?** Removing both leaves a paying
-  customer with nothing to do while waiting. **Proposed: remove**, because it is 18 KB of source and two browser test files for a
-  feature nobody has asked for; but this is a product call, not an engineering one.
-- **D3 — slot licensing: leave alone, stop enforcing, or remove?** Three options: (a) leave it exactly as it is (safest,
-  proposed); (b) keep the code but raise `FREE_SLOTS` so it never refuses in practice; (c) remove it. (b) and (c) change live
-  boxes' pairing behaviour and need their own feature and hardware check.
-- **D4 — architectures: demote three to "untested" in public?** It is an honesty change that may cost sales to people with a
-  TP-Link. **Proposed: yes** — an unsupported router that fails in a shop costs more than the sale was worth.
+### 033 Remove the spinning wheel  (owner: remove)
+Full spec written. ~99 KB of source, 57 call sites, 5 test files. Owner data (`wheel-confirm.txt`, `wheel.log`) is kept, not
+deleted; `/wheel*` becomes 404; RS34 is retired with a reason, not silently dropped.
 
-## 8. Gates for every feature under this epic
-`CLAUDE.md` section 3, in full. For the router features that is: `cargo test` and `python3 tests/test_flow.py` in
-`tools/pisoportal`, plus `python3 router/tests/test_setup.py`, `test_pisophone_setup.py`, `test_setup_web.py`,
-`test_setup_tools.py`, and always `bash scripts/check_security_rules.sh`. A change under `tools/pisoportal/` raises
-`setup/RELEASE`. Generated files are never edited by hand (`CLAUDE.md` section 4).
+### 034 Remove the mini-game  (owner: remove)
+Full spec written. Unlike the wheel it is **on by default**, so `CHANGELOG.md` says plainly that the free game is gone. A
+`GAME_MINUTES` line already in a router's `settings.txt` is left in place and ignored.
 
-## 9. How this is measured when the epic closes
+### 035 Say which routers are actually supported  (owner: demote three, keep building them)
+`mipsel` and `aarch64` are **supported** (MT7621 plus the modern Wi-Fi 6 boards: the real market). `mips`, `armv7` and `x86_64`
+become **untested**: `docs/ROUTERS.md` gains a support column, and the installer **warns and proceeds** on an untested family —
+it never refuses. CI keeps building all five, so the door stays open and a family can be promoted the day one runs in a shop.
+
+### 036 The site status panel  (owner: box holds it; warn only; always visible; show both numbers)
+Two gaps in one feature, both on surfaces the owner already looks at.
+- **Version skew.** The **coin box** holds the expected set, because it is the only part present in every configuration and it
+  already sees phones (heartbeat) and the router (boxlink). It learns the expected versions from the signed feed it already
+  fetches. On skew it **warns and never blocks**: a line on the box dashboard, on the router console, and in `alerts.txt`. It
+  never refuses a coin and never refuses to pair. A shop mid-update keeps earning.
+- **Money agreement, always on the console front page.** A permanent line showing **both numbers and the reason for any gap**:
+  "Box 1,310. Wi-Fi ledger 1,247. Difference 63 = rental phone coins. Normal." The box being ahead is normal (it also counts the
+  rental phones' coins) and its lifetime count restarts when the owner collects, so the panel must teach those two cases rather
+  than flag them. Only a box *behind* the ledger is a real mismatch.
+- No history page in this feature (it was offered and not taken); the alert path already covers a mismatch over time.
+
+### 037 Setup asks fewer questions, one front door  (owner: always create the phone Wi-Fi; the box's page is the front door)
+- **The product question goes away.** Every router gets the hidden rental-phone Wi-Fi whether or not phones ever arrive, because
+  the cost is one unused SSID and a password. `SHOP_PRODUCT` stops being asked. Routers already set up are not changed.
+- **The box's own page is the single front door.** Power the box, join `PisoCoinBox-xxxx`, and the box's page walks the owner
+  through setup and hands them the router command **pre-filled**. `website/install.sh`, `pisophone_setup.py`, the Start-here
+  pages and the Check-up all stay, but they become routes into that flow rather than four separate beginnings.
+
+### 038 Phone-led setup  (owner: add it, keep the computer path; the phone drives the router over HTTP)
+The decisive competitive move: no computer, no SSH, no Python. The owner's phone already has the app, a camera and Wi-Fi.
+- **Added, not substituted.** `pisophone_setup.py` stays for recovery and for anything the phone cannot do. Nothing that works
+  today stops working.
+- **The phone drives the router over HTTP**, through a small setup endpoint the router exposes **during first setup only**,
+  which closes when setup finishes. No SSH client in the app, and the router's root password never reaches the phone.
+- Build it only on a base whose hardware checks are current — which is why 039 exists and why this is last.
+
+### 039 Triage the owed hardware checks  (owner: yes, as its own feature)
+RS28-RS52 are the real gap between this product and ones proven by attrition. This feature writes no code: it reads every owed
+check, marks the ones later releases made obsolete, and reduces the rest to **one ordered list the owner can work through a
+session at a time**. Output is `docs/REAL_WORLD_TESTING.md` and nothing else.
+
+## 7. Owner decisions — all answered 2026-10-28
+| id | question | answer |
+|---|---|---|
+| D1 | the spinning wheel | **remove** (feature 033) |
+| D2 | the mini-game | **remove** (feature 034) |
+| D3 | slot licensing | **leave exactly as it is.** It is live firmware governing pairing in real shops; the risk of touching it outweighs the complexity it costs today. Revisit when there is a reseller. Not in this epic. |
+| D4 | the five CPU families | **demote three to untested, keep building all five** (feature 035) |
+| D5 | where the expected version set lives | **the coin box** (feature 036) |
+| D6 | what happens on version skew | **warn only, never block** (feature 036) |
+| D7 | how prominent the money agreement is | **always on the console front page** (feature 036) |
+| D8 | what the panel shows when the box is legitimately ahead | **both numbers and the reason** (feature 036) |
+| D9 | the product question | **always create the phone Wi-Fi; stop asking** (feature 037) |
+| D10 | the single front door | **the box's own page** (feature 037) |
+| D11 | phone-led setup: replace or add | **add; keep the computer path** (feature 038) |
+| D12 | how far the phone reaches into the router | **HTTP to a first-setup-only endpoint** (feature 038) |
+| D13 | when 033 starts | **after feature 032 merges** (section 8) |
+| D14 | how 033-035 are released | **one router release for all three** (section 8) |
+| D15 | the owed hardware checks | **a triage feature** (feature 039) |
+| D16 | `STATUS.md` and `RELEASE_STATE.md` being wrong | **fix at the next replan**, not here (section 9) |
+
+## 8. Sequencing and releases
+- **033 does not start until feature 032 (the ledger size cap) is merged.** Both touch `tools/pisoportal`; 032 is almost all
+  `ledger.rs` and 033 is `core/http/config/main/console`, but two sessions in one crate means an avoidable conflict. A deletion
+  loses nothing by waiting.
+- **033, 034 and 035 ship as one router release.** Merge all three to `main`, then cut a single release: one rollout, one
+  `verify_release.py`, one set of checks instead of three. They are all deletions and they test well together.
+- **036 is a firmware release as well as a router one** (the box holds the expected version set), so it is on its own.
+- **039 has no release at all** and can be done any time, including in parallel with the deletions, because it touches only
+  `docs/REAL_WORLD_TESTING.md`.
+
+## 9. What this epic deliberately does NOT do
+- **Slot licensing**: D3, left alone.
+- **`boxview.rs`** (the proxy that frames the box's admin page in the console): probably more code than a plain link needs, but
+  nothing is broken. Revisit at a replan.
+- **Thinning the spec system.** `STATUS.md`, `RELEASE_STATE.md`, `roadmap.md`, `REPLAN.md`, `notes/` and `findings.json` overlap
+  and are hand-maintained; section 2 of this epic exists only because two of them were wrong. D16: this is a process change for
+  `/sdd-replan`, not a feature. Do it at the next replan, and decide there what is maintained by hand and what is generated.
+
+## 10. Gates for every feature under this epic
+`CLAUDE.md` section 3, in full. For the router features: `cargo test` and `python3 tests/test_flow.py` in `tools/pisoportal`,
+plus `python3 router/tests/test_setup.py`, `test_pisophone_setup.py`, `test_setup_web.py`, `test_setup_tools.py`, and always
+`bash scripts/check_security_rules.sh`. A change under `tools/pisoportal/` raises `setup/RELEASE`. Generated files are never
+edited by hand (`CLAUDE.md` section 4).
+
+## 11. How this is measured when the epic closes
 | measure | at `9a92c33` | target |
 |---|---|---|
 | Rust source files in `tools/pisoportal/src/` | count at start | minus 7 (033 + 034) |
 | Router test files | count at start | minus 6 |
 | Features shipped but never run on hardware | the wheel (RS34), among others | the wheel is gone, not pending |
+| Owed hardware checks | RS28-RS52, unordered | one ordered list, obsolete ones closed (039) |
 | Questions asked during a first setup | count at start (037 group 0) | fewer, written down |
-| Can an owner see that the money agrees? | no | yes, on the console front page |
+| Can an owner see that the money agrees? | no | yes, on the console front page, with both numbers |

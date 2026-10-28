@@ -1,6 +1,6 @@
 # Feature 034: remove the mini-game
 
-Status: **draft, needs owner decision D2 in `specs/spec_03_overhaul.md`; starts only after 033 is merged**
+Status: **approved by the owner 2026-10-28 (epic D2 = remove). Starts only after 033 is merged.**
 Branch: `feat/034-remove-minigame`   Area: router   Epic: `specs/spec_03_overhaul.md` feature 034   Release: router
 
 ## Intent
@@ -88,5 +88,5 @@ visible change for customers:
 - Replacing the game with anything. The customer page is meant to get simpler, not different.
 
 ## Owner decisions
-- **D2 in the epic** must be answered "remove". If the owner wants to keep a free thing on the portal while customers wait,
-  this feature becomes `wont-fix` and the mini-game stays exactly as it is.
+All answered. **D2 = remove** (2026-10-28); the owner accepts that this is visible to customers, since the game is on by
+default. **D14**: 033, 034 and 035 go out as **one** router release — raise `setup/RELEASE`, but do not run a rollout here.

@@ -1,6 +1,7 @@
 # Feature 033: remove the spinning wheel
 
-Status: **draft, needs owner decision D1 in `specs/spec_03_overhaul.md`**   Branch: `feat/033-remove-wheel`   Area: router
+Status: **approved by the owner 2026-10-28 (epic D1 = remove). Starts only after feature 032 is merged (epic D13).**
+Branch: `feat/033-remove-wheel`   Area: router
 Epic: `specs/spec_03_overhaul.md` feature 033   Release: router
 
 ## Intent
@@ -119,5 +120,7 @@ Each becomes a line in `validation.md` with real command output.
 - Any change to pricing, vouchers, pause, the roll, the ledger, or the box link.
 
 ## Owner decisions
-- **D1 in the epic** must be answered "remove" before this starts. If the owner says keep, this feature becomes `wont-fix` and
-  the work is instead a legal review plus RS34.
+All answered. **D1 = remove** (2026-10-28). **D13**: this feature starts only once feature 032 (the ledger size cap) is merged —
+both touch `tools/pisoportal` and a conflict in `config.rs` or `console.rs` is avoidable by waiting. **D14**: this does not ship
+on its own; 033, 034 and 035 merge to `main` and then go out as **one** router release. So: raise `setup/RELEASE` as the spec
+says, but do **not** run a rollout or ask for one — the release happens after 035.
