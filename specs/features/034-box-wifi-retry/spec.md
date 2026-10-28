@@ -1,6 +1,6 @@
 # Feature 034: a PisoPhone-only box that was given a wrong Wi-Fi password can be given the right one
 
-Status: **draft: waiting for the owner to approve this spec and plan**   Branch: `feat/034-box-wifi-retry` (from `origin/main` plus the epic commit, as for 032 and 033)   Area: firmware (and one small program change in `setup/pisophone_setup.py`)
+Status: **approved by the owner 2026-10-28 (spec, plan, Q1 and Q2 both yes); in progress**   Branch: `feat/034-box-wifi-retry` (from `origin/main` plus the epic commit, as for 032 and 033)   Area: firmware (and one small program change in `setup/pisophone_setup.py`)
 Backlog rows: SU-16 (`specs/spec_03_findings.json`)   Release: firmware (`PISO_FW_VERSION` 3.12.4 -> 3.12.5; `firmware-images.yml` builds and signs it); the website's copy of the setup program is rebuilt
 
 ## Intent
@@ -53,5 +53,6 @@ Each becomes a line in `validation.md`; ids follow spec 03 section 7.
 
 ## Owner decisions
 Spec 03 D1 to D8 are answered (D6 is this feature). For this feature:
-- **Q1** Is it right that only a box **set up by the new firmware's USB setup** can be "joining" (so an update never turns a working shop box into one that takes new Wi-Fi details)? Recommended: **yes**; the cost is that a box already stuck today (set up by the older firmware) still needs the ERASE route once.
-- **Q2** In the joining state the box also accepts a **new admin password** (the request carries all three values, as today), since a box that never joined has no money and no users. Recommended: **yes**, same line, no new command.
+Answered by the owner on 2026-10-28:
+- **Q1** Yes: only a box set up by the new firmware's USB setup can be "joining"; a box already stuck (older firmware) still needs the ERASE route once.
+- **Q2** Yes: in the joining state the box also accepts a new admin password, in the same `PISO-SETUP` line.
