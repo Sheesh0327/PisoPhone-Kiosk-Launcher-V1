@@ -150,11 +150,10 @@ espsecure.py sign_data --version 2 --keyfile secure_boot_signing_key.pem --outpu
 
 **C3. Read board 2 and change nothing** (same as A1). All four security fuses must be clear.
 
-**C4. Read the guide's step 5 before you run it, because I believe one line in it is wrong.** `PROVISIONING_SOLD_UNIT.md` section 4 step 5 burns `SPI_BOOT_CRYPT_CNT 7` while the flash is still
-plain, and step 6 then says the bootloader encrypts the flash in place on first boot. As I understand ESP-IDF, the chip decrypts everything it reads once that counter is odd, so a plain flash would read as garbage and
-the board would not boot. In ESP-IDF's documented Release flow, the key is burned first and the **bootloader itself** burns the counter when it encrypts on first boot (and, in Release mode, sets the
-download-mode and JTAG protections). **This is from memory and unverified.** Before you burn anything, read the ESP-IDF page *Flash Encryption* for the ESP32-C3 (Release mode, "pre-generated key"). If it does
-not match what is below, **STOP and change `PROVISIONING_SOLD_UNIT.md` first** (write down what you found). Updating the guide is part of this feature's job.
+**C4. Step 5 ordering: settled 2026-10-28.** The earlier worry was right: the guide burned `SPI_BOOT_CRYPT_CNT 7` while the flash was still plain. That counter is the "flash is encrypted"
+flag, so a plain bootloader would not load. The guide is corrected: **you do not burn `SPI_BOOT_CRYPT_CNT`; the bootloader burns it after it has encrypted the flash** (it reads **1**, not 7, afterwards).
+Source: ESP-IDF v5.4.2 `flash-encryption`, "Flash Encryption Process" and "Possible Failures". Read `specs/features/040-sold-box-hardening/efuse-review.md` before you start, especially item 3 (the hand-burns before first boot
+are not shown as one workflow in ESP-IDF; this bench run is what tests them) and item 7 (`espefuse.py` stops working once `ENABLE_SECURITY_DOWNLOAD` is burned).
 
 **C5. The steps, in the order I expect to be right** (each prints a summary; **read it before you confirm**):
 1. Flash the signed bootloader, the partition table and the signed app, plain, at their offsets. Do not power-cycle yet if you can avoid it. (Guide 4.2.)
@@ -168,8 +167,8 @@ not match what is below, **STOP and change `PROVISIONING_SOLD_UNIT.md` first** (
    espefuse.py -p /dev/ttyUSB0 burn_key BLOCK_KEY1 sb_digest.bin SECURE_BOOT_DIGEST0
    ```
 4. `espefuse.py -p /dev/ttyUSB0 summary` and compare every name with the next lines. **If a name does not exist on your `espefuse.py` version, stop and look it up. Never guess one.**
-5. Burn `SECURE_BOOT_EN`, the JTAG fuses (`DIS_USB_JTAG`, `DIS_PAD_JTAG`) and `ENABLE_SECURITY_DOWNLOAD`, as in the guide. **Do NOT burn `DIS_DOWNLOAD_MODE`** (criterion 8): it would leave you no way back until OTA recovery has been proven on a hardened board.
-6. Power-cycle and **do not remove power for at least two minutes**: the bootloader encrypts the flash on first boot. Decide with C4 whether `SPI_BOOT_CRYPT_CNT` is burned by you or by the bootloader.
+5. Burn `SECURE_BOOT_EN`, the JTAG fuses (`DIS_USB_JTAG`, `DIS_PAD_JTAG`, and the others on the guide's line, each with its value `1`) and `ENABLE_SECURITY_DOWNLOAD`, **exactly as in the guide's step 5, and do NOT burn `SPI_BOOT_CRYPT_CNT`**. `ENABLE_SECURITY_DOWNLOAD` is last: after it, `espefuse.py` no longer runs. **Do NOT burn `DIS_DOWNLOAD_MODE`** (criterion 8): it would leave you no way back until OTA recovery has been proven on a hardened board.
+6. Power-cycle and **do not remove power for at least two minutes**: the bootloader encrypts the flash on first boot. The bootloader (not you) burns `SPI_BOOT_CRYPT_CNT`, after the encryption pass.
 
 **STOP and write down everything on screen** if the board does not boot after step 6. This is the "boot loop" case in the guide's section 6; the board cannot be recovered. That is why it is the sacrificial one.
 
@@ -181,7 +180,7 @@ a deliberately bad update is reverted (rebuild V+2/V+3 from V+1+, and sign again
 ```bash
 esptool.py -p /dev/ttyUSB0 read_flash 0x20000 0x2000 app_dump.bin    # refusing is fine in secure download mode
 python3 scripts/sold_unit_check.py flash app_dump.bin                # must say: ciphertext
-python3 scripts/sold_unit_check.py fuses --port /dev/ttyUSB0 --expect-locked
+esptool.py -p /dev/ttyUSB0 get_security_info      # espefuse.py cannot run in secure download mode; sold_unit_check.py fuses will fail here
 ```
 Good: `ciphertext`; `SECURE_BOOT_EN` set; JTAG disabled; `ENABLE_SECURITY_DOWNLOAD` set; `DIS_DOWNLOAD_MODE` **not** set. Also dump the NVS region (`0x9000`, `0x5000`) and search it for the box's secret
 (`python3 scripts/sold_unit_check.py flash nvs_dump.bin --find "<text>"`). **If the text appears in plain, NVS is not covered on this build** and that is a firmware change needed before any sale.
