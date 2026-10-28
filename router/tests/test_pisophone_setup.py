@@ -1083,5 +1083,23 @@ check(ps.build_parser().parse_args(["--router-online"]).router_online is True an
 OFFLINE_SITE = None
 
 shutil.rmtree(tmp, ignore_errors=True)
+# ---- feature 032 (SU-18): the computer's addresses at the top of the setup log -------------------------------------------------------------
+import types as _types
+for kind, first in (("windows", "ipconfig"), ("mac", "ifconfig"), ("linux", "ip")):
+    ran = []
+
+    def fake_run(command, **kw):
+        ran.append(command[0])
+        return _types.SimpleNamespace(stdout=f"ADDR {command[0]}\nline two".encode())
+    report = ps.network_report({"kind": kind}, run=fake_run)
+    check(ran[0] == first and len(ran) == 2 and f"ADDR {first}" in report and "line two" in report, f"{kind}: the address and route commands are run and kept: {ran}")
+
+
+def refusing_run(command, **kw):
+    raise FileNotFoundError(command[0])
+report = ps.network_report({"kind": "linux"}, run=refusing_run)
+check(len(report) == 2 and all("could not be run" in x for x in report), "a missing command is noted, not raised: " + str(report))
+check(ps.SetupLog.mask("pw is Secret123 and ab", ["Secret123", "ab", ""]) == "pw is *** and ab", "only secrets of 6 characters or more are hidden")
+
 print(f"{checks} checks, {failures} failures")
 sys.exit(1 if failures else 0)

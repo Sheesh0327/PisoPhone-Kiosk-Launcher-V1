@@ -22,7 +22,7 @@ Unresolved ledger entries loaded: none for the setup program (the last unresolve
 Test first for each: see it fail, log it in `ledger/negative-constraints.md` (table form), fix in the source, one commit per group, no push.
 Run the router tests in the background and read the last lines only.
 
-- [ ] 1. SU-18 the setup log file (`Session.log`, `plog`, a start-of-run address/route dump, mask the unit's passwords, 0600, link from banner and last page; test: fake-core run writes the file, mode, no password; red result logged: yes/no)
+- [x] 1. SU-18 the setup log file (`Session.log`, `plog`, a start-of-run address/route dump, mask the unit's passwords, 0600, link from banner and last page; test: fake-core run writes the file, mode, no password; red result logged: yes)
 - [ ] 2. SU-09 + SU-10 *Try again* uses the saved router password; a refused login gets its own message (`Core.__init__` ~4426, `do_search`/`saved_login`, `install()` ~2436; test: the fake `Core` models a router whose password changes after the first run, and a refusing fake ssh; red result logged: yes/no)
 - [ ] 3. SU-06a refuse an apk / no-`opkg` router before any change (`parse_router_feeds`, `install()` `fall_back`; test: `@@APK yes` stops with nothing changed; red result logged: yes/no)
 - [ ] 4. SU-17 + SU-21 `USER_AGENT` on the coin box list and image; `install_service` copies the program to `/var/lib/pisophone-setup/` (tests: the request carries it; `install_service` with a temp state dir; red result logged: yes/no)

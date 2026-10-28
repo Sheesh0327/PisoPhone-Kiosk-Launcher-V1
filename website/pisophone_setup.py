@@ -4498,6 +4498,69 @@ class Core:
         return check_items(usb_boards, BoxLink.open, http_ok)
 
 
+def network_report(system=None, run=subprocess.run):
+    """This computer's addresses and routes, as text lines: the first thing in the setup log (a real run that fails is then
+    easier to understand: which networks the computer was on, and which way its traffic goes)."""
+    kind = (system or {}).get("kind") or ("windows" if os.name == "nt" else "linux")
+    commands = ([["ipconfig", "/all"], ["route", "print", "-4"]] if kind == "windows"
+                else [["ifconfig"], ["netstat", "-rn", "-f", "inet"]] if kind == "mac"
+                else [["ip", "-4", "address"], ["ip", "-4", "route"]])
+    lines = []
+    for command in commands:
+        try:
+            done = run(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=10, check=False)
+            lines.append("$ " + " ".join(command))
+            lines.extend(done.stdout.decode("utf-8", "replace").splitlines())
+        except (OSError, subprocess.SubprocessError):
+            lines.append(f"$ {' '.join(command)}  (could not be run)")
+    if not lines:
+        lines.append("addresses: " + ", ".join(local_addresses()))
+    return lines
+
+
+class SetupLog:
+    """Every line the setup page shows, written to a private file in the saved folder (the page keeps only the last lines in
+    memory). The unit's passwords are written as ***. A log that cannot be written never stops the setup."""
+
+    def __init__(self, out_dir, secrets, report, stamp=None):
+        self.out_dir, self.secrets, self.report = out_dir, secrets, report
+        self.stamp = stamp or time.strftime("%Y%m%d-%H%M")
+        self.path = None
+        self.broken = False
+        self.lock = threading.Lock()
+
+    def file_name(self):
+        return f"pisophone-setup-log-{self.stamp}.txt"
+
+    @staticmethod
+    def mask(line, secrets):
+        for secret in secrets:
+            if len(secret) >= 6:
+                line = line.replace(secret, "***")
+        return line
+
+    def write(self, line):
+        secrets = self.secrets()   # (before the file lock: the page's own lock is taken inside)
+        with self.lock:
+            if self.broken:
+                return
+            try:
+                first = self.path is None
+                if first:
+                    os.makedirs(self.out_dir, exist_ok=True)
+                    self.path = os.path.abspath(os.path.join(self.out_dir, self.file_name()))
+                fd = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+                with os.fdopen(fd, "a", encoding="utf-8", newline="\n") as f:
+                    if first:
+                        f.write(f"{APP_NAME} setup log, {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+                        for extra in self.report():
+                            f.write(self.mask(extra, secrets) + "\n")
+                        f.write("----\n")
+                    f.write(self.mask(line, secrets) + "\n")
+            except (OSError, ValueError):
+                self.broken = True
+
+
 class Session:
     """The state of the setup, for the web page: one unit after the other. Worker threads change it, the page reads it."""
 
@@ -4507,6 +4570,8 @@ class Session:
         self.system = system or detect_system()
         self.install_deps = install_deps or (lambda emit: ensure_dependencies(emit, self.system))
         self.lock = threading.RLock()
+        self.network_report = lambda: network_report(self.system)   # (replaced in the tests)
+        self.setup_log = SetupLog(self.out_dir, self.secrets, lambda: self.network_report())
         self.unit = 0
         self.mode = None           # None until the owner chooses at the start: "full" (the router, customer Wi-Fi and phones), "wifi" (PisoWiFi only) or "phone" (PisoPhone only)
         self.checks = None
@@ -4558,7 +4623,25 @@ class Session:
     def spawn(self, fn):
         threading.Thread(target=fn, daemon=True).start()
 
+    def _log_saved(self):
+        return [["Setup log (send it to the developer if something went wrong)", self.setup_log.path]] if self.setup_log.path else []
+
+    def _with_log_note(self, error):
+        """The error text names the setup log file, so the owner knows what to send."""
+        if error and self.setup_log.path:
+            return f"{error} The setup log is saved in {self.setup_log.path}."
+        return error
+
+    def secrets(self):
+        """The unit's passwords: what the setup log must not hold."""
+        with self.lock:
+            found = [self.values.get(env) for env, *_ in PASSWORDS] + [self.router_password]
+            found += [self.p["values"].get("WIFI_PASSWORD"), self.p["values"].get("ADMIN_PASSWORD"), (self.p["final"] or {}).get("admin")]
+            found += [v for k, v in (self.final or {}).items() if "PASSWORD" in k]
+        return [v for v in found if isinstance(v, str) and v]
+
     def log(self, line):
+        self.setup_log.write(line)
         with self.lock:
             lines = self.install["lines"]
             lines.append(line)
@@ -4632,6 +4715,7 @@ class Session:
             self.p["erase_ok"] = bool(a.get("value"))
 
     def plog(self, line):
+        self.setup_log.write(line)
         with self.lock:
             lines = self.p["install"]["lines"]
             lines.append(line)
@@ -4700,12 +4784,12 @@ class Session:
             with self.lock:
                 inst["running"] = False
                 self.p["result"] = result
-                inst["error"] = error
+                inst["error"] = self._with_log_note(error)
                 if result and result["ok"]:
                     inst.update(ok=True, stage=len(PHONE_STAGES), activity="Done.", banner=("ok", "The coin box is online."))
                     s = result["status"]
                     self.p["final"] = {"ip": s.get("ip", ""), "mac": s.get("mac", ""), "fw": s.get("fw", ""), "wifi": result["wifi"], "admin": result["admin"]}
-                    self.saved = [[label, path] for label, path in result["saved"]]
+                    self.saved = [[label, path] for label, path in result["saved"]] + self._log_saved()
                 else:
                     inst["activity"] = "Stopped."
         self.spawn(work)
@@ -4945,12 +5029,12 @@ class Session:
                 self.router["host"] = result["host"]
             if result and not result["ok"]:
                 error = failure_message(result)
-            self.install["error"] = error
+            self.install["error"] = self._with_log_note(error)
             if result and result["ok"]:
                 self.install.update(ok=True, stage=len(INSTALL_STAGES), activity="Done.", banner=("ok", "Installed and checked."))
                 found = parse_summary(result.get("summary_text", ""))
                 self.final = dict(self.answers(), **found) if not self.kept() else found
-                self.saved = [[label, path] for label, path in result.get("saved", [])]
+                self.saved = [[label, path] for label, path in result.get("saved", [])] + self._log_saved()
                 if self.final.get("ROOT_PASSWORD"):
                     self.router_password = self.final["ROOT_PASSWORD"]
             else:

@@ -392,7 +392,8 @@ check(core.products == ["full"], "the full system writes the full image: " + str
 log = "\n".join(s["install"]["lines"])
 check("ESP32-C3 found" in log and "== Pairing the coin box" in log and s["install"]["stage"] == len(s["stages"]), "the log shows the progress")
 check(s["final"]["BOX_NEW_ADMIN_PASSWORD"] == "Bpass23456789" and s["final"]["KIOSK_PASSWORD"] == "Kpass234567", "the passwords come from the router's summary")
-check(s["saved"] == [["Summary (every password)", "summary.txt"], ["Printable setup sheet", "sheet.html"]], "the saved files are listed by name only (no paths)")
+check([x[0] for x in s["saved"]][:2] == ["Summary (every password)", "Printable setup sheet"] and [x[1] for x in s["saved"]][:2] == ["summary.txt", "sheet.html"]
+      and s["saved"][2][1].startswith("pisophone-setup-log-"), "the saved files (and the setup log, last) are listed by name only (no paths)")
 status, body, r = c.call("GET", "/api/saved?i=1")
 check(status == 200 and b"setup sheet" in body and r.getheader("Content-Type").startswith("text/html"), "the setup sheet can be opened from the page")
 check(c.call("GET", "/api/saved?i=7")[0] == 404 and c.call("GET", "/api/saved?i=-1")[0] == 404 and c.call("GET", "/api/saved?i=x")[0] == 404,
@@ -707,6 +708,73 @@ status, page, _r = Client(server).call("GET", "/", login=False)
 page = page.decode() if isinstance(page, bytes) else page
 check('id="kioskPw"' in page and "S.mode==='wifi'" in page and page.count('name="mode"') == 3 and "checked" not in page.split('name="mode"')[1].split(">")[0],
       "the page has the three choices, none checked, and hides the rental-phone password for PisoWiFi only")
+server.shutdown()
+# ---- feature 032 (SU-18): the setup log file, so a failed real run leaves evidence to send ----------------------------------------------
+import glob, stat
+
+
+def log_files(session):
+    return sorted(glob.glob(os.path.join(session.out_dir, "pisophone-setup-log-*.txt")))
+
+
+def walk_to_install(c):
+    c.call("POST", "/api/login", {"pin": "123456"})
+    c.wait(lambda s: s["checks"] is not None, "checks")
+    c.do("next")
+    c.wait(lambda s: s["router"]["host"] == "10.0.0.1", "found")
+    c.do("next")
+    c.do("next")
+    c.wait(lambda s: s["usb"]["boards"] is not None, "boards")
+
+
+core, session, server = start(state="configured")
+session.network_report = lambda: ["eth0 192.168.1.50/24 (the cable)", "default via 192.168.1.1 dev eth0"]
+c = Client(server)
+walk_to_install(c)
+c.do("start_install")
+s = c.wait(lambda s: s["install"]["ok"], "installed")
+session.router_password = "TypedRouterPw99"
+session.log("the router password is TypedRouterPw99 and the kiosk one is " + session.values["KIOSK_PASSWORD"])
+logs = log_files(session)
+check(len(logs) == 1, "a run writes one pisophone-setup-log-*.txt in the saved folder: " + str(logs))
+text = open(logs[0], encoding="utf-8").read() if logs else ""
+check(stat.S_IMODE(os.stat(logs[0]).st_mode) == 0o600 if logs else False, "the setup log is private (0600)")
+check("Downloading the PisoPhone setup" in text and "== Pairing the coin box" in text and "PASS  the coin box answers" in text, "every page line is in the log")
+check("192.168.1.50/24" in text and "default via 192.168.1.1" in text, "the log starts with this computer's addresses and routes")
+check("TypedRouterPw99" not in text and session.values["KIOSK_PASSWORD"] not in text and "***" in text, "the unit's passwords are written as ***")
+check(s["saved"][-1][0].startswith("Setup log") and s["saved"][-1][1] == os.path.basename(logs[0]), "the last page lists the log: " + str(s["saved"]))
+server.shutdown()
+
+core, session, server = start(state="configured")
+core.fail_install = True
+c = Client(server)
+walk_to_install(c)
+c.do("start_install")
+s = c.wait(lambda s: s["install"]["error"], "the install fails")
+logs = log_files(session)
+check(logs and os.path.basename(logs[0]) in s["install"]["error"] and "could not be prepared" in s["install"]["error"],
+      "the error banner names the log file: " + str(s["install"]["error"]))
+server.shutdown()
+
+# the PisoPhone-only path writes to the same kind of file, with its own secrets hidden
+core, session, server = start(mode="phone")
+session.p["values"]["WIFI_PASSWORD"] = "ShopWifiPw123"
+session.p["values"]["ADMIN_PASSWORD"] = "BoxAdminPw4567"
+session.plog("== Looking at the board; shop Wi-Fi password ShopWifiPw123, admin BoxAdminPw4567")
+logs = log_files(session)
+text = open(logs[0], encoding="utf-8").read() if logs else ""
+check("== Looking at the board" in text and "ShopWifiPw123" not in text and "BoxAdminPw4567" not in text, "PisoPhone only: lines are logged, its passwords hidden")
+server.shutdown()
+
+# a log that cannot be written never stops the setup
+core, session, server = start()
+session.out_dir = os.path.join(tmp, "no", "such", "dir", "\0bad")
+session.setup_log.out_dir = session.out_dir
+try:
+    session.log("still works")
+    check("still works" in session.install["lines"], "an unwritable log does not stop the setup")
+except Exception as e:
+    check(False, "an unwritable log must not raise: " + repr(e))
 server.shutdown()
 print(f"{checks} checks, {failures} failures")
 sys.exit(1 if failures else 0)
