@@ -101,6 +101,12 @@ Because routers are now bring-your-own, this document is the customer contract: 
 customer can order**, so most buyers land on known-good hardware and most support conversations never start. You do **not**
 stock or resell that router — that would put you back into the inventory this model exists to avoid.
 
+**The recommended model is the Qihoo 360 T6M** (D31): the only router the program has ever run on. The rule behind that is
+the owner's: recommend only hardware that has actually been tested, and let the list grow as models are proven rather than
+ahead of the evidence. 035 must say honestly what "tested" covers — the program runs on it under ImmortalWrt 23.05.0, but
+RS35 has never been run, so not every feature has been checked on it — and must not imply a model is supported because it
+appears in the compatibility table.
+
 ### 036 The site status panel  (owner: box holds it; warn only; always visible; show both numbers)
 Two gaps in one feature, both on surfaces the owner already looks at.
 - **Version skew.** The **coin box** holds the expected set, because it is the only part present in every configuration and it
@@ -204,6 +210,7 @@ phones and you do not provision them as a service.
 | D20 | which firmware ships on a sold box | **one full build for everything**; variants are not sold (037) |
 | D21 | the router's internet during setup | **required; the offline path is deleted** (feature 041) |
 | D22 | `docs/ROUTERS.md` | **name one recommended model to buy**, do not stock it (035) |
+| D31 | which model to recommend | **The tested one: Qihoo 360 T6M** (board `360,360t6m`, MT7621, mipsel, 16 MB NOR + 128 MB NAND), answered 2026-10-28. It is the only router the program has ever run on, on ImmortalWrt 23.05.0 (r27285). The owner's rule is to recommend only hardware that has actually been tested, so the list grows as models are proven, never ahead of the evidence. **Caveat to record in 035:** RS35 on that router has still never been run, so "tested" means the program runs on it, not that every feature has been checked |
 | D23 | slot licensing, now that boxes are sold | **still leave it alone**; revisit once boxes are selling |
 | D24 | where GATE 1 sits | **first, in parallel with the deletions** (section 8) |
 | D25 | what "drop the offline path" meant | **actually delete the code** (feature 041), confirmed after the consequence was put to the owner |
