@@ -23,3 +23,6 @@ Do not push, open a PR, merge or release unless the owner asks.
 
 ## Next prompt
 Use `specs/templates/session-start.md`; last line: `Task: continue from this note: specs/notes/2026-10-28_feature-032-setup-program.md`.
+
+## Update (same day, after the owner asked to push and continue)
+Branch pushed to origin. Groups 2 to 9 are done and committed; `validation.md` is filled; plan boxes 1 to 9 are ticked. Open now: the owner's RS56 bench run, then (if the owner asks) a pull request; then feature 033. The "Open, in order" list above is out of date.

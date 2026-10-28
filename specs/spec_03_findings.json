@@ -9,7 +9,7 @@
     "severity": "high",
     "money_or_signing": false,
     "confidence": "confirmed",
-    "status": "open",
+    "status": "fixed",
     "problem": "The install log lives only in memory (last `LOG_KEEP` lines); a failed real run leaves no evidence to send the developer.",
     "fix": "write every page line, the computer's addresses and routes to pisophone-setup-log-<stamp>.txt (0600, passwords masked); link it from the error banner and the last page",
     "test": {
@@ -31,7 +31,7 @@
     "severity": "high",
     "money_or_signing": false,
     "confidence": "confirmed",
-    "status": "open",
+    "status": "fixed",
     "problem": "*Try again* on the Install step after the router password was set logs in with an empty password (the session's `Ssh` was set to `\"\"`); every retry fails the same way. Only *Back* to the Router step reloads the saved password.",
     "fix": "before the install re-probe the router; with a password use the saved one (use_saved_password), else send the owner to the Router step",
     "test": {
@@ -52,7 +52,7 @@
     "severity": "med",
     "money_or_signing": false,
     "confidence": "confirmed",
-    "status": "open",
+    "status": "fixed",
     "problem": "A refused ssh login is reported as \"the connection to the router was lost ... Try again\", which sends the owner round in a loop.",
     "fix": "tell a refused ssh login (exit 255, Permission denied) from a lost connection and say which password is needed",
     "test": {
@@ -74,7 +74,7 @@
     "severity": "high",
     "money_or_signing": false,
     "confidence": "reported",
-    "status": "open",
+    "status": "fixed",
     "problem": "PLDT and Converge modems are at 192.168.1.1, like a factory router. The README tells the owner to keep the computer's Wi-Fi on the shop network for the phone, so the computer has two 192.168.1.x networks and may reach the modem: \"No router found\" or \"not an OpenWrt router\".",
     "fix": "detect two interfaces in the router's range (or the router address reached through Wi-Fi) and stop with advice; README recommends the owner's phone hotspot (D2)",
     "test": {
@@ -96,7 +96,7 @@
     "severity": "high",
     "money_or_signing": false,
     "confidence": "reported",
-    "status": "open",
+    "status": "fixed",
     "problem": "With the router cable in, the computer usually sends its internet through the router (a cable has a better route metric than Wi-Fi), and the factory router has none (WAN unplugged, or WAN 192.168.1.x clashes with its own LAN). The coin box software and the offline bundle then fail to download: the setup without the router's internet (feature 011) breaks exactly where it is meant to help.",
     "fix": "download coin box software (every chip), installer files and app.json at Start; before the router packages check the website answers, else ask to unplug the router cable for the download (D5)",
     "test": {
@@ -118,7 +118,7 @@
     "severity": "med",
     "money_or_signing": false,
     "confidence": "confirmed",
-    "status": "open",
+    "status": "fixed",
     "problem": "Only 10.0.0.1 and 192.168.1.1 are tried. OpenWrt-based vendor firmware uses other factory addresses (GL.iNet 192.168.8.1, Cudy 192.168.10.1): the page searches for ever.",
     "fix": "also probe the gateway named by the cable's DHCP lease with the OpenWrt check, and name the address found",
     "test": {
@@ -141,7 +141,7 @@
     "severity": "high",
     "money_or_signing": false,
     "confidence": "confirmed",
-    "status": "open",
+    "status": "fixed",
     "problem": "An apk router (OpenWrt 25.x) is offered the online way after the offline way refuses; the router then fails at `opkg update` with \"no internet or DNS?\".",
     "fix": "refuse an apk router (or one without opkg) before any change, naming its release and the supported ones (D1)",
     "test": {
@@ -163,7 +163,7 @@
     "severity": "med",
     "money_or_signing": false,
     "confidence": "reported",
-    "status": "open",
+    "status": "fixed",
     "problem": "A rental phone downloads the app from the website over PisoKiosk, so it needs the router's internet. After a setup without the router's internet the Phones step still shows the QR code; the phone then stops at Android's generic \"Can't set up device\".",
     "fix": "before the Phones step shows the QR code, the router must reach the app's address in app.json; else say plug the modem into WAN and re-check",
     "test": {
@@ -184,7 +184,7 @@
     "severity": "low",
     "money_or_signing": false,
     "confidence": "confirmed",
-    "status": "open",
+    "status": "fixed",
     "problem": "The coin box software list and image are fetched without the program's `User-Agent` (used everywhere else because Python's own is sometimes refused).",
     "fix": "send USER_AGENT on the manifest and image requests",
     "test": {
@@ -205,7 +205,7 @@
     "severity": "low",
     "money_or_signing": false,
     "confidence": "confirmed",
-    "status": "open",
+    "status": "fixed",
     "problem": "`--install-service` starts the file from where it was downloaded (often `~/Downloads`); moved or deleted, the setup page no longer starts at boot.",
     "fix": "--install-service copies the program to /var/lib/pisophone-setup and starts that copy",
     "test": {

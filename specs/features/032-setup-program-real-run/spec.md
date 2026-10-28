@@ -1,6 +1,6 @@
 # Feature 032: the setup program in a real shop
 
-Status: **approved by the owner 2026-10-28 (spec, plan and Q1 to Q4); in progress**   Branch: `feat/032-setup-program-real-run` (from `origin/main`, owner's choice 2026-10-28; `beta` is behind `main` on purpose)   Area: setup
+Status: **built and validated on a computer 2026-10-28; waits for the owner's RS56 bench run (D8)**   Branch: `feat/032-setup-program-real-run` (from `origin/main`, owner's choice 2026-10-28; `beta` is behind `main` on purpose)   Area: setup
 Backlog rows: SU-18, SU-09, SU-10, SU-06a, SU-01, SU-02, SU-04, SU-15, SU-17, SU-21 (`specs/spec_03_findings.json`; SU-14 only if RS56 (b) fails)   Release: site (the website's copy of the program, rebuilt; no router, firmware or app release)
 
 ## Intent
