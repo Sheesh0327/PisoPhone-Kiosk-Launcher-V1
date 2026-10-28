@@ -8,6 +8,11 @@ pub fn now_secs() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
 
+/// The key a device is counted under: its MAC, or its address when the router cannot tell the MAC.
+pub fn device_key(mac: Option<String>, ip: &str) -> String {
+    mac.unwrap_or_else(|| format!("ip-{}", ip.replace(':', "_")))
+}
+
 pub fn now_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
 }
@@ -369,6 +374,12 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_device_without_a_known_mac_is_counted_by_its_address() {
+        assert_eq!(device_key(Some("aa:bb".into()), "10.0.0.2"), "aa:bb");
+        assert_eq!(device_key(None, "fe80::1"), "ip-fe80__1");
+    }
+
+    #[test]
     fn f033_a_router_that_had_the_wheel_on_is_told_once_and_its_records_stay() {
         let d = std::env::temp_dir().join(format!("pisoportal-f033-note-{}", std::process::id()));
         let _ = fs::remove_dir_all(&d);
@@ -427,9 +438,8 @@ mod tests {
     #[test]
     fn rt14_no_other_file_renames_a_file_itself() {
         // every durable write goes through util::write_atomic (file fsync, rename, folder fsync)
-        let files: [(&str, &str); 10] = [
+        let files: [(&str, &str); 9] = [
             ("config.rs", include_str!("config.rs")),
-            ("game.rs", include_str!("game.rs")),
             ("ledger.rs", include_str!("ledger.rs")),
             ("reconcile.rs", include_str!("reconcile.rs")),
             ("roll.rs", include_str!("roll.rs")),

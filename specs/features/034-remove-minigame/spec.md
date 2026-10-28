@@ -32,7 +32,9 @@ tools/pisoportal/tests/test_game_browser.py
 | `src/core.rs` (19 refs) | the `games` member, its construction, `self.games.left(mac, now)` in the views, `games.today(now)` | delete the member and every use. **The `gm` view field goes away entirely** — after 033 it is a plain `self.games.left(...)`; now there is nothing to report |
 | `src/http.rs` (17 refs) | the `/game`, `/game/tick` routes and the two `if !games.enabled()` guards (which 033 left with their first half only) | delete the routes **and the guards**, which now guard nothing |
 | `src/console.rs` (7 refs) | the Settings entry for `GAME_MINUTES` | delete |
-| `src/util.rs` (1 ref) | one helper reference | re-grep and remove if it is only used by the game; **keep it if anything else uses it** |
+| `src/util.rs` (1 ref) | `("game.rs", include_str!("game.rs"))` in a source-scanning test list (line ~432) | delete that entry (the file is gone) |
+| `src/console-ui.js`, `src/console.html` | the "Mini-game: minutes per device per day" setting (`gmi`, `game_minutes`) | delete. **These are the real sources.** `website/console/ui.js` is signed and CI-made (`publish-router.yml`): never hand-edit it |
+| `src/page.html` | the `gm` button and the "Mini-game: N min left" text (`gms`) | delete (group 4) |
 
 `src/wheel_limits.rs` also referenced the game, but that file is deleted by 033. If it is still present, **stop: 033 has not
 landed and this feature is out of order.**
@@ -55,7 +57,7 @@ the one most likely to be missed, because the Rust side will compile perfectly w
 ## Routers that have it on
 `GAME_MINUTES` defaults to 10, so the mini-game is **on by default on every router** — unlike the wheel. That makes this a
 visible change for customers:
-- `/game` and `/game/tick` return 404 after the update.
+- `/game` and `/game/tick` stop existing after the update: an unknown address gets the customer page (not 404).
 - A customer mid-game loses nothing: the game never held money or paid time.
 - `CHANGELOG.md` must say plainly that the free game is gone, because an owner may be asked about it.
 - Any `GAME_MINUTES` line already in a router's `settings.txt` is **left in place and ignored**, not deleted. Removing settings
@@ -67,12 +69,15 @@ visible change for customers:
 - Do not reformat files you are not otherwise changing. Do not tidy `core.rs` beyond the game members.
 
 ## Success criteria
-1. `rg -n "game|GAME_" tools/pisoportal/src/ router/ setup/src/` returns nothing but unrelated words (check each hit by hand;
-   "game" appears inside other words). Documentation and `CHANGELOG.md` may still mention it historically.
+1. `rg -n -i "game|GAME_" tools/pisoportal/src/ router/ setup/src/` returns nothing but unrelated words (check each hit by hand)
+   **and the one place that must keep the key: the test of criterion 11** (a `GAME_MINUTES=10` line in a fixture `settings.txt`).
+   Documentation and `CHANGELOG.md` may still mention it historically.
 2. `cd tools/pisoportal && cargo test` passes; no game tests remain and none is `#[ignore]`d.
 3. `cd tools/pisoportal && python3 tests/test_flow.py` passes.
 4. `python3 router/tests/test_setup.py`, `test_pisophone_setup.py`, `test_setup_web.py`, `test_setup_tools.py` pass.
-5. `tests/test_console.py` passes with no `GAME_MINUTES` setting, and `GET /game` returns 404.
+5. `tests/test_console.py` passes with no `GAME_MINUTES` setting. `GET /game` returns the ordinary customer page (a captive portal
+   answers every unknown address that way, so it cannot be 404); `GET /game/tick` and `POST /game/tick` are checked against the real
+   behaviour and written down in `validation.md`.
 6. The customer page renders correctly in all six states with no game button and no gap. Prove it with the browser test or a
    new assertion, and **say which states you actually checked**.
 7. `router/tests/test_footprint.py` passes; record the `pisoportal-mipsel` size before and after.
