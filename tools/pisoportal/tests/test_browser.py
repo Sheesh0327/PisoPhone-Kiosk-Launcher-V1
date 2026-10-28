@@ -42,6 +42,9 @@ try:
         check("Resume by" in tby and "Use by" not in tby and "lost" in tby, f"a paused page says when the time must be resumed: {tby}")
         pp.close()
         env.set_box(busy=False, coins_at=[1.0, 1.6, 2.2])
+        # the page opens on Endurance since router 1.5.22; this test buys HyperSpeed (the later "other plan" step relies on it). Checked in the page, not
+        # clicked: the first click anywhere primes the speech engine, and the check below needs the tap on the coin button to be that first click.
+        pg.evaluate("document.getElementById('rh').checked = true")
         pg.click(".coin")
         pg.wait_for_timeout(150)
         check(pg.is_visible("#v-live") and ("Getting the coin slot ready" in (pg.text_content("#lsub") or "") or "Insert coin" in (pg.text_content("#lsub") or "")), "the tap leaves the plan page at once: " + (pg.text_content("#lsub") or ""))
