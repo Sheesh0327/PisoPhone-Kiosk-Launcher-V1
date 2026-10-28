@@ -1123,5 +1123,28 @@ report = ps.network_report({"kind": "linux"}, run=refusing_run)
 check(len(report) == 2 and all("could not be run" in x for x in report), "a missing command is noted, not raised: " + str(report))
 check(ps.SetupLog.mask("pw is Secret123 and ab", ["Secret123", "ab", ""]) == "pw is *** and ab", "only secrets of 6 characters or more are hidden")
 
+# ---- feature 032 (SU-17): the coin box software list and image are asked for with the program's own name ----------------------------------
+import json
+seen_agents = []
+
+
+class RecordingOpener:
+    def __init__(self, body): self.body = body
+    def __call__(self, request, timeout=None):
+        seen_agents.append(request.get_header("User-agent"))
+        return self
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+    def read(self): return self.body
+
+
+manifest_body = json.dumps({"builds": [{"chip": "esp32c3", "file": "x.bin", "size": 1, "sha256": "0" * 64, "product": "full"}]}).encode()
+ps.flash_manifest("main", tempfile.mkdtemp(), opener=RecordingOpener(manifest_body), emit=lambda t: None)
+try:
+    ps.fetch_image("main", {"file": "x.bin", "size": 1, "sha256": "0" * 64}, tempfile.mkdtemp(), opener=RecordingOpener(b"\0"))
+except ps.SetupError:
+    pass   # (the checksum is fake: only the request matters here)
+check(seen_agents == [ps.USER_AGENT, ps.USER_AGENT], "the software list and the image requests carry USER_AGENT: " + str(seen_agents))
+
 print(f"{checks} checks, {failures} failures")
 sys.exit(1 if failures else 0)

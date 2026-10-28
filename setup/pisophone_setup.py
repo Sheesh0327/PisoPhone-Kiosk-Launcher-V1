@@ -2850,7 +2850,7 @@ def flash_manifest(branch, cache_dir, opener=urllib.request.urlopen, emit=say):
     computer from the last time is used."""
     path = os.path.join(cache_dir, "manifest.json")
     try:
-        with opener(urllib.request.Request(f"{site_url(branch)}/flash/manifest.json"), timeout=15) as r:
+        with opener(urllib.request.Request(f"{site_url(branch)}/flash/manifest.json", headers={"User-Agent": USER_AGENT}), timeout=15) as r:
             text = r.read().decode("utf-8")
         manifest = json.loads(text)
         os.makedirs(cache_dir, exist_ok=True)
@@ -2891,7 +2891,7 @@ def fetch_image(branch, build, cache_dir, opener=urllib.request.urlopen):
     except OSError:
         pass
     try:
-        with opener(urllib.request.Request(f"{site_url(branch)}/flash/{build['file']}"), timeout=60) as r:
+        with opener(urllib.request.Request(f"{site_url(branch)}/flash/{build['file']}", headers={"User-Agent": USER_AGENT}), timeout=60) as r:
             data = r.read()
     except (urllib.error.URLError, OSError) as e:
         raise SetupError(f"the coin box software could not be downloaded ({e}).")
@@ -5647,19 +5647,24 @@ def service_unit(script, port):
 
 
 def install_service(args, unit_path="/etc/systemd/system/pisophone-setup.service", state_dir="/var/lib/pisophone-setup",
-                    run=run_command, supported=None):
-    """Linux: makes the setup page start by itself at boot (as root: it writes to the USB port and installs packages)."""
+                    run=run_command, supported=None, script=None):
+    """Linux: makes the setup page start by itself at boot (as root: it writes to the USB port and installs packages). The service
+    starts its own copy of this program in `state_dir`, so moving or deleting the downloaded file does not break it."""
+    script = script or os.path.abspath(sys.argv[0])
     if supported is None:
         supported = sys.platform.startswith("linux") and bool(shutil.which("systemctl"))
     if not supported:
         raise SetupError("--install-service needs a Linux system with systemd")
     if hasattr(os, "geteuid") and os.geteuid() != 0:
-        raise SetupError("run it as administrator:  sudo python3 " + os.path.abspath(sys.argv[0]) + " --install-service")
+        raise SetupError("run it as administrator:  sudo python3 " + script + " --install-service")
     os.environ["PISOPHONE_HOME"] = state_dir
     os.makedirs(state_dir, mode=0o700, exist_ok=True)
     pin = load_pin(wanted=args.pin)
+    kept = os.path.join(state_dir, "pisophone_setup.py")
+    if os.path.abspath(script) != os.path.abspath(kept):
+        shutil.copyfile(script, kept)
     with open(unit_path, "w", encoding="utf-8") as f:
-        f.write(service_unit(os.path.abspath(sys.argv[0]), args.port))
+        f.write(service_unit(kept, args.port))
     for command in (["systemctl", "daemon-reload"], ["systemctl", "enable", "--now", "pisophone-setup"]):
         if run(command, say, 60) != 0:
             raise SetupError("systemctl failed (see above)")

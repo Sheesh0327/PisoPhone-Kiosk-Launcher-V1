@@ -188,6 +188,22 @@ if hasattr(os, "geteuid") and os.geteuid() == 0:
     check(rc == 0 and open(unit_path).read().count("--port 8800") == 1 and ["systemctl", "enable", "--now", "pisophone-setup"] in r.calls
           and open(os.path.join(tmp, "svc", "pin")).read().strip() == "654321" and any("PIN 654321" in l for l in out),
           "--install-service writes the unit, enables it, keeps the PIN and prints the address: " + str(out))
+# feature 032 (SU-21): the service starts its own copy of the program, not the file in Downloads
+if hasattr(os, "geteuid") and os.geteuid() == 0:
+    downloaded = os.path.join(tmp, "Downloads", "pisophone_setup.py")
+    os.makedirs(os.path.dirname(downloaded))
+    open(downloaded, "w").write("# the program as downloaded\n")
+    unit_path, state = os.path.join(tmp, "y.service"), os.path.join(tmp, "svc2")
+    out = []
+    ps.say, real_say = out.append, ps.say
+    try:
+        ps.install_service(types.SimpleNamespace(pin="654321", port=8801), unit_path, state, Runner(), supported=True, script=downloaded)
+    finally:
+        ps.say = real_say
+        os.environ["PISOPHONE_HOME"] = old_home
+    copy = os.path.join(state, "pisophone_setup.py")
+    check(os.path.exists(copy) and open(copy).read() == "# the program as downloaded\n", "the program is copied into the service's own folder")
+    check(f"{copy} --port 8801" in open(unit_path).read() and "Downloads" not in open(unit_path).read(), "and the unit starts that copy, not the downloaded file")
 try:
     ps.install_service(types.SimpleNamespace(pin=None, port=1), supported=False)
     check(False, "no systemd: refused")
