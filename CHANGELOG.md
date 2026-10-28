@@ -4,6 +4,10 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: the CI build number, shown as hundreds.tens.ones, build 466 is 4.6.6; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Router 1.5.25, **PisoWiFi: the spinning wheel is removed (feature 033).** Not tried on a router yet. The wheel was off on every router and never ran on real hardware, so no customer sees a change.
+  - The Spin the wheel button, the wheel page and the console's *Spinning wheel* card are gone. Nobody's paid time changes and no sales figure moves: the wheel never wrote to `revenue.csv`.
+  - If you had ever turned the wheel on, your records `wheel-confirm.txt`, `wheel.log` and `wheel.log.1` stay in `/etc/coinslot.d` untouched, and the console's alerts say so once. A spin that was half done at the moment of the update is not finished.
+  - Goes out with features 034, 035 and 041 as one router release.
 - Router 1.5.23 (1.5.22 was signed with the old programs by mistake and never raised), **the PisoWiFi page now opens on Endurance instead of HyperSpeed.** Not tried on a router yet. Customers can still pick HyperSpeed; only the plan that is selected when the page opens changed. Money and time: not touched.
 - Phone app, **the owner can remove apps from a rental phone (feature 031).** Not tried on a phone yet (hardware check RS55).
   - Uninstalling was blocked for good. Now it works while the admin maintenance window is open (admin PIN, then Settings, Apps, Uninstall) and is blocked again when the window ends; customers still cannot remove or stop apps. Money and time: not touched.
