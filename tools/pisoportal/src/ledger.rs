@@ -329,6 +329,65 @@ pub fn prune_plan(path: &str, max_kb: u64) -> (Vec<String>, bool) {
     (del, total <= budget)
 }
 
+/// One line of `revenue-pruned.txt`: a month deleted on purpose. `pesos` is the running coin total at the end of that month (what the
+/// next file's carry row states) and `hash` its last row's hash.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Pruned {
+    pub month: String,
+    pub rows: u64,
+    pub pesos: u64,
+    pub hash: String,
+}
+
+const PRUNED_MAX_LINES: usize = 240;
+
+pub fn pruned_path(path: &str) -> String {
+    let p = std::path::Path::new(path);
+    let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("revenue");
+    p.with_file_name(format!("{}-pruned.txt", stem)).to_string_lossy().into_owned()
+}
+
+/// The record of deleted months, oldest first. A missing file or a damaged line is skipped (it is a few KB at most: one line a month).
+pub fn pruned_read(path: &str) -> Vec<Pruned> {
+    let text = fs::read_to_string(pruned_path(path)).unwrap_or_default();
+    text.lines()
+        .filter_map(|l| {
+            let f: Vec<&str> = l.split(',').collect();
+            if f.len() != 4 || !hash_ok(f[3]) {
+                return None;
+            }
+            Some(Pruned { month: f[0].to_string(), rows: f[1].parse().ok()?, pesos: f[2].parse().ok()?, hash: f[3].to_string() })
+        })
+        .collect()
+}
+
+fn pruned_line(p: &Pruned) -> String {
+    format!("{},{},{},{}\n", p.month, p.rows, p.pesos, p.hash)
+}
+
+/// Add one deleted month to the record and flush it. Past 240 lines the oldest are folded into one `earlier` line (their rows added
+/// up, the running total and hash of the newest of them), written whole and atomically.
+fn pruned_append(path: &str, p: &Pruned) -> std::io::Result<()> {
+    let rec = pruned_path(path);
+    let mut all = pruned_read(path);
+    if all.len() < PRUNED_MAX_LINES {
+        let mut row = pruned_line(p);
+        if !ends_with_newline(&rec) {
+            row.insert(0, '\n'); // a line cut by a power failure: the new one starts on its own line
+        }
+        let mut f = fs::OpenOptions::new().create(true).append(true).open(&rec)?;
+        f.write_all(row.as_bytes())?;
+        return f.sync_all();
+    }
+    all.push(p.clone());
+    let fold = all.len() - (PRUNED_MAX_LINES - 1);
+    let rest = all.split_off(fold);
+    let last = all.last().cloned().unwrap_or_else(|| p.clone());
+    let summary = Pruned { month: "earlier".into(), rows: all.iter().map(|x| x.rows).sum(), pesos: last.pesos, hash: last.hash };
+    let text: String = std::iter::once(&summary).chain(rest.iter()).map(pruned_line).collect();
+    crate::util::write_atomic(&rec, text.as_bytes())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -671,5 +730,55 @@ mod tests {
         let (del, reached) = prune_plan(&a, 1); // 1 KB: the current month alone is more
         assert_eq!((del, reached), (segs, false));
         assert!(std::path::Path::new(&a).exists(), "revenue.csv is never in the list");
+    }
+
+    // ---- feature 032 group 2: the record of deleted months -----------------------------------------------------------------------
+    fn pr(i: u64) -> Pruned {
+        Pruned { month: format!("{}-{:02}", 2000 + i / 12, i % 12 + 1), rows: 100 + i, pesos: 1000 * (i + 1), hash: format!("{:012x}", i) }
+    }
+
+    #[test]
+    fn f032_g2_a_deleted_month_is_written_down_and_read_back() {
+        let a = tmpdir("g2-rw");
+        assert!(pruned_read(&a).is_empty(), "no file yet: nothing pruned");
+        pruned_append(&a, &pr(0)).unwrap();
+        pruned_append(&a, &pr(1)).unwrap();
+        assert_eq!(pruned_read(&a), vec![pr(0), pr(1)]);
+        let text = fs::read_to_string(pruned_path(&a)).unwrap();
+        assert!(text.starts_with("2000-01,100,1000,000000000000\n"), "{}", text);
+        assert!(pruned_path(&a).ends_with("revenue-pruned.txt"));
+        assert!(closed_segments(&a).is_empty(), "the record is not mistaken for a segment");
+    }
+
+    #[test]
+    fn f032_g2_a_line_cut_by_a_power_failure_is_skipped_and_the_next_starts_on_its_own_line() {
+        let a = tmpdir("g2-torn");
+        pruned_append(&a, &pr(0)).unwrap();
+        let mut f = fs::OpenOptions::new().append(true).open(pruned_path(&a)).unwrap();
+        write!(f, "2000-02,10").unwrap();
+        drop(f);
+        assert_eq!(pruned_read(&a), vec![pr(0)]);
+        pruned_append(&a, &pr(2)).unwrap();
+        assert_eq!(pruned_read(&a), vec![pr(0), pr(2)]);
+    }
+
+    #[test]
+    fn f032_g2_thirty_years_stay_at_240_lines_and_the_summary_keeps_the_count_and_total() {
+        let a = tmpdir("g2-cap");
+        let months = 30 * 12;
+        for i in 0..months {
+            pruned_append(&a, &pr(i)).unwrap();
+        }
+        let text = fs::read_to_string(pruned_path(&a)).unwrap();
+        assert!(text.lines().count() <= PRUNED_MAX_LINES, "{} lines", text.lines().count());
+        assert!(text.len() < 12 * 1024, "{} bytes", text.len());
+        let got = pruned_read(&a);
+        assert_eq!(got[0].month, "earlier");
+        assert_eq!(got.iter().map(|p| p.rows).sum::<u64>(), (0..months).map(|i| 100 + i).sum::<u64>(), "no deleted row is forgotten");
+        let kept = got.len() as u64 - 1;
+        let last_dropped = months - kept - 1;
+        assert_eq!((got[0].pesos, got[0].hash.clone()), (pr(last_dropped).pesos, pr(last_dropped).hash), "total and hash of the newest folded month");
+        assert_eq!(*got.last().unwrap(), pr(months - 1));
+        assert_eq!(&got[1..], &(months - kept..months).map(pr).collect::<Vec<_>>()[..]);
     }
 }
