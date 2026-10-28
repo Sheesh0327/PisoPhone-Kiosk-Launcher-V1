@@ -1826,6 +1826,24 @@ def check_login(ssh, host):
     return "@@LOGIN-OK" in r.stdout
 
 
+def login_refused(ssh, host):
+    """True when the router answers but refuses the login (ssh says 'Permission denied'); a router that does not answer is not that."""
+    try:
+        r = ssh.run(host, "echo @@LOGIN-OK", "-T", capture_output=True, text=True, timeout=60, stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return "@@LOGIN-OK" not in r.stdout and "permission denied" in r.stderr.lower()
+
+
+def login_refused_message(ssh):
+    """Which password the router needs, for the person to type on the Router step."""
+    given = (ssh.env or {}).get("PISO_ASKPASS_PW", "")
+    what = ("did not accept the router password this computer used (was it changed since?)" if given
+            else "has a password, and this computer was not given it")
+    return (f"the router {what}. Go back to the Router step and type the router password (it is in your saved summary, "
+            "in the file pisophone-router-password.txt).")
+
+
 # The router password is saved on this computer: in the summary of a finished setup, and (written before the setup changes it,
 # so an interrupted run can be repeated) in a small file of its own. A re-run logs in with it by itself.
 SAVED_PASSWORD_FILES = ("pisophone-summary-*.txt", "pisophone-router-password.txt")
@@ -2345,6 +2363,8 @@ def install(ssh, host, answers, branch, out_dir, emit, wait_move, stage=lambda n
     state = {"local": False, "pushed": False, "moved": False}
     work = None
     info = bundle = None
+    if ssh.env is not None and login_refused(ssh, host):   # (a terminal ssh asks for the password itself)
+        raise SetupError(login_refused_message(ssh))
 
     def fall_back(reason):
         state["local"] = False
@@ -5002,6 +5022,7 @@ class Session:
                 host = self.core.find_router() or host_hint
                 if not host:
                     raise SetupError("the router is not found any more. Check the network cable, then try again.")
+                self._ensure_router_login(host)
                 if write_box:
                     boards = self.core.usb_boards()
                     if not boards:
@@ -5020,6 +5041,25 @@ class Session:
                 error = f"unexpected error: {e}"
             self._finish_install(result, error)
         self.spawn(work)
+
+    def _ensure_router_login(self, host):
+        """A repeat after the router password was set: this program's ssh login has no password yet. Log in with the one typed
+        or saved; when there is none, send the owner to the Router step before anything on the box or router is changed."""
+        if self.core.probe(host) != "password":
+            return
+        with self.lock:
+            typed = self.router_password
+        if typed and self.core.login(host, typed):
+            return
+        saved = self.core.saved_login(host, self.out_dir)
+        if saved:
+            with self.lock:
+                self.router_password = saved
+            return
+        with self.lock:
+            self.router.update(host=host, state="password", login_ok=False, login_failed=bool(typed))
+        raise SetupError("the router has a password and this computer does not have the right one. Go back to the Router step "
+                         "and type the router password (it is in your saved summary, in the file pisophone-router-password.txt).")
 
     def _finish_install(self, result, error):
         with self.lock:

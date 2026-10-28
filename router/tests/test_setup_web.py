@@ -776,5 +776,72 @@ try:
 except Exception as e:
     check(False, "an unwritable log must not raise: " + repr(e))
 server.shutdown()
+
+# ---- feature 032 (SU-09): Try again after the router password was set logs in with the saved one -------------------------------------------
+class PasswordCore(FakeCore):
+    """A router that gets its password in the first run, which then breaks off: the program's ssh login still has no password."""
+
+    def __init__(self, saved=True):
+        super().__init__(state="factory")
+        self.router_pw, self.ssh_pw, self.keeps_saved = None, "", saved
+
+    def probe(self, host): return "password" if self.router_pw else "factory"
+
+    def saved_login(self, host, out_dir):
+        if self.keeps_saved and self.router_pw and not self.ssh_pw:
+            self.ssh_pw = self.router_pw
+            return self.router_pw
+        return None
+
+    def login(self, host, password):
+        self.calls.append(("login", password))
+        if password == self.router_pw:
+            self.ssh_pw = password
+        return password == self.router_pw
+
+    def install(self, host, answers, out_dir, emit, stage, notify):
+        if self.router_pw is None:
+            self.router_pw = answers["ROOT_PASSWORD"]   # the setup changed the password, then the connection broke
+            self.calls.append(("install", dict(answers)))
+            raise ps.SetupError("the connection to the router was lost before the setup finished. Try again.")
+        if self.ssh_pw != self.router_pw:
+            raise ps.SetupError("the router refused the login")   # (what a retry did before: ssh had no password)
+        return FakeCore.install(self, host, answers, out_dir, emit, stage, notify)
+
+
+def walk_to_wifi_install(c):
+    c.call("POST", "/api/login", {"pin": "123456"})
+    c.wait(lambda s: s["checks"] is not None, "checks")
+    c.do("next")
+    c.wait(lambda s: s["router"]["host"] is not None and s["router"]["state"], "router found")
+    c.do("next")
+    c.do("set", values={"GUEST_SSID": "Tindahan WiFi", "SITE_NAME": "Aling Nena", "ROOT_PASSWORD": "Rpass2345678", "BOX_NEW_ADMIN_PASSWORD": "Bpass23456789"})
+    c.do("next")
+    c.wait(lambda s: s["usb"]["boards"] is not None, "boards")
+
+
+core, session, server = start(core=PasswordCore(), mode="wifi")
+c = Client(server)
+walk_to_wifi_install(c)
+c.do("start_install")
+s = c.wait(lambda s: s["install"]["error"], "the first run breaks off")
+check("lost" in s["install"]["error"], "the first run broke off after the password was set: " + s["install"]["error"])
+c.do("start_install")
+s = c.wait(lambda s: s["install"]["ok"] or (s["install"]["error"] and not s["install"]["running"] and "lost" not in s["install"]["error"]), "the retry ends")
+check(s["install"]["ok"], "Try again logs in with the saved router password and finishes: " + str(s["install"]["error"]))
+server.shutdown()
+
+# no saved password: the retry stops before the install and sends the owner to the Router step to type it
+core, session, server = start(core=PasswordCore(saved=False), mode="wifi")
+c = Client(server)
+walk_to_wifi_install(c)
+c.do("start_install")
+c.wait(lambda s: s["install"]["error"], "the first run breaks off")
+installs = len([x for x in core.calls if x[0] == "install"])
+c.do("start_install")
+s = c.wait(lambda s: s["install"]["error"] and "Router step" in s["install"]["error"], "the retry names the Router step")
+check("password" in s["install"]["error"] and len([x for x in core.calls if x[0] == "install"]) == installs, "nothing was installed; it asks for the password: " + s["install"]["error"])
+check(not s["router"]["login_ok"], "the Router step asks for the password again")
+server.shutdown()
 print(f"{checks} checks, {failures} failures")
 sys.exit(1 if failures else 0)

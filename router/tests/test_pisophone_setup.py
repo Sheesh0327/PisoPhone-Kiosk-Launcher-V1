@@ -298,6 +298,21 @@ r = e2e(lan="10.0.0.1", probe="denied", yes=True, needpw="Changed1234567", saved
 check("was not accepted" in r.out and "Type the router password" in r.out, "a saved password that no longer works is said so, and ssh asks: " + r.out[-500:])
 r = e2e(lan="10.0.0.1", probe="denied", yes=True, needpw="Saved12345678", no_browser=True)
 check("Logged in to the router" not in r.out and "Type the router password" in r.out, "nothing saved: ssh asks as before")
+# ---- feature 032 (SU-10): a refused ssh login is not "the connection was lost" ---------------------------------------------------------------
+for typed, word in (("", "was not given"), ("Wrong12345678", "did not accept")):
+    open(f"{tmp}/lan", "w").write("10.0.0.1")
+    open(f"{tmp}/needpw", "w").write("Right12345678")
+    open(f"{tmp}/result", "w").write("ok")
+    ssh_ = ps.Ssh(tmp)
+    ssh_.set_password(typed)
+    out_ = tempfile.mkdtemp(dir=tmp)
+    try:
+        ps.install(ssh_, "10.0.0.1", {k: "Aa12345678" for k in ps.ANSWER_ORDER}, "main", out_, lambda line: None, lambda: True, online=True)
+        msg = "(no error)"
+    except ps.SetupError as e:
+        msg = str(e)
+    os.remove(f"{tmp}/needpw")
+    check("lost" not in msg and "password" in msg and word in msg and "Router step" in msg, f"a refused login ({typed!r}) says which password is needed: {msg}")
 # the password is saved before the router changes it, so a run that stops half way can be repeated
 r = e2e(answers=("Tindahan WiFi", "Aling Nena", "y", "n"), secrets_=("routerpass1", "routerpass1", "kioskpass1", "kioskpass1", "boxadmin99", "boxadmin99"),
         result="fail")
