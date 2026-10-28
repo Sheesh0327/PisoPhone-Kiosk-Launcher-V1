@@ -29,7 +29,7 @@
 
 VERSION="dev"
 # the release of this file (setup/RELEASE): routers install only a higher release that the owner signed
-PISO_RELEASE='1.5.25'
+PISO_RELEASE='1.5.26'
 # the CPU family the portal program in this file is built for (router_family below names the family of the router it runs on)
 PISO_ARCH='armv7'
 
@@ -291,40 +291,24 @@ preflight() {
 	preflight_network
 }
 
-# preflight_network: the router's WAN address and internet, and that its LAN and WAN ranges do not clash. With PISO_LOCAL_PKGS (a first setup
-# whose packages the setup program copied here) the router needs no internet: no WAN address and no ping are required, but a
-# WAN address that is there must still not clash.
+# preflight_network: the router's WAN address and internet, and that its LAN and WAN ranges do not clash. The router needs internet for
+# the first setup: it downloads its packages itself (opkg, against its own signed feeds).
 preflight_network() {
 	WAN=$(wan_ip)
-	[ -n "$WAN" ] || [ -n "$PISO_LOCAL_PKGS" ] || die "the router has no WAN address: plug the modem into the WAN port and wait a minute, then run this again"
+	[ -n "$WAN" ] || die "the router has no WAN address, and it needs internet for the first setup: plug the modem into the WAN port and wait a minute, then run this again"
 	[ "$LAN_IP" = 10.0.0.1 ] || die "the router's LAN address is $LAN_IP, but this setup expects 10.0.0.1. Run the installer, which moves it for you: wget -qO- https://pisophone.pages.dev/install.sh | sh   (or by hand: uci set network.lan.ipaddr=10.0.0.1 && uci commit network && reboot), then log in again at 10.0.0.1 and re-run. See setup/README.md."
 	case "$WAN" in
-		"") ;;
 		"${LAN_IP%.*}".*) die "the modem's network ($WAN) is in the same range as the router's LAN ($LAN_IP). Change the modem's own LAN address (for example to 192.168.100.1) and run this again" ;;
 		"${GUEST_IP%.*}".*) die "the modem's network ($WAN) uses ${GUEST_IP%.*}.x, the same as the guest network. Run with GUEST_IP=10.0.31.1 (or another free range)" ;;
 	esac
-	if [ -n "$PISO_LOCAL_PKGS" ]; then
-		log "WAN address: ${WAN:-none yet}. Internet: not needed for this setup (the packages were copied from the computer)"
-	else
-		log "WAN address: $WAN"
-		if ! ping -c 1 -W 3 1.1.1.1 > /dev/null 2>&1 && ! ping -c 1 -W 3 8.8.8.8 > /dev/null 2>&1; then die "no internet through the WAN port"; fi
-		log "Internet: ok"
-	fi
+	log "WAN address: $WAN"
+	if ! ping -c 1 -W 3 1.1.1.1 > /dev/null 2>&1 && ! ping -c 1 -W 3 8.8.8.8 > /dev/null 2>&1; then die "the router has no internet through the WAN port, and it needs internet for the first setup: check that the modem is online, then run this again"; fi
+	log "Internet: ok"
 	tip "the setup takes about 3 to 8 minutes. Keep this window open, the coin box powered on near the router, and the network cable plugged in."
 }
 
 install_packages() {
 	step "Installing packages"
-	if [ -n "$PISO_LOCAL_PKGS" ]; then
-		# the setup program copied the packages here and the router checks them itself (21-local-packages.sh): no opkg update, no internet
-		install_local_packages "$PISO_LOCAL_PKGS"
-		stop_opennds   # (as in the loop below: installing opennds starts it with its default settings)
-		for p in opennds curl ca-bundle jsonfilter; do
-			opkg list-installed 2> /dev/null | grep -q "^$p " || die "$p is not installed after the copied packages were installed. Nothing else was changed. Run the setup program again, or run it with --router-online while the router has internet."
-		done
-		opkg list-installed 2> /dev/null | grep -qi '^libmicrohttpd' || die "libmicrohttpd is not installed after the copied packages were installed. Run the setup program again, or run it with --router-online while the router has internet."
-		return 0
-	fi
 	opkg update > /dev/null 2>&1 || opkg update || die "opkg update failed (no internet or DNS?)"
 	for p in opennds curl ca-bundle jsonfilter; do
 		if ! opkg list-installed 2> /dev/null | grep -q "^$p "; then
@@ -338,61 +322,6 @@ install_packages() {
 	opkg list-installed 2> /dev/null | grep -qi '^libmicrohttpd' || opkg install libmicrohttpd-no-ssl > /dev/null 2>&1
 }
 
-# ---------------------------------------------------------------------------------------------------------------------
-# Packages from files (a first setup without the router's internet)
-# ---------------------------------------------------------------------------------------------------------------------
-# The setup program on the computer downloads the OpenWrt packages the setup needs and copies them to the router's RAM (the folder
-# PISO_LOCAL_PKGS). The router does not trust them because they came from the computer: it checks them itself, the way "opkg update"
-# does for a download: every package list ("Packages") against its signature with the router's own usign and keys, then every
-# package file against the size and sha256 that signed list gives for it. Only then are they installed. Anything wrong: nothing
-# is installed.
-
-# local_pkg_index <Packages file>: one line per package, "<file name> <sha256> <size>" (the file name without its folder)
-local_pkg_index() {
-	awk '
-		/^Filename:/ { f = $2; sub(".*/", "", f) }
-		/^SHA256sum:/ { h = $2 }
-		/^Size:/ { z = $2 }
-		/^$/ { if (f != "") print f, h, z; f = ""; h = ""; z = "" }
-		END { if (f != "") print f, h, z }
-	' "$1"
-}
-
-# install_local_packages <folder>: the folder holds <source>/Packages + Packages.sig, the .ipk files and order.txt (one file name
-# per line, dependencies first). Checks everything, then installs all of them with one opkg command.
-install_local_packages() {
-	_ld="$1"; _lkeys="$PISO_ROOT/etc/opkg/keys"
-	step "Installing packages from the files copied to this router (it does not need the internet for this)"
-	[ -f "$_ld/order.txt" ] || die "the package list order.txt is missing from $_ld: the copy from the computer is incomplete. Nothing was installed."
-	[ -n "$(ls "$_lkeys" 2> /dev/null)" ] || die "this router has no package signing keys in /etc/opkg/keys, so the copied packages cannot be checked. Nothing was installed."
-	_lidx="$_ld/.index.$$"; : > "$_lidx"
-	for _lp in "$_ld"/*/Packages; do
-		[ -f "$_lp" ] || continue
-		[ -f "$_lp.sig" ] || { rm -f "$_lidx"; die "the signature of $_lp is missing. Nothing was installed."; }
-		usign -V -m "$_lp" -P "$_lkeys" -x "$_lp.sig" > /dev/null 2>&1 || { rm -f "$_lidx"; die "the signature of the package list $_lp is not valid. Nothing was installed."; }
-		local_pkg_index "$_lp" >> "$_lidx"
-	done
-	[ -s "$_lidx" ] || { rm -f "$_lidx"; if [ -s "$_ld/order.txt" ]; then die "no package list with a valid signature was copied. Nothing was installed."; fi; log "nothing to install: every package is there already"; return 0; }
-	set --
-	while IFS= read -r _lf; do
-		[ -n "$_lf" ] || continue
-		case "$_lf" in
-			*/* | .* | *[!A-Za-z0-9._+-]*) rm -f "$_lidx"; die "order.txt names \"$_lf\", which is not a package file name. Nothing was installed." ;;
-			*.ipk) ;;
-			*) rm -f "$_lidx"; die "order.txt names \"$_lf\", which is not a package file name. Nothing was installed." ;;
-		esac
-		[ -f "$_ld/$_lf" ] || { rm -f "$_lidx"; die "$_lf is listed in order.txt but was not copied. Nothing was installed."; }
-		_lwant=$(awk -v f="$_lf" '$1 == f { print $2, $3; exit }' "$_lidx")
-		[ -n "$_lwant" ] || { rm -f "$_lidx"; die "$_lf is not in any signed package list. Nothing was installed."; }
-		[ "$(sha256sum "$_ld/$_lf" | cut -d' ' -f1)" = "${_lwant%% *}" ] || { rm -f "$_lidx"; die "$_lf does not match the sha256 in the signed package list. Nothing was installed."; }
-		[ "$(wc -c < "$_ld/$_lf" | tr -d ' ')" = "${_lwant##* }" ] || { rm -f "$_lidx"; die "$_lf has a different size than the signed package list says. Nothing was installed."; }
-		set -- "$@" "$_ld/$_lf"
-	done < "$_ld/order.txt"
-	rm -f "$_lidx"
-	if [ "$#" -eq 0 ]; then log "nothing to install: every package is there already"; return 0; fi
-	log "checked: $# packages match the signed lists; installing"
-	opkg install "$@" || die "could not install the copied packages"
-}
 # ---------------------------------------------------------------------------------------------------------------------
 # Router settings (one uci batch, printed by --dry-run)
 # ---------------------------------------------------------------------------------------------------------------------
@@ -2367,7 +2296,7 @@ main() {
 		esac
 		shift
 	done
-	[ -z "$CMD" ] || unset SHOP_PRODUCT PISO_LOCAL_PKGS   # (the product is chosen by the installer only: no other command, an update included, changes it; the copied packages are for a first setup only)
+	[ -z "$CMD" ] || unset SHOP_PRODUCT   # (the product is chosen by the installer only: no other command, an update included, changes it)
 	case "$CMD" in
 		status) cmd_status ;;
 		wifi-name) cmd_wifi_name "$ARG" ;;
