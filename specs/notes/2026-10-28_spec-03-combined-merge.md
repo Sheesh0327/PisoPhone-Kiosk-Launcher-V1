@@ -22,7 +22,7 @@ Each branch started from `main` plus the epic commit, so they met in the same pl
 - `bash scripts/check_security_rules.sh`: all passed. `python3 tools/build_piso_setup.py --check`: up to date.
 - Firmware host tests: 38 of 46 built and passed; 8 need mbedtls (not installed here) and were not built. **The ESP32 build was not made (no PlatformIO).**
 - `python3 scripts/verify_release.py`: **0 FAIL, 1 WARN, 12 PASS**. The WARN is expected: `router.json` still says 1.5.23 while `setup/RELEASE` is 1.5.24; `publish-router.yml` signs the newer one after the merge.
-- `ruff check setup/pisophone_setup.py`: 51 findings against 47 on `main` (the `main` figure includes a scratch-copy artifact, so 4 real: 4 more `BLE001` `except Exception` and 1 more `S110` `try/except/pass`, the same patterns the file already has 25 and 5 of); `mypy`: 8 errors before and after.
+- `ruff check setup/pisophone_setup.py`: 51 findings against 46 on `main` (5 more: 4 `BLE001` `except Exception` and 1 `S110` `try/except/pass`, the same patterns the file already has 25 and 5 of; my scratch copy of `main` showed 47 because of a non-executable-file artifact); `mypy`: 8 errors before and after.
 - Not run: `cargo test` and `test_flow.py` (`tools/pisoportal` is identical to `main`), ShellCheck and BusyBox `ash` (not installed), anything on a real router, board, phone or computer.
 
 ## To do before this goes to `main` (CLAUDE.md section 5)
