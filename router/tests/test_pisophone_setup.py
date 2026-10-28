@@ -3,7 +3,7 @@
 commands here with sh, against a fake router (fake wget serving the repository's files from a folder, fake uci, ubus and
 jsonfilter), with the real one-line installer (setup/install.sh) and a stand-in setup file.
 Run with:  python3 router/tests/test_pisophone_setup.py"""
-import base64, hashlib, importlib.util, io, os, re, shutil, subprocess, sys, tempfile, time, types, urllib.error, urllib.parse
+import base64, hashlib, importlib.util, io, json, os, re, shutil, subprocess, sys, tempfile, time, types, urllib.error, urllib.parse
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 spec = importlib.util.spec_from_file_location("pisophone_setup", f"{ROOT}/setup/pisophone_setup.py")
@@ -79,7 +79,59 @@ except ps.SetupError:
 # ---- finding the router, waiting for the move -----------------------------------------------------------------------------
 check(ps.find_router(lambda h: h == "192.168.1.1") == "192.168.1.1", "a factory router is found")
 check(ps.find_router(lambda h: True) == "10.0.0.1", "10.0.0.1 is preferred")
-check(ps.find_router(lambda h: False) is None, "no router: None")
+check(ps.find_router(lambda h: False, gateways=lambda: []) is None, "no router: None")
+# feature 032 (SU-04): a router with another factory address is found at the gateway the cable's lease names
+WINDOWS_ROUTES = """IPv4 Route Table
+Active Routes:
+Network Destination        Netmask          Gateway       Interface  Metric
+          0.0.0.0          0.0.0.0      192.168.8.1    192.168.8.50     25
+          0.0.0.0          0.0.0.0         On-link     192.168.1.20    300
+        127.0.0.0        255.0.0.0         On-link         127.0.0.1    331
+"""
+LINUX_ROUTES = "default via 192.168.8.1 dev eth0 proto dhcp src 192.168.8.50 metric 100\n192.168.8.0/24 dev eth0 proto kernel scope link src 192.168.8.50\ndefault via 192.168.1.1 dev wlan0 metric 600\n"
+MAC_ROUTES = "Routing tables\n\nInternet:\nDestination        Gateway            Flags           Netif Expire\ndefault            192.168.8.1        UGScg             en0\n127                127.0.0.1          UCS               lo0\n"
+for label, text in (("Windows", WINDOWS_ROUTES), ("Linux", LINUX_ROUTES), ("macOS", MAC_ROUTES)):
+    got = ps.parse_gateways(text)
+    check(got[0] == "192.168.8.1" and all(re.fullmatch(r"\d+\.\d+\.\d+\.\d+", g) for g in got), f"{label}: the default gateway is read from the routes: {got}")
+check(ps.parse_gateways("") == [] and ps.parse_gateways("default via fe80::1 dev eth0") == [], "no routes, or only an IPv6 one: nothing")
+seen_probe = []
+found = ps.find_router(lambda h: seen_probe.append(h) or h == "192.168.8.1", gateways=lambda: ["192.168.8.1", "192.168.1.1"])
+check(found == "192.168.8.1" and seen_probe == ["10.0.0.1", "192.168.1.1", "192.168.8.1"], f"a router at the lease's gateway is found; the usual two addresses are tried first once each: {seen_probe}")
+check(ps.find_router(lambda h: h == "10.0.0.1", gateways=lambda: ["192.168.8.1"]) == "10.0.0.1", "10.0.0.1 is still preferred")
+def broken_run(command, **kw): raise FileNotFoundError(command[0])
+check(ps.default_gateways({"kind": "linux"}, run=broken_run) == [], "a missing route command: no gateways, no error")
+ran_cmd = []
+check(ps.default_gateways({"kind": "windows"}, run=lambda c, **kw: ran_cmd.append(c) or types.SimpleNamespace(stdout=WINDOWS_ROUTES.encode())) == ["192.168.8.1"] and ran_cmd[0][0] == "route",
+      "Windows: asks route print")
+# feature 032 (SU-01): two networks in the same range (the shop modem's Wi-Fi and the factory router's cable are both 192.168.1.x)
+LINUX_ADDR = "1: lo    inet 127.0.0.1/8 scope host lo\n2: eth0    inet 192.168.1.50/24 brd 192.168.1.255 scope global dynamic eth0\n3: wlan0    inet 192.168.1.23/24 brd 192.168.1.255 scope global wlan0\n"
+MAC_ADDR = "lo0: flags=8049<UP,LOOPBACK> mtu 16384\n\tinet 127.0.0.1 netmask 0xff000000\nen0: flags=8863<UP> mtu 1500\n\tinet 192.168.1.50 netmask 0xffffff00 broadcast 192.168.1.255\nen1: flags=8863<UP> mtu 1500\n\tinet 192.168.1.23 netmask 0xffffff00 broadcast 192.168.1.255\n"
+WIN_ADDR = """Windows IP Configuration
+
+Ethernet adapter Ethernet:
+
+   Connection-specific DNS Suffix  . :
+   IPv4 Address. . . . . . . . . . . : 192.168.1.50(Preferred)
+   Subnet Mask . . . . . . . . . . . : 255.255.255.0
+
+Wireless LAN adapter Wi-Fi:
+
+   IPv4 Address. . . . . . . . . . . : 192.168.1.23(Preferred)
+   Subnet Mask . . . . . . . . . . . : 255.255.255.0
+"""
+for label, text in (("Linux", LINUX_ADDR), ("macOS", MAC_ADDR), ("Windows", WIN_ADDR)):
+    got = ps.parse_interface_addresses(text)
+    check(sorted(ip for _n, ip in got) == ["127.0.0.1", "192.168.1.23", "192.168.1.50"] or sorted(ip for _n, ip in got) == ["192.168.1.23", "192.168.1.50"],
+          f"{label}: the address of every interface is read: {got}")
+    advice = ps.network_clash_advice(got)
+    check(advice and "192.168.1" in advice and "hotspot" in advice and "Wi-Fi" in advice, f"{label}: two interfaces in 192.168.1.x: stop with the hotspot advice: {advice}")
+one_each = [("eth0", "192.168.1.50"), ("wlan0", "192.168.0.23"), ("lo", "127.0.0.1")]
+check(ps.network_clash_advice(one_each) is None and ps.network_clash_advice([("eth0", "192.168.1.50")]) is None and ps.network_clash_advice([]) is None,
+      "different ranges, one network, or nothing: no clash")
+check(ps.network_clash_advice([("eth0", "192.168.1.50"), ("eth0", "192.168.1.51")]) is None, "one interface with two addresses is not two networks")
+check(ps.local_interface_addresses({"kind": "linux"}, run=lambda c, **kw: types.SimpleNamespace(stdout=LINUX_ADDR.encode())) != [] and
+      ps.local_interface_addresses({"kind": "linux"}, run=broken_run) == [], "the table is read with the system's command; a missing command gives an empty table")
+
 clock = [0.0]
 seen = []
 sys.stdout = out = io.StringIO()
@@ -298,6 +350,21 @@ r = e2e(lan="10.0.0.1", probe="denied", yes=True, needpw="Changed1234567", saved
 check("was not accepted" in r.out and "Type the router password" in r.out, "a saved password that no longer works is said so, and ssh asks: " + r.out[-500:])
 r = e2e(lan="10.0.0.1", probe="denied", yes=True, needpw="Saved12345678", no_browser=True)
 check("Logged in to the router" not in r.out and "Type the router password" in r.out, "nothing saved: ssh asks as before")
+# ---- feature 032 (SU-10): a refused ssh login is not "the connection was lost" ---------------------------------------------------------------
+for typed, word in (("", "was not given"), ("Wrong12345678", "did not accept")):
+    open(f"{tmp}/lan", "w").write("10.0.0.1")
+    open(f"{tmp}/needpw", "w").write("Right12345678")
+    open(f"{tmp}/result", "w").write("ok")
+    ssh_ = ps.Ssh(tmp)
+    ssh_.set_password(typed)
+    out_ = tempfile.mkdtemp(dir=tmp)
+    try:
+        ps.install(ssh_, "10.0.0.1", {k: "Aa12345678" for k in ps.ANSWER_ORDER}, "main", out_, lambda line: None, lambda: True, online=True)
+        msg = "(no error)"
+    except ps.SetupError as e:
+        msg = str(e)
+    os.remove(f"{tmp}/needpw")
+    check("lost" not in msg and "password" in msg and word in msg and "Router step" in msg, f"a refused login ({typed!r}) says which password is needed: {msg}")
 # the password is saved before the router changes it, so a run that stops half way can be repeated
 r = e2e(answers=("Tindahan WiFi", "Aling Nena", "y", "n"), secrets_=("routerpass1", "routerpass1", "kioskpass1", "kioskpass1", "boxadmin99", "boxadmin99"),
         result="fail")
@@ -991,11 +1058,11 @@ def serve_offline_site(sources=None):
     return list(sources)
 
 
-def router_knows(sources, installed="libc - 1\nuclient-fetch - 1\n", conf="option check_signature\n", mem=90000):
+def router_knows(sources, installed="libc - 1\nuclient-fetch - 1\n", conf="option check_signature\n", mem=90000, apk="no", release="23.05.5"):
     feeds = "".join(f"src/gz {n} {WEB}/feeds/{n}\n" for n in sources)
     open(f"{tmp}/feeds_output", "w").write(
-        f"@@RELEASE\nDISTRIB_RELEASE='23.05.5'\nDISTRIB_ARCH='mipsel_24kc'\nDISTRIB_TARGET='ramips/mt7621'\n@@FEEDS\n{feeds}@@INSTALLED\n{installed}"
-        f"@@CONF\n{conf}@@USIGN\nyes\n@@KEYS\n/etc/opkg/keys/abcd\n@@APK\nno\n@@MEM\n{mem}\n")
+        f"@@RELEASE\nDISTRIB_RELEASE='{release}'\nDISTRIB_ARCH='mipsel_24kc'\nDISTRIB_TARGET='ramips/mt7621'\n@@FEEDS\n{feeds}@@INSTALLED\n{installed}"
+        f"@@CONF\n{conf}@@USIGN\nyes\n@@KEYS\n/etc/opkg/keys/abcd\n@@APK\n{apk}\n@@MEM\n{mem}\n")
 
 
 def commands(r):
@@ -1063,6 +1130,146 @@ r = offline_run(inet=False)
 check(r.err and "signature" in r.err and "internet" in r.err and "Nothing was changed" in r.err, "no way to prepare and no internet: it stops with both reasons: " + str(r.err))
 check(open(f"{tmp}/lan").read().strip() == "192.168.1.1" and r.uci == "" and not any("install" in c and "--yes" in c for c in commands(r)) and not os.path.exists(f"{fake_root}/tmp/piso-offline"),
       "and the router was not changed (same address, nothing installed, nothing copied)")
+# feature 032 (SU-04): a router found at another address (here 192.168.8.1) is moved to 10.0.0.1 like a factory one
+r = e2e(lan="192.168.8.1", router="192.168.8.1", answers=("Tindahan WiFi", "Aling Nena", "y", "n"), secrets_=("routerpass1", "routerpass1", "kioskpass1", "kioskpass1", "boxadmin99", "boxadmin99"))
+check(r.rc == 0 and r.err is None and "set network.lan.ipaddr=10.0.0.1" in r.uci and open(f"{tmp}/lan").read().strip() == "10.0.0.1", f"a router at 192.168.8.1 is moved to 10.0.0.1 and set up ({r.err}): " + r.out[-500:])
+check("Router found at 192.168.8.1" in r.out and "moving it to 10.0.0.1" in r.out, "and the address it was found at is named: " + r.out[:300])
+# feature 032 (SU-06a): an apk router (OpenWrt 25.x) is refused before anything is changed, even when it has internet (the online way fails at opkg)
+router_knows([], apk="yes", release="25.12.0")
+open(f"{tmp}/lan", "w").write("192.168.1.1")
+r = offline_run(inet=True)
+check(r.err and "apk" in r.err and "25.12.0" in r.err and "ROUTERS.md" in r.err and "Nothing was changed" in r.err, "an apk router: refused, naming its release and the supported ones: " + str(r.err))
+check(r.wget == "" and "SETUP-RAN" not in r.out and r.uci == "" and not any("ping -c 1" in c for c in commands(r)) and not any("cat >" in c for c in commands(r)),
+      "and nothing was tried on it (no download, no internet test, no copy, no setup, no change)")
+# feature 032 (SU-02): the computer's internet goes through the router's cable and the router has none: ask to unplug it for the download
+class Clock:
+    def __init__(self): self.t = 0.0
+    def now(self): return self.t
+    def sleep(self, seconds): self.t += seconds
+
+
+def site_opener(state):
+    def opener(request, timeout=None):
+        if state["cable_in"]:
+            raise urllib.error.URLError("no route to host")
+        return urllib.request.urlopen(request, timeout=timeout)
+    return opener
+
+
+clock = Clock()
+st = {"cable_in": False}
+notes = []
+check(ps.wait_for_site(WEB, site_opener(st), notes.append, lambda t: None, clock.sleep, clock.now) is False and notes == [], "the website answers: no prompt, nothing unplugged")
+serve_offline_site()
+st["cable_in"] = True
+notes = []
+
+
+def unplug_on_ask(msg):
+    notes.append(msg)
+    if msg.startswith("Unplug the network cable"):
+        st["cable_in"] = False
+
+
+check(ps.wait_for_site(WEB, site_opener(st), unplug_on_ask, lambda t: None, clock.sleep, clock.now) is True and len(notes) == 1 and "router" in notes[0],
+      "the website does not answer: the cable is asked to be unplugged, and it is noted that it was: " + str(notes))
+st["cable_in"] = True
+notes = []
+try:
+    ps.wait_for_site(WEB, site_opener(st), notes.append, lambda t: None, clock.sleep, clock.now, wait=30)
+    why = "did not raise"
+except ps.OfflineNotPossible as e:
+    why = e.reason
+check("website" in why and "unplug" in why.lower() and clock.now() >= 30, "nobody unplugs it: after the wait it gives up with the reason (the router's internet decides): " + why)
+rec = []
+probes = iter([False, False, True])
+ps.wait_for_router("10.0.0.1", lambda h: next(probes), rec.append, lambda t: None, clock.sleep, clock.now)
+check(len(rec) == 1 and rec[0].startswith("Plug the network cable back"), "then it asks for the cable to be plugged back in and waits until the router answers: " + str(rec))
+try:
+    ps.wait_for_router("10.0.0.1", lambda h: False, lambda t: None, lambda t: None, clock.sleep, clock.now, wait=20)
+    why = "did not raise"
+except ps.SetupError as e:
+    why = str(e)
+check("router" in why and "plug" in why.lower(), "a router that never answers again: it stops and says so: " + why)
+
+# end to end: install() with the cable on the router, no internet that way; the owner unplugs, the bundle is downloaded, the cable goes back
+router_knows(serve_offline_site())
+open(f"{tmp}/lan", "w").write("10.0.0.1")
+open(f"{tmp}/probe", "w").write("configured")
+open(f"{tmp}/result", "w").write("ok")
+open(f"{tmp}/inet", "w").write("0")
+if os.path.exists(f"{tmp}/needpw"):
+    os.remove(f"{tmp}/needpw")
+st = {"cable_in": True}
+events, emitted = [], []
+
+
+def cable_notify(msg):
+    events.append(msg)
+    if msg.startswith("Unplug the network cable"):
+        st["cable_in"] = False
+    elif msg.startswith("Plug the network cable back"):
+        st["cable_in"] = True
+
+
+ssh_ = ps.Ssh(tmp)
+ssh_.set_password("")
+out_ = tempfile.mkdtemp()
+result = ps.install(ssh_, "10.0.0.1", {k: "Aa12345678" for k in ps.ANSWER_ORDER}, "main", out_, emitted.append, lambda: True, online=False, offline_site=OFFLINE_SITE,
+                    opener=site_opener(st), notify=cable_notify, probe=lambda h: True, sleep=clock.sleep, clock=clock.now)
+check(result["ok"] and [e.split(" ")[0] for e in events] == ["Unplug", "Plug"], "install(): asked to unplug, then to plug back in, and finished the setup: " + str(events))
+check(st["cable_in"] and not os.path.exists(f"{fake_root}/tmp/piso-offline"), "the cable is back in and the bundle is gone from the router")
+# the early download at Start (the coin box software for every chip, the installer files and app.json) and the copy used when the website is out of reach later
+fw_bytes = {"a.bin": b"image-a" * 10, "b.bin": b"image-b" * 10}
+served_site = {"/flash/manifest.json": json.dumps({"builds": [
+    {"chip": "esp32c3", "file": n, "size": len(b), "sha256": hashlib.sha256(b).hexdigest(), "product": "full"} for n, b in fw_bytes.items()]}).encode(),
+    "/update/app.json": b'{"version": 1}', "/install.sh": b"#!/bin/sh\necho install\n"}
+for n, b in fw_bytes.items():
+    served_site["/flash/" + n] = b
+for n in ps.ROUTER_INSTALLERS:
+    served_site["/setup/" + n] = b"setup " + n.encode()
+    served_site["/setup/" + n + ".sha256"] = hashlib.sha256(b"setup " + n.encode()).hexdigest().encode()
+
+
+class FakeBody:
+    def __init__(self, body): self.body = body
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+    def read(self, n=-1): return self.body
+
+
+def fake_site(request, timeout=None):
+    path = request.full_url.split("pisophone.pages.dev", 1)[1]
+    if path not in served_site:
+        raise urllib.error.HTTPError(request.full_url, 404, "not found", {}, None)
+    return FakeBody(served_site[path])
+
+
+fw_dir, site_dir = tempfile.mkdtemp(), tempfile.mkdtemp()
+problems = ps.prefetch_site("main", fw_dir, site_dir, opener=fake_site)
+check(problems == [] and len(os.listdir(fw_dir)) == 3, f"the early download keeps the software list and the image of every chip: {problems} {os.listdir(fw_dir)}")
+check(all(os.path.exists(os.path.join(site_dir, *rel.split("/"))) for rel in ("update/app.json", "install.sh", "setup/piso-setup.sh", "setup/piso-setup-x86_64.sh.sha256")),
+      "and app.json, install.sh and the setup file of every router family")
+fw_dir2, site_dir2 = tempfile.mkdtemp(), tempfile.mkdtemp()
+check(ps.prefetch_site("main", fw_dir2, site_dir2, with_router=False, opener=fake_site) == [] and not os.path.exists(os.path.join(site_dir2, "install.sh"))
+      and os.path.exists(os.path.join(site_dir2, "update", "app.json")), "PisoPhone only: no router files")
+
+
+def dead_site(request, timeout=None):
+    raise urllib.error.URLError("no route to host")
+
+
+check(len(ps.prefetch_site("main", tempfile.mkdtemp(), tempfile.mkdtemp(), opener=dead_site)) >= 2, "with no website the early download reports what failed and does not raise")
+quiet = []
+check(ps.site_file("https://pisophone.pages.dev", "/install.sh", "install.sh", dead_site, site_dir, quiet.append) == served_site["/install.sh"] and quiet and "kept" in quiet[0],
+      "later, with the website out of reach, the copy kept from the start is used and said so: " + str(quiet))
+try:
+    ps.site_file("https://pisophone.pages.dev", "/install.sh", "install.sh", dead_site, tempfile.mkdtemp(), quiet.append)
+    why = "did not raise"
+except ps.OfflineNotPossible as e:
+    why = e.reason
+check("install.sh" in why, "and with no copy kept it fails naming the file: " + why)
+
 # too little memory is a reason to fall back, found before the router is touched
 router_knows(serve_offline_site(), mem=24000)
 r = offline_run(inet=True)
@@ -1083,5 +1290,46 @@ check(ps.build_parser().parse_args(["--router-online"]).router_online is True an
 OFFLINE_SITE = None
 
 shutil.rmtree(tmp, ignore_errors=True)
+# ---- feature 032 (SU-18): the computer's addresses at the top of the setup log -------------------------------------------------------------
+import types as _types
+for kind, first in (("windows", "ipconfig"), ("mac", "ifconfig"), ("linux", "ip")):
+    ran = []
+
+    def fake_run(command, **kw):
+        ran.append(command[0])
+        return _types.SimpleNamespace(stdout=f"ADDR {command[0]}\nline two".encode())
+    report = ps.network_report({"kind": kind}, run=fake_run)
+    check(ran[0] == first and len(ran) == 2 and f"ADDR {first}" in report and "line two" in report, f"{kind}: the address and route commands are run and kept: {ran}")
+
+
+def refusing_run(command, **kw):
+    raise FileNotFoundError(command[0])
+report = ps.network_report({"kind": "linux"}, run=refusing_run)
+check(len(report) == 2 and all("could not be run" in x for x in report), "a missing command is noted, not raised: " + str(report))
+check(ps.SetupLog.mask("pw is Secret123 and ab", ["Secret123", "ab", ""]) == "pw is *** and ab", "only secrets of 6 characters or more are hidden")
+
+# ---- feature 032 (SU-17): the coin box software list and image are asked for with the program's own name ----------------------------------
+import json
+seen_agents = []
+
+
+class RecordingOpener:
+    def __init__(self, body): self.body = body
+    def __call__(self, request, timeout=None):
+        seen_agents.append(request.get_header("User-agent"))
+        return self
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+    def read(self): return self.body
+
+
+manifest_body = json.dumps({"builds": [{"chip": "esp32c3", "file": "x.bin", "size": 1, "sha256": "0" * 64, "product": "full"}]}).encode()
+ps.flash_manifest("main", tempfile.mkdtemp(), opener=RecordingOpener(manifest_body), emit=lambda t: None)
+try:
+    ps.fetch_image("main", {"file": "x.bin", "size": 1, "sha256": "0" * 64}, tempfile.mkdtemp(), opener=RecordingOpener(b"\0"))
+except ps.SetupError:
+    pass   # (the checksum is fake: only the request matters here)
+check(seen_agents == [ps.USER_AGENT, ps.USER_AGENT], "the software list and the image requests carry USER_AGENT: " + str(seen_agents))
+
 print(f"{checks} checks, {failures} failures")
 sys.exit(1 if failures else 0)

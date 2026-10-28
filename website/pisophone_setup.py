@@ -1728,9 +1728,80 @@ def port_open(host, port=22, timeout=2.0):
         return False
 
 
-def find_router(probe=port_open):
-    """The router's address: 10.0.0.1 (moved already) or 192.168.1.1 (factory), or None."""
-    for host in (TARGET_IP, FACTORY_IP):
+def parse_gateways(text):
+    """The IPv4 default gateways in the output of `ip -4 route` (Linux), `netstat -rn -f inet` (macOS) or `route print -4` (Windows)."""
+    found = []
+    for line in text.splitlines():
+        m = (re.match(r"\s*default\s+via\s+(\d+\.\d+\.\d+\.\d+)\s", line + " ")
+             or re.match(r"\s*default\s+(\d+\.\d+\.\d+\.\d+)\s", line + " ")
+             or re.match(r"\s*0\.0\.0\.0\s+0\.0\.0\.0\s+(\d+\.\d+\.\d+\.\d+)\s", line + " "))
+        if m and m.group(1) not in found:
+            found.append(m.group(1))
+    return found
+
+
+def default_gateways(system=None, run=subprocess.run):
+    """The gateways this computer's networks name (the router's address when it hands out addresses on the cable); [] when unknown."""
+    kind = (system or {}).get("kind") or ("windows" if os.name == "nt" else "linux")
+    command = (["route", "print", "-4"] if kind == "windows" else ["netstat", "-rn", "-f", "inet"] if kind == "mac" else ["ip", "-4", "route"])
+    try:
+        done = run(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=10, check=False)
+        return parse_gateways(done.stdout.decode("utf-8", "replace"))
+    except (OSError, subprocess.SubprocessError):
+        return []
+
+
+def parse_interface_addresses(text):
+    """(interface, IPv4 address) pairs from `ip -4 -o address` (Linux), `ifconfig` (macOS) or `ipconfig` (Windows)."""
+    found, current = [], ""
+    for line in text.splitlines():
+        m = re.match(r"\d+:\s+(\S+)\s+inet\s+(\d+\.\d+\.\d+\.\d+)/", line)
+        if m:
+            found.append((m.group(1), m.group(2)))
+            continue
+        head = re.match(r"(\S+?):\s+flags=", line) or re.match(r"(\S.*?(?:adapter|Adapter).*?):\s*$", line)
+        if head:
+            current = head.group(1)
+            continue
+        m = re.match(r"\s*inet\s+(\d+\.\d+\.\d+\.\d+)\s", line + " ") or re.match(r"\s*IPv4 Address[ .]*:\s*(\d+\.\d+\.\d+\.\d+)", line)
+        if m and current:
+            found.append((current, m.group(1)))
+    return found
+
+
+def local_interface_addresses(system=None, run=subprocess.run):
+    """The addresses of this computer's network connections, as (interface, address) pairs; [] when they cannot be read."""
+    kind = (system or {}).get("kind") or ("windows" if os.name == "nt" else "linux")
+    command = ["ipconfig"] if kind == "windows" else ["ifconfig"] if kind == "mac" else ["ip", "-4", "-o", "address"]
+    try:
+        done = run(command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=10, check=False)
+        return parse_interface_addresses(done.stdout.decode("utf-8", "replace"))
+    except (OSError, subprocess.SubprocessError):
+        return []
+
+
+def network_clash_advice(addresses):
+    """Advice text when two of this computer's connections are in the same range (the factory router's cable and the shop modem's Wi-Fi
+    are both 192.168.1.x: the computer then cannot tell which one the router is on). None when there is no such pair."""
+    ranges = {}
+    for name, ip in addresses:
+        if ip.startswith(("127.", "169.254.", "0.")):
+            continue
+        ranges.setdefault(ip.rsplit(".", 1)[0], []).append(name)
+    for prefix, names in ranges.items():
+        names = list(dict.fromkeys(names))
+        if len(names) >= 2:
+            return (f"This computer is on two networks that use the same addresses ({prefix}.x): {' and '.join(names[:3])}. It cannot tell which "
+                    "one the router is on. Put this computer's Wi-Fi on your phone's hotspot (a different address range), or turn its Wi-Fi off, "
+                    "then press Search again. (A modem from your internet company is usually at 192.168.1.1, like a new router.)")
+    return None
+
+
+def find_router(probe=port_open, gateways=default_gateways):
+    """The router's address: 10.0.0.1 (moved already) or 192.168.1.1 (factory), else the gateway this computer's cable was given
+    (vendor firmware on OpenWrt starts at 192.168.8.1, 192.168.10.1 ...: the OpenWrt check comes after, in probe_router), or None."""
+    tried = [TARGET_IP, FACTORY_IP]
+    for host in tried + [g for g in gateways() if g not in tried]:
         if probe(host):
             return host
     return None
@@ -1824,6 +1895,24 @@ def check_login(ssh, host):
     except subprocess.TimeoutExpired:
         return False
     return "@@LOGIN-OK" in r.stdout
+
+
+def login_refused(ssh, host):
+    """True when the router answers but refuses the login (ssh says 'Permission denied'); a router that does not answer is not that."""
+    try:
+        r = ssh.run(host, "echo @@LOGIN-OK", "-T", capture_output=True, text=True, timeout=60, stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return "@@LOGIN-OK" not in r.stdout and "permission denied" in r.stderr.lower()
+
+
+def login_refused_message(ssh):
+    """Which password the router needs, for the person to type on the Router step."""
+    given = (ssh.env or {}).get("PISO_ASKPASS_PW", "")
+    what = ("did not accept the router password this computer used (was it changed since?)" if given
+            else "has a password, and this computer was not given it")
+    return (f"the router {what}. Go back to the Router step and type the router password (it is in your saved summary, "
+            "in the file pisophone-router-password.txt).")
 
 
 # The router password is saved on this computer: in the summary of a finished setup, and (written before the setup changes it,
@@ -1923,6 +2012,17 @@ class OfflineNotPossible(SetupError):
         self.reason = reason
 
 
+class ApkRouter(OfflineNotPossible):
+    """A router that installs packages with apk (OpenWrt 25.x or a snapshot) or has no opkg: neither the offline way nor the online way
+    works on it yet, so the setup stops before anything is changed (it is not a reason to fall back to the online way)."""
+
+    def __init__(self, release):
+        SetupError.__init__(self, f"this router runs OpenWrt {release or '(release unknown)'}, which has no opkg (OpenWrt 25.x and snapshots install "
+                                  "packages with apk), and this setup only supports routers with opkg (OpenWrt 23.05 and 24.10; the list is in "
+                                  "docs/ROUTERS.md). Nothing was changed on the router.")
+        self.reason = str(self)
+
+
 # one ssh command that prints what offline mode needs to know, each part after its marker line
 READ_FEEDS_COMMAND = (
     "echo @@RELEASE; cat /etc/openwrt_release 2>/dev/null; "
@@ -1932,6 +2032,7 @@ READ_FEEDS_COMMAND = (
     "echo @@USIGN; if command -v usign >/dev/null 2>&1; then echo yes; else echo no; fi; "
     "echo @@KEYS; for k in /etc/opkg/keys/*; do [ -f \"$k\" ] && echo \"$k\"; done; "
     "echo @@APK; if command -v apk >/dev/null 2>&1; then echo yes; else echo no; fi; "
+    "echo @@OPKG; if command -v opkg >/dev/null 2>&1; then echo yes; else echo no; fi; "
     "echo @@MEM; sed -n 's/^MemAvailable: *\\([0-9]*\\) kB.*/\\1/p' /proc/meminfo 2>/dev/null | head -n 1")
 
 
@@ -1969,8 +2070,8 @@ def parse_router_feeds(text):
     keys = len([k for k in parts.get("KEYS", []) if k.strip()])
     mem = word("MEM")
     if not feeds:
-        if word("APK") == "yes":
-            raise OfflineNotPossible("this router uses apk (OpenWrt 25.x or a snapshot), which the setup without internet does not support yet")
+        if word("APK") == "yes" or word("OPKG") == "no":
+            raise ApkRouter(release.get("DISTRIB_RELEASE", ""))
         raise OfflineNotPossible("the router lists no package sources (/etc/opkg/distfeeds.conf)")
     if not signed:
         raise OfflineNotPossible("this router does not check package signatures (no 'option check_signature' in /etc/opkg.conf), so copied packages could not be checked")
@@ -2110,7 +2211,99 @@ def download_bytes(url, name, opener=urllib.request.urlopen, timeout=120):
         raise OfflineNotPossible(f"{name} could not be downloaded ({e})")
 
 
-def build_offline_bundle(info, branch, out_dir, opener=urllib.request.urlopen, site=None, emit=None):
+ROUTER_INSTALLERS = ("piso-setup.sh", "piso-setup-mips.sh", "piso-setup-aarch64.sh", "piso-setup-armv7.sh", "piso-setup-x86_64.sh")
+SITE_WAIT = 300   # seconds the setup waits for the owner to unplug the router's cable (for the download) and to plug it back in
+
+
+def site_cache_dir():
+    """Where the website's files are kept from the start of the setup (next to the coin box software cache)."""
+    return os.path.join(default_out_dir(), "site-cache")
+
+
+def site_file(site, path, name, opener=urllib.request.urlopen, site_cache=None, emit=None):
+    """A file of the website: downloaded; when that fails, the copy kept at the start of the setup (said so), else OfflineNotPossible."""
+    try:
+        return download_bytes(site.rstrip("/") + path, name, opener)
+    except OfflineNotPossible:
+        if site_cache:
+            try:
+                with open(os.path.join(site_cache, *path.strip("/").split("/")), "rb") as f:
+                    data = f.read()
+                (emit or (lambda line: None))(f"{name} could not be downloaded now: using the copy this computer kept from the start.")
+                return data
+            except OSError:
+                pass
+        raise
+
+
+def prefetch_site(branch, firmware_cache, site_cache, with_router=True, opener=urllib.request.urlopen, emit=None):
+    """At the start of the setup, while this computer's own internet works: keeps the coin box software (the list and the image of every
+    chip), app.json and, for a router setup, install.sh and the setup file of every router family. Returns what could not be
+    downloaded (a list of texts); it never raises, and a later step downloads again what is missing."""
+    problems = []
+    site = site_url(branch)
+    try:
+        for build in flash_manifest(branch, firmware_cache, opener, emit=lambda line: None)["builds"]:
+            try:
+                fetch_image(branch, build, firmware_cache, opener)
+            except SetupError as e:
+                problems.append(str(e))
+    except SetupError as e:
+        problems.append(str(e))
+    wanted = ["/update/app.json"]
+    if with_router:
+        wanted += ["/install.sh"] + [f"/setup/{n}{ext}" for n in ROUTER_INSTALLERS for ext in ("", ".sha256")]
+    for path in wanted:
+        try:
+            data = download_bytes(site + path, path.lstrip("/"), opener, timeout=60)
+            target = os.path.join(site_cache, *path.strip("/").split("/"))
+            os.makedirs(os.path.dirname(target), exist_ok=True)
+            with open(target + ".part", "wb") as f:
+                f.write(data)
+            os.replace(target + ".part", target)
+        except (OfflineNotPossible, OSError) as e:
+            problems.append(e.reason if isinstance(e, OfflineNotPossible) else str(e))
+    return problems
+
+
+def wait_for_site(site, opener, notify, emit, sleep=time.sleep, now=time.monotonic, wait=SITE_WAIT):
+    """True when the website did not answer and the owner unplugged the router's cable (so this computer's own internet works);
+    False when it answered at once. With the cable still in, a computer sends its internet through the router, and a router
+    that is not on the internet yet gives it none. Raises OfflineNotPossible when it still does not answer after `wait` seconds."""
+    def answers():
+        try:
+            with opener(urllib.request.Request(site.rstrip("/") + "/install.sh", headers={"User-Agent": USER_AGENT}), timeout=10) as r:
+                r.read(1)
+            return True
+        except (OSError, ValueError, http.client.HTTPException):
+            return False
+    if answers():
+        return False
+    notify("Unplug the network cable from the router now: this computer needs its own internet to download the router's software, and "
+           "its internet goes through the router, which has none. The installation continues by itself.")
+    end = now() + wait
+    while now() < end:
+        sleep(3)
+        if answers():
+            return True
+    raise OfflineNotPossible("this computer cannot reach the website (pisophone.pages.dev), also not after the router's network cable was "
+                             "asked to be unplugged: check this computer's own internet")
+
+
+def wait_for_router(host, probe, notify, emit, sleep=time.sleep, now=time.monotonic, wait=SITE_WAIT):
+    """After the download: asks for the cable to be plugged back in and waits until the router answers again."""
+    notify("Plug the network cable back into the router. The installation continues by itself.")
+    end = now() + wait
+    while now() < end:
+        if probe(host):
+            emit("The router answers again.")
+            return
+        sleep(3)
+    raise SetupError(f"the router at {host} does not answer. Plug this computer's network cable back into one of its LAN ports and try again: "
+                     "nothing was changed on the router.")
+
+
+def build_offline_bundle(info, branch, out_dir, opener=urllib.request.urlopen, site=None, emit=None, site_cache=None):
     """Prepares, on this computer, everything the router needs for a first setup without its internet, in `out_dir`:
     install.sh, the setup file for the router's CPU with its .sha256, and pkgs/ with the packages the router is missing (downloaded
     from the router's own package sources and checked against their lists here too), each used source's Packages and Packages.sig,
@@ -2119,6 +2312,7 @@ def build_offline_bundle(info, branch, out_dir, opener=urllib.request.urlopen, s
     emit = emit or (lambda line: None)
     site = site or site_url(branch)
     get = lambda url, name: download_bytes(url, name, opener)
+    get_site = lambda path, name: site_file(site, path, name, opener, site_cache, emit)
     raw, skipped = {}, []
     for name, url in info["feeds"]:
         if not re.fullmatch(r"[A-Za-z0-9_.-]+", name):
@@ -2165,13 +2359,13 @@ def build_offline_bundle(info, branch, out_dir, opener=urllib.request.urlopen, s
     put("pkgs/order.txt", "".join(n + "\n" for n in names).encode())
     setup_file = installer_file_for(info["arch"])
     emit(f"Downloading {setup_file}")
-    data = get(f"{site}/setup/{setup_file}", setup_file)
-    want = get(f"{site}/setup/{setup_file}.sha256", f"{setup_file}.sha256")
+    data = get_site(f"/setup/{setup_file}", setup_file)
+    want = get_site(f"/setup/{setup_file}.sha256", f"{setup_file}.sha256")
     if hashlib.sha256(data).hexdigest() != want.decode("utf-8", "replace").strip()[:64]:
         raise OfflineNotPossible(f"{setup_file} does not match its sha256 (a damaged download: try again)")
     put(setup_file, data)
     put(f"{setup_file}.sha256", want)
-    put("install.sh", get(f"{site}/install.sh", "install.sh"))
+    put("install.sh", get_site("/install.sh", "install.sh"))
     files = []
     for root, _dirs, found in os.walk(out_dir):
         for f in found:
@@ -2333,7 +2527,7 @@ def renew_address():
 
 
 def install(ssh, host, answers, branch, out_dir, emit, wait_move, stage=lambda n: None, online=False, offline_site=None,
-            opener=urllib.request.urlopen):
+            opener=urllib.request.urlopen, notify=None, site_cache=None, probe=port_open, sleep=time.sleep, clock=time.monotonic):
     """The installation: on a factory router the installer first moves it to 10.0.0.1 (wait_move() waits for that), then
     the setup runs with the answers. Returns the result (ok, state, saved files, summary); raises SetupError when it could
     not run to its end.
@@ -2345,6 +2539,9 @@ def install(ssh, host, answers, branch, out_dir, emit, wait_move, stage=lambda n
     state = {"local": False, "pushed": False, "moved": False}
     work = None
     info = bundle = None
+    notify = notify or emit
+    if ssh.env is not None and login_refused(ssh, host):   # (a terminal ssh asks for the password itself)
+        raise SetupError(login_refused_message(ssh))
 
     def fall_back(reason):
         state["local"] = False
@@ -2372,12 +2569,17 @@ def install(ssh, host, answers, branch, out_dir, emit, wait_move, stage=lambda n
                 info = read_router_feeds(ssh, host)
                 emit("Preparing the router's packages on this computer, so that the router does not need the internet...")
                 work = tempfile.mkdtemp(prefix="piso-offline-")
-                bundle = build_offline_bundle(info, branch, work, opener=opener, site=offline_site, emit=emit)
+                unplugged = wait_for_site(offline_site or site_url(branch), opener, notify, emit, sleep, clock)
+                bundle = build_offline_bundle(info, branch, work, opener=opener, site=offline_site, emit=emit, site_cache=site_cache)
+                if unplugged:
+                    wait_for_router(host, probe, notify, emit, sleep, clock)
                 check_offline_memory(info["mem_kb"], bundle)
                 state["local"] = True
+            except ApkRouter:
+                raise
             except OfflineNotPossible as e:
                 fall_back(e.reason)
-        if host == FACTORY_IP:
+        if host != TARGET_IP:   # (the factory address, or the one this router started at: the installer moves it)
             stage(0)
             if state["local"]:
                 try:
@@ -2816,7 +3018,7 @@ def flash_manifest(branch, cache_dir, opener=urllib.request.urlopen, emit=say):
     computer from the last time is used."""
     path = os.path.join(cache_dir, "manifest.json")
     try:
-        with opener(urllib.request.Request(f"{site_url(branch)}/flash/manifest.json"), timeout=15) as r:
+        with opener(urllib.request.Request(f"{site_url(branch)}/flash/manifest.json", headers={"User-Agent": USER_AGENT}), timeout=15) as r:
             text = r.read().decode("utf-8")
         manifest = json.loads(text)
         os.makedirs(cache_dir, exist_ok=True)
@@ -2857,7 +3059,7 @@ def fetch_image(branch, build, cache_dir, opener=urllib.request.urlopen):
     except OSError:
         pass
     try:
-        with opener(urllib.request.Request(f"{site_url(branch)}/flash/{build['file']}"), timeout=60) as r:
+        with opener(urllib.request.Request(f"{site_url(branch)}/flash/{build['file']}", headers={"User-Agent": USER_AGENT}), timeout=60) as r:
             data = r.read()
     except (urllib.error.URLError, OSError) as e:
         raise SetupError(f"the coin box software could not be downloaded ({e}).")
@@ -3016,7 +3218,7 @@ def run_setup(args, ssh, read=input, read_secret=getpass.getpass, probe=port_ope
     if not getattr(args, "no_flash", False):
         flash_in_terminal(args, read, board_finder, flasher)
     say()
-    if host == FACTORY_IP:
+    if host != TARGET_IP:
         say(f"Step 1 of 2: downloading the setup to the router and moving it to {TARGET_IP}...")
     else:
         say("Step 1 of 2: the router is at its address already.")
@@ -4434,6 +4636,10 @@ class Core:
     def probe(self, host):
         return probe_router(self.ssh, host)
 
+    def network_clash(self):
+        """Advice when two of this computer's networks are in the same range (None when not, or when it cannot be read)."""
+        return network_clash_advice(local_interface_addresses(detect_system()))
+
     def saved_login(self, host, out_dir):
         """The router password saved on this computer, when the router accepts it (else None)."""
         return use_saved_password(self.ssh, host, [out_dir, default_out_dir()], notify=lambda text: None)
@@ -4453,7 +4659,12 @@ class Core:
 
     def install(self, host, answers, out_dir, emit, stage, notify):
         return install(self.ssh, host, answers, self.branch, out_dir, emit,
-                       lambda: wait_for_move(renew=renew_address, notify=notify), stage, online=self.router_online)
+                       lambda: wait_for_move(renew=renew_address, notify=notify), stage, online=self.router_online, notify=notify,
+                       site_cache=site_cache_dir())
+
+    def prefetch(self, with_router, emit):
+        """The early download at Start (see prefetch_site): what could not be downloaded."""
+        return prefetch_site(self.branch, flash_cache_dir(), site_cache_dir(), with_router=with_router, emit=emit)
 
     def run(self, host, password, command, emit):
         """A command on the router (the root password is known by now): its output line by line; returns its exit status."""
@@ -4469,6 +4680,12 @@ class Core:
 
     def box_online(self):
         return box_online()
+
+    def router_reaches_site(self, host, password):
+        """True when the router can download from the PisoPhone website (what a rental phone does over PisoKiosk to get the app)."""
+        self.ssh.set_password(password or "")
+        url = shlex.quote(site_url(self.branch) + "/update/app.json")
+        return run_remote(self.ssh, host, f"wget -q -T 15 -O /dev/null {url} > /dev/null 2>&1", lambda line: None)["exit"] == 0
 
     def checkup(self):
         return run_checkup(self.branch, box_net=lambda: read_box_network(self.ssh, TARGET_IP),
@@ -4498,6 +4715,69 @@ class Core:
         return check_items(usb_boards, BoxLink.open, http_ok)
 
 
+def network_report(system=None, run=subprocess.run):
+    """This computer's addresses and routes, as text lines: the first thing in the setup log (a real run that fails is then
+    easier to understand: which networks the computer was on, and which way its traffic goes)."""
+    kind = (system or {}).get("kind") or ("windows" if os.name == "nt" else "linux")
+    commands = ([["ipconfig", "/all"], ["route", "print", "-4"]] if kind == "windows"
+                else [["ifconfig"], ["netstat", "-rn", "-f", "inet"]] if kind == "mac"
+                else [["ip", "-4", "address"], ["ip", "-4", "route"]])
+    lines = []
+    for command in commands:
+        try:
+            done = run(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=10, check=False)
+            lines.append("$ " + " ".join(command))
+            lines.extend(done.stdout.decode("utf-8", "replace").splitlines())
+        except (OSError, subprocess.SubprocessError):
+            lines.append(f"$ {' '.join(command)}  (could not be run)")
+    if not lines:
+        lines.append("addresses: " + ", ".join(local_addresses()))
+    return lines
+
+
+class SetupLog:
+    """Every line the setup page shows, written to a private file in the saved folder (the page keeps only the last lines in
+    memory). The unit's passwords are written as ***. A log that cannot be written never stops the setup."""
+
+    def __init__(self, out_dir, secrets, report, stamp=None):
+        self.out_dir, self.secrets, self.report = out_dir, secrets, report
+        self.stamp = stamp or time.strftime("%Y%m%d-%H%M")
+        self.path = None
+        self.broken = False
+        self.lock = threading.Lock()
+
+    def file_name(self):
+        return f"pisophone-setup-log-{self.stamp}.txt"
+
+    @staticmethod
+    def mask(line, secrets):
+        for secret in secrets:
+            if len(secret) >= 6:
+                line = line.replace(secret, "***")
+        return line
+
+    def write(self, line):
+        secrets = self.secrets()   # (before the file lock: the page's own lock is taken inside)
+        with self.lock:
+            if self.broken:
+                return
+            try:
+                first = self.path is None
+                if first:
+                    os.makedirs(self.out_dir, exist_ok=True)
+                    self.path = os.path.abspath(os.path.join(self.out_dir, self.file_name()))
+                fd = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+                with os.fdopen(fd, "a", encoding="utf-8", newline="\n") as f:
+                    if first:
+                        f.write(f"{APP_NAME} setup log, {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+                        for extra in self.report():
+                            f.write(self.mask(extra, secrets) + "\n")
+                        f.write("----\n")
+                    f.write(self.mask(line, secrets) + "\n")
+            except (OSError, ValueError):
+                self.broken = True
+
+
 class Session:
     """The state of the setup, for the web page: one unit after the other. Worker threads change it, the page reads it."""
 
@@ -4507,10 +4787,13 @@ class Session:
         self.system = system or detect_system()
         self.install_deps = install_deps or (lambda emit: ensure_dependencies(emit, self.system))
         self.lock = threading.RLock()
+        self.network_report = lambda: network_report(self.system)   # (replaced in the tests)
+        self.setup_log = SetupLog(self.out_dir, self.secrets, lambda: self.network_report())
         self.unit = 0
         self.mode = None           # None until the owner chooses at the start: "full" (the router, customer Wi-Fi and phones), "wifi" (PisoWiFi only) or "phone" (PisoPhone only)
         self.checks = None
         self.deps = {"running": False, "lines": []}
+        self.prefetched = []   # which early downloads were started (with the router files or not)
         self.country = "PH"
         # the owner tools do not belong to one unit: they stay when the next unit starts
         self.tools = {"error": None, "message": None, "batch": None, "licenses": None, "qr": None, "prep": {"running": False, "lines": []}}
@@ -4558,7 +4841,25 @@ class Session:
     def spawn(self, fn):
         threading.Thread(target=fn, daemon=True).start()
 
+    def _log_saved(self):
+        return [["Setup log (send it to the developer if something went wrong)", self.setup_log.path]] if self.setup_log.path else []
+
+    def _with_log_note(self, error):
+        """The error text names the setup log file, so the owner knows what to send."""
+        if error and self.setup_log.path:
+            return f"{error} The setup log is saved in {self.setup_log.path}."
+        return error
+
+    def secrets(self):
+        """The unit's passwords: what the setup log must not hold."""
+        with self.lock:
+            found = [self.values.get(env) for env, *_ in PASSWORDS] + [self.router_password]
+            found += [self.p["values"].get("WIFI_PASSWORD"), self.p["values"].get("ADMIN_PASSWORD"), (self.p["final"] or {}).get("admin")]
+            found += [v for k, v in (self.final or {}).items() if "PASSWORD" in k]
+        return [v for v in found if isinstance(v, str) and v]
+
     def log(self, line):
+        self.setup_log.write(line)
         with self.lock:
             lines = self.install["lines"]
             lines.append(line)
@@ -4579,6 +4880,26 @@ class Session:
                 checks = [("checks", False, str(e))]
             with self.lock:
                 self.checks = checks
+        self.spawn(work)
+        self.start_prefetch()
+
+    def start_prefetch(self):
+        """The early download: the coin box software, app.json and (for a router setup) the installer files, while this computer's own internet
+        works. Once for each kind of setup; what fails is downloaded again when it is needed."""
+        with self.lock:
+            if self.mode is None:
+                return   # (the owner has not chosen yet: the choice runs the checks again)
+            with_router = self.mode != "phone"
+            if with_router in self.prefetched:
+                return
+            self.prefetched.append(with_router)
+
+        def work():
+            try:
+                for problem in self.core.prefetch(with_router, self.setup_log.write) or []:
+                    self.setup_log.write(f"early download: {problem}")
+            except Exception as e:
+                self.setup_log.write(f"early download stopped: {e}")
         self.spawn(work)
 
     def do_recheck(self, a):
@@ -4632,6 +4953,7 @@ class Session:
             self.p["erase_ok"] = bool(a.get("value"))
 
     def plog(self, line):
+        self.setup_log.write(line)
         with self.lock:
             lines = self.p["install"]["lines"]
             lines.append(line)
@@ -4700,12 +5022,12 @@ class Session:
             with self.lock:
                 inst["running"] = False
                 self.p["result"] = result
-                inst["error"] = error
+                inst["error"] = self._with_log_note(error)
                 if result and result["ok"]:
                     inst.update(ok=True, stage=len(PHONE_STAGES), activity="Done.", banner=("ok", "The coin box is online."))
                     s = result["status"]
                     self.p["final"] = {"ip": s.get("ip", ""), "mac": s.get("mac", ""), "fw": s.get("fw", ""), "wifi": result["wifi"], "admin": result["admin"]}
-                    self.saved = [[label, path] for label, path in result["saved"]]
+                    self.saved = [[label, path] for label, path in result["saved"]] + self._log_saved()
                 else:
                     inst["activity"] = "Stopped."
         self.spawn(work)
@@ -4827,6 +5149,14 @@ class Session:
                 with self.lock:
                     if not self.router["searching"]:
                         return
+                try:
+                    clash = self.core.network_clash()
+                except Exception:
+                    clash = None   # (a check that cannot run never stops the search)
+                if clash:
+                    with self.lock:
+                        self.router.update(host=None, state=None, error=clash, searching=False)
+                    return
                 host = self.core.find_router()
                 if host:
                     try:
@@ -4907,7 +5237,10 @@ class Session:
 
         def notify(msg):
             self.log(msg)
-            if "Unplug" in msg:
+            if msg.startswith(("Unplug the network cable from the router now", "Plug the network cable back")):
+                with self.lock:
+                    self.install["banner"] = ("warn", msg)
+            elif "Unplug" in msg:
                 with self.lock:
                     self.install["banner"] = ("warn", "Unplug this computer's network cable from the router, wait 5 seconds and "
                                                       "plug it back in. The installation continues by itself.")
@@ -4918,6 +5251,7 @@ class Session:
                 host = self.core.find_router() or host_hint
                 if not host:
                     raise SetupError("the router is not found any more. Check the network cable, then try again.")
+                self._ensure_router_login(host)
                 if write_box:
                     boards = self.core.usb_boards()
                     if not boards:
@@ -4937,6 +5271,25 @@ class Session:
             self._finish_install(result, error)
         self.spawn(work)
 
+    def _ensure_router_login(self, host):
+        """A repeat after the router password was set: this program's ssh login has no password yet. Log in with the one typed
+        or saved; when there is none, send the owner to the Router step before anything on the box or router is changed."""
+        if self.core.probe(host) != "password":
+            return
+        with self.lock:
+            typed = self.router_password
+        if typed and self.core.login(host, typed):
+            return
+        saved = self.core.saved_login(host, self.out_dir)
+        if saved:
+            with self.lock:
+                self.router_password = saved
+            return
+        with self.lock:
+            self.router.update(host=host, state="password", login_ok=False, login_failed=bool(typed))
+        raise SetupError("the router has a password and this computer does not have the right one. Go back to the Router step "
+                         "and type the router password (it is in your saved summary, in the file pisophone-router-password.txt).")
+
     def _finish_install(self, result, error):
         with self.lock:
             self.install["running"] = False
@@ -4945,12 +5298,12 @@ class Session:
                 self.router["host"] = result["host"]
             if result and not result["ok"]:
                 error = failure_message(result)
-            self.install["error"] = error
+            self.install["error"] = self._with_log_note(error)
             if result and result["ok"]:
                 self.install.update(ok=True, stage=len(INSTALL_STAGES), activity="Done.", banner=("ok", "Installed and checked."))
                 found = parse_summary(result.get("summary_text", ""))
                 self.final = dict(self.answers(), **found) if not self.kept() else found
-                self.saved = [[label, path] for label, path in result.get("saved", [])]
+                self.saved = [[label, path] for label, path in result.get("saved", [])] + self._log_saved()
                 if self.final.get("ROOT_PASSWORD"):
                     self.router_password = self.final["ROOT_PASSWORD"]
             else:
@@ -4995,8 +5348,18 @@ class Session:
                 return
             self.prov = {"state": "opening", "note": "", "url": "", "slot": slot}
             passwords = self.passwords()
+            host, password = self.router["host"] or TARGET_IP, self.router_password or passwords.get("ROOT_PASSWORD", "")
 
         def work():
+            try:
+                # a rental phone downloads the app from the website over PisoKiosk, so the router needs internet (a setup without the
+                # router's internet leaves it without): without it the phone stops at Android's generic "Can't set up device"
+                if not self.core.router_reaches_site(host, password):
+                    with self.lock:
+                        self.prov = {"state": "nointernet", "note": "", "url": "", "slot": slot}
+                    return
+            except Exception:
+                pass   # (a check that cannot run never blocks the page)
             try:
                 kind, url, note = self.core.provisioning_target(passwords, slot)
             except Exception as e:
@@ -5272,7 +5635,7 @@ class Session:
                 "usb": {"boards": self.usb, "skip": self.skip_flash, "flashed": self.flashed},
                 "install": inst, "stages": INSTALL_STAGES, "final": self.passwords(), "saved": [[l, os.path.basename(p)] for l, p in self.saved],
                 "review": {"public_wifi": self.answers()["GUEST_SSID"], "site": self.answers()["SITE_NAME"], "country": self.country,
-                           "router": f"{self.router['host'] or '?'} -> {TARGET_IP}" if self.router["host"] == FACTORY_IP else TARGET_IP},
+                           "router": f"{self.router['host'] or '?'} -> {TARGET_IP}" if self.router["host"] not in (None, TARGET_IP) else TARGET_IP},
                 "phones": dict(self.prov, box_up=self.box_up, box_ip=BOX_IP, kiosk_ssid=(self.final or {}).get("KIOSK_SSID_NAME") or KIOSK_SSID),
                 "p": {"settings": {"values": dict(self.p["values"]), "problems": {k: v for k, v in self.psettings_problems().items() if v}},
                       "review": {"wifi": self.p["values"]["WIFI_NAME"].strip()}, "flashed": self.p["flashed"], "erase_needed": self.p["erase_needed"],
@@ -5509,19 +5872,24 @@ def service_unit(script, port):
 
 
 def install_service(args, unit_path="/etc/systemd/system/pisophone-setup.service", state_dir="/var/lib/pisophone-setup",
-                    run=run_command, supported=None):
-    """Linux: makes the setup page start by itself at boot (as root: it writes to the USB port and installs packages)."""
+                    run=run_command, supported=None, script=None):
+    """Linux: makes the setup page start by itself at boot (as root: it writes to the USB port and installs packages). The service
+    starts its own copy of this program in `state_dir`, so moving or deleting the downloaded file does not break it."""
+    script = script or os.path.abspath(sys.argv[0])
     if supported is None:
         supported = sys.platform.startswith("linux") and bool(shutil.which("systemctl"))
     if not supported:
         raise SetupError("--install-service needs a Linux system with systemd")
     if hasattr(os, "geteuid") and os.geteuid() != 0:
-        raise SetupError("run it as administrator:  sudo python3 " + os.path.abspath(sys.argv[0]) + " --install-service")
+        raise SetupError("run it as administrator:  sudo python3 " + script + " --install-service")
     os.environ["PISOPHONE_HOME"] = state_dir
     os.makedirs(state_dir, mode=0o700, exist_ok=True)
     pin = load_pin(wanted=args.pin)
+    kept = os.path.join(state_dir, "pisophone_setup.py")
+    if os.path.abspath(script) != os.path.abspath(kept):
+        shutil.copyfile(script, kept)
     with open(unit_path, "w", encoding="utf-8") as f:
-        f.write(service_unit(os.path.abspath(sys.argv[0]), args.port))
+        f.write(service_unit(kept, args.port))
     for command in (["systemctl", "daemon-reload"], ["systemctl", "enable", "--now", "pisophone-setup"]):
         if run(command, say, 60) != 0:
             raise SetupError("systemctl failed (see above)")
@@ -5865,8 +6233,9 @@ function paint3(){
 $('#btnUsb').onclick=()=>act('refresh_usb');$('#skipFlash').onchange=e=>act('skip_flash',{value:e.target.checked});$('#btnStart').onclick=()=>act('start_install');
 function paint4(){
  const sel=$('#slot');if(!sel.children.length){for(let n=1;n<=10;n++)sel.append(h('option',{value:n},String(n)))}
- const p=S.phones,box=$('#provBox');clear(box);$('#btnPhone').disabled=p.state==='opening';
+ const p=S.phones,box=$('#provBox');clear(box);$('#btnPhone').disabled=p.state==='opening';$('#btnPhone').textContent=p.state==='nointernet'?'Check again':'Make the setup page link';
  if(p.state==='opening')box.append(note('','Preparing the setup page...'));
+ else if(p.state==='nointernet')box.append(note('warn','The router cannot reach the PisoPhone website, and a rental phone gets the app through the router. Plug the modem into the router\'s WAN port (and wait a minute), then tap Check again.'));
  else if(p.state==='setup')box.append(note('ok','The setup page for slot '+p.slot+' is ready.'),h('p',{},h('a',{href:p.url,target:'_blank',rel:'noopener'},'Open the phone setup page'),' ',h('button',{class:'small',onclick:ev=>copyText(p.url,ev.target)},'Copy link')),h('p',{class:'mut small'},'The link holds this box\'s key: open it only on your own phone or laptop.'));
  else if(p.state==='box')box.append(note('warn','The phone setup page could not be filled in ('+p.note+'). Open the coin box\'s own page from a computer on the router\'s network, log in as admin with the admin password below, and tap Set up a phone: http://'+p.box_ip+'/'));
  const bu=$('#boxUp');bu.textContent=p.box_up===null?'Checking...':p.box_up?'Online at '+p.box_ip:'Does not answer at '+p.box_ip+'. Is it powered on, near the router?';bu.style.color=p.box_up===null?'':p.box_up?'var(--ok)':'var(--bad)';

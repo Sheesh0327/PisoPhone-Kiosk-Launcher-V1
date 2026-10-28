@@ -4,6 +4,13 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: the CI build number, shown as hundreds.tens.ones, build 466 is 4.6.6; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Setup program (the website's `pisophone_setup.py`), **the one-click setup for a real shop (feature 032).** Not tried on a real router, box, phone or Windows/macOS computer yet (hardware check RS56). No router, firmware or app release.
+  - **A log to send when something fails.** Every run saves `pisophone-setup-log-<date>-<time>.txt` in the saved folder with the lines the page showed and this computer's addresses; the unit's passwords are hidden. The error names the file.
+  - ***Try again* works after the router password was set** (it used the empty password and failed the same way every time), and a refused login says which password is needed instead of "the connection was lost".
+  - **Clear stops instead of loops:** two networks in the same range (a modem at 192.168.1.1 plus the factory router) stop with the advice to use the phone's hotspot; a router with OpenWrt 25.x (apk) is refused before anything is changed; a router that starts at another address (192.168.8.1, 192.168.10.1) is found and moved to 10.0.0.1.
+  - **The coin box software and the installer files are downloaded at the start**, and when the website cannot be reached because the computer's internet goes through the router, the page asks to unplug the router cable for the download and to plug it back. The Phones step waits until the router can reach the website, so a rental phone does not stop at Android's "Can't set up device".
+  - The coin box software list and image carry the program's name like every other download; the boot service (`--install-service`) starts its own copy of the program.
+  - Money and time: not touched.
 - Router 1.5.23 (1.5.22 was signed with the old programs by mistake and never raised), **the PisoWiFi page now opens on Endurance instead of HyperSpeed.** Not tried on a router yet. Customers can still pick HyperSpeed; only the plan that is selected when the page opens changed. Money and time: not touched.
 - Phone app, **the owner can remove apps from a rental phone (feature 031).** Not tried on a phone yet (hardware check RS55).
   - Uninstalling was blocked for good. Now it works while the admin maintenance window is open (admin PIN, then Settings, Apps, Uninstall) and is blocked again when the window ends; customers still cannot remove or stop apps. Money and time: not touched.

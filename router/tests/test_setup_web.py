@@ -188,6 +188,22 @@ if hasattr(os, "geteuid") and os.geteuid() == 0:
     check(rc == 0 and open(unit_path).read().count("--port 8800") == 1 and ["systemctl", "enable", "--now", "pisophone-setup"] in r.calls
           and open(os.path.join(tmp, "svc", "pin")).read().strip() == "654321" and any("PIN 654321" in l for l in out),
           "--install-service writes the unit, enables it, keeps the PIN and prints the address: " + str(out))
+# feature 032 (SU-21): the service starts its own copy of the program, not the file in Downloads
+if hasattr(os, "geteuid") and os.geteuid() == 0:
+    downloaded = os.path.join(tmp, "Downloads", "pisophone_setup.py")
+    os.makedirs(os.path.dirname(downloaded))
+    open(downloaded, "w").write("# the program as downloaded\n")
+    unit_path, state = os.path.join(tmp, "y.service"), os.path.join(tmp, "svc2")
+    out = []
+    ps.say, real_say = out.append, ps.say
+    try:
+        ps.install_service(types.SimpleNamespace(pin="654321", port=8801), unit_path, state, Runner(), supported=True, script=downloaded)
+    finally:
+        ps.say = real_say
+        os.environ["PISOPHONE_HOME"] = old_home
+    copy = os.path.join(state, "pisophone_setup.py")
+    check(os.path.exists(copy) and open(copy).read() == "# the program as downloaded\n", "the program is copied into the service's own folder")
+    check(f"{copy} --port 8801" in open(unit_path).read() and "Downloads" not in open(unit_path).read(), "and the unit starts that copy, not the downloaded file")
 try:
     ps.install_service(types.SimpleNamespace(pin=None, port=1), supported=False)
     check(False, "no systemd: refused")
@@ -207,6 +223,13 @@ class FakeCore:
 
     def preflight(self): return self.preflight_result
     def find_router(self): return "192.168.1.1" if self.state == "factory" else "10.0.0.1"
+    def network_clash(self): return None
+    def router_reaches_site(self, host, password):
+        self.calls.append(("reach", host, password))
+        return getattr(self, "has_internet", True)
+    def prefetch(self, with_router, emit):
+        self.prefetched = getattr(self, "prefetched", []) + [with_router]
+        return []
     def probe(self, host): return self.state
     def saved_login(self, host, out_dir): return None
     def usb_boards(self): return list(self.boards)
@@ -392,7 +415,8 @@ check(core.products == ["full"], "the full system writes the full image: " + str
 log = "\n".join(s["install"]["lines"])
 check("ESP32-C3 found" in log and "== Pairing the coin box" in log and s["install"]["stage"] == len(s["stages"]), "the log shows the progress")
 check(s["final"]["BOX_NEW_ADMIN_PASSWORD"] == "Bpass23456789" and s["final"]["KIOSK_PASSWORD"] == "Kpass234567", "the passwords come from the router's summary")
-check(s["saved"] == [["Summary (every password)", "summary.txt"], ["Printable setup sheet", "sheet.html"]], "the saved files are listed by name only (no paths)")
+check([x[0] for x in s["saved"]][:2] == ["Summary (every password)", "Printable setup sheet"] and [x[1] for x in s["saved"]][:2] == ["summary.txt", "sheet.html"]
+      and s["saved"][2][1].startswith("pisophone-setup-log-"), "the saved files (and the setup log, last) are listed by name only (no paths)")
 status, body, r = c.call("GET", "/api/saved?i=1")
 check(status == 200 and b"setup sheet" in body and r.getheader("Content-Type").startswith("text/html"), "the setup sheet can be opened from the page")
 check(c.call("GET", "/api/saved?i=7")[0] == 404 and c.call("GET", "/api/saved?i=-1")[0] == 404 and c.call("GET", "/api/saved?i=x")[0] == 404,
@@ -707,6 +731,227 @@ status, page, _r = Client(server).call("GET", "/", login=False)
 page = page.decode() if isinstance(page, bytes) else page
 check('id="kioskPw"' in page and "S.mode==='wifi'" in page and page.count('name="mode"') == 3 and "checked" not in page.split('name="mode"')[1].split(">")[0],
       "the page has the three choices, none checked, and hides the rental-phone password for PisoWiFi only")
+server.shutdown()
+# ---- feature 032 (SU-18): the setup log file, so a failed real run leaves evidence to send ----------------------------------------------
+import glob, stat
+
+
+def log_files(session):
+    return sorted(glob.glob(os.path.join(session.out_dir, "pisophone-setup-log-*.txt")))
+
+
+def walk_to_install(c):
+    c.call("POST", "/api/login", {"pin": "123456"})
+    c.wait(lambda s: s["checks"] is not None, "checks")
+    c.do("next")
+    c.wait(lambda s: s["router"]["host"] == "10.0.0.1", "found")
+    c.do("next")
+    c.do("next")
+    c.wait(lambda s: s["usb"]["boards"] is not None, "boards")
+
+
+core, session, server = start(state="configured")
+session.network_report = lambda: ["eth0 192.168.1.50/24 (the cable)", "default via 192.168.1.1 dev eth0"]
+c = Client(server)
+walk_to_install(c)
+c.do("start_install")
+s = c.wait(lambda s: s["install"]["ok"], "installed")
+session.router_password = "TypedRouterPw99"
+session.log("the router password is TypedRouterPw99 and the kiosk one is " + session.values["KIOSK_PASSWORD"])
+logs = log_files(session)
+check(len(logs) == 1, "a run writes one pisophone-setup-log-*.txt in the saved folder: " + str(logs))
+text = open(logs[0], encoding="utf-8").read() if logs else ""
+check(stat.S_IMODE(os.stat(logs[0]).st_mode) == 0o600 if logs else False, "the setup log is private (0600)")
+check("Downloading the PisoPhone setup" in text and "== Pairing the coin box" in text and "PASS  the coin box answers" in text, "every page line is in the log")
+check("192.168.1.50/24" in text and "default via 192.168.1.1" in text, "the log starts with this computer's addresses and routes")
+check("TypedRouterPw99" not in text and session.values["KIOSK_PASSWORD"] not in text and "***" in text, "the unit's passwords are written as ***")
+check(s["saved"][-1][0].startswith("Setup log") and s["saved"][-1][1] == os.path.basename(logs[0]), "the last page lists the log: " + str(s["saved"]))
+server.shutdown()
+
+core, session, server = start(state="configured")
+core.fail_install = True
+c = Client(server)
+walk_to_install(c)
+c.do("start_install")
+s = c.wait(lambda s: s["install"]["error"], "the install fails")
+logs = log_files(session)
+check(logs and os.path.basename(logs[0]) in s["install"]["error"] and "could not be prepared" in s["install"]["error"],
+      "the error banner names the log file: " + str(s["install"]["error"]))
+server.shutdown()
+
+# the PisoPhone-only path writes to the same kind of file, with its own secrets hidden
+core, session, server = start(mode="phone")
+session.p["values"]["WIFI_PASSWORD"] = "ShopWifiPw123"
+session.p["values"]["ADMIN_PASSWORD"] = "BoxAdminPw4567"
+session.plog("== Looking at the board; shop Wi-Fi password ShopWifiPw123, admin BoxAdminPw4567")
+logs = log_files(session)
+text = open(logs[0], encoding="utf-8").read() if logs else ""
+check("== Looking at the board" in text and "ShopWifiPw123" not in text and "BoxAdminPw4567" not in text, "PisoPhone only: lines are logged, its passwords hidden")
+server.shutdown()
+
+# a log that cannot be written never stops the setup
+core, session, server = start()
+session.out_dir = os.path.join(tmp, "no", "such", "dir", "\0bad")
+session.setup_log.out_dir = session.out_dir
+try:
+    session.log("still works")
+    check("still works" in session.install["lines"], "an unwritable log does not stop the setup")
+except Exception as e:
+    check(False, "an unwritable log must not raise: " + repr(e))
+server.shutdown()
+
+# ---- feature 032 (SU-09): Try again after the router password was set logs in with the saved one -------------------------------------------
+class PasswordCore(FakeCore):
+    """A router that gets its password in the first run, which then breaks off: the program's ssh login still has no password."""
+
+    def __init__(self, saved=True):
+        super().__init__(state="factory")
+        self.router_pw, self.ssh_pw, self.keeps_saved = None, "", saved
+
+    def probe(self, host): return "password" if self.router_pw else "factory"
+
+    def saved_login(self, host, out_dir):
+        if self.keeps_saved and self.router_pw and not self.ssh_pw:
+            self.ssh_pw = self.router_pw
+            return self.router_pw
+        return None
+
+    def login(self, host, password):
+        self.calls.append(("login", password))
+        if password == self.router_pw:
+            self.ssh_pw = password
+        return password == self.router_pw
+
+    def install(self, host, answers, out_dir, emit, stage, notify):
+        if self.router_pw is None:
+            self.router_pw = answers["ROOT_PASSWORD"]   # the setup changed the password, then the connection broke
+            self.calls.append(("install", dict(answers)))
+            raise ps.SetupError("the connection to the router was lost before the setup finished. Try again.")
+        if self.ssh_pw != self.router_pw:
+            raise ps.SetupError("the router refused the login")   # (what a retry did before: ssh had no password)
+        return FakeCore.install(self, host, answers, out_dir, emit, stage, notify)
+
+
+def walk_to_wifi_install(c):
+    c.call("POST", "/api/login", {"pin": "123456"})
+    c.wait(lambda s: s["checks"] is not None, "checks")
+    c.do("next")
+    c.wait(lambda s: s["router"]["host"] is not None and s["router"]["state"], "router found")
+    c.do("next")
+    c.do("set", values={"GUEST_SSID": "Tindahan WiFi", "SITE_NAME": "Aling Nena", "ROOT_PASSWORD": "Rpass2345678", "BOX_NEW_ADMIN_PASSWORD": "Bpass23456789"})
+    c.do("next")
+    c.wait(lambda s: s["usb"]["boards"] is not None, "boards")
+
+
+core, session, server = start(core=PasswordCore(), mode="wifi")
+c = Client(server)
+walk_to_wifi_install(c)
+c.do("start_install")
+s = c.wait(lambda s: s["install"]["error"], "the first run breaks off")
+check("lost" in s["install"]["error"], "the first run broke off after the password was set: " + s["install"]["error"])
+c.do("start_install")
+s = c.wait(lambda s: s["install"]["ok"] or (s["install"]["error"] and not s["install"]["running"] and "lost" not in s["install"]["error"]), "the retry ends")
+check(s["install"]["ok"], "Try again logs in with the saved router password and finishes: " + str(s["install"]["error"]))
+server.shutdown()
+
+# no saved password: the retry stops before the install and sends the owner to the Router step to type it
+core, session, server = start(core=PasswordCore(saved=False), mode="wifi")
+c = Client(server)
+walk_to_wifi_install(c)
+c.do("start_install")
+c.wait(lambda s: s["install"]["error"], "the first run breaks off")
+installs = len([x for x in core.calls if x[0] == "install"])
+c.do("start_install")
+s = c.wait(lambda s: s["install"]["error"] and "Router step" in s["install"]["error"], "the retry names the Router step")
+check("password" in s["install"]["error"] and len([x for x in core.calls if x[0] == "install"]) == installs, "nothing was installed; it asks for the password: " + s["install"]["error"])
+check(not s["router"]["login_ok"], "the Router step asks for the password again")
+server.shutdown()
+
+# ---- feature 032 (SU-01): two networks in 192.168.1.x stop the search before any ssh, with the hotspot advice ---------------------------------
+class ClashCore(FakeCore):
+    def __init__(self):
+        super().__init__(state="factory")
+        self.advice, self.probed = "This computer is on two networks that use 192.168.1.x. Put its Wi-Fi on your phone's hotspot.", []
+
+    def network_clash(self): return self.advice
+    def probe(self, host):
+        self.probed.append(host)
+        return "factory"
+
+
+core, session, server = start(core=ClashCore(), mode="wifi")
+c = Client(server)
+c.call("POST", "/api/login", {"pin": "123456"})
+c.wait(lambda s: s["checks"] is not None, "checks")
+c.do("next")
+s = c.wait(lambda s: s["router"]["error"], "the clash is reported")
+check("hotspot" in s["router"]["error"] and s["router"]["host"] is None and not s["can_next"], "two networks in the same range: advice on the Router step, no router, no Next: " + str(s["router"]["error"]))
+check(core.probed == [] and not any(x[0] in ("login", "install", "run") for x in core.calls), "nothing was sent to any router (no probe, no login)")
+core.advice = None
+c.do("search")
+s = c.wait(lambda s: s["router"]["host"] == "192.168.1.1", "Check again finds the router once the clash is gone")
+check(s["router"]["error"] is None and s["can_next"], "and the advice is gone")
+server.shutdown()
+
+# ---- feature 032 (SU-02): the early download at Start, and the page's two cable prompts -------------------------------------------------------
+for mode, with_router in (("wifi", True), ("phone", False)):
+    core, session, server = start(mode=mode)
+    session.run_checks()
+    end = time.time() + 5
+    while time.time() < end and not getattr(core, "prefetched", None):
+        time.sleep(0.05)
+    check(getattr(core, "prefetched", None) and core.prefetched[0] is with_router, f"{mode}: the software is downloaded at Start (router files: {with_router}): {getattr(core, 'prefetched', None)}")
+    server.shutdown()
+
+
+class CableCore(FakeCore):
+    def __init__(self):
+        super().__init__(state="configured")
+        self.go = threading.Event()
+
+    def install(self, host, answers, out_dir, emit, stage, notify):
+        notify("Unplug the network cable from the router now: this computer needs its own internet to download the router's software. "
+               "The installation continues by itself.")
+        self.go.wait(10)
+        notify("Plug the network cable back into the router. The installation continues by itself.")
+        return FakeCore.install(self, host, answers, out_dir, emit, stage, notify)
+
+
+core, session, server = start(core=CableCore())
+c = Client(server)
+c.call("POST", "/api/login", {"pin": "123456"})
+c.wait(lambda s: s["checks"] is not None, "checks")
+c.do("next")
+c.wait(lambda s: s["router"]["host"] is not None, "found")
+c.do("next")
+c.do("next")
+c.wait(lambda s: s["usb"]["boards"] is not None, "boards")
+c.do("start_install")
+s = c.wait(lambda s: s["install"]["banner"] and "Unplug the network cable from the router now" in s["install"]["banner"][1], "the unplug prompt is shown")
+check(s["install"]["banner"][0] == "warn" and "continues by itself" in s["install"]["banner"][1], "as a warning that says the install goes on by itself: " + str(s["install"]["banner"]))
+core.go.set()
+s = c.wait(lambda s: s["install"]["ok"], "the installation finishes after the cable is back")
+server.shutdown()
+
+# ---- feature 032 (SU-15): the Phones step does not offer the setup page while the router cannot reach the app's address ----------------------------
+core, session, server = start(state="configured")
+core.has_internet = False
+c = Client(server)
+walk_to_install(c)
+c.do("start_install")
+c.wait(lambda s: s["install"]["ok"], "installed")
+s = c.do("next")
+check(s["keys"][s["step"]] == "phones", "on the Phones step")
+s = c.wait(lambda s: s["phones"]["state"] == "nointernet", "the router has no internet")
+check(s["phones"]["url"] == "" and not [x for x in core.calls if x[0] == "provisioning"], "no phone setup page is made while the router cannot reach the website: " + str(s["phones"]))
+check([x for x in core.calls if x[0] == "reach"][0][1] == "10.0.0.1", "the router at 10.0.0.1 was asked")
+core.has_internet = True
+s = c.do("open_phone", slot=1)
+s = c.wait(lambda s: s["phones"]["state"] == "setup", "Check again: the router reaches the website now")
+check(s["phones"]["url"].startswith("https://pisophone.pages.dev/#"), "and then the setup page is made: " + str(s["phones"]["url"]))
+status, page, _r = c.call("GET", "/", login=False)
+page = page.decode() if isinstance(page, bytes) else page
+check("p.state==='nointernet'" in page and "WAN port" in page, "the page says to plug the modem into the router's WAN port")
 server.shutdown()
 print(f"{checks} checks, {failures} failures")
 sys.exit(1 if failures else 0)
