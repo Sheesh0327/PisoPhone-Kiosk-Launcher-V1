@@ -70,6 +70,31 @@ Group 0 names the choice **and the reason**, in this spec, before any code.
 ## Success criteria
 1. **Group 0's answer is written into this spec**: the approach, the reason, and how a hardened box takes over-the-air updates
    without losing its NVS. Nothing else in this list may be attempted first.
+
+   **Group 0 answer (2026-10-28): recommends B; D27 is the owner's. Evidence, sources and limits: `group0-findings.md`.**
+   - **The over-the-air answer.** Nothing in the feed, the signed manifest or the image header says whether a box is hardened; the feed is keyed by
+     product and chip only, and is built from the `*-dev*` environments. An update writes only the app slot, never the NVS or the partition table,
+     so what an update does to NVS is decided by whether the new code expects the NVS format that is there. If the new code reads plaintext NVS as
+     encrypted (or the reverse), ESP-IDF's NVS loader **erases every entry that fails its CRC** (IDF 4.4.8 `nvs_page.cpp`, `mLoadEntryTable`), so the
+     rule above is broken by the loader itself, not just by a failed read.
+   - **A is not possible on the build the boxes run.** `nvs_flash_secure_init` is compiled only when `CONFIG_NVS_ENCRYPTION` is on, which needs
+     `CONFIG_SECURE_FLASH_ENC_ENABLED`; the stock Arduino-ESP32 2.0.17 libs have it off. `initArduino()` also runs a plain `nvs_flash_init()`
+     before `setup()` and erases the partition on some errors. Making A work means a custom-sdkconfig Arduino/IDF for the app, which changes every
+     box, and then two image families because the NVS format would depend on the build.
+   - **B**: encrypt seven secret values (`shared_secret`, `admin_pw`, `setup_ap_pass`, `wifi_pass`, `kiosk_wifi`, `gw_key`, `legacy_key`) with
+     AES-256-GCM through mbedtls (in the stock libs), with a per-box key in a new 4 KB `encrypted` partition at 0x11000 that exists **only** in
+     `partitions_encrypted.csv`. A box counts as hardened only if that partition exists and flash encryption is on; otherwise the code takes today's
+     plaintext path unchanged. A value is `enc1:...` or it is plaintext, so **one image serves both kinds of box** and an existing box is untouched.
+     `PaymentQueueManager` and `OrphanPayments` are not touched (criterion 6 follows).
+   - **How a hardened box takes an update without losing its NVS:** the NVS format never changes, so any image reads it. The one added rule: a
+     hardened box must never run an image older than the first B-aware one (an older image would read `enc1:...` as the secret). Every hardened box is
+     flashed with a B-aware image, so none has an older one to roll back to; only the owner's admin-QR downgrade can go older.
+   - **Cost and limits:** new crypto (one primitive) in firmware; only the seven values are protected, so queued payments, revenue totals and profiles
+     stay readable and criterion 8 must say so; a lost `boxkey` leaves a box unable to read its credentials (it cannot lose a payment).
+   - **Found, not for this feature (feature 040):** a Secure-Boot-hardened box needs an image carrying the owner's Secure Boot signature block, which
+     the feed does not have, so hardened boxes currently have no working update path from the feed. *Reasoned, never run.* 043's choice (one image for
+     both kinds) works with either way 040 settles it.
+   - **Open before group 1:** the owner's D27, and a confirmation that no hardened box is in the field yet.
 2. `partitions_encrypted.csv` no longer claims `nvs` is `encrypted`, and carries a comment saying why it cannot be.
 3. A host test in `esp32_firmware/host_tests/` covers the new pure logic (whatever it is), and `pio test` / the host test
    runner passes.
