@@ -33,6 +33,7 @@ function over(j){last.over=j;var m=j.week||[],wk=m.reduce(function(a,b){return a
  $('hm').textContent=peso(j.today);$('hs').textContent='This week '+peso(wk)+' · all time '+peso(j.total);
  $('tiles').innerHTML=tile('Customers online',j.online,j.waiting+' waiting to pay')+tile('Internet',sp(j.rx_kbps),'down; up '+sp(j.tx_kbps))+
   tile('Coin box',j.box_ok?'OK':'Offline',j.box_ok?(j.box_signed?'answering, answers signed':'answering. Update its firmware: answers are not signed yet'):'check power and Wi-Fi',j.box_ok?'ok':'bad')+tile('Records',j.ledger_ok?'OK':'Check',j.ledger_lines+' lines'+(j.ledger_ok?'':' (line '+j.ledger_lines+' is wrong)'),j.ledger_ok?'ok':'bad')+
+  (j.ledger_kept!==undefined?tile('Sales detail',j.ledger_kept+(j.ledger_kept===1?' month':' months'),j.ledger_pruned?(j.ledger_pruned+(j.ledger_pruned===1?' older month was':' older months were')+' deleted to save space. Your total ('+peso(j.total)+') and each deleted month\'s total are kept.'+((j.ledger_kept-1<j.ledger_wanted)?' The space allows fewer than the '+j.ledger_wanted+' closed months you asked for (Settings).':'')):'nothing deleted'):'')+
   tile('Router',Math.floor(j.uptime/3600)+' h','up; '+Math.round(j.mem_kb/1024)+' MB memory free')+
   ((j.alerts&&j.alerts.length)?tile('Alerts',j.alerts.length,j.alerts.map(esc).join('<br>'),'gold'):'');draw(j.history)}
 function cli(j){var a=j.clients||[];$('cl').innerHTML=a.map(function(c){var on=c.state==='Authenticated',nm=c.name||c.mac;

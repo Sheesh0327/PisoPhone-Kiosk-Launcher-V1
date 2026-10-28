@@ -806,6 +806,8 @@ try:
         check(rc == 0 and out == f"OK {5 * 9000 + 4} {total}", "feature 032: before: the whole ledger verifies: " + out)
         rc, out = e7.cli("reconcile")
         check(rc == 0 and out.startswith(f"RECONCILE OK ledger={total} box={total}"), "feature 032: before the prune, the ledger and the box agree: " + out)
+        rc, out = e7.cli("ledger")
+        check(rc == 0 and out == f"Sales record: 5 months of detail kept, none deleted. Lifetime total: {total} pesos.", "feature 032: the owner is told the months kept and the total: " + out)
         e7.start()
         e7.nds_client(MAC_C)
         c = Cust("127.0.0.3", port=e7.PP, reset=True)
@@ -824,6 +826,8 @@ try:
         check(rc == 0 and out.startswith("OK ") and out.split()[2] == str(total + 2), "feature 032: after: it still verifies and the total moved only by the sale: " + out)
         rc, out = e7.cli("reconcile")
         check(rc == 0 and out.startswith(f"RECONCILE OK ledger={total + 2} box={total + 2}"), "feature 032: after the prune, the ledger still agrees with the box: " + out)
+        rc, out = e7.cli("ledger")
+        check(rc == 0 and out == f"Sales record: 3 months of detail kept (the space only allows 2 of the 3 closed months you wanted), 3 months deleted on purpose (their totals are kept). Lifetime total: {total + 2} pesos.", "feature 032: and after: months kept, months deleted, the same lifetime total: " + out)
     finally:
         e7.close()
     # ---- fair use: HyperSpeed is slowed after the limit, released later; Endurance is never touched -----------------------------------------

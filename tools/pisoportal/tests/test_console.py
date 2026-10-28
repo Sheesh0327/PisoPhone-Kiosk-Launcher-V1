@@ -101,6 +101,7 @@ try:
     j = json.loads(body)
     check(code == 200 and j["online"] == 1 and j["waiting"] == 1 and j["wan_if"] == "eth9", f"overview: customers and the internet line: {j}")
     check(j["today"] == 5 and j["total"] == 22 and sum(j["week"]) == 22 and j["box_ok"] is True and j["ledger_lines"] >= 0, f"overview: money and the coin box: {j}")
+    check(j["ledger_kept"] == 1 and j["ledger_pruned"] == 0 and j["ledger_wanted"] == 3, f"overview: one month of sales detail kept, none deleted, 3 wanted: {j}")
     check(j.get("alerts") == [], f"overview: no alerts file, no alerts: {j.get('alerts')}")
     open(f"{env.data}/alerts.txt", "w").write("2026-10-24 09:00 the coin box has not answered for 5 minutes\n2026-10-24 10:00 the portal program did not answer \"3\" minutes\n")
     j = json.loads(call("/api/overview", cookie=cookie)[1])

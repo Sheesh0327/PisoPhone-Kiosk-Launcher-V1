@@ -500,6 +500,38 @@ fn prune(path: &str, budget: &Budget) -> std::io::Result<PruneReport> {
     Ok(report)
 }
 
+/// What the owner is shown about the record: months of sale detail still on the router (closed months and the current one) and months
+/// deleted on purpose (the lines of `revenue-pruned.txt`; once 20 years are folded into its `earlier` line that one is not counted).
+#[derive(Debug, PartialEq)]
+pub struct Summary {
+    pub kept: usize,
+    pub pruned: usize,
+}
+
+pub fn summary(path: &str) -> Summary {
+    Summary {
+        kept: closed_segments(path).len() + usize::from(std::path::Path::new(&effective(path)).exists()),
+        pruned: pruned_read(path).iter().filter(|p| p.month != "earlier").count(),
+    }
+}
+
+/// The one sentence `pisoportal ledger` and `piso-setup status` give the owner: months of detail kept, months deleted on purpose, the
+/// lifetime total. Err(line) when the ledger does not verify.
+pub fn describe(path: &str, wanted: u64) -> Result<String, usize> {
+    let (_, total, _) = verify_all(path)?;
+    let s = summary(path);
+    let months = |n: usize| format!("{} month{}", n, if n == 1 { "" } else { "s" });
+    let closed = s.kept.saturating_sub(1) as u64;
+    let short = if s.pruned > 0 && closed < wanted {
+        format!(" (the space only allows {} of the {} closed months you wanted)", closed, wanted)
+    } else {
+        String::new()
+    };
+    let gone =
+        if s.pruned == 0 { "none deleted".to_string() } else { format!("{} deleted on purpose (their totals are kept)", months(s.pruned)) };
+    Ok(format!("Sales record: {} of detail kept{}, {}. Lifetime total: {} pesos.", months(s.kept), short, gone, total))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1200,5 +1232,23 @@ mod tests {
             closed_segments(&a).len()
         );
         assert!(verify_all(&a).is_ok());
+    }
+
+    // ---- feature 032 group 7: what the owner is shown ------------------------------------------------------------------------------
+    #[test]
+    fn f032_g7_the_summary_counts_months_kept_and_months_deleted() {
+        let a = tmpdir("g7-none");
+        assert_eq!(summary(&a), Summary { kept: 0, pruned: 0 }, "no ledger yet");
+        append(&a, at(0, 0), "hyper", 1, 6, "new").unwrap();
+        assert_eq!(summary(&a), Summary { kept: 1, pruned: 0 }, "the current month only");
+        let p = pruned_ledger("g7-pruned");
+        let s = summary(&p);
+        assert_eq!((s.kept, s.pruned), (closed_segments(&p).len() + 1, pruned_read(&p).len()));
+        assert!(s.kept >= 3 && s.pruned >= 3, "{:?}", s);
+        assert_eq!(
+            s.kept + s.pruned,
+            7,
+            "months 0..5 full and the first sale of month 6: every month is either kept or deleted on purpose"
+        );
     }
 }

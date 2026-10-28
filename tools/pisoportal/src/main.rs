@@ -6,6 +6,7 @@
 //!   pisoportal reconcile [rebase]  the box's own coin count against the revenue ledger (RECONCILE OK|MISMATCH|BADLEDGER|NOBOX);
 //!                             "rebase" compares from now on (after the box's revenue was collected)
 //!   pisoportal verify         check the ledger's hash chain
+//!   pisoportal ledger         months of sale detail kept, months deleted on purpose, the lifetime total
 //!   pisoportal report [days]  revenue per day and plan
 //!   pisoportal update-check <router.json> <installed version> <router id>   a verified router update from the website? (update.rs)
 //!   pisoportal update-verify <router.json> <router-setup.sh>                 is the downloaded file the signed one?
@@ -57,6 +58,20 @@ fn cmd_verify(cfg: &config::Config, all: bool) -> i32 {
         }
         Err(l) => {
             println!("BAD {}", l);
+            1
+        }
+    }
+}
+
+fn cmd_ledger(cfg: &config::Config) -> i32 {
+    let path = cfg.revenue_path();
+    match ledger::describe(&path, ledger::Budget::load(&path).keep_months) {
+        Ok(s) => {
+            println!("{}", s);
+            0
+        }
+        Err(l) => {
+            println!("Sales record: CHECK FAILED at line {} (run: pisoportal verify all)", l);
             1
         }
     }
@@ -199,6 +214,7 @@ fn main() {
         }
         "box" => cmd_box(&config::Config::load()),
         "verify" => cmd_verify(&config::Config::load(), args.get(2).map(|a| a.as_str()) == Some("all")),
+        "ledger" => cmd_ledger(&config::Config::load()),
         "reconcile" => cmd_reconcile(&config::Config::load(), args.get(2).map(|a| a.as_str()) == Some("rebase")),
         "update-check" => update::cmd_check(&args[2..]),
         "update-verify" => update::cmd_verify(&args[2..]),

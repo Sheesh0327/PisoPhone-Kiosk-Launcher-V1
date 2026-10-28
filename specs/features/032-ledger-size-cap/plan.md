@@ -44,6 +44,6 @@ and no app change, so no `PISO_FW_VERSION` and no app build. Generated files: `t
 `router-program` workflow, and `setup/piso-setup*.sh` plus `website/*` by `tools/build_piso_setup.py` — neither is edited by hand.
 
 ## Hardware check owed
-A new **RS53** in `docs/REAL_WORLD_TESTING.md`: on a real router, set `LEDGER_MAX_KB` small, let a month roll, and confirm the
+A new **RS56** (RS53 to RS55 were taken by features 029 to 031 meanwhile) in `docs/REAL_WORLD_TESTING.md`: on a real router, set `LEDGER_MAX_KB` small, let a month roll, and confirm the
 console still shows the right lifetime total, `reconcile` against the box agrees, and `piso-setup status` names the pruned
 months. Nothing in this feature is `verified-on-hardware` until that runs.

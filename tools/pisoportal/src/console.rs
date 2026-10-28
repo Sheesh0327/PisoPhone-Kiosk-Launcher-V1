@@ -386,6 +386,7 @@ impl Console {
             Ok((n, _)) => (true, n),
             Err(l) => (false, l),
         };
+        let ledger_sum = crate::ledger::summary(&cfg.revenue_path());
         let mem = read("/proc/meminfo")
             .lines()
             .find_map(|l| l.strip_prefix("MemAvailable:").map(|v| v.trim().trim_end_matches("kB").trim().to_string()))
@@ -401,7 +402,7 @@ impl Console {
         let uptime = read("/proc/uptime").split_whitespace().next().unwrap_or("0").split('.').next().unwrap_or("0").to_string();
         format!(
             "{{\"version\":\"{}\",\"now\":{},\"online\":{},\"waiting\":{},\"wan_if\":\"{}\",\"rx_kbps\":{},\"tx_kbps\":{},\"rx_total\":{},\"tx_total\":{},\"history\":[{}],\
-             \"today\":{},\"week_total\":{},\"month_total\":{},\"total\":{},\"week\":[{}],\"box_ok\":{},\"box_signed\":{},\"ledger_ok\":{},\"ledger_lines\":{},\"mem_kb\":{},\"uptime\":{},\"alerts\":[{}]}}",
+             \"today\":{},\"week_total\":{},\"month_total\":{},\"total\":{},\"week\":[{}],\"box_ok\":{},\"box_signed\":{},\"ledger_ok\":{},\"ledger_lines\":{},\"ledger_kept\":{},\"ledger_pruned\":{},\"ledger_wanted\":{},\"mem_kb\":{},\"uptime\":{},\"alerts\":[{}]}}",
             env!("CARGO_PKG_VERSION"),
             now,
             online,
@@ -421,6 +422,9 @@ impl Console {
             box_signed,
             ledger_ok,
             ledger_lines,
+            ledger_sum.kept,
+            ledger_sum.pruned,
+            crate::ledger::Budget::load(&cfg.revenue_path()).keep_months,
             if mem.is_empty() { "0".into() } else { mem },
             uptime,
             alerts
