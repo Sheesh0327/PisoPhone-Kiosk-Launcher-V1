@@ -994,6 +994,43 @@ check(r.stdout.startswith("the modem's network (10.1.2.3/8)") and "rc=1" in r.st
 r = lib('wan_ip() { echo 192.168.1.50; }; wan_prefix() { echo 24; }; cmd_wan_clash; echo "rc=$?"')
 check(r.stdout.strip() == "rc=0", "and prints nothing when the ranges are apart: " + r.stdout + r.stderr)
 check("wan_clash" in open(SCRIPT).read().split("check_all() {")[1].split("\n}\n")[0], "the status checks include the modem's range")
+# feature 033 (SU-11): with BOX_EXPECT_MAC only the board the setup program just wrote is paired; without it the first station, as before
+ASSOC = 'iwinfo() { [ "$2" = assoclist ] && for m in $STATIONS; do echo "$m  -50 dBm / -95 dBm"; done; }; box_ifname() { echo wlan0-3; }; '
+for stations, expect, want_first, want_other in (("aa:bb:cc:dd:ee:99 aa:bb:cc:dd:ee:01", "AA:BB:CC:DD:EE:01", "AA:BB:CC:DD:EE:01", "AA:BB:CC:DD:EE:99"),
+                                                  ("aa:bb:cc:dd:ee:99", "AA:BB:CC:DD:EE:01", "", "AA:BB:CC:DD:EE:99"),
+                                                  ("aa:bb:cc:dd:ee:99 aa:bb:cc:dd:ee:01", "aa:bb:cc:dd:ee:01", "AA:BB:CC:DD:EE:01", "AA:BB:CC:DD:EE:99"),
+                                                  ("aa:bb:cc:dd:ee:99 aa:bb:cc:dd:ee:01", "", "AA:BB:CC:DD:EE:99", "")):
+    r = lib(ASSOC + 'echo "first=$(box_station)"; echo "other=$(box_station other)"', env={"STATIONS": stations, "BOX_EXPECT_MAC": expect})
+    check(f"first={want_first}\n" in r.stdout and f"other={want_other}\n" in r.stdout or (not expect and "first=AA:BB:CC:DD:EE:99" in r.stdout),
+          f"stations {stations!r}, expected {expect!r}: the expected one (any, when none) is the station, a stranger is told apart: " + r.stdout + r.stderr)
+PAIR = ('sleep() { :; }; box_up() { return 0; }; cmd_box_diag() { :; }; ' + ASSOC + 'pair_box; echo "rc=$? MAC=$(conf_get BOX_MAC)"')
+open(f"{tmp}/uci.log", "w").close()
+r = lib(PAIR, env={"STATIONS": "aa:bb:cc:dd:ee:99", "BOX_EXPECT_MAC": "AA:BB:CC:DD:EE:01", "PAIR_WAIT": "20"})
+out = r.stdout + r.stderr
+check("rc=0" not in out and "MAC=AA" not in out and "another coin box" in out and "AA:BB:CC:DD:EE:99" in out and "AA:BB:CC:DD:EE:01" in out,
+      "a stranger joins first: it is not paired, and the log says who joined and who is expected: " + out[-700:])
+open(f"{tmp}/uci.log", "w").close()
+r = lib(PAIR, env={"STATIONS": "aa:bb:cc:dd:ee:99 aa:bb:cc:dd:ee:01", "BOX_EXPECT_MAC": "AA:BB:CC:DD:EE:01", "PAIR_WAIT": "20"})
+check("rc=0 MAC=AA:BB:CC:DD:EE:01" in r.stdout, "the expected board is paired even when a stranger is on the air too: " + r.stdout + r.stderr)
+open(f"{tmp}/uci.log", "w").close()
+r = lib(PAIR, env={"STATIONS": "aa:bb:cc:dd:ee:99", "PAIR_WAIT": "20"})
+check("rc=0 MAC=AA:BB:CC:DD:EE:99" in r.stdout, "no expected board (older program, by hand, Do not write it): the first station is paired, as before: " + r.stdout + r.stderr)
+# feature 033 (SU-08): the restart of SSH and LuCI must not cut the setup before it writes its result. Here the restart sends HUP to the session (a
+# dropped SSH connection): the state and the summary must be out already.
+st8 = f"{tmp}/state8"
+if os.path.exists(st8):
+    os.remove(st8)
+STUBS8 = ('step() { :; }; tip() { :; }; log() { echo "LOG $*"; }; stop_opennds() { :; }; apply_isolation() { :; }; wifi() { :; }; '
+          'ip() { echo "inet $GUEST_IP/24"; }; conf_get() { case "$1" in ROOT_PASS_SET) echo 1 ;; BOX_MAC) echo AA:BB:CC:DD:EE:01 ;; *) echo x ;; esac; }; conf_set() { :; }; '
+          'box_up() { return 0; }; provision_box() { :; }; rotate_box_wifi() { :; }; write_coinslot_conf() { :; }; remove_old_portal() { :; }; '
+          'install_update_timer() { :; }; keep_across_upgrades() { :; }; check_all() { return 0; }; write_summary() { :; }; write_handout() { echo /root/sheet.html; }; '
+          'finish_telegram() { :; }; drop_installer_copy() { :; }; ASSUME_YES=1; SUMMARY=/dev/null; passwd() { :; }; '
+          'sleep() { if [ "$1" -ge 2 ] && [ "$1" -le 3 ]; then command sleep "$1"; fi; }; '   # (only the pause before the restart is real)
+          'restart_router_access() { kill -HUP $PPID_OF_SESSION; }; ')
+r = lib(STUBS8 + 'PPID_OF_SESSION=$$; stage2; echo "after"', env={"PISO_STATE": st8})
+check(os.path.exists(st8) and open(st8).read().startswith("DONE all checks passed"),
+      "the access restart cuts the session: the state is DONE all the same: " + (open(st8).read() if os.path.exists(st8) else "no state file") + r.stdout[-300:] + r.stderr[-300:])
+check("SETUP COMPLETE" in r.stdout, "and the last message was shown before the restart: " + r.stdout[-300:])
 # feature 033 (SU-07): a failing opkg update on a router that has internet says the release's package sources do not answer
 old_root = tempfile.mkdtemp(dir=tmp)
 os.makedirs(f"{old_root}/etc")

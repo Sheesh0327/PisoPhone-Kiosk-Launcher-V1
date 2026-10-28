@@ -207,6 +207,9 @@ class FakeCore:
 
     def preflight(self): return self.preflight_result
     def find_router(self): return "192.168.1.1" if self.state == "factory" else "10.0.0.1"
+    def board_mac(self, port):
+        self.calls.append(("board_mac", port))
+        return "AA:BB:CC:DD:EE:01"
     def probe(self, host): return self.state
     def saved_login(self, host, out_dir): return None
     def usb_boards(self): return list(self.boards)
@@ -708,5 +711,28 @@ page = page.decode() if isinstance(page, bytes) else page
 check('id="kioskPw"' in page and "S.mode==='wifi'" in page and page.count('name="mode"') == 3 and "checked" not in page.split('name="mode"')[1].split(">")[0],
       "the page has the three choices, none checked, and hides the rental-phone password for PisoWiFi only")
 server.shutdown()
+
+# ---- feature 033 (SU-11): the MAC of the board the page wrote goes to the router; a board that was not written adds none -------------------------
+for skip, want in ((False, "AA:BB:CC:DD:EE:01"), (True, "")):
+    core, session, server = start(state="configured")
+    c = Client(server)
+    c.call("POST", "/api/login", {"pin": "123456"})
+    c.wait(lambda s: s["checks"] is not None, "checks")
+    c.do("next")
+    c.wait(lambda s: s["router"]["host"] == "10.0.0.1", "found")
+    c.do("next")
+    c.do("next")
+    c.wait(lambda s: s["usb"]["boards"] is not None, "boards")
+    if skip:
+        c.do("skip_flash", value=True)
+    c.do("start_install")
+    c.wait(lambda s: s["install"]["ok"], "installed")
+    sent = [x for x in core.calls if x[0] == "install"][0][1]
+    check(sent.get("BOX_EXPECT_MAC") == want, f"{'Do not write it' if skip else 'written by the page'}: BOX_EXPECT_MAC is {want!r}: {sent.get('BOX_EXPECT_MAC')!r}")
+    if not skip:
+        c.do("next_unit")
+        s = c.state()
+        check(session.box_mac == "", "the next unit starts with no board MAC")
+    server.shutdown()
 print(f"{checks} checks, {failures} failures")
 sys.exit(1 if failures else 0)

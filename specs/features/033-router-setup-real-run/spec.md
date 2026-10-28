@@ -32,8 +32,8 @@ rules: a box paired to the wrong router credits the wrong shop (money), and the 
 - **SU-11** no `BOX_EXPECT_MAC` (an older program, a manual `piso-setup pair`, *Do not write it* ticked): any box that joins is paired, as today.
   With it: a station with another MAC is **not paired**, the log says so once ("another coin box joined: <mac>; waiting for <expected>"), and the
   wait goes on until the expected box joins or the wait ends. There is no "pair it anyway" in the setup; `piso-setup pair` by hand still takes any box.
-- **SU-03** a router whose switch type is not recognised (neither DSA ports nor swconfig): nothing is bounced and the setup prints what it prints
-  today (replug the cable); Windows keeps its own `ipconfig /renew`.
+- **SU-03** a router whose LAN ports are not named `lan1`, `lan2` ... (an older switch of the swconfig kind): nothing is bounced and the setup prints what it prints
+  today (replug the cable); Windows keeps its own `ipconfig /renew`. **Edited while building (2026-10-28):** swconfig is not bounced in this feature, because it cannot be tested here and a wrong port toggle on such a switch could cut the router's own CPU port; RS57 (a) shows whether the 360T6M is DSA.
 - **SU-06b** a router with opkg sees no change. A router without opkg stops at the start of `install.sh` with a message, before any download.
 - **SU-05** a WAN address that does not clash sees no change. A clash found *after* the setup (a modem plugged in later) is an alert and a line in
   `piso-setup status`; it does not stop or change anything.
@@ -42,7 +42,7 @@ rules: a box paired to the wrong router credits the wrong shop (money), and the 
 
 ## Success criteria
 Each becomes a line in `validation.md`; ids follow spec 03 section 7.
-1. AC2.1 After the move, a fake `ip` (DSA) and a fake `swconfig` see every LAN port set down and up inside the same background job as `network restart`; an unrecognised switch does nothing (SU-03).
+1. AC2.1 After the move, a fake `ip` (DSA) sees every `lanN` port set down and then up inside the same background job as `network restart`, and nothing else (no WAN port, bridge, CPU interface or VLAN); a router with no `lanN` ports is left alone (SU-03).
 2. AC2.2 A station with another MAC that joins first is not paired; the expected one is; with no `BOX_EXPECT_MAC` the first one is. The program sends `BOX_EXPECT_MAC` (upper case) only when it wrote the board itself (SU-11).
 3. AC2.3 No `opkg`: `install.sh` and preflight stop with the message, nothing moved, downloaded or changed (SU-06b; the program side is 032's SU-06a).
 4. AC2.4 WAN 10.1.2.3/8, 10.0.30.7/24 and 10.0.0.5/24 are refused by the netmask rule; a WAN that comes up later in the LAN's range raises the alert and shows in `piso-setup status` (SU-05).

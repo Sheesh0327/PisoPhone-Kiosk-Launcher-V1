@@ -80,6 +80,20 @@ wan_ip() {
 	ubus call network.interface.wan status 2> /dev/null | jsonfilter -e '@["ipv4-address"][0].address' 2> /dev/null
 }
 
+# bounce_ports: after the address move only Windows asks for a new address by itself; Linux, macOS and a small PC running the setup keep the old one until
+# the cable is replugged. So the router's LAN ports go down for 3 seconds and up again (DSA ports lan1, lan2 ...). A router whose ports are not
+# named like that (an older switch of the swconfig kind) is left alone: the message already says to replug the cable.
+bounce_ports() {
+	_bp=""
+	for _d in "${PISO_NET_DIR:-/sys/class/net}"/lan[0-9]*; do
+		case "${_d##*/}" in *.*) continue ;; esac
+		[ -e "$_d" ] && _bp="$_bp ${_d##*/}"
+	done
+	for _d in $_bp; do ip link set "$_d" down; done
+	sleep 3
+	for _d in $_bp; do ip link set "$_d" up; done
+}
+
 # move_lan: the setup expects the router at 10.0.0.1. Changing it cuts this SSH session, so it is done last, after asking.
 move_lan() {
 	_lan="$1"
@@ -109,7 +123,7 @@ move_lan() {
 		say "Moving to $LAN_TARGET in 3 seconds. Log in again with: ssh root@$LAN_TARGET   then run: sh $DIR/piso-setup.sh"
 	fi
 	# (the dropped SSH connection must not stop it half way)
-	(trap '' HUP; sleep 3; "$NETWORK_INIT" restart) > /dev/null 2>&1 &
+	(trap '' HUP; sleep 3; "$NETWORK_INIT" restart; sleep 5; bounce_ports) > /dev/null 2>&1 &
 	exit 0
 }
 

@@ -132,6 +132,7 @@ script("uci", f"""echo "$*" >> {tmp_p}/uci.log
 case "$1" in get) [ "$2" = network.lan.ipaddr ] && echo "$(cat {tmp_p}/lan)/24" ;; set) case "$2" in network.lan.ipaddr=*) echo "${{2#*=}}" > {tmp_p}/lan ;; esac ;; esac
 exit 0
 """)
+script("opkg", "exit 0\n")   # (install.sh and the preflight want opkg)
 script("ubus", "echo '{}'\n")
 script("jsonfilter", 'echo "192.168.100.20"\n')
 script("netinit", f'echo "$1" >> {tmp_p}/network.log\n')
@@ -232,7 +233,7 @@ def e2e(answers=(), secrets_=(), lan="192.168.1.1", probe="factory", result="ok"
     rc, err = None, None
     try:
         rc = ps.run_setup(types.SimpleNamespace(**a), ps.Ssh(tmp), read=reader(*answers), read_secret=reader(*secrets_),
-                          board_finder=lambda: list(BOARDS), flasher=lambda port, emit: FLASHED.append(port),
+                          board_finder=lambda: list(BOARDS), flasher=lambda port, emit: FLASHED.append(port), mac_reader=lambda port: MAC_READ.get("mac", ""),
                           probe=lambda h: h == (open(f"{tmp}/lan").read().strip()) and up(h),
                           wait=lambda probe, renew: moved and probe("10.0.0.1"), open_page=lambda url, chromium=True: opened.append(url),
                           offline_site=OFFLINE_SITE)
@@ -252,14 +253,14 @@ def e2e(answers=(), secrets_=(), lan="192.168.1.1", probe="factory", result="ok"
 
 
 # (the coin box over USB: none here; the flashing has its own tests below)
-BOARDS, FLASHED = [], []
+BOARDS, FLASHED, MAC_READ = [], [], {}
 r = e2e(answers=("Tindahan WiFi", "Aling Nena", "y", "n"), secrets_=("routerpass1", "routerpass1", "kioskpass1", "kioskpass1", "boxadmin99", "boxadmin99"))
 check(r.rc == 0 and r.err is None, f"factory router: set up ({r.err}): " + r.out[-800:])
 check("set network.lan.ipaddr=10.0.0.1" in r.uci and open(f"{tmp}/lan").read().strip() == "10.0.0.1", "it was moved to 10.0.0.1")
 check("SETUP-RAN args=[--yes] root=[routerpass1] kiosk=[kioskpass1] box=[boxadmin99] guest=[Tindahan WiFi] site=[Aling Nena]" in r.out,
       "the setup got every answer, unattended: " + r.out[-600:])
 check("routerpass1" not in r.ssh and "kioskpass1" not in r.ssh and "boxadmin99" not in r.ssh, "no password on any command line")
-check(r.input == "routerpass1\nkioskpass1\nboxadmin99\nTindahan WiFi\nAling Nena\nPH\nboth\n", "the answers went over the connection's input: " + repr(r.input))
+check(r.input == "routerpass1\nkioskpass1\nboxadmin99\nTindahan WiFi\nAling Nena\nPH\nboth\n\n", "the answers went over the connection's input: " + repr(r.input))
 check(r.ssh.count("root@192.168.1.1") == 2 and r.ssh.count("root@10.0.0.1") == 1, "probe and installer at 192.168.1.1, setup at 10.0.0.1: " + r.ssh)
 check("HostKeyAlias=pisophone-router" in r.ssh and "StrictHostKeyChecking=accept-new" in r.ssh, "one pinned host key for both addresses")
 check("https://pisophone.pages.dev/install.sh" in r.wget and "https://pisophone.pages.dev/setup/piso-setup.sh" in r.wget, "main's installer and setup file")
@@ -336,9 +337,9 @@ check(r.err and "not been set up yet" in r.err, "--update on a router that was n
 
 # --country, and a configured router still gets the country
 r = e2e(lan="10.0.0.1", yes=True, country="SG", no_browser=True)
-check(r.rc == 0 and r.input.endswith("\nSG\nboth\n"), "--country SG is sent: " + repr(r.input))
+check(r.rc == 0 and r.input.endswith("\nSG\nboth\n\n"), "--country SG is sent (BOX_EXPECT_MAC is the last, empty line): " + repr(r.input))
 r = e2e(answers=("y", "n"), lan="10.0.0.1", probe="configured", country="JP")
-check(r.input == "\n\n\n\n\nJP\n\n", "a configured router: only the country is sent (no product was chosen): " + repr(r.input))
+check(r.input == "\n\n\n\n\nJP\n\n\n", "a configured router: only the country is sent (no product was chosen): " + repr(r.input))
 
 # Telegram: the router waits for a message to the bot, the owner confirms the chat
 script("piso-setup", f"""[ "$1" = telegram ] || exit 9
@@ -777,9 +778,16 @@ FLASHED.clear()
 r = e2e(answers=("Tindahan WiFi", "Aling Nena", "y", "", "n"), secrets_=("routerpass1", "routerpass1", "kioskpass1", "kioskpass1", "boxadmin99", "boxadmin99"))
 check(r.rc == 0 and "Coin box board found: CH340 on COM5" in r.out, "a board on USB is found and the setup goes on: " + r.out[:600])
 check(FLASHED == ["COM5"], "the board is written once: " + str(FLASHED))
+check(r.input.endswith("\nboth\n\n"), "feature 033: no MAC was read, so none is sent (the router pairs any box): " + repr(r.input))
+MAC_READ["mac"] = "AA:BB:CC:DD:EE:01"
+BOARDS[:] = [("COM5", "CH340")]
+r = e2e(answers=("Tindahan WiFi", "Aling Nena", "y", "", "n"), secrets_=("routerpass1", "routerpass1", "kioskpass1", "kioskpass1", "boxadmin99", "boxadmin99"))
+check(r.rc == 0 and r.input.endswith("\nboth\nAA:BB:CC:DD:EE:01\n"), "feature 033 (SU-11): the MAC of the board that was just written is sent as the last answer: " + repr(r.input))
 FLASHED.clear()
 r = e2e(answers=("Tindahan WiFi", "Aling Nena", "y", "n"), secrets_=("routerpass1", "routerpass1", "kioskpass1", "kioskpass1", "boxadmin99", "boxadmin99"), no_flash=True)
 check(r.rc == 0 and FLASHED == [], "--no-flash writes nothing")
+check(r.input.endswith("\nboth\n\n"), "feature 033: and sends no MAC (any box may be paired, as before): " + repr(r.input))
+MAC_READ.clear()
 BOARDS[:] = [("COM5", "CH340"), ("COM6", "CP210x")]
 r = e2e(answers=("Tindahan WiFi", "Aling Nena", "y", "n"), secrets_=("routerpass1", "routerpass1", "kioskpass1", "kioskpass1", "boxadmin99", "boxadmin99"))
 check(r.rc != 0 and r.err and "several USB boards" in r.err and FLASHED == [], "two boards: asks to unplug one, writes nothing: " + str(r.err))
@@ -1083,5 +1091,32 @@ check(ps.build_parser().parse_args(["--router-online"]).router_online is True an
 OFFLINE_SITE = None
 
 shutil.rmtree(tmp, ignore_errors=True)
+# ---- feature 033 (SU-11): the board the program just wrote tells its MAC, and the router is told to pair only that one --------------------------------
+check(ps.ANSWER_ORDER[-1] == "BOX_EXPECT_MAC" and "IFS= read -r BOX_EXPECT_MAC" in ps.setup_command("main") and ps.setup_command("main").count("BOX_EXPECT_MAC") == 2,
+      "the answers line ends with BOX_EXPECT_MAC, read and exported by the router's side")
+
+
+class MacLink:
+    def __init__(self, status): self.status, self.closed = status, False
+    def hello(self, timeout=12): return self.status
+    def close(self): self.closed = True
+
+
+class MacOpener:
+    def __init__(self, *statuses): self.statuses, self.n = list(statuses), 0
+    def __call__(self, device):
+        status = self.statuses[min(self.n, len(self.statuses) - 1)]
+        self.n += 1
+        if status == "gone":
+            raise ps.SetupError("the port is not there yet")
+        return MacLink(status)
+
+
+check(ps.read_board_mac(lambda: "COM5", opener=MacOpener("gone", {"mac": "aa:bb:cc:dd:ee:01", "setup": "needed"}), sleep=lambda s: None) == "AA:BB:CC:DD:EE:01",
+      "the board's MAC is read from its hello after it restarted (the port may take a moment), in capitals")
+check(ps.read_board_mac(lambda: "COM5", opener=MacOpener(None), sleep=lambda s: None) == "" and ps.read_board_mac(lambda: "COM5", opener=MacOpener("gone"), sleep=lambda s: None) == ""
+      and ps.read_board_mac(lambda: "COM5", opener=MacOpener({"fw": "3.12.4"}), sleep=lambda s: None) == "", "no answer, no port or no MAC: empty (the router then pairs any box, as before)")
+check(ps.read_board_mac(lambda: "COM5", opener=MacOpener({"mac": "00:00:00:00:00:00"}), sleep=lambda s: None) == "", "an all-zero MAC is not a board")
+
 print(f"{checks} checks, {failures} failures")
 sys.exit(1 if failures else 0)
