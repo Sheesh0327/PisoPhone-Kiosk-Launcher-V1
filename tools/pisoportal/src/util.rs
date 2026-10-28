@@ -341,9 +341,60 @@ pub fn civil(days: i64) -> String {
     format!("{:04}-{:02}-{:02}", if m <= 2 { y + 1 } else { y }, m, d)
 }
 
+/// The line an owner who had the spinning wheel on is told (feature 033).
+const WHEEL_REMOVED_NOTE: &str = "the spinning wheel was removed in this release; your wheel.log is kept";
+
+/// Feature 033: when the owner had once confirmed the wheel (`wheel-confirm.txt`), say once in `alerts.txt` that it is gone. Nothing
+/// is deleted: the owner's records stay where they are. Written once (a restart finds the line and leaves it), the last 20 lines kept
+/// like the monitor does.
+pub fn note_wheel_removed(data_dir: &str, now: u64) {
+    if !std::path::Path::new(&format!("{}/wheel-confirm.txt", data_dir)).exists() {
+        return;
+    }
+    let path = format!("{}/alerts.txt", data_dir);
+    let old = fs::read_to_string(&path).unwrap_or_default();
+    if old.lines().any(|l| l.ends_with(WHEEL_REMOVED_NOTE)) {
+        return;
+    }
+    let secs = now % 86400;
+    let line = format!("{} {:02}:{:02} {}\n", civil((now / 86400) as i64), secs / 3600, secs % 3600 / 60, WHEEL_REMOVED_NOTE);
+    let keep: Vec<&str> = old.lines().collect();
+    let keep = &keep[keep.len().saturating_sub(19)..];
+    let text: String = keep.iter().map(|l| format!("{}\n", l)).collect::<String>() + &line;
+    let _ = write_atomic(&path, text.as_bytes());
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn f033_a_router_that_had_the_wheel_on_is_told_once_and_its_records_stay() {
+        let d = std::env::temp_dir().join(format!("pisoportal-f033-note-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        let dir = d.to_string_lossy().into_owned();
+        let alerts = format!("{}/alerts.txt", dir);
+        // a router that never confirmed the wheel gets no line
+        note_wheel_removed(&dir, 1_761_000_000);
+        assert!(!std::path::Path::new(&alerts).exists(), "no confirmation on record: nothing to say");
+        // one that did: its records are left exactly as they are, and one line is written
+        fs::write(format!("{}/wheel-confirm.txt", dir), "v=1\nversion=1\nat=1\nsession=t\n").unwrap();
+        fs::write(format!("{}/wheel.log", dir), "1,a,b\n").unwrap();
+        fs::write(&alerts, "2026-10-01 08:00 an older alert\n").unwrap();
+        note_wheel_removed(&dir, 1_761_000_000);
+        let t = fs::read_to_string(&alerts).unwrap();
+        assert_eq!(t.lines().count(), 2, "{:?}", t);
+        assert!(t.starts_with("2026-10-01 08:00 an older alert\n"), "{:?}", t);
+        assert!(t.lines().nth(1).unwrap().ends_with(WHEEL_REMOVED_NOTE), "{:?}", t);
+        assert!(t.contains("2025-10-20 22:40 "), "the line carries the date and time like the monitor's: {:?}", t);
+        assert_eq!(fs::read_to_string(format!("{}/wheel-confirm.txt", dir)).unwrap(), "v=1\nversion=1\nat=1\nsession=t\n");
+        assert_eq!(fs::read_to_string(format!("{}/wheel.log", dir)).unwrap(), "1,a,b\n");
+        // a restart does not say it again
+        note_wheel_removed(&dir, 1_761_000_999);
+        assert_eq!(fs::read_to_string(&alerts).unwrap(), t);
+        let _ = fs::remove_dir_all(&d);
+    }
 
     fn tdir(name: &str) -> std::path::PathBuf {
         let d = std::env::temp_dir().join(format!("pisoportal-util-{}-{}", name, std::process::id()));

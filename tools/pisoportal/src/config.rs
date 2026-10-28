@@ -46,9 +46,6 @@ pub struct Config {
     pub game_minutes: u32,
     /// the same in seconds, for tests only (GAME_LIMIT_SECONDS); wins over the minutes when set
     pub game_seconds: Option<u32>,
-    /// the spinning wheel's switch in the configuration file (WHEEL, default off). A switch alone never turns the wheel on: the owner's
-    /// confirmation in the console must be on record too (`wheel_gate`)
-    pub wheel: bool,
     /// where guests' files go: the print server's inbox (SEND_HOST, SEND_PORT); on only when DATA_DIR/send.key exists
     pub send_host: String,
     pub send_port: u16,
@@ -191,7 +188,6 @@ impl Config {
             voucher_choice: parse_switch(&get("VOUCHER_CHOICE", ""), true),
             game_minutes: (num("GAME_MINUTES", 10) as u32).min(crate::game::MAX_MINUTES),
             game_seconds: get("GAME_LIMIT_SECONDS", "").parse().ok(),
-            wheel: parse_switch(&get("WHEEL", ""), false),
             send_host: get("SEND_HOST", "10.0.0.95"),
             send_port: port("SEND_PORT", 80),
             send_max_mb: num("SEND_MAX_MB", 10).clamp(1, 50),
@@ -300,12 +296,8 @@ mod tests {
     }
 
     #[test]
-    fn the_wheel_switch_is_off_unless_the_file_says_on_and_no_setup_script_writes_it() {
-        let mut m = HashMap::new();
-        assert!(!Config::from_map(m.clone()).wheel, "default: off");
-        m.insert("WHEEL".to_string(), "on".to_string());
-        assert!(Config::from_map(m).wheel, "(the owner's confirmation is still needed: wheel_gate)");
-        // the installer and the setup program never put WHEEL in the configuration file
+    fn no_setup_script_writes_a_wheel_switch() {
+        // the spinning wheel was removed (feature 033); the installer and the setup program must never bring its switch back
         for dir in ["../../setup/src", "../../router"] {
             for f in std::fs::read_dir(dir).unwrap().flatten().filter(|f| f.path().is_file()) {
                 let text = std::fs::read_to_string(f.path()).unwrap_or_default();

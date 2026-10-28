@@ -63,7 +63,9 @@ tools/pisoportal/tests/test_wheel_graphics.py
 ```
 tools/pisoportal/tests/test_soak.py          (drop any wheel step; the soak must still run)
 router/tests/test_footprint.py               (the size expectations change: the program gets smaller)
-website/console/ui.js                        (remove the wheel panel)   <- NOT generated, safe to edit
+tools/pisoportal/src/console-ui.js           (remove the wheel panel script; 8 lines)
+tools/pisoportal/src/console.html            (remove the wheel card and the responsibility dialog; 8 lines)
+tools/pisoportal/src/page.html               (remove the "Spin the wheel" link, line 117)
 website/manual.html                          (remove the wheel section)
 docs/ARCHITECTURE.md                         (section 5 table row, and the wheel paragraph)
 docs/ROUTERS.md                              (any wheel mention)
@@ -71,6 +73,7 @@ docs/REAL_WORLD_TESTING.md                   (RS34: mark removed with a one-line
 specs/RELEASE_STATE.md                       (the wheel paragraph; say it was removed in this release)
 CHANGELOG.md                                 (one owner-readable line)
 ```
+`website/console/ui.js` and `ui.json` are NOT edited by hand (corrected 2026-10-28: they are the signed copy that `publish-router.yml` makes from `src/console-ui.js`; a hand edit would break the signature). The three `src/` files above are the real source, and criterion 1 needs them clean.
 Check `website/js/VENDORED.md` is untouched, and **never hand-edit** anything in `CLAUDE.md` section 4's generated list.
 
 ## Routers that turned the wheel on
@@ -78,7 +81,9 @@ Believed to be none (`specs/RELEASE_STATE.md`: off everywhere, needs a typed con
 exists:
 - **Leave the owner's data files alone.** Do not delete `wheel-confirm.txt`, `wheel.log` or `wheel.log.1` from
   `/etc/coinslot.d`. They are small, they are the owner's record, and deleting someone's records in an update is not ours to do.
-- **`/wheel`, `/wheel/state` and `/wheel/spin` return 404** after the update (they are simply gone from the router).
+- **`/wheel`, `/wheel/state` and `/wheel/spin` are simply gone from the router** (corrected 2026-10-28: the customer portal answers every
+  address it does not know with the ordinary customer page, which a captive portal needs, so a GET of them returns that page, not a
+  404; `POST /wheel/spin` returns 405). The console's `GET /api/wheel` is a 404.
 - **A journalled spin that was never applied is abandoned.** It can only exist on a router that had the wheel on, and it is at
   most one spin's minutes on one device. The update must **note this in `alerts.txt`** when `wheel-confirm.txt` exists, so the
   owner is told rather than it happening silently: one line, "the spinning wheel was removed in this release; your
@@ -95,8 +100,9 @@ exists:
 
 ## Success criteria
 Each becomes a line in `validation.md` with real command output.
-1. `rg -n "wheel|WHEEL" tools/pisoportal/src/ router/ setup/src/` returns **nothing** (the word is gone from the program and the
-   installer). Documentation and `CHANGELOG.md` may still mention it historically.
+1. `rg -n "wheel|WHEEL" tools/pisoportal/src/ router/ setup/src/` returns **only** the two places the other criteria require (corrected 2026-10-28, the spec contradicted itself): the
+   `WHEEL=` guard test in `config.rs` (criterion 7) and the one-time notice that reads `wheel-confirm.txt` and writes `alerts.txt`
+   (criterion 13). Every other match is a leftover and fails. Documentation and `CHANGELOG.md` may still mention it historically.
 2. `cd tools/pisoportal && cargo test` passes, with no wheel tests remaining and no test merely `#[ignore]`d.
 3. `cd tools/pisoportal && python3 tests/test_flow.py` passes.
 4. `python3 router/tests/test_setup.py`, `test_pisophone_setup.py`, `test_setup_web.py`, `test_setup_tools.py` pass.
