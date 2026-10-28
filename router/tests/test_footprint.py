@@ -3,9 +3,8 @@ import os
 import sys
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
-# 2026-10-22: raised to 1200/1700 KB by the owner for the spinning wheel (router 1.5.14 and 1.5.15 made the programs about 1090 KB, mipsel, and
-# the installer 1617 KB). The wheel was removed in feature 033 and the programs are smaller again, but the budgets stay until CI has rebuilt
-# the committed programs without it; lower them then.
+# 2026-10-22: raised to 1200/1700 KB by the owner for a feature that feature 033 removed again (the programs had reached about 1090 KB, mipsel,
+# and the installer 1617 KB). The programs are smaller now, but the budgets stay until CI has rebuilt the committed programs; lower them then.
 BUDGET_KB = {
     "tools/pisoportal/bin/pisoportal-mipsel": 1200,   # the portal program (what runs)
     "tools/pisoportal/bin/pisoportal-mips": 1200,
