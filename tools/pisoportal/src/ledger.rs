@@ -308,6 +308,27 @@ pub fn shift(path: &str, since: u64, until: u64, delta: u64) -> usize {
     }
     moved
 }
+/// Which closed segments to delete to bring all ledger files inside `max_kb` (0 = no limit), oldest first, and whether that
+/// reaches the budget. Deletes nothing.
+pub fn prune_plan(path: &str, max_kb: u64) -> (Vec<String>, bool) {
+    if max_kb == 0 {
+        return (Vec::new(), true);
+    }
+    let len = |p: &str| fs::metadata(p).map(|m| m.len()).unwrap_or(0);
+    let budget = max_kb * 1024;
+    let segs = closed_segments(path);
+    let mut total = len(&effective(path)) + segs.iter().map(|s| len(s)).sum::<u64>();
+    let mut del = Vec::new();
+    for s in segs {
+        if total <= budget {
+            break;
+        }
+        total -= len(&s);
+        del.push(s);
+    }
+    (del, total <= budget)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -591,5 +612,64 @@ mod tests {
         // (this is a debug build; the release build does it in a few tens of milliseconds)
         assert!(ms < 5000, "100,000 rows took {} ms", ms);
         println!("100,000 rows verified in {} ms (debug build)", ms);
+    }
+
+    // ---- feature 032: the size budget ------------------------------------------------------------------------------------------
+    fn size_of(p: &str) -> u64 {
+        fs::metadata(p).map(|m| m.len()).unwrap_or(0)
+    }
+    fn all_size(a: &str) -> u64 {
+        closed_segments(a).iter().map(|s| size_of(s)).sum::<u64>() + size_of(a)
+    }
+
+    #[test]
+    fn f032_g1_the_oldest_months_are_picked_until_the_budget_is_reached() {
+        let (a, _b) = two_ledgers("g1-budget", 6, 100); // about 4.5 KB a month
+        let segs = closed_segments(&a);
+        let (del, reached) = prune_plan(&a, 12);
+        assert!(reached);
+        assert!(!del.is_empty() && del.len() < segs.len(), "some but not all: {:?}", del);
+        assert_eq!(del, segs[..del.len()].to_vec(), "oldest first, from the front");
+        let left: u64 = all_size(&a) - del.iter().map(|s| size_of(s)).sum::<u64>();
+        assert!(left <= 12 * 1024, "{} bytes left", left);
+        assert_eq!(prune_plan(&a, 12), (del, true), "it deletes nothing: the same answer twice");
+    }
+
+    #[test]
+    fn f032_g1_a_busy_shop_is_pruned_below_the_months_it_wanted() {
+        let (a, _b) = two_ledgers("g1-busy", 6, 100);
+        let segs = closed_segments(&a);
+        let (del, reached) = prune_plan(&a, 5); // one month alone is about 4.5 KB: only the current file and one more fit
+        assert!(reached && segs.len() - del.len() < 3, "fewer than 3 months kept, the budget wins (D2): kept {}", segs.len() - del.len());
+    }
+
+    #[test]
+    fn f032_g1_zero_means_no_limit() {
+        let (a, _b) = two_ledgers("g1-zero", 4, 100);
+        assert_eq!(prune_plan(&a, 0), (Vec::new(), true));
+    }
+
+    #[test]
+    fn f032_g1_inside_the_budget_deletes_nothing() {
+        let (a, _b) = two_ledgers("g1-inside", 4, 20);
+        assert_eq!(prune_plan(&a, 1024), (Vec::new(), true));
+    }
+
+    #[test]
+    fn f032_g1_only_a_current_file_has_nothing_to_delete() {
+        let a = tmpdir("g1-only");
+        for n in 0..100 {
+            append(&a, at(0, n), "hyper", 1, 6, "new").unwrap();
+        }
+        assert_eq!(prune_plan(&a, 1), (Vec::new(), false), "over the budget and nothing to delete: reported, not an error");
+    }
+
+    #[test]
+    fn f032_g1_a_current_file_over_the_budget_by_itself_deletes_every_closed_segment() {
+        let (a, _b) = two_ledgers("g1-cur", 3, 100);
+        let segs = closed_segments(&a);
+        let (del, reached) = prune_plan(&a, 1); // 1 KB: the current month alone is more
+        assert_eq!((del, reached), (segs, false));
+        assert!(std::path::Path::new(&a).exists(), "revenue.csv is never in the list");
     }
 }
