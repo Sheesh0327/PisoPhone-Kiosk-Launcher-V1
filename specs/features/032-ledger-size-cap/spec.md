@@ -1,6 +1,6 @@
 # Feature 032: keep the revenue ledger under 1 MB
 
-Status: **draft**   Branch: `feat/032-ledger-size-cap`   Area: router
+Status: **approved by the owner 2026-10-28**   Branch: `feat/032-ledger-size-cap`   Area: router
 Backlog rows: AO-02 (`specs/spec_02_always_on.md`), roadmap phase 6   Release: router
 
 ## Intent
@@ -108,14 +108,18 @@ Each becomes a line in `validation.md`.
 - Monthly segmentation itself: it already exists.
 
 ## Owner decisions
-- **D1 — the budget.** 1024 KB is proposed. At the measured 42 bytes a window that is roughly 2.5 months for a busy shop
+- **D1 — the budget.** **Answered: 1024 KB.** At the measured 42 bytes a window that is roughly 2.5 months for a busy shop
   (300 sales a day) or about 8 months for a quiet one (100 a day). Accept 1024 KB, or name another number.
-- **D2 — budget or history, which wins?** These conflict: 3 months of a busy shop is about 1.1 MB, already over 1 MB. Either
+- **D2 — budget or history, which wins?** **Answered: (a), the budget wins.** `LEDGER_KEEP_MONTHS` is a floor only when the
+  budget allows it; when they conflict the 1024 KB budget is kept and fewer months are retained.
+  (original question kept for the record:) These conflict: 3 months of a busy shop is about 1.1 MB, already over 1 MB. Either
   (a) the budget wins and a busy shop keeps about 2.5 months, or (b) `LEDGER_KEEP_MONTHS` wins and a busy shop's ledger is
   allowed past 1 MB. Proposed: **(a)**, with `LEDGER_KEEP_MONTHS=3` as a floor only for shops quiet enough to afford it.
-- **D3 — is deleting sale rows acceptable to you at all?** This deletes per-sale detail permanently. The lifetime total,
+- **D3 — is deleting sale rows acceptable to you at all?** **Answered: yes** (implied by the owner declining the export in D4
+  and choosing the budget in D2, 2026-10-28). Per-sale detail older than the budget is permanently gone; totals, monthly
+  figures and `reconcile` survive. This deletes per-sale detail permanently. The lifetime total,
   the monthly totals and `reconcile` all survive, but a row from a deleted month cannot be produced again. If your record-keeping
   (BIR or otherwise) needs per-sale detail for longer than the budget allows, say so and the answer is D4 instead of this
   feature. I am not qualified to judge that and have not treated it as settled.
-- **D4 — offer a download before deleting?** A console button that saves the closed segments to the owner's computer, so detail
+- **D4 — offer a download before deleting?** **Answered: no, not wanted.** Out of scope. A console button that saves the closed segments to the owner's computer, so detail
   is kept off the router. Not in this feature unless you ask; it is the natural answer if D3 is a problem.
