@@ -21,6 +21,11 @@ This section only sorts and orders. It changes no check: every row is still in i
 
 Do the sessions in this order. Inside a session, go top to bottom: money checks come first. `S2` below is the older security row S2, not a session. In section 10 the five lines have no id; they are called §10-1 to §10-5, counted from the top.
 
+### Summary
+- **55 checks are owed:** 38 `RS` rows, 12 older rows (B9, C3b, C8, F8, R4, H2, S1 to S6) and the 5 unnumbered lines of section 10. By session: 15 + 17 + 12 + 11 + 0 = 55.
+- **0 were retired by this triage.** None met one of the three reasons (the thing it tested is gone; a later check on a newer release covers the same ground and can be named; the code was replaced and the new code has its own check). One `RS` row was retired earlier (RS34, feature 033) and 11 are done; they are in the closed list at the end of this section. 11 done + 1 retired + 38 owed = the 50 `RS` rows.
+- **Start with session 1, part 1a.** It needs the least set up (a box, a phone, a power strip) and holds the money rows that have never run on a box: RS30, RS28, RS31, F8, RS29. A failure there means a coin lost or counted twice, so it is the place to look first.
+
 ### Session 1: the box on the bench (the firmware money rows)
 **Needs:** a coin box with its coin acceptor, a USB cable and a computer with the setup program, one paired phone, a power strip with a switch, a serial monitor (`pio device monitor`), and a Wi-Fi the box can join. Part 1b also needs a new or erased ESP32-C3. **Roughly:** part 1a about 3 hours, plus a 24-hour wait for one part of RS46; part 1b about 2 hours. (My estimates, not measured.) The box here needs no OpenWrt add-on; if a row turns out to need the router, move it to session 3.
 
@@ -119,6 +124,54 @@ Part 4b, a spare router and bare units:
 **Needs:** a sacrificial board and the eFuse steps (feature 040's bench work, feature 043's checks). **Roughly:** not known yet.
 
 No owed row of this document belongs here yet: features 040 and 043 add theirs when they ship, at the next free `RS` number (RS57 or later). Their bench steps are in `specs/features/040-sold-box-hardening/bench.md`. The owner's rule of 2026-10-28 (epic D30) decides that this session is last: the legacy, field-proven build is the default and stays selectable, and hardening is an option. Nothing in sessions 1 to 4 needs a hardened box.
+
+### Closed: done and retired (12 `RS` rows, not owed)
+| RS | Status | Reason and where the evidence is |
+|---|---|---|
+| RS1 | done | Ticked in section 9. |
+| RS2 | done | Ticked in section 9. |
+| RS3 | done | Ticked in section 9. |
+| RS4 | done | Ticked in section 9. |
+| RS5 | done | Ticked in section 9. |
+| RS8 | done | Ticked in section 9. |
+| RS9 | done | Ticked in section 9. |
+| RS11 | done | Ticked in section 9. |
+| RS12 | done | Ticked in section 9. |
+| RS15 | done | Ticked in section 9. |
+| RS18 | done | Ticked in section 9. |
+| RS34 | retired | Router 1.5.25, feature 033: the spinning wheel it tested was deleted before it ever ran. Already marked on its own row; not touched here. |
+
+"Done" for the eleven means: ticked from the owner's session of 2026-10-10/11 (Test setup table below: firmware 3.3.3, APK 411, ImmortalWrt 23.05.0), committed in `72c68c7`, counted in the Baseline summary. The only evidence is the tick, and it is from an earlier release than the current one.
+
+### Notes on this triage
+**Where I was unsure (each stays owed):**
+- RS24 and RS25 overlap on how the console opens. RS25 does not repeat RS24's checks, so both stay; run RS24 first.
+- RS38 and RS48 both describe the shop name on the lock screen, and feature 023 (RS48) changed how it looks. RS38 still owns palette, title, validation and survive-a-restart, so it stays whole. Its parts f, g and g2 are older than 023; I left the wording.
+- RS39, RS53 and part g of RS46 need an old version (phone build 495, a box on 3.11.1 or 3.12.0, a phone set up before feature 029). "Hard to arrange" is not a reason to retire; if you cannot arrange them, write that under Notes and ideas.
+- RS35's last sentence is about the one-line installer, which feature 041 will touch; 041 has not started.
+- Session 1 assumes its rows run on a box with only an ordinary Wi-Fi. I could not tell from the rows alone that every one does.
+- RS13 and RS16 publish a release. I could not tell whether the test release can reach routers other than the one under test.
+- Where a row sits (RS27 last in session 2 because it wipes pairings, RS35 in 4b because it needs a re-flash, RS47 in session 4 because it needs the console and a rental phone) and every time estimate are my judgment.
+
+**Timing, as asked:** feature 034 (the mini-game) has not merged: its code is still in this checkout. No row tests the mini-game by itself; RS33 says "a built-in game" and 034 will change that wording. Feature 041 (the offline package path) has not started, and there is no RS36 row in this document to retire (next note).
+
+**Numbers other files use but this document does not have:**
+- RS36 and RS37 (feature 011, offline setup and the box network name). `specs/features/011-offline-setup/validation.md` says you ran both on 2026-10-23 and they passed, but no row exists in this file or in its history, and the per-step output was never pasted in. Feature 041 plans to "retire RS36"; there is nothing to retire.
+- RS40 to RS43 (feature 019, the soak checks) were planned in `specs/spec_02_always_on.md` and never written here.
+- I added none of them: they would be invented rows. Decide whether to add them at the next free number.
+
+**A numbering clash to fix in the other specs:** RS53 to RS56 are already features 029 to 032 in this document, so the next free number is **RS57**. Feature 041's plan ("a new RS55") and feature 043's plan ("RS53, RS54 and RS55 are taken by features 032, 040 and 041") assume otherwise, and feature 040's plan already says "next free". Those files are outside this feature and were not changed.
+
+**Things that look wrong, left as they are:**
+- The five lines of section 10 have no ids, so the tickable page (`tools/checklist/build.py`) does not show them and a result cannot be written back for them.
+- The Test setup table's router layout (A or B) cell is empty, and R4 needs layout B.
+- The Baseline summary's last row (2026-10-16) is older than most of the rows above it; it is updated when results are written back.
+- RS38 part g2 has stray backslashes before two quote marks. A few rows are out of numeric order (RS27 before RS26, RS46 before RS45, RS50 and RS49 before RS48); renumbering is forbidden, so they stay.
+
+### Suggestions (not owed, not numbered, not part of the list)
+- After sessions 1 and 2, run the short money path again (B1 to B3, P1 to P4, C1 to C4, F1 to F3) on the current firmware and app. The ticks are from firmware 3.3.3 and APK 411, and the money code has changed since (3.11.1, router 1.5.13 and 1.5.19).
+- Give the five section 10 lines ids (RS57 onward), so the phone page can report them.
+- Record the 2026-10-23 results of the offline-setup checks (RS36 and RS37) as done, if you want the log to say so.
 
 ## 0. Test setup (fill in first)
 | Item | Value |
