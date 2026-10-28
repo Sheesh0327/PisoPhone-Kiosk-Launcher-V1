@@ -254,6 +254,21 @@ pub fn closed_segments(path: &str) -> Vec<String> {
     v
 }
 
+/// The newest record line for a month older than this file's (the line the file's carry row must agree with). A closed segment's month
+/// is in its name, the current file's is the month of its carry row. A line for this month or a later one is a prune a power cut
+/// stopped before the delete: skipped.
+fn pruned_before(path: &str, file: &str) -> Option<Pruned> {
+    let month = match file.strip_suffix(".csv").filter(|_| file != effective(path)) {
+        Some(x) => x.get(x.len().saturating_sub(7)..)?.to_string(),
+        None => {
+            let mut line = String::new();
+            std::io::BufRead::read_line(&mut std::io::BufReader::new(fs::File::open(file).ok()?), &mut line).ok()?;
+            month_of(line.split(',').next()?.parse().ok()?)
+        }
+    };
+    pruned_read(path).into_iter().rfind(|p| p.month == "earlier" || p.month < month)
+}
+
 /// The whole chain across the closed segments and the current file: every file verifies, and each file's carry row names the last
 /// hash and the coin total of the one before it. Ok((lines, pesos, torn tail)) or Err(1) when the files do not follow each other.
 pub fn verify_all(path: &str) -> Result<(usize, u64, bool), usize> {
@@ -267,7 +282,15 @@ pub fn verify_all(path: &str) -> Result<(usize, u64, bool), usize> {
         let s = scan(f)?;
         match (&prev, &s.start_prev) {
             (Some((h, total)), Some(p)) if p == h && s.carry == Some(*total) => {}
-            (None, _) => {}
+            (None, Some(p)) => {
+                // the oldest file left: if months were deleted on purpose it must follow the newest of them
+                if let (Some(c), Some(want)) = (s.carry, pruned_before(path, f)) {
+                    if (p, c) != (&want.hash, want.pesos) {
+                        return Err(1);
+                    }
+                }
+            }
+            (None, None) => {}
             _ => return Err(1),
         }
         lines += s.n;
@@ -931,5 +954,76 @@ mod tests {
         append_with(&a, at(4, 0), "hyper", 7, 42, "topup", &b).unwrap();
         assert_eq!(closed_segments(&a).len(), 4, "nothing was deleted without a record");
         assert_eq!(verify_all(&a).map(|v| v.1), Ok(before + 7), "and the sale was written");
+    }
+
+    // ---- feature 032 group 4: verify_all knows about deliberate deletion ----------------------------------------------------------
+    fn pruned_ledger(name: &str) -> String {
+        let a = tmpdir(name);
+        let b = Budget { max_kb: 30, keep_months: 3 };
+        busy(&a, &b, 6, 200);
+        append_with(&a, at(6, 0), "hyper", 1, 6, "topup", &b).unwrap();
+        assert!(!pruned_read(&a).is_empty() && closed_segments(&a).len() >= 2, "fixture: some months pruned, some kept");
+        a
+    }
+
+    #[test]
+    fn f032_g4_a_pruned_ledger_verifies_and_keeps_its_total() {
+        let a = pruned_ledger("g4-ok");
+        let (_, total, torn) = verify_all(&a).unwrap();
+        assert!(!torn);
+        assert_eq!(total, (0..6u64).map(|_| (0..200u64).map(|n| n % 5 + 1).sum::<u64>()).sum::<u64>() + 1);
+    }
+
+    #[test]
+    fn f032_g4_a_month_deleted_without_its_record_line_is_found() {
+        let a = pruned_ledger("g4-silent");
+        fs::remove_file(&closed_segments(&a)[0]).unwrap(); // the oldest kept month, gone with no line in revenue-pruned.txt
+        assert_eq!(verify_all(&a), Err(1));
+    }
+
+    #[test]
+    fn f032_g4_an_edited_record_line_is_found_and_an_empty_record_is_not_checked() {
+        let a = pruned_ledger("g4-edit");
+        let rec = pruned_path(&a);
+        let good = fs::read_to_string(&rec).unwrap();
+        let last = good.lines().last().unwrap().to_string();
+        let f: Vec<&str> = last.split(',').collect();
+        fs::write(&rec, good.replace(&last, &format!("{},{},{},{}", f[0], f[1], f[2].parse::<u64>().unwrap() + 1, f[3]))).unwrap();
+        assert_eq!(verify_all(&a), Err(1), "a changed total");
+        fs::write(&rec, good.replace(&last, &format!("{},{},{},{}", f[0], f[1], f[2], "000000000000"))).unwrap();
+        assert_eq!(verify_all(&a), Err(1), "a changed hash");
+        fs::write(&rec, &good).unwrap();
+        assert!(verify_all(&a).is_ok());
+        fs::remove_file(&rec).unwrap();
+        assert!(verify_all(&a).is_ok(), "no record: the months removed by hand before this feature are not an error");
+    }
+
+    #[test]
+    fn f032_g4_when_every_closed_month_is_gone_the_current_file_is_checked_against_the_record() {
+        let a = tmpdir("g4-cur");
+        let b = Budget { max_kb: 1, keep_months: 3 };
+        busy(&a, &b, 3, 100);
+        append_with(&a, at(3, 0), "hyper", 1, 6, "topup", &b).unwrap();
+        assert!(closed_segments(&a).is_empty(), "{:?}", closed_segments(&a));
+        assert!(verify_all(&a).is_ok());
+        let rec = pruned_path(&a);
+        let t = fs::read_to_string(&rec).unwrap();
+        let last = t.lines().last().unwrap().to_string();
+        fs::write(&rec, t.replace(&last, &format!("{}000000000000", &last[..last.len() - 12]))).unwrap();
+        assert_eq!(verify_all(&a), Err(1));
+    }
+
+    #[test]
+    fn f032_g4_the_earlier_summary_line_is_checked_too() {
+        let a = pruned_ledger("g4-earlier");
+        let mut all = pruned_read(&a);
+        assert!(all.len() < 3 || all[0].month != "earlier", "fixture: a few lines");
+        let _ = &mut all;
+        let rec = pruned_path(&a);
+        let n = pruned_read(&a).len();
+        // fold everything into one summary line: the chain of totals must still match the oldest kept file
+        let last = pruned_read(&a).pop().unwrap();
+        fs::write(&rec, pruned_line(&Pruned { month: "earlier".into(), rows: 1, pesos: last.pesos, hash: last.hash })).unwrap();
+        assert!(verify_all(&a).is_ok(), "{} lines folded into one", n);
     }
 }
