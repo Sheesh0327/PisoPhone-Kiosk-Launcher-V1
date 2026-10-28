@@ -4681,6 +4681,12 @@ class Core:
     def box_online(self):
         return box_online()
 
+    def router_reaches_site(self, host, password):
+        """True when the router can download from the PisoPhone website (what a rental phone does over PisoKiosk to get the app)."""
+        self.ssh.set_password(password or "")
+        url = shlex.quote(site_url(self.branch) + "/update/app.json")
+        return run_remote(self.ssh, host, f"wget -q -T 15 -O /dev/null {url} > /dev/null 2>&1", lambda line: None)["exit"] == 0
+
     def checkup(self):
         return run_checkup(self.branch, box_net=lambda: read_box_network(self.ssh, TARGET_IP),
                            alerts=lambda: read_router_alerts(self.ssh, TARGET_IP))
@@ -5342,8 +5348,18 @@ class Session:
                 return
             self.prov = {"state": "opening", "note": "", "url": "", "slot": slot}
             passwords = self.passwords()
+            host, password = self.router["host"] or TARGET_IP, self.router_password or passwords.get("ROOT_PASSWORD", "")
 
         def work():
+            try:
+                # a rental phone downloads the app from the website over PisoKiosk, so the router needs internet (a setup without the
+                # router's internet leaves it without): without it the phone stops at Android's generic "Can't set up device"
+                if not self.core.router_reaches_site(host, password):
+                    with self.lock:
+                        self.prov = {"state": "nointernet", "note": "", "url": "", "slot": slot}
+                    return
+            except Exception:
+                pass   # (a check that cannot run never blocks the page)
             try:
                 kind, url, note = self.core.provisioning_target(passwords, slot)
             except Exception as e:
@@ -6217,8 +6233,9 @@ function paint3(){
 $('#btnUsb').onclick=()=>act('refresh_usb');$('#skipFlash').onchange=e=>act('skip_flash',{value:e.target.checked});$('#btnStart').onclick=()=>act('start_install');
 function paint4(){
  const sel=$('#slot');if(!sel.children.length){for(let n=1;n<=10;n++)sel.append(h('option',{value:n},String(n)))}
- const p=S.phones,box=$('#provBox');clear(box);$('#btnPhone').disabled=p.state==='opening';
+ const p=S.phones,box=$('#provBox');clear(box);$('#btnPhone').disabled=p.state==='opening';$('#btnPhone').textContent=p.state==='nointernet'?'Check again':'Make the setup page link';
  if(p.state==='opening')box.append(note('','Preparing the setup page...'));
+ else if(p.state==='nointernet')box.append(note('warn','The router cannot reach the PisoPhone website, and a rental phone gets the app through the router. Plug the modem into the router\'s WAN port (and wait a minute), then tap Check again.'));
  else if(p.state==='setup')box.append(note('ok','The setup page for slot '+p.slot+' is ready.'),h('p',{},h('a',{href:p.url,target:'_blank',rel:'noopener'},'Open the phone setup page'),' ',h('button',{class:'small',onclick:ev=>copyText(p.url,ev.target)},'Copy link')),h('p',{class:'mut small'},'The link holds this box\'s key: open it only on your own phone or laptop.'));
  else if(p.state==='box')box.append(note('warn','The phone setup page could not be filled in ('+p.note+'). Open the coin box\'s own page from a computer on the router\'s network, log in as admin with the admin password below, and tap Set up a phone: http://'+p.box_ip+'/'));
  const bu=$('#boxUp');bu.textContent=p.box_up===null?'Checking...':p.box_up?'Online at '+p.box_ip:'Does not answer at '+p.box_ip+'. Is it powered on, near the router?';bu.style.color=p.box_up===null?'':p.box_up?'var(--ok)':'var(--bad)';

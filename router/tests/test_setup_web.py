@@ -224,6 +224,9 @@ class FakeCore:
     def preflight(self): return self.preflight_result
     def find_router(self): return "192.168.1.1" if self.state == "factory" else "10.0.0.1"
     def network_clash(self): return None
+    def router_reaches_site(self, host, password):
+        self.calls.append(("reach", host, password))
+        return getattr(self, "has_internet", True)
     def prefetch(self, with_router, emit):
         self.prefetched = getattr(self, "prefetched", []) + [with_router]
         return []
@@ -928,6 +931,27 @@ s = c.wait(lambda s: s["install"]["banner"] and "Unplug the network cable from t
 check(s["install"]["banner"][0] == "warn" and "continues by itself" in s["install"]["banner"][1], "as a warning that says the install goes on by itself: " + str(s["install"]["banner"]))
 core.go.set()
 s = c.wait(lambda s: s["install"]["ok"], "the installation finishes after the cable is back")
+server.shutdown()
+
+# ---- feature 032 (SU-15): the Phones step does not offer the setup page while the router cannot reach the app's address ----------------------------
+core, session, server = start(state="configured")
+core.has_internet = False
+c = Client(server)
+walk_to_install(c)
+c.do("start_install")
+c.wait(lambda s: s["install"]["ok"], "installed")
+s = c.do("next")
+check(s["keys"][s["step"]] == "phones", "on the Phones step")
+s = c.wait(lambda s: s["phones"]["state"] == "nointernet", "the router has no internet")
+check(s["phones"]["url"] == "" and not [x for x in core.calls if x[0] == "provisioning"], "no phone setup page is made while the router cannot reach the website: " + str(s["phones"]))
+check([x for x in core.calls if x[0] == "reach"][0][1] == "10.0.0.1", "the router at 10.0.0.1 was asked")
+core.has_internet = True
+s = c.do("open_phone", slot=1)
+s = c.wait(lambda s: s["phones"]["state"] == "setup", "Check again: the router reaches the website now")
+check(s["phones"]["url"].startswith("https://pisophone.pages.dev/#"), "and then the setup page is made: " + str(s["phones"]["url"]))
+status, page, _r = c.call("GET", "/", login=False)
+page = page.decode() if isinstance(page, bytes) else page
+check("p.state==='nointernet'" in page and "WAN port" in page, "the page says to plug the modem into the router's WAN port")
 server.shutdown()
 print(f"{checks} checks, {failures} failures")
 sys.exit(1 if failures else 0)

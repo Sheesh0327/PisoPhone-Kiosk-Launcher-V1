@@ -29,7 +29,7 @@ Run the router tests in the background and read the last lines only.
 - [x] 5. SU-04 find the router at the cable's DHCP gateway too (`find_router` takes an injectable lease/gateway reader for Windows, Linux, macOS; test: 192.168.8.1 found, named and moved to 10.0.0.1; red result logged: yes)
 - [x] 6. SU-01 detect two 192.168.1.x networks and stop with the hotspot advice; README "Which network?" (test: fake address tables for the three systems; red result logged: yes)
 - [x] 7. SU-02 download early at Start, then the website check and the unplug-the-cable prompt before the router packages (test: page asks when the opener fails, continues after; red result logged: yes)
-- [ ] 8. SU-15 the Phones step waits for the router to reach the app's address (test: page test with a router that has no internet; red result logged: yes/no)
+- [x] 8. SU-15 the Phones step waits for the router to reach the app's address (test: page test with a router that has no internet; red result logged: yes)
 - [ ] 9. Close-out: add RS56 to `docs/REAL_WORLD_TESTING.md` (unticked), `CHANGELOG.md`, `setup/README.md`; rebuild with `python3 tools/build_piso_setup.py`, `--check`, `git status` shows no router file changed; run all gates; fill `validation.md`; set rows to `fixed` in `specs/spec_03_findings.json`; update `specs/STATUS.md`.
 - [ ] 10. (only if the owner's RS56 (b) fails) SU-14 first-page warning for Windows 10 OpenSSH 8.1 with the fix.
 
