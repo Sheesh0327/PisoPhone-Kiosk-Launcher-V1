@@ -50,18 +50,29 @@ month,rows,pesos,last_hash
 2026-01,8431,8431,9f2c1ab40e77
 ```
 
-`pesos` is that segment's own coin total, `last_hash` its last row's hash. The file is capped at 240 lines (20 years, about
-10 KB); past that the oldest lines are dropped and a single `...,earlier` summary line keeps the count and total.
+`pesos` is the running coin total at the end of that segment (exactly what the next file's `carry` row states; for a first-ever
+segment with no carry row it is simply its own total), `last_hash` its last row's hash. (Corrected 2026-10-28: the first draft said
+"own coin total", which cannot be compared with a carry row when an older file already had one.) The file is capped at 240 lines
+(20 years, about 10 KB); past that the oldest lines are dropped and one `earlier,<rows>,<pesos>,<last_hash>` summary line stands
+for all of them: the dropped rows added up, and the running total and last hash of the newest dropped month.
 
 `verify_all` gains one check: when the oldest surviving file starts with a `carry` row **and** `revenue-pruned.txt` is not empty,
-that carry row's previous-hash and total must equal the last pruned line's `last_hash` and the running total up to it. A mismatch
-is `Err` exactly as a broken chain is today. A month named in the record whose file still exists (a power cut between writing the
-record and deleting the file) is verified normally and is not an error: pruning is idempotent and the next run finishes it.
+that carry row's previous-hash and total must equal the `last_hash` and `pesos` of the newest record line **older than that file's
+month** (a closed segment's month is in its name; the current file's is the month of its carry row). A mismatch is `Err` exactly as
+a broken chain is today. A record line for a month whose file still exists (a power cut between writing the record and deleting the
+file) is not older than that file, so it is skipped: it is verified normally and is not an error, and the next run finishes the
+prune. When the record is empty the check does not apply: a ledger whose oldest months were removed by hand before this feature
+cannot be told from one that never had them.
 
 ## Settings
 - `LEDGER_MAX_KB` (default **1024**): the budget for all ledger files together (`revenue.csv` plus every `revenue-YYYY-MM.csv`).
-  0 turns pruning off. Clamped to 256..16384. Read like `GAME_MINUTES` (`config.rs`), editable in the console's Settings.
-- `LEDGER_KEEP_MONTHS` (default **3**, owner decision D2): the number of closed months never deleted, whatever the budget says.
+  0 turns pruning off. Clamped to 256..16384. Read like `GAME_MINUTES`: from `DATA_DIR/settings.txt`, editable in the console's
+  Settings.
+- `LEDGER_KEEP_MONTHS` (default **3**): the number of closed months the owner wants kept. **Owner decision D2: the budget wins.**
+  Pruning stops as soon as the files are inside the budget and otherwise deletes the oldest closed month, even when that leaves
+  fewer than `LEDGER_KEEP_MONTHS`; when it does, the console and `piso-setup status` say "kept N of M months wanted". It is never
+  a reason to stay over the budget. The current file and a carry-row start are never deleted; if the current file alone is over the
+  budget, nothing more can be done and that is reported.
 
 ## When pruning runs
 Only at a month roll, inside `append`, immediately after `roll_if_new_month` succeeds and **after** the new sale row is written.
@@ -78,16 +89,18 @@ A cut before 2 changes nothing.
 
 ## Success criteria
 Each becomes a line in `validation.md`.
-1. `cargo test`: 24 months of rows written, budget 1024 KB, `LEDGER_KEEP_MONTHS=3`. All ledger files together are under 1024 KB
-   afterwards, `revenue.csv` still holds the current month, and at least 3 closed segments remain.
+1. `cargo test`: 24 months of rows written, budget 1024 KB, `LEDGER_KEEP_MONTHS=3`, a month small enough that 3 months fit. All
+   ledger files together are under 1024 KB afterwards, `revenue.csv` still holds the current month, and at least 3 closed
+   segments remain.
 2. `cargo test`: the lifetime coin total from `verify_all` is **identical** before and after pruning, and equals the sum of
    every row ever written. `reconcile` against a fake box with that lifetime count passes both before and after.
 3. `cargo test`: `verify_all` returns `Ok` on a pruned ledger, and `Err` when a segment is deleted **without** its
    `revenue-pruned.txt` line (deliberate deletion is recorded; silent deletion is still caught).
 4. `cargo test`: a power cut between writing the record and deleting the file leaves the ledger verifying `Ok`, and the next
    roll completes the prune. A cut during the month roll itself still behaves as it does today (`recover_roll`).
-5. `cargo test`: `LEDGER_MAX_KB=0` deletes nothing. A budget below the floor keeps `LEDGER_KEEP_MONTHS` segments and reports
-   that it could not reach the budget.
+5. `cargo test`: `LEDGER_MAX_KB=0` deletes nothing. A busy shop (3 months need more than the budget) is pruned to the budget and
+   reports fewer months than `LEDGER_KEEP_MONTHS` (D2). A current file that alone exceeds the budget deletes every closed
+   segment, never `revenue.csv`, and reports that the budget could not be reached.
 6. `cargo test`: `read_recent` and the console report return the same rows for a retained period before and after a prune.
 7. `cargo test`: `revenue-pruned.txt` stays at or under 240 lines over 30 simulated years, and the summary line keeps the
    dropped count and total.
