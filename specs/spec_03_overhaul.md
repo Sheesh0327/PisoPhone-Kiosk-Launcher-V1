@@ -58,8 +58,9 @@ Each is one branch, one area, one chat. **Do them in this order**; later ones as
 | **040** | Prove the hardening of a box that leaves your hands (GATE 1) | firmware (bench) | none |
 | **041** | Require internet on the router: delete the offline package path | setup | router |
 | **042** | Phone provisioning, documented end to end | docs + site | site |
+| **043** | The box's secrets must not be readable on a sold box | firmware | firmware (sold units) |
 
-Specs 033, 034, 040 and 041 are **written in full** (`specs/features/033-remove-wheel/`, `034-remove-minigame/`). 035 to 039 have their
+Specs 033, 034, 040, 041 and 043 are **written in full** (`specs/features/033-remove-wheel/`, `034-remove-minigame/`). 035 to 039 have their
 design decided in section 6 and get their full spec **when their turn comes** — a spec written three features early is stale by
 the time it runs, which is exactly what happened to spec 02's AO-01, AO-05, AO-06 and AO-07 (section 2).
 
@@ -85,6 +86,7 @@ Three consequences run through the features below:
 - The box's own page stops being a convenience and becomes **the product's main surface** (037, 038).
 - A box that leaves your hands must be hardened, and that has never been proved on a board (040). **This gates revenue, not
   code.**
+- Hardening does not actually cover the box's secrets today (043). Found while reviewing 040; see below.
 
 Already pointing this way in the code: the box dashboard builds `https://pisophone.pages.dev/?mac=<mac>`
 (`esp32_firmware/src/WebDashboardComponents.cpp:80`), `website/install.sh` is already the one-liner from that site,
@@ -153,6 +155,25 @@ connected. This also discards work that shipped as router 1.5.18 and passed RS36
 2026-10-23. The owner was shown this and chose deletion; it is written here so the decision is on the record rather than
 discovered later.
 
+### 043 The box's secrets must not be readable on a sold box  (found 2026-10-28, blocking before any sale)
+`docs/PROVISIONING_SOLD_UNIT.md` opens by promising that "a buyer cannot read the firmware or the stored secrets with a flash
+reader". **That promise is not kept.** Flash encryption does not cover the NVS partition, and NVS is where the per-box shared
+secret, the admin password and the router gateway key live. Worse, `esp32_firmware/partitions_encrypted.csv` marks `nvs` as
+`encrypted` — a flag ESP-IDF ignores for NVS — so the table reads as though the job were done.
+
+Found during the feature 040 eFuse review (`specs/features/040-sold-box-hardening/efuse-review.md`, item 14, cited against
+ESP-IDF v5.4.2) and confirmed in this repository: `CredCrypto.h` is verification helpers, not at-rest encryption, and there is
+a free 60 KB gap in the partition table if a key partition is needed.
+
+Two approaches are on the table (ESP-IDF NVS encryption, or encrypting the few secret values in the application); the feature's
+group 0 picks one with evidence, because the choice turns on a question nobody has answered yet: **how a hardened box in a shop
+takes a signed over-the-air update without being left unable to read its own NVS.** No image that an existing box can take over
+the air may expect encrypted NVS — an existing box's NVS is plaintext, and such an update would destroy its secret, its
+accounts and its queued payments.
+
+**Follow-up from the same review, not part of 043:** `scripts/sold_unit_check.py` calls `espefuse.py`, which stops working once
+`ENABLE_SECURITY_DOWNLOAD` is burned; it needs to use `esptool get_security_info` instead. Small, its own change.
+
 ### 042 Phone provisioning, documented end to end  (owner: document it, the customer does it)
 Device owner needs a factory reset plus QR or NFC provisioning, and it is the hardest step in the product. This feature writes
 the end-to-end guide and has the box page produce the provisioning QR, so the customer has one page to follow. You do not sell
@@ -186,6 +207,9 @@ phones and you do not provision them as a service.
 | D23 | slot licensing, now that boxes are sold | **still leave it alone**; revisit once boxes are selling |
 | D24 | where GATE 1 sits | **first, in parallel with the deletions** (section 8) |
 | D25 | what "drop the offline path" meant | **actually delete the code** (feature 041), confirmed after the consequence was put to the owner |
+| D26 | does the NVS finding block the first sale? | **open.** Proposed: yes — selling a box advertised as hardened whose secrets are readable is worse than selling an honestly unhardened one (feature 043) |
+| D27 | NVS encryption, or encrypt the values in the application? | **open.** Feature 043's group 0 recommends with evidence; the owner picks |
+| D28 | the guide's "mixed" eFuse route (hand-burn some fuses, let the first boot do the rest) | **open.** ESP-IDF documents two clean flows and not this one; the review recommends dropping the hand burns so only keys are burned by hand. Decide before the sacrificial board |
 
 ## 8. Sequencing and releases
 - **033 does not start until feature 032 (the ledger size cap) is merged.** Both touch `tools/pisoportal`; 032 is almost all
@@ -198,6 +222,9 @@ phones and you do not provision them as a service.
   accepted failure on one without).
 - **040 runs first and in parallel.** It needs bench time and a sacrificial board, not a coding session, and nothing in the
   epic depends on it — but nothing ships to a customer until it passes.
+- **043 blocks the first sale alongside 040**, and its bench steps are written into 040's `bench.md` so they run on the same
+  trip to the board. Its group 0 is a paper decision and can start at once; its code must not start before the owner has seen
+  that decision.
 - **036 is a firmware release as well as a router one** (the box holds the expected version set), so it is on its own.
 - **039 has no release at all** and can be done any time, including in parallel with the deletions, because it touches only
   `docs/REAL_WORLD_TESTING.md`.
@@ -225,3 +252,4 @@ edited by hand (`CLAUDE.md` section 4).
 | Owed hardware checks | RS28-RS52, unordered | one ordered list, obsolete ones closed (039) |
 | Questions asked during a first setup | count at start (037 group 0) | fewer, written down |
 | Can an owner see that the money agrees? | no | yes, on the console front page, with both numbers |
+| Secrets readable from a sold box's flash | **yes** (NVS is not covered) | no, or the promise is corrected to say what is protected (043) |
