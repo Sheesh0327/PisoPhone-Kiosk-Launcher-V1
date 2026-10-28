@@ -380,7 +380,7 @@
     "severity": "med",
     "money_or_signing": true,
     "confidence": "confirmed",
-    "status": "open",
+    "status": "fixed",
     "problem": "PisoPhone only: a mistyped shop Wi-Fi password is saved, the box never joins, and a new run gets `already-set-up`; the only way out is writing the software again with an erase and typing ERASE. The box also does not say why it cannot join.",
     "fix": "until the box has joined a Wi-Fi once and has no payment, take new Wi-Fi details over USB (setup=joining, why=); the program offers Change the Wi-Fi details (D6)",
     "test": {

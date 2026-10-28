@@ -4,6 +4,11 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: the CI build number, shown as hundreds.tens.ones, build 466 is 4.6.6; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Firmware 3.12.5 and the PisoPhone-only setup program, **a box given a wrong Wi-Fi password can be given the right one without an erase (feature 034).** Not tried on a box yet (hardware check RS58).
+  - **Before,** a mistyped shop Wi-Fi password was saved, the box never joined, and every new run said "set up already": the only way out was to write the software again with an erase and type ERASE. The box also never said why it could not join.
+  - **Now** a box that was set up over USB, has never got an address and has no payment takes new Wi-Fi details (and a new admin password) the same way, with no erase and no rewrite. It also tells the setup program why it cannot join (wrong password, network not found) and the page shows it.
+  - **Safe for boxes in use:** a box that has joined once, has any coin or payment, was set up by older firmware or by its web page, or was factory reset behaves exactly as before and refuses new details over USB. No working shop box can become one that takes new details by an update. An older box that is already stuck still needs the ERASE route once.
+  - Money and time: not touched (the payment queue, coin counting, credit and expiry are unchanged; any payment makes the box refuse).
 - Router 1.5.23 (1.5.22 was signed with the old programs by mistake and never raised), **the PisoWiFi page now opens on Endurance instead of HyperSpeed.** Not tried on a router yet. Customers can still pick HyperSpeed; only the plan that is selected when the page opens changed. Money and time: not touched.
 - Phone app, **the owner can remove apps from a rental phone (feature 031).** Not tried on a phone yet (hardware check RS55).
   - Uninstalling was blocked for good. Now it works while the admin maintenance window is open (admin PIN, then Settings, Apps, Uninstall) and is blocked again when the window ends; customers still cannot remove or stop apps. Money and time: not touched.

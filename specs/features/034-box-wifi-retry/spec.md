@@ -1,6 +1,6 @@
 # Feature 034: a PisoPhone-only box that was given a wrong Wi-Fi password can be given the right one
 
-Status: **approved by the owner 2026-10-28 (spec, plan, Q1 and Q2 both yes); in progress**   Branch: `feat/034-box-wifi-retry` (from `origin/main` plus the epic commit, as for 032 and 033)   Area: firmware (and one small program change in `setup/pisophone_setup.py`)
+Status: **built and validated on a computer 2026-10-28; waits for the owner's RS58 bench run (D8)**   Branch: `feat/034-box-wifi-retry` (from `origin/main` plus the epic commit, as for 032 and 033)   Area: firmware (and one small program change in `setup/pisophone_setup.py`)
 Backlog rows: SU-16 (`specs/spec_03_findings.json`)   Release: firmware (`PISO_FW_VERSION` 3.12.4 -> 3.12.5; `firmware-images.yml` builds and signs it); the website's copy of the setup program is rebuilt
 
 ## Intent
