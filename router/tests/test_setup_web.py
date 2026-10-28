@@ -230,6 +230,9 @@ class FakeCore:
     def prefetch(self, with_router, emit):
         self.prefetched = getattr(self, "prefetched", []) + [with_router]
         return []
+    def board_mac(self, port):
+        self.calls.append(("board_mac", port))
+        return "AA:BB:CC:DD:EE:01"
     def probe(self, host): return self.state
     def saved_login(self, host, out_dir): return None
     def usb_boards(self): return list(self.boards)
@@ -953,5 +956,22 @@ status, page, _r = c.call("GET", "/", login=False)
 page = page.decode() if isinstance(page, bytes) else page
 check("p.state==='nointernet'" in page and "WAN port" in page, "the page says to plug the modem into the router's WAN port")
 server.shutdown()
+
+# ---- feature 033 (SU-11): the MAC of the board the page wrote goes to the router; a board that was not written adds none -------------------------
+for skip, want in ((False, "AA:BB:CC:DD:EE:01"), (True, "")):
+    core, session, server = start(state="configured")
+    c = Client(server)
+    walk_to_install(c)
+    if skip:
+        c.do("skip_flash", value=True)
+    c.do("start_install")
+    c.wait(lambda s: s["install"]["ok"], "installed")
+    sent = [x for x in core.calls if x[0] == "install"][0][1]
+    check(sent.get("BOX_EXPECT_MAC") == want, f"{'Do not write it' if skip else 'written by the page'}: BOX_EXPECT_MAC is {want!r}: {sent.get('BOX_EXPECT_MAC')!r}")
+    if not skip:
+        c.do("next_unit")
+        s = c.state()
+        check(session.box_mac == "", "the next unit starts with no board MAC")
+    server.shutdown()
 print(f"{checks} checks, {failures} failures")
 sys.exit(1 if failures else 0)

@@ -45,9 +45,17 @@ script("uci", f"""echo "$*" >> {tmp}/uci.log
 case "$1" in get) [ "$2" = network.lan.ipaddr ] && echo "${{FAKE_LAN}}/24" ;; esac
 exit 0
 """)
+script("opkg", "exit 0\n")   # (a router with opkg; run(opkg=False) hides it)
 script("ubus", "echo '{}'\n")
-script("jsonfilter", 'echo "$FAKE_WAN"\n')
+script("jsonfilter", 'case "$*" in *mask*) echo "${FAKE_MASK:-24}" ;; *) echo "$FAKE_WAN" ;; esac\n')
 script("netinit", f'echo "$1" >> {tmp}/network.log\n')
+script("ip", f'echo "$*" >> {tmp}/ip.log\n')   # (the LAN ports going down and up again after the move)
+netdir = f"{tmp}/sysnet"   # a fake /sys/class/net: a DSA router (lan1..lan4, the WAN port, the bridge and the CPU interface)
+for n in ("lan1", "lan2", "lan3", "lan4", "wan", "br-lan", "eth0", "lan1.1"):
+    os.makedirs(f"{netdir}/{n}")
+emptynet = f"{tmp}/sysnet-none"   # a router whose ports are not named lanN (an older, swconfig kind): nothing is switched
+for n in ("eth0", "br-lan"):
+    os.makedirs(f"{emptynet}/{n}")
 
 FAKE_SETUP = """#!/bin/sh
 PISO_RELEASE='1.2.3'
@@ -65,13 +73,22 @@ def publish(branch, data, sha=None):
     open(f"{d}/piso-setup.sh.sha256", "w").write((sha or hashlib.sha256(data).hexdigest()) + "  piso-setup.sh\n")
 
 
-def run(*args, lan="10.0.0.1", wan="192.168.1.50", answer="y", stdin_script=None, self_path=None, mem=None, install_dir=True):
-    for f in ("wget.log", "uci.log", "network.log"):
+def run(*args, lan="10.0.0.1", wan="192.168.1.50", mask=24, answer="y", stdin_script=None, self_path=None, mem=None, install_dir=True, opkg=True, net_dir=None):
+    for f in ("wget.log", "uci.log", "network.log", "ip.log"):
         if os.path.exists(f"{tmp}/{f}"):
             os.remove(f"{tmp}/{f}")
     open(f"{tmp}/tty", "w").write(answer + "\n")
-    env = dict(os.environ, PATH=f"{bindir}:" + os.environ["PATH"], PISO_SITE_HOST="fake.test", PISO_INSTALL_DIR=home,
-               PISO_TTY=f"{tmp}/tty", PISO_TEST_NONROOT="1", PISO_NETWORK_INIT=f"{bindir}/netinit", FAKE_LAN=lan, FAKE_WAN=wan,
+    net_dir = net_dir or netdir
+    path_dir = bindir
+    if not opkg:   # the same fake commands without opkg (OpenWrt 25.x uses apk)
+        path_dir = f"{tmp}/bin-no-opkg"
+        shutil.rmtree(path_dir, ignore_errors=True)
+        os.makedirs(path_dir)
+        for name in os.listdir(bindir):
+            if name != "opkg":
+                os.symlink(f"{bindir}/{name}", f"{path_dir}/{name}")
+    env = dict(os.environ, PATH=f"{path_dir}:" + os.environ["PATH"], PISO_SITE_HOST="fake.test", PISO_INSTALL_DIR=home,
+               PISO_TTY=f"{tmp}/tty", PISO_TEST_NONROOT="1", PISO_NETWORK_INIT=f"{bindir}/netinit", PISO_NET_DIR=net_dir, FAKE_LAN=lan, FAKE_WAN=wan, FAKE_MASK=str(mask),
                PISO_SELF_PATH=self_path or f"{tmp}/no-such-piso-setup")
     if mem is not None:
         env["PISO_MEM_KB"] = str(mem)
@@ -184,11 +201,32 @@ r = run(lan="192.168.1.1", answer="y")
 time.sleep(3.6)
 check(r.returncode == 0 and "set network.lan.ipaddr=10.0.0.1" in log("uci.log") and "commit network" in log("uci.log"), "answered yes: the router is moved to 10.0.0.1: " + log("uci.log"))
 check(log("network.log") == "restart\n", "the network is restarted (after the message is shown)")
+# feature 033 (SU-03): then the LAN ports go down and up again, so a Linux or macOS computer (and the Armbian box) asks for a new address by itself
+time.sleep(9)
+ips = [ln.split() for ln in log("ip.log").splitlines()]
+downs, ups = [i for i, a in enumerate(ips) if a[-1] == "down"], [i for i, a in enumerate(ips) if a[-1] == "up"]
+ported = sorted(a[2] for a in ips if a[:2] == ["link", "set"])
+check(ported == ["lan1", "lan1", "lan2", "lan2", "lan3", "lan3", "lan4", "lan4"] and len(downs) == 4 and len(ups) == 4 and max(downs) < min(ups),
+      "after the move every LAN port is set down, then up (and no WAN port, bridge, CPU interface or VLAN): " + log("ip.log"))
+r = run(lan="192.168.1.1", answer="y", net_dir=emptynet)
+time.sleep(9)
+check(r.returncode == 0 and log("network.log") == "restart\n" and log("ip.log") == "", "a router whose ports are not named lanN: the move works as before and no port is touched: " + log("ip.log"))
 check("ssh root@10.0.0.1" in r.stdout and f"sh {home}/piso-setup.sh" in r.stdout and "SETUP-RAN" not in r.stdout, "it says how to log in again and continue with sh <the saved path>, and does not run the setup yet")
 r = run(lan="192.168.1.1", wan="10.0.0.23", answer="y")
 check(r.returncode != 0 and "192.168.100.1" in r.stdout and "network.lan.ipaddr=10.0.0.1" not in log("uci.log"), "a modem on 10.0.0.x: it stops and says what to change")
+r = run(lan="192.168.1.1", wan="10.1.2.3", mask=8, answer="y")
+check(r.returncode != 0 and "192.168.100.1" in r.stdout and "network.lan.ipaddr=10.0.0.1" not in log("uci.log"), "feature 033 (SU-05): a modem lease of 10.1.2.3/8 overlaps the kiosk network too: refused by the netmask")
+r = run(lan="192.168.1.1", wan="10.9.9.9", mask=24, answer="y")
+time.sleep(3.6)
+check(r.returncode == 0 and "set network.lan.ipaddr=10.0.0.1" in log("uci.log"), "and 10.9.9.9/24 is another network: the router is moved: " + r.stdout)
 r = run("update", lan="192.168.1.1")
 check("SETUP-RAN args=[update]" in r.stdout and "set network.lan.ipaddr" not in log("uci.log"), "update never moves the router")
+# feature 033 (SU-06b): a router without opkg (OpenWrt 25.x, apk) is refused before anything is downloaded, moved or run
+r = run(lan="192.168.1.1", answer="y", opkg=False)
+check(r.returncode != 0 and "opkg" in r.stdout + r.stderr and "ROUTERS.md" in r.stdout + r.stderr and "Nothing was changed" in r.stdout + r.stderr,
+      "no opkg: it stops and says which routers are supported: " + r.stdout + r.stderr)
+check(log("wget.log") == "" and "network.lan.ipaddr" not in log("uci.log") and "SETUP-RAN" not in r.stdout and log("network.log") == "",
+      "and nothing was downloaded, moved, restarted or run")
 
 # ---- feature 010: the installer copy lives in RAM (/tmp) unless memory is short (then /root); PISO_INSTALL_DIR overrides both ---------
 publish("main", FAKE_SETUP.encode())

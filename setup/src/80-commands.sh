@@ -10,6 +10,13 @@ cmd_status() {
 	return "$_f"
 }
 
+# cmd_wan_clash: prints what overlaps and fails when the modem's network overlaps the router's own (used by the monitor and the status checks)
+cmd_wan_clash() {
+	_c=$(wan_clash) || return 0
+	echo "the modem's network ($(wan_ip)/$(wan_prefix)) overlaps the router's $_c network. Change the modem's own LAN address (for example to 192.168.100.1); until then phones, guests or the coin box may not reach the router."
+	return 1
+}
+
 cmd_wifi_name() {
 	_n="$1"
 	[ -n "$_n" ] || { echo "usage: piso-setup wifi-name \"New Name\"" >&2; exit 1; }

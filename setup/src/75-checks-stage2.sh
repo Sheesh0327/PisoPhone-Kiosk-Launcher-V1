@@ -18,6 +18,7 @@ check_all() {  # prints PASS/FAIL lines, returns the number of failures
 	_ck "the router looks for signed updates every hour (scheduler running)" update_timer_ok
 	_ck "the hourly update check ran within the last 3 hours" update_check_recent
 	_ck "internet through the WAN" "ping -c 1 -W 3 1.1.1.1 || ping -c 1 -W 3 8.8.8.8"
+	_ck "the modem's network does not overlap the router's own (a modem plugged in later can)" "! wan_clash"
 	agree_all
 	return $((_bad + $?))
 }
@@ -80,7 +81,6 @@ stage2() {
 	echo; echo "================ SUMMARY (also saved in $SUMMARY) ================"; cat "$SUMMARY"; echo "=================================================================="
 	log "A printable sheet with the passwords is in $_hp (copy it off with: scp -O root@$LAN_IP:$_hp .)"
 	finish_telegram
-	restart_router_access
 	[ "$(conf_get ROOT_PASS_SET)" = 1 ] || { log "INCOMPLETE: the router password was not set. Run: piso-setup set-password"; _f=$((_f + 1)); }
 	if [ "$_f" = 0 ]; then
 		echo "DONE all checks passed" > "$STATE"; log ""; log "SETUP COMPLETE. Read $SUMMARY (ssh root@$LAN_IP)."
@@ -92,5 +92,7 @@ stage2() {
 		echo "DONE with $_f failed checks (see $LOG)" > "$STATE"; log ""; log "Setup finished, but $_f check(s) failed: see above and $LOG. Run: piso-setup status"
 		tip "running the setup again is safe and continues where it stopped. If the coin box is involved, piso-setup box-diag shows where its link breaks."
 	fi
+	# SSH and LuCI pick up their addresses only after the result is out: the restart may end this session, so it runs by itself a moment later
+	(trap '' HUP; sleep 2; restart_router_access) > /dev/null 2>&1 &
 }
 

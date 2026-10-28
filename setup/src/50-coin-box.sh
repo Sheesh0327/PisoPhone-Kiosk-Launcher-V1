@@ -5,9 +5,9 @@ box_ifname() {  # the interface of the box's hidden network (the name it has on 
 	_bs=$(uci -q get wireless.box_ap.ssid); _bs="${_bs:-$(box_net_ssid)}"
 	iwinfo 2> /dev/null | awk -v s="$_bs" '$1 != "" && /ESSID: / { gsub(/"/, "", $0); if ($0 ~ "ESSID: " s "$") print $1 }' | head -n 1
 }
-box_station() {  # MAC of a station joined to the box network
+box_station() {  # MAC of a station joined to the box network: only BOX_EXPECT_MAC when it is set (the board the setup program just wrote); "other": one that is not
 	_if=$(box_ifname); [ -n "$_if" ] || return 1
-	iwinfo "$_if" assoclist 2> /dev/null | awk 'toupper($1) ~ /^[0-9A-F][0-9A-F]:[0-9A-F:]+$/ { print toupper($1); exit }'
+	iwinfo "$_if" assoclist 2> /dev/null | awk -v w="$BOX_EXPECT_MAC" -v o="$1" 'toupper($1) ~ /^[0-9A-F][0-9A-F]:[0-9A-F:]+$/ { m = toupper($1); if (w == "" || (m == toupper(w)) != (o == "other")) { print m; exit } }'
 }
 # psk_mismatches: how often the router's Wi-Fi log says a station sent the wrong password. A box that was set up before keeps the
 # Wi-Fi password it was given; one that tries another is let in for a moment and thrown out again, which looks like "joined" if
@@ -45,12 +45,15 @@ pair_box() {
 	conf_set BOX_WIFI_ROTATED 0
 	_key="$BOX_DEFAULT_WIFI"
 	set_box_key "$_key" "$BOX_PAIR_SSID"
-	_t=0; MAC=""; _mm0=$(psk_mismatches); _refused=""; _told=""
+	_t=0; MAC=""; _mm0=$(psk_mismatches); _refused=""; _told=""; _other=""
 	while [ "$_t" -lt "$PAIR_WAIT" ]; do
 		MAC=$(box_station)
 		# a station that is listed while the log says its password is refused is not paired: it is thrown out a moment later
 		if [ -n "$MAC" ] && [ "$(psk_mismatches)" -gt "$_mm0" ]; then _refused=1; MAC=""; fi
 		[ -n "$MAC" ] && break
+		if [ -n "$BOX_EXPECT_MAC" ] && [ -z "$_other" ]; then   # a coin box that is not the one just written (another unit on the bench) is not paired
+			_other=$(box_station other); [ -z "$_other" ] || log "  another coin box ($_other) joined the box network: it is not paired. Waiting for the one this setup wrote ($BOX_EXPECT_MAC)"
+		fi
 		sleep 5; _t=$((_t + 5))
 		if [ -n "$_refused" ] && [ -z "$_told" ]; then _told=1; log "  $PSK_HINT"; fi
 		if [ $((_t % 30)) -eq 0 ]; then
@@ -79,6 +82,7 @@ pair_box() {
 		lock_box_network ""
 		[ -n "$_up" ] || die "the hidden coin box network is not on the air (check the router's 2.4 GHz radio: iwinfo), so the coin box could not join it. Then run: piso-setup pair"
 		[ -z "$_refused" ] || die "$PSK_HINT"
+		[ -z "$_other" ] || die "the coin box this setup wrote ($BOX_EXPECT_MAC) did not join the hidden $BOX_PAIR_SSID network; another one ($_other) did and was not paired. Check the power of the box that was written, then run: piso-setup pair"
 		die "the coin box did not join the hidden $BOX_PAIR_SSID network. Check that it is powered and has the current firmware (or factory reset it: it must try $BOX_PAIR_SSID), then run: piso-setup pair. Also: $PAIR_NEARBY_TIP"
 	fi
 	UNDO=""
