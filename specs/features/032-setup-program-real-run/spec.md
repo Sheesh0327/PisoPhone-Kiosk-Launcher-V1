@@ -64,9 +64,8 @@ decided only by RS56 (b): if it fails, one more small group is added after the o
 
 ## Owner decisions
 Spec 03 D1 to D8 are answered (2026-10-28). For this feature:
-- **Q1** SU-02: unplug prompt wording and flow as in the epic (D5). Recommended: as written; no decision needed unless you want it different.
-- **Q2** SU-01: should the owner be able to continue past the two-network stop? Recommended: **no**, because the false-positive case (a VPN or
-  a second adapter in the same range) is rarer than a half-working run, and the stop is cheap to clear by pressing *Check again*.
-- **Q3** SU-15: should the owner be able to show the QR code anyway (phones that get the app another way)? Recommended: **no**; a phone without
-  the router's internet stops at Android's generic "Can't set up device", which is the failure this row exists to prevent.
-- **Q4** SU-18: where do you want the log link? Recommended: in the error banner and on the last page, next to the other saved files.
+Answered by the owner on 2026-10-28 (all four as recommended):
+- **Q1** SU-02: unplug prompt and flow as in the epic (D5).
+- **Q2** SU-01: no "continue anyway"; the page stops with the advice and *Check again*.
+- **Q3** SU-15: no "show it anyway"; the QR code waits until the router reaches the app's address.
+- **Q4** SU-18: the log is linked in the error banner and on the last page.
