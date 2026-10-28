@@ -43,6 +43,7 @@ Reference counts from `main` at `9a92c33`. **Re-grep before editing; do not trus
 | `router/tests/test_setup.py` | 14 | remove the offline tests; keep every other test passing |
 | `router/tests/test_pisophone_setup.py` | 38 | same — this is the largest block, work through it carefully |
 | `router/tests/test_install.py` | 0 | confirm it still passes |
+| `router/tests/test_offline_setup.py` | whole file | **delete the file** (it tests only the deleted bundle functions) and remove its step from `.github/workflows/quality.yml` (~line 354). *Added during implementation: the first version of this table missed it; without the workflow edit CI would run a test file that no longer exists.* |
 
 **Also update:**
 ```
@@ -51,6 +52,10 @@ docs/ROUTERS.md                                     ("what else the router needs
 docs/DEPLOY.md                                      (any offline instructions)
 specs/features/011-offline-setup/validation.md      (one line: part A was removed in router <release> by feature 041, with the reason. Do NOT delete the file — it is the record that the work was done and passed)
 docs/REAL_WORLD_TESTING.md                          (RS36 retired with a reason, not deleted; see the plan)
+                                                     *Correction made during implementation: this file has no RS36 or RS37 row (the numbers
+                                                     jump from RS35 to RS38; both were recorded only in feature 011's validation.md), so there is
+                                                     no row to mark. A RETIRED RS36 line, in the style of RS34, is added so the record exists.
+                                                     RS55 is already taken (feature 031): the new hardware check is RS57, the next free number.*
 CHANGELOG.md, specs/RELEASE_STATE.md                (one owner-readable line each)
 ```
 **Part B of feature 011 stays.** Only part A (offline packages) goes. `piso-setup box-wifi-name` and the per-router coin box

@@ -1,5 +1,7 @@
 # Validation: setting up a router in a real shop (feature 011, parts A and B)
 
+> **Part A was removed in router 1.5.26 by feature 041** (the owner chose one install path: the router needs internet for the first setup). The work below passed and is kept as the record; only part B is still in the product.
+
 Branch `feat/011-offline-setup`, last code commit before this file: `df6351d`. Router release raised once, `setup/RELEASE` 1.5.17 -> **1.5.18**. Firmware, the Rust portal program and the phone app are untouched (`git diff b1db87f -- esp32_firmware tools/pisoportal app` is empty).
 **Result: all 15 criteria pass. Criteria 1 to 13 and 15 were shown on a computer (this session); criterion 14 (hardware, RS36 and RS37) was run by the owner on real hardware on 2026-10-23 and reported passed. Router 1.5.18 is live at 100%. Still not exercised anywhere: BusyBox `ash` for `setup/src/21-local-packages.sh`, real OpenWrt package indexes beyond the two fixture sets, real `usign` signatures, https source downloads, and apk-based OpenWrt 25.x (refused by design). See "Not tested".**
 
