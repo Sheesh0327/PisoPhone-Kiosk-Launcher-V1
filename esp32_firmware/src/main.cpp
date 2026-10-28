@@ -60,6 +60,7 @@ static volatile bool wifiEvGotIp = false;
 static void onWifiEvent(arduino_event_id_t event, arduino_event_info_t info) {
     if (event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
         wifiEvReason = info.wifi_sta_disconnected.reason;
+        wifiLastDisconnectReason = info.wifi_sta_disconnected.reason;
         wifiEvDisconnected = true;
     } else if (event == ARDUINO_EVENT_WIFI_STA_GOT_IP) {
         wifiEvGotIp = true;
@@ -72,6 +73,7 @@ static void reportWifiEvents() {
     static uint32_t lastLoggedMs = 0;
     if (wifiEvGotIp) {
         wifiEvGotIp = false;
+        markWifiJoined();
         configTime(28800, 0, "pool.ntp.org", "time.google.com");
         diagLog("[WIFI] Connected to '%s': IP %s, signal %d dBm\n", wifiSsid.c_str(), WiFi.localIP().toString().c_str(),
                 (int)WiFi.RSSI());
