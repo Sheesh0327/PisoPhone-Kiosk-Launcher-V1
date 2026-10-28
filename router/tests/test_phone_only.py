@@ -52,8 +52,9 @@ def raises(exc, fn, *a, **k):
 class FakeBox:
     """The coin box on the other end of the USB cable: SerialProvision.h's rules in Python."""
 
-    def __init__(self, mac="aa:bb:cc:00:11:22", setup_done=False, drop_first=False, joins=True):
+    def __init__(self, mac="aa:bb:cc:00:11:22", setup_done=False, drop_first=False, joins=True, wifi_wait=False, payment=False, why="none"):
         self.mac, self.setup_done, self.drop_first, self.joins = mac, setup_done, drop_first, joins
+        self.wifi_wait, self.payment, self.why = wifi_wait, payment, why   # (feature 034: set up over USB and never got an address; any payment; why it cannot join)
         self.rx = b""
         self.out = b"boot noise\n"
         self.wifi = self.admin = None
@@ -69,10 +70,12 @@ class FakeBox:
     def handle(self, line):
         if line == "PISO-HELLO":
             up = self.setup_done and self.joins
-            self.out += f"PISO-BOX fw=1.0.0 mac={self.mac} setup={'done' if self.setup_done else 'needed'} wifi={'up' if up else 'down'} ip={'192.168.1.77' if up else '-'}\n".encode()
+            if up:
+                self.wifi_wait = False   # the first address clears it
+            self.out += f"PISO-BOX fw=1.0.0 mac={self.mac} setup={self.state()} wifi={'up' if up else 'down'} ip={'192.168.1.77' if up else '-'} why={'none' if up else self.why}\n".encode()
         elif line.startswith("PISO-SETUP "):
             self.setup_lines += 1
-            if self.setup_done:
+            if self.state() == "done":
                 self.out += b"PISO-SETUP-ERR already-set-up\n"
                 return
             if self.drop_first and self.setup_lines == 1:
@@ -85,8 +88,13 @@ class FakeBox:
             except (AssertionError, ValueError):
                 self.out += b"PISO-SETUP-ERR bad-format\n"
                 return
-            self.wifi, self.admin, self.setup_done = (ssid, pw), admin, True
+            self.wifi, self.admin, self.setup_done, self.wifi_wait = (ssid, pw), admin, True, True
             self.out += b"PISO-SETUP-OK\n"
+
+    def state(self):   # SerialProvision.h: needed / joining / done
+        if not self.setup_done:
+            return "needed"
+        return "joining" if self.wifi_wait and not self.payment else "done"
 
     def read(self, n):
         data, self.out = self.out[:n], self.out[n:]
@@ -116,8 +124,15 @@ status = link.hello(5)
 check(status and status["setup"] == "needed" and status["mac"] == "aa:bb:cc:00:11:22", "hello finds a new box (boot noise ignored)")
 ps.provision_box(link, "Dela Cruz 5G", "p@ss w0rd!", "Shop-Admin-2026", emit=lambda t: None)
 check(box.wifi == ("Dela Cruz 5G", "p@ss w0rd!") and box.admin == "Shop-Admin-2026", "provisioning gives the box the Wi-Fi and the admin password")
+# (feature 034) set up but not yet on a Wi-Fi: it still takes new details; once it has joined, it refuses a second setup
+box.joins = False   # (its Wi-Fi details do not work)
+check(link.hello(3)["setup"] == "joining", "a box that was set up and has not joined yet says joining")
+ps.provision_box(link, "Dela Cruz 5G", "n3w p@ssword", "Shop-Admin-2026", emit=lambda t: None)
+check(box.wifi == ("Dela Cruz 5G", "n3w p@ssword"), "and takes new Wi-Fi details")
+box.joins = True
+check(link.hello(3)["setup"] == "done", "once it has joined it says done")
 msg = raises(ps.SetupError, ps.provision_box, link, "x", "12345678", "Shop-Admin-2026", emit=lambda t: None)
-check(msg and "set up already" in msg, "a box that was set up refuses a second setup: " + str(msg))
+check(msg and "set up already" in msg, "a box that was set up and joined refuses a second setup: " + str(msg))
 dropped = FakeBox(drop_first=True)
 ps.provision_box(link_for(dropped), "shop", "12345678", "Shop-Admin-2026", emit=lambda t: None)
 check(dropped.setup_lines == 2 and dropped.setup_done, "a damaged line is sent again")
@@ -193,6 +208,35 @@ state, flasher, opener, waiter = setup_world(existing=FakeBox(setup_done=True))
 ps.run_phone_setup(Args, read=lambda p: "ERASE", read_secret=lambda p: "", emit=lambda t: None, finder=lambda: [("/dev/ttyACM0", "x")],
              flasher=flasher, opener=opener, waiter=waiter, sleep=lambda s: None, out_dir=out)
 check(state["flashed"] == 1, "typing ERASE goes on")
+
+# feature 034 (SU-16): a box set up over USB that never joined (a mistyped Wi-Fi password) takes new details: no ERASE, no rewrite
+ps_status = ps.parse_status("PISO-BOX fw=3.12.5 mac=aa:bb setup=joining wifi=down ip=- why=wrong-password")
+check(ps_status and ps_status["setup"] == "joining" and ps_status["why"] == "wrong-password" and ps_status["ip"] == "-", "the hello with setup=joining and why= is read")
+stuck = FakeBox(setup_done=True, wifi_wait=True, joins=False, why="wrong-password")
+state, flasher, opener, waiter = setup_world(existing=stuck)
+said = []
+asked = []
+ps.run_phone_setup(Args, read=lambda p: asked.append(p) or "", read_secret=lambda p: "", emit=said.append, finder=lambda: [("/dev/ttyACM0", "x")],
+                   flasher=flasher, opener=opener, waiter=waiter, sleep=lambda s: None, out_dir=out)
+check(state["flashed"] == 0 and not any("ERASE" in p for p in asked), "a box that never joined: no ERASE question and the software is not written again")
+check(stuck.wifi == ("Dela Cruz 5G", "p@ss w0rd!") and stuck.setup_lines == 1, "it takes the new Wi-Fi details: " + str(stuck.wifi))
+check(any("never joined" in s for s in said) and any("password" in s.lower() and "wrong" in s.lower() for s in said), "and the owner is told it never joined and why: " + str(said[:6]))
+for label, box in (("it joined once", FakeBox(setup_done=True, wifi_wait=False)), ("it has a payment", FakeBox(setup_done=True, wifi_wait=True, payment=True)),
+                   ("set up by older firmware or the web page", FakeBox(setup_done=True))):
+    state, flasher, opener, waiter = setup_world(existing=box)
+    msg = raises(ps.SetupError, ps.run_phone_setup, Args, read=lambda p: "", read_secret=lambda p: "", emit=lambda t: None, finder=lambda: [("/dev/ttyACM0", "x")],
+                 flasher=flasher, opener=opener, waiter=waiter, sleep=lambda s: None, out_dir=out)
+    check(msg and state["flashed"] == 0 and box.setup_lines == 0, f"{label}: still refused unless the owner types ERASE")
+# when it still does not join, the box's reason is in the message
+class WhyOpener:
+    def __init__(self, why): self.why = why
+    def __call__(self, device):
+        box = FakeBox(setup_done=True, joins=False, wifi_wait=True, why=self.why)
+        return link_for(box)
+for why, words in (("wrong-password", "password"), ("no-network", "cannot find")):
+    clock = iter(range(0, 10000, 2)).__next__   # (each look at the time is two seconds later: the wait ends without sleeping)
+    msg = raises(ps.SetupError, ps.wait_online, lambda: "/dev/ttyACM0", "Dela Cruz 5G", lambda t: None, 6, WhyOpener(why), clock, lambda s: None)
+    check(msg and "could not join" in msg and words in msg and "without an erase" in msg, f"never joins ({why}): the message gives the box's reason and the way out: {msg}")
 
 # bad Wi-Fi details stop before anything is written
 class BadArgs(Args):

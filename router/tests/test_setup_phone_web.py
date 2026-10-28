@@ -269,5 +269,29 @@ else:
     server2.shutdown()
 
 server.shutdown()
+# ---- feature 034 (SU-16): a board set up over USB that never joined a Wi-Fi takes the new details: no erase, no rewrite ------------------------------
+def run_install_on(existing):
+    c2 = FakeCore()
+    c2.existing = existing
+    s2 = ps.Session(c2, "main", os.path.join(tmp, "out2"), system, install_deps=lambda emit: emit("x"))
+    s2.mode = "phone"
+    s2.p["values"].update(WIFI_NAME="Dela Cruz 5G", WIFI_PASSWORD="n3w p@ssword", ADMIN_PASSWORD="Shop-Admin-2026")
+    s2.step = [k for k, _label in s2.steps()].index("p_install")
+    s2.do_pstart_install({})
+    end = time.time() + 8
+    while time.time() < end and (s2.p["install"]["running"] or s2.p["install"]["stage"] < 0):
+        time.sleep(0.05)
+    return c2, s2
+
+
+joining = dict(STATUS, setup="joining", wifi="down", ip="-", why="wrong-password")
+c2, s2 = run_install_on(joining)
+check(s2.p["install"]["ok"] and [c[0] for c in c2.calls] == ["provision"] and c2.calls[0][2:] == ("Dela Cruz 5G", "n3w p@ssword", "Shop-Admin-2026"),
+      "a board that never joined: no rewrite, the new Wi-Fi details are given to it: " + str(c2.calls) + str(s2.p["install"]["error"]))
+check(not s2.p["erase_needed"] and any("never joined" in l and "password was wrong" in l for l in s2.p["install"]["lines"]),
+      "no erase is asked for, and the owner is told it never joined and why: " + str(s2.p["install"]["lines"][:3]))
+c3, s3 = run_install_on(dict(STATUS))   # a working box (setup=done) still needs the owner's yes
+check(not s3.p["install"]["ok"] and s3.p["erase_needed"] and not c3.calls, "a working box still asks first and writes nothing")
+
 print(f"{checks} checks, {failures} failures")
 sys.exit(1 if failures else 0)
