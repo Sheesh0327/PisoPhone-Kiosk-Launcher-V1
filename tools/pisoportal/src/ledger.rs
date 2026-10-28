@@ -1026,4 +1026,110 @@ mod tests {
         fs::write(&rec, pruned_line(&Pruned { month: "earlier".into(), rows: 1, pesos: last.pesos, hash: last.hash })).unwrap();
         assert!(verify_all(&a).is_ok(), "{} lines folded into one", n);
     }
+
+    // ---- feature 032 group 5: the total never moves --------------------------------------------------------------------------------
+    /// Months of rows written straight to disk the way a roll would leave them (no sleeping on flash): closed segments with their carry
+    /// rows, then the current file. Returns the coin total of everything written.
+    fn seed(a: &str, months: u64, rows: u64) -> u64 {
+        let (mut prev, mut total) = ("0".to_string(), 0u64);
+        for m in 0..months {
+            let mut text = String::new();
+            if m > 0 {
+                let rl = format!("{},{},{},0,carry", at(m, 0), prev, total);
+                prev = chain(&prev, &rl);
+                text.push_str(&format!("{},{}\n", rl, prev));
+            }
+            for n in 0..rows {
+                let pesos = n % 5 + 1;
+                let rl = format!("{},hyper,{},{},topup", at(m, n), pesos, pesos * 6);
+                prev = chain(&prev, &rl);
+                text.push_str(&format!("{},{}\n", rl, prev));
+                total += pesos;
+            }
+            let file = if m == months - 1 { a.to_string() } else { segment_path(a, &month_of(at(m, 0))) };
+            fs::write(file, text).unwrap();
+        }
+        total
+    }
+
+    #[test]
+    fn f032_g5_the_lifetime_total_is_identical_before_and_after_a_prune_and_equals_every_row_written() {
+        let a = tmpdir("g5-total");
+        let written = seed(&a, 12, 500);
+        let before = (verify_all(&a).unwrap().1, verify(&a).unwrap().1);
+        assert_eq!(before, (written, written), "the files seeded are the sum of every row");
+        let r = prune(&a, &Budget { max_kb: 30, keep_months: 3 }).unwrap();
+        assert!(r.deleted.len() >= 5 && r.reached, "{:?}", r);
+        let after = (verify_all(&a).unwrap().1, verify(&a).unwrap().1);
+        assert_eq!(after, before, "the total across the files and the total the console and reconcile read are both unchanged");
+        // and the sale rows written after a prune add to the same total
+        append_with(&a, at(12, 0), "hyper", 9, 54, "topup", &Budget::default()).unwrap();
+        assert_eq!(verify_all(&a).map(|v| v.1), Ok(written + 9));
+    }
+
+    #[test]
+    fn f032_g5_the_same_rows_come_back_for_a_retained_period_before_and_after() {
+        let a = tmpdir("g5-recent");
+        seed(&a, 10, 300);
+        let since = at(8, 0) + 1; // reaches back into month 8, the oldest the prune below keeps (a month is read whole)
+        let before = read_recent(&a, since);
+        assert!(!before.is_empty());
+        prune(&a, &Budget { max_kb: 30, keep_months: 3 }).unwrap();
+        assert!(!closed_segments(&a).is_empty() && !closed_segments(&a)[0].contains(&month_of(at(0, 0))), "months were pruned");
+        assert_eq!(read_recent(&a, since), before);
+    }
+
+    // peak heap of the thread that runs a prune: counted by an allocator that wraps the system one (tests only)
+    struct Counting;
+    thread_local! {
+        static CUR: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+        static PEAK: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    }
+    unsafe impl std::alloc::GlobalAlloc for Counting {
+        unsafe fn alloc(&self, l: std::alloc::Layout) -> *mut u8 {
+            let _ = CUR.try_with(|c| {
+                c.set(c.get() + l.size());
+                let _ = PEAK.try_with(|p| p.set(p.get().max(c.get())));
+            });
+            std::alloc::System.alloc(l)
+        }
+        unsafe fn dealloc(&self, p: *mut u8, l: std::alloc::Layout) {
+            let _ = CUR.try_with(|c| c.set(c.get().saturating_sub(l.size())));
+            std::alloc::System.dealloc(p, l)
+        }
+    }
+    #[global_allocator]
+    static COUNTING: Counting = Counting;
+
+    #[test]
+    fn f032_g5_a_prune_of_24_big_segments_never_holds_a_file_in_memory() {
+        let a = tmpdir("g5-mem");
+        seed(&a, 24, 3000); // about 130 KB a month: a whole-file read would show
+        assert!(size_of(&closed_segments(&a)[0]) > 100 * 1024);
+        CUR.with(|c| c.set(0));
+        PEAK.with(|p| p.set(0));
+        let r = prune(&a, &Budget { max_kb: 300, keep_months: 3 }).unwrap();
+        let peak = PEAK.with(|p| p.get());
+        assert!(r.deleted.len() >= 20 && r.reached, "{:?}", r.deleted.len());
+        assert!(peak < 64 * 1024, "peak extra memory {} bytes", peak);
+        println!("peak extra memory of a prune of 24 segments: {} bytes", peak);
+    }
+
+    #[test]
+    fn f032_g5_a_ledger_from_before_segments_existed_is_pruned_on_its_first_roll_and_keeps_its_total() {
+        // 1.5.x: one revenue.csv, no carry row, no segments, no record, bigger than the budget
+        let a = tmpdir("g5-old");
+        let written = seed(&a, 1, 28000);
+        assert!(size_of(&a) > 1024 * 1024, "fixture: {} bytes", size_of(&a));
+        assert!(closed_segments(&a).is_empty() && !std::path::Path::new(&pruned_path(&a)).exists());
+        assert_eq!(verify_all(&a).map(|v| v.1), Ok(written));
+        append(&a, at(1, 0), "hyper", 4, 24, "topup").unwrap(); // the first sale of the next month rolls the file, then prunes it
+        assert!(closed_segments(&a).is_empty(), "the old single file was the only closed month and is over the budget: {:?}", closed_segments(&a));
+        let rec = pruned_read(&a);
+        assert_eq!((rec.len(), rec[0].month.as_str(), rec[0].pesos), (1, "2026-08", written));
+        assert_eq!(verify_all(&a).map(|v| v.1), Ok(written + 4), "the lifetime total moved by the sale and by nothing else");
+        assert_eq!(verify(&a), Ok((2, written + 4)), "revenue.csv alone carries it: the carry row and the sale");
+        append(&a, at(1, 5), "hyper", 1, 6, "topup").unwrap();
+        assert_eq!(verify_all(&a).map(|v| v.1), Ok(written + 5));
+    }
 }
