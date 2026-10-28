@@ -55,8 +55,11 @@ Each is one branch, one area, one chat. **Do them in this order**; later ones as
 | **037** | Setup asks fewer questions, one front door | setup + router | router + site |
 | **038** | Phone-led setup | app + firmware + router | app + firmware + router |
 | **039** | Triage the owed hardware checks | docs | none |
+| **040** | Prove the hardening of a box that leaves your hands (GATE 1) | firmware (bench) | none |
+| **041** | Require internet on the router: delete the offline package path | setup | router |
+| **042** | Phone provisioning, documented end to end | docs + site | site |
 
-Specs 033 and 034 are **written in full** (`specs/features/033-remove-wheel/`, `034-remove-minigame/`). 035 to 039 have their
+Specs 033, 034, 040 and 041 are **written in full** (`specs/features/033-remove-wheel/`, `034-remove-minigame/`). 035 to 039 have their
 design decided in section 6 and get their full spec **when their turn comes** — a spec written three features early is stale by
 the time it runs, which is exactly what happened to spec 02's AO-01, AO-05, AO-06 and AO-07 (section 2).
 
@@ -71,10 +74,30 @@ deleted; `/wheel*` becomes 404; RS34 is retired with a reason, not silently drop
 Full spec written. Unlike the wheel it is **on by default**, so `CHANGELOG.md` says plainly that the free game is gone. A
 `GAME_MINUTES` line already in a router's `settings.txt` is left in place and ignored.
 
-### 035 Say which routers are actually supported  (owner: demote three, keep building them)
+### 0. The business model this epic now serves  (owner, 2026-10-28)
+**You sell assembled ESP32-C3 coin boxes. Routers are bring-your-own.** The box is where the product's value is (the coin ISR
+and pulse guard, the durable payment queue, signed OTA with rollback, card accounts); the router software is free and the
+router is a commodity you would make no margin on. This avoids router inventory, per-model images, bricked-router support and
+the GPL distribution question, while still giving you a controlled device.
+
+Three consequences run through the features below:
+- `docs/ROUTERS.md` stops being advice and becomes **the customer contract** (035).
+- The box's own page stops being a convenience and becomes **the product's main surface** (037, 038).
+- A box that leaves your hands must be hardened, and that has never been proved on a board (040). **This gates revenue, not
+  code.**
+
+Already pointing this way in the code: the box dashboard builds `https://pisophone.pages.dev/?mac=<mac>`
+(`esp32_firmware/src/WebDashboardComponents.cpp:80`), `website/install.sh` is already the one-liner from that site,
+`website/start/` already has the pages, and `docs/PROVISIONING_SOLD_UNIT.md` already opens with "only boxes that leave your
+hands". The plan is the direction the repository was already taking.
+
+### 035 Say which routers are actually supported  (owner: demote three, keep building them, name one to buy)
 `mipsel` and `aarch64` are **supported** (MT7621 plus the modern Wi-Fi 6 boards: the real market). `mips`, `armv7` and `x86_64`
 become **untested**: `docs/ROUTERS.md` gains a support column, and the installer **warns and proceeds** on an untested family —
 it never refuses. CI keeps building all five, so the door stays open and a family can be promoted the day one runs in a shop.
+Because routers are now bring-your-own, this document is the customer contract: it also **names one recommended model the
+customer can order**, so most buyers land on known-good hardware and most support conversations never start. You do **not**
+stock or resell that router — that would put you back into the inventory this model exists to avoid.
 
 ### 036 The site status panel  (owner: box holds it; warn only; always visible; show both numbers)
 Two gaps in one feature, both on surfaces the owner already looks at.
@@ -103,10 +126,37 @@ The decisive competitive move: no computer, no SSH, no Python. The owner's phone
   which closes when setup finishes. No SSH client in the app, and the router's root password never reaches the phone.
 - Build it only on a base whose hardware checks are current — which is why 039 exists and why this is last.
 
+### 037 (addition) the box page is the product surface
+With boxes sold and routers bring-your-own, the box's page is the first thing every customer sees and the only surface you
+control. It hands over the pre-filled router one-liner. **One full firmware build ships on every box** — what it serves is
+decided by setup, not by the image, so there is one SKU, one update feed and no wrong-variant returns. The `-phone` and
+`-wifi` variants in `esp32_firmware/envs/products.ini` stay for your own builds; they are not sold.
+
 ### 039 Triage the owed hardware checks  (owner: yes, as its own feature)
 RS28-RS52 are the real gap between this product and ones proven by attrition. This feature writes no code: it reads every owed
 check, marks the ones later releases made obsolete, and reduces the rest to **one ordered list the owner can work through a
 session at a time**. Output is `docs/REAL_WORLD_TESTING.md` and nothing else.
+
+### 040 Prove the hardening of a box that leaves your hands  (owner: blocking before any sale)
+`docs/PROVISIONING_SOLD_UNIT.md` requires Secure Boot V2 and flash encryption on sold units and says plainly that its **GATE 1
+has never passed on a board**; the eFuse steps are irreversible and a mistake bricks the unit. The build environments already
+exist (`esp32-c3-production-encrypted`). This feature runs the guide on a **sacrificial board**, records the result in the
+guide's own table, and writes nothing else. **No box is sold until it passes.** Secure boot cannot be retrofitted remotely, so
+an unhardened box sold today stays unhardened for its life.
+
+### 041 Require internet on the router: delete the offline package path  (owner: delete, confirmed twice)
+Feature 011's offline path is removed: `setup/src/21-local-packages.sh`, the `usign`-per-source verification, `--local` /
+`PISO_LOCAL_PKGS`, `--router-online` and the fallback logic. The setup pages state that the router needs internet.
+**Recorded consequence, accepted by the owner:** a router with no WAN during first setup can no longer be set up at all, where
+today it degrades to the computer path. That is the case of replacing an old router, a modem being swapped, or the ISP not yet
+connected. This also discards work that shipped as router 1.5.18 and passed RS36 and RS37 on the owner's own bench on
+2026-10-23. The owner was shown this and chose deletion; it is written here so the decision is on the record rather than
+discovered later.
+
+### 042 Phone provisioning, documented end to end  (owner: document it, the customer does it)
+Device owner needs a factory reset plus QR or NFC provisioning, and it is the hardest step in the product. This feature writes
+the end-to-end guide and has the box page produce the provisioning QR, so the customer has one page to follow. You do not sell
+phones and you do not provision them as a service.
 
 ## 7. Owner decisions — all answered 2026-10-28
 | id | question | answer |
@@ -127,6 +177,15 @@ session at a time**. Output is `docs/REAL_WORLD_TESTING.md` and nothing else.
 | D14 | how 033-035 are released | **one router release for all three** (section 8) |
 | D15 | the owed hardware checks | **a triage feature** (feature 039) |
 | D16 | `STATUS.md` and `RELEASE_STATE.md` being wrong | **fix at the next replan**, not here (section 9) |
+| D17 | what you sell | **assembled boxes, ready to mount**; routers are bring-your-own |
+| D18 | hardening a sold box | **blocking: GATE 1 passes before any sale** (feature 040) |
+| D19 | phone provisioning | **documented, the customer does it** (feature 042). Not sold, not a service. |
+| D20 | which firmware ships on a sold box | **one full build for everything**; variants are not sold (037) |
+| D21 | the router's internet during setup | **required; the offline path is deleted** (feature 041) |
+| D22 | `docs/ROUTERS.md` | **name one recommended model to buy**, do not stock it (035) |
+| D23 | slot licensing, now that boxes are sold | **still leave it alone**; revisit once boxes are selling |
+| D24 | where GATE 1 sits | **first, in parallel with the deletions** (section 8) |
+| D25 | what "drop the offline path" meant | **actually delete the code** (feature 041), confirmed after the consequence was put to the owner |
 
 ## 8. Sequencing and releases
 - **033 does not start until feature 032 (the ledger size cap) is merged.** Both touch `tools/pisoportal`; 032 is almost all
@@ -134,6 +193,11 @@ session at a time**. Output is `docs/REAL_WORLD_TESTING.md` and nothing else.
   loses nothing by waiting.
 - **033, 034 and 035 ship as one router release.** Merge all three to `main`, then cut a single release: one rollout, one
   `verify_release.py`, one set of checks instead of three. They are all deletions and they test well together.
+- **041 joins the same release** as 033, 034 and 035: it is a setup change with no overlap with the deletions, and batching it
+  keeps the rollout count down. It carries its own hardware check (a first setup on a router with internet, and a stated,
+  accepted failure on one without).
+- **040 runs first and in parallel.** It needs bench time and a sacrificial board, not a coding session, and nothing in the
+  epic depends on it — but nothing ships to a customer until it passes.
 - **036 is a firmware release as well as a router one** (the box holds the expected version set), so it is on its own.
 - **039 has no release at all** and can be done any time, including in parallel with the deletions, because it touches only
   `docs/REAL_WORLD_TESTING.md`.
