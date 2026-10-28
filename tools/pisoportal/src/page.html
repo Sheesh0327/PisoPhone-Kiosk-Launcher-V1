@@ -114,7 +114,6 @@ details .btn{margin:8px 0 12px}
 <div id="mtext"></div>
 <div id="mbtns"></div>
 </div>
-<a class="btn alt" id="wh" href="/wheel" style="display:none">Spin the wheel</a>
 <p class="foot">TechNet Solutions &middot; Connect &middot; Play &middot; More Possibilities</p>
 </div>
 <script>
@@ -215,7 +214,7 @@ function vshow(j){show("final");pes=0;tt=0;pj=false;tstop();foff(false);var c=j.
 function vlist(a){var b=el("vls"),i,h="";for(i=0;i<a.length;i++){var c=String(a[i].c).replace(/[^0-9A-Z-]/g,"");h+='<div class="vr"><div><b>'+c+'</b><div class="mut">'+fmt(a[i].m)+" · "+pn(a[i].p)+'</div></div><button class="btn alt" type="button" data-c="'+c+'">Use</button></div>'}
  b.innerHTML=h;el("vlist").style.display=a.length?"block":"none";var l=b.getElementsByTagName("button");for(i=0;i<l.length;i++)l[i].onclick=function(){redeem(this.getAttribute("data-c"))}}
 function view(j){
-var s=j.s;el("wh").style.display=(s==="idle"||s==="final")&&j.wh&&!j.vcode?"block":"none";
+var s=j.s;
 if(s!=="armed")stopTick();if(s!=="idle"&&s!=="final"&&s!=="paused")tstop();if(s!=="final"){foff(false);clearTimeout(wk);wk=null}
 /* a window that stays in "Counting coins" is asked about again by a new connection every 3 s (a phone may have paused the old one) */
 if(s==="closing"){if(!cw)cw=setInterval(connect,3e3)}else if(cw){clearInterval(cw);cw=0}
