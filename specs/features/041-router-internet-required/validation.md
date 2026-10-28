@@ -16,7 +16,7 @@ Installer size before (`setup/piso-setup.sh`): 1678991 bytes = 1639.7 KB (budget
 ## After (group 7, setup/RELEASE 1.5.26)
 | test | before | after | why it changed |
 |---|---|---|---|
-| `test_setup.py` | 460/0 | 442/0 | the 33 offline checks are gone, 15 new ones (internet required, messages, no copied-packages code) |
+| `test_setup.py` | 460/0 | 442/0 | offline checks removed, new ones for internet required, the messages and no copied-packages code (net -18; I did not count each side) |
 | `test_pisophone_setup.py` | 232/0 | 222/0 | the offline end-to-end block is gone, the new with/without internet block is in |
 | `test_setup_web.py` | 115/0 | 115/0 | |
 | `test_setup_tools.py` | 78/0 | 78/0 | |
@@ -33,7 +33,7 @@ Installer size before (`setup/piso-setup.sh`): 1678991 bytes = 1639.7 KB (budget
 | # | Criterion | Check | Result | Evidence |
 |---|---|---|---|---|
 | 1 | No offline words left | `rg -n "PISO_LOCAL_PKGS\|local-packages\|router-online\|router_online" setup/ website/ router/tests/ tools/ -g '!*.md'` | **pass, with the two documented exceptions** (spec note added) | Remaining: 5 lines in `router/tests/` that assert the option and variable are gone (`--router-online is refused`, `"PISO_LOCAL_PKGS" not in text`), and `website/update/*/router-setup.sh`, the CI-made signed copies of router 1.5.25 that CI replaces at release. `setup/` and the rest of `website/` and `tools/` are clean; `setup/src/21-local-packages.sh` is gone (`git rm`). |
-| 2 | Seven setup test files pass | see "After" | pass | 442/0, 222/0, 115/0, 78/0, 41/0, 39/0, 31/0. `test_pisophone_setup` also has a known intermittent failure on this cloud container only: `/dev/null` is a regular file here, so a stray `/bin/bash: line 1: unalias: unsetenv: not found` lands in the fake ssh's input log (ledger entry 2026-10-23, root cause found then). It happened in 3 of 4 of my runs while editing and not in the final gate run. Not caused by this feature. |
+| 2 | Seven setup test files pass | see "After" | pass | 442/0, 222/0, 115/0, 78/0, 41/0, 39/0, 31/0. `test_pisophone_setup` also has a known intermittent failure on this cloud container only: `/dev/null` is a regular file here, so a stray `/bin/bash: line 1: unalias: unsetenv: not found` lands in the fake ssh's input log (ledger entry 2026-10-23, root cause found then). It happened in several of my runs while editing (each time as the single failure) and not in the final gate run. Not caused by this feature. |
 | 3 | Portal program unchanged | `cargo build --release`, `cargo test`, `python3 tests/test_flow.py` | pass | `test result: ok. 131 passed; 0 failed`, flow `223 checks, 0 failures`. `git diff 6e612b6 --stat -- tools/pisoportal` is empty. |
 | 4 | Regenerated, release raised | `python3 tools/build_piso_setup.py --check`; `setup/RELEASE` | pass | `setup/piso-setup.sh (with its sha256) and the website's copies (...) are up to date`. `setup/RELEASE` 1.5.25 -> 1.5.26 (the lead reconciles the final number with feature 034). |
 | 5 | First setup with internet runs end to end | `test_pisophone_setup.py`, "a first setup against a router with internet runs to its end" | pass | factory router: probe, installer download and move to 10.0.0.1, internet test, setup with every answer, summary and sheet saved; nothing copied to the router from the computer. |
@@ -46,7 +46,7 @@ Installer size before (`setup/piso-setup.sh`): 1678991 bytes = 1639.7 KB (budget
 ## Gates (constitution rule 7)
 - [x] Area checks from `CONTRIBUTING.md` (router add-on: cargo and flow; setup: the seven files above; `test_footprint.py`)
 - [x] `bash scripts/check_security_rules.sh`: all passed
-- [ ] Python: `ruff check` on `setup/pisophone_setup.py`: 6 findings, the same 6 as before this feature (none new; two imports that only the deleted code used were removed). `mypy` and `pytest` not run (the tests are plain scripts).
+- [ ] Python: `ruff check` on `setup/pisophone_setup.py`: the count of auto-fixable findings is the same 6 as before this feature (two imports that only the deleted code used were removed so none were added; I compared the fixable counts, not every finding). `mypy` and `pytest` not run (the tests are plain scripts).
 - [x] Generated files regenerated, `--check` passes
 
 ## Not tested
