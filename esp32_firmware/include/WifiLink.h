@@ -82,6 +82,22 @@ inline const char* reasonHint(uint8_t reason) {
     }
 }
 
+// The short word the USB hello line carries for the last failed attempt (the program tells the owner what to fix): a wrong password, a network that
+// is not there, or nothing useful to say.
+inline const char* whyCode(uint8_t reason) {
+    switch (reason) {
+    case 14:
+    case 15:
+    case 202:
+    case 204:
+        return "wrong-password";
+    case 201:
+        return "no-network";
+    default:
+        return "none";
+    }
+}
+
 } // namespace wifilink
 
 #endif // WIFI_LINK_H

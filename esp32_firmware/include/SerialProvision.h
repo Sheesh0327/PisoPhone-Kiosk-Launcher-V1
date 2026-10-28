@@ -10,18 +10,57 @@
 //   box  -> host  PISO-SETUP-OK            (then the box restarts and joins the Wi-Fi)
 //              or PISO-SETUP-ERR <reason>
 //
-// Only a box that has not been set up yet (the admin password is still the published default) accepts PISO-SETUP: a box in use
-// ignores it, so someone plugging a cable into a working box cannot change its Wi-Fi or take it over. (A factory reset, or
+// setup= is needed (the factory state), joining (set up over USB but the Wi-Fi never worked and there is no payment: it takes new details, see
+// setupState) or done. why= is the last reason a Wi-Fi attempt failed (wrong-password, no-network, none; see wifilink::whyCode).
+//
+// Only a box that has not been set up yet (the admin password is still the published default), or one that was set up over USB and never
+// got a Wi-Fi address and never recorded a payment (a mistyped Wi-Fi password), accepts PISO-SETUP: a box in use ignores it, so someone
+// plugging a cable into a working box cannot change its Wi-Fi or take it over. (A factory reset, or
 // writing the software again, makes a box "needed" again; both need the owner at the box.) The same Wi-Fi is given to the rental
 // phones (the "Set up a phone" link carries it): in the PisoPhone-only setup (no router) box and phones share the shop's Wi-Fi.
 // Pure C++ (no Arduino), tested on the host.
 
 #include "SetupGate.h"
 
+#include <cstdint>
 #include <cstring>
 #include <string>
 
 namespace provision {
+
+enum class SetupState { Needed, Joining, Done };
+
+// What decides it. wifiWait is saved by the USB setup together with the Wi-Fi details and cleared the first time the box gets an address,
+// so a box set up by older firmware or by its web page never has it and can never be Joining.
+struct BoxFacts {
+    bool adminPasswordChanged = false;
+    bool wifiWait = false;
+    uint32_t lifetimeCoins = 0;
+    int pendingPayments = 0;
+    bool unpersistedPayments = false;
+};
+
+inline SetupState setupState(const BoxFacts& f) {
+    if (!f.adminPasswordChanged) return SetupState::Needed;
+    bool anyPayment = f.lifetimeCoins > 0 || f.pendingPayments > 0 || f.unpersistedPayments;
+    return f.wifiWait && !anyPayment ? SetupState::Joining : SetupState::Done;
+}
+
+inline bool acceptsSetup(SetupState s) {
+    return s != SetupState::Done;
+}
+
+inline const char* stateName(SetupState s) {
+    switch (s) {
+    case SetupState::Needed:
+        return "needed";
+    case SetupState::Joining:
+        return "joining";
+    case SetupState::Done:
+        return "done";
+    }
+    return "done";
+}
 
 enum class Parse { Ok, BadFormat, BadWifiName, BadWifiPassword, BadAdminPassword };
 

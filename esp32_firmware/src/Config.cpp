@@ -80,6 +80,8 @@ String androidIps = "";
 #endif
 String webPassword = "";
 bool adminPwChanged = false;
+bool wifiWaitFirstJoin = false;
+volatile uint8_t wifiLastDisconnectReason = 0;
 // The auth worker task reads the secret while the main loop can change it (settings save, factory
 // reset). Every access goes through these accessors so a String is never reallocated mid-read.
 static String sharedSecretValue = "";
@@ -369,6 +371,8 @@ const char* const NVS_KEY_PORT = "target_port";
 const char* const NVS_KEY_MINS_PER_COIN = "mins_per_coin";
 const char* const NVS_KEY_ADMIN_PW = cfgmig::K_ADMIN_PW;
 const char* const NVS_KEY_ADMIN_PW_CHANGED = cfgmig::K_ADMIN_PW_CHANGED;
+const char* const NVS_KEY_WIFI_WAIT =
+    "wifi_wait"; // only the USB setup sets it; a factory reset clears it with everything else
 const char* const NVS_KEY_SETUP_AP_PASS = cfgmig::K_SETUP_AP_PASS;
 const char* const NVS_KEY_SHARED_SECRET = cfgmig::K_SHARED_SECRET;
 const char* const NVS_KEY_LEGACY_KEY = cfgmig::K_LEGACY_KEY;
@@ -602,12 +606,23 @@ void switchToOwnKey() {
 #endif
 }
 
+// The box got an address: the Wi-Fi details work, so it is no longer "joining" (SerialProvision.h). Writes flash only the first time.
+void markWifiJoined() {
+    wifiLastDisconnectReason = 0;
+    if (!wifiWaitFirstJoin) return;
+    wifiWaitFirstJoin = false;
+    prefs.begin(NVS_NAMESPACE, false);
+    prefs.putBool(NVS_KEY_WIFI_WAIT, false);
+    prefs.end();
+}
+
 // Reads the admin and setup-AP passwords. Every box has its own, made by the migrations the first time it starts
 // (and after a factory reset); boxes already in the field keep the password they have.
 void loadCredentials() {
     prefs.begin(NVS_NAMESPACE, false);
     webPassword = prefs.getString(NVS_KEY_ADMIN_PW, "");
     adminPwChanged = prefs.getBool(NVS_KEY_ADMIN_PW_CHANGED, false);
+    wifiWaitFirstJoin = prefs.getBool(NVS_KEY_WIFI_WAIT, false);
     prefs.end();
 
     if (!adminPwChanged) {

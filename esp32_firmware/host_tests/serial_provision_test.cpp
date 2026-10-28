@@ -79,6 +79,36 @@ int main() {
     CHECK(std::string(reason(Parse::BadAdminPassword)) == "bad-admin-password" &&
           std::string(reason(Parse::Ok)) == "ok");
 
+    // feature 034: a box that never joined a Wi-Fi and never recorded a payment may be given new Wi-Fi details; a box in use never
+    BoxFacts fresh; // the admin password was never changed: the factory state
+    CHECK(setupState(fresh) == SetupState::Needed && acceptsSetup(SetupState::Needed));
+    BoxFacts waiting = fresh; // set up over USB, the Wi-Fi never worked, no money
+    waiting.adminPasswordChanged = true;
+    waiting.wifiWait = true;
+    CHECK(setupState(waiting) == SetupState::Joining && acceptsSetup(SetupState::Joining));
+    BoxFacts joined = waiting; // it got an address once (the wait flag is cleared then)
+    joined.wifiWait = false;
+    CHECK(setupState(joined) == SetupState::Done && !acceptsSetup(SetupState::Done));
+    BoxFacts old = fresh; // set up by older firmware or the web page: never marked as waiting, whatever it did since
+    old.adminPasswordChanged = true;
+    CHECK(setupState(old) == SetupState::Done);
+    BoxFacts paid = waiting; // any payment makes it a box in use: recorded, pending, or not yet written to flash
+    paid.lifetimeCoins = 1;
+    CHECK(setupState(paid) == SetupState::Done);
+    paid = waiting;
+    paid.pendingPayments = 1;
+    CHECK(setupState(paid) == SetupState::Done);
+    paid = waiting;
+    paid.unpersistedPayments = true;
+    CHECK(setupState(paid) == SetupState::Done);
+    BoxFacts odd =
+        fresh; // the wait flag without a changed password cannot happen, but the box then simply counts as not set up
+    odd.wifiWait = true;
+    CHECK(setupState(odd) == SetupState::Needed);
+    CHECK(std::string(stateName(SetupState::Needed)) == "needed" &&
+          std::string(stateName(SetupState::Joining)) == "joining" &&
+          std::string(stateName(SetupState::Done)) == "done");
+
     printf("serial_provision_test: %d checks, %d failures\n", checks, failures);
     return failures ? 1 : 0;
 }

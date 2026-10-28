@@ -4318,6 +4318,16 @@ def provision_box(link, wifi_name, wifi_password, admin_password, emit=say, trie
     raise SetupError("the board did not answer the setup. Unplug it, plug it in again and run this again.")
 
 
+def box_says_why(status):
+    """The box's own reason (the why= word of its hello) as a sentence ending in a space, or ''."""
+    why = (status or {}).get("why")
+    if why == "wrong-password":
+        return "The box says the Wi-Fi password was wrong. "
+    if why == "no-network":
+        return "The box says it cannot find that network (out of range, 5 GHz only, or switched off). "
+    return ""
+
+
 def wait_online(find_device, wifi_name, emit=say, timeout=120, opener=BoxLink.open, clock=time.monotonic, sleep=time.sleep):
     """Waits until the board says it is on the Wi-Fi (it restarts first, and its USB port may come back under another name).
     Returns its status dict with the address; raises SetupError with what is usually wrong when it never joins."""
@@ -4347,9 +4357,10 @@ def wait_online(find_device, wifi_name, emit=say, timeout=120, opener=BoxLink.op
         sleep(2)
     if last is None:
         raise SetupError("the board did not come back on USB after the setup. Unplug it, plug it in again and run  check.")
-    raise SetupError(f"the board could not join the Wi-Fi '{wifi_name}'. Usual causes: a wrong Wi-Fi password; a 5 GHz-only network "
+    raise SetupError(f"the board could not join the Wi-Fi '{wifi_name}'. {box_says_why(last)}Usual causes: a wrong Wi-Fi password; a 5 GHz-only network "
                      "(the ESP32-C3 needs 2.4 GHz: many routers share one name for both, some need the 2.4 GHz band switched on); a "
-                     "router that only lets known devices join. Run the setup again with the right details.")
+                     "router that only lets known devices join. Run the setup again with the right details: a box that has not joined "
+                     "yet takes new Wi-Fi details without an erase.")
 
 
 
@@ -4462,7 +4473,7 @@ def provision_new_box(find_port, wifi_name, wifi_password, admin_password, emit=
         try:
             status = link.hello(15)
             if status:
-                if status.get("setup") != "needed":
+                if status.get("setup") not in ("needed", "joining"):   # (joining: set up before but never joined a Wi-Fi: it takes new details)
                     raise SetupError("the board is not in first-time setup mode after writing the software. Run this again.")
                 provision_box(link, wifi_name, wifi_password, admin_password, emit)
                 break
@@ -4492,6 +4503,9 @@ def run_phone_setup(args, read=input, read_secret=getpass.getpass, emit=say, fin
     finally:
         if link:
             link.close()
+    joining = bool(status and status.get("setup") == "joining")
+    if joining:
+        emit("This board was set up before but never joined a Wi-Fi. " + box_says_why(status) + "It takes the new Wi-Fi details now (nothing is erased).")
     if status and status.get("setup") == "done":
         emit(f"This board already runs a set-up coin box (box code {status.get('mac', '?')}).")
         emit("Writing the software again ERASES everything on it: its settings, its sales totals and its slot license keys.")
@@ -4511,7 +4525,8 @@ def run_phone_setup(args, read=input, read_secret=getpass.getpass, emit=say, fin
         raise SetupError("the admin password: " + problem + ".")
 
     # 3. the software, then the Wi-Fi and the admin password, then online
-    flasher(args.branch, port, emit, flash_cache_dir(), image=args.image, product="phone")
+    if not joining:   # (a box that never joined already has the software: only its Wi-Fi details change)
+        flasher(args.branch, port, emit, flash_cache_dir(), image=args.image, product="phone")
     status = provision_new_box(lambda: current_device(finder, port), wifi_name, wifi_password, admin_password, emit, opener, waiter, sleep)
     folder = out_dir or default_out_dir()
     mac = status.get("mac", "box").replace(":", "")
@@ -4559,11 +4574,14 @@ def check_items(finder, opener, probe, pick=None):
         add("Coin box software", "bad", "no PisoPhone software answered.", "It may be empty or running other software: run the setup.")
         return items
     add("Coin box software", "ok", f"version {status.get('fw', '?')}, box code {status.get('mac', '?')}.")
-    add("Set up", "ok" if status.get("setup") == "done" else "bad", "yes" if status.get("setup") == "done" else "no, it still has the factory settings.",
-        "" if status.get("setup") == "done" else "Run the setup.")
+    joining = status.get("setup") == "joining"
+    add("Set up", "ok" if status.get("setup") in ("done", "joining") else "bad", ("yes, but it has never joined a Wi-Fi." if joining else "yes")
+        if status.get("setup") in ("done", "joining") else "no, it still has the factory settings.",
+        "" if status.get("setup") in ("done", "joining") else "Run the setup.")
     online = status.get("wifi") == "up" and status.get("ip", "-") != "-"
     add("Wi-Fi", "ok" if online else "bad", f"joined, address {status['ip']}." if online else "not joined.",
-        "" if online else "Check the Wi-Fi name and password (2.4 GHz); run the setup again if they are wrong.")
+        "" if online else (box_says_why(status) + "Check the Wi-Fi name and password (2.4 GHz); run the setup again if they are wrong"
+                           + (": a box that has not joined yet takes new details without an erase." if joining else ".")))
     if online:
         reached = probe(f"http://{status['ip']}/")
         add("Admin page", "ok" if reached else "warn", f"answers at http://{status['ip']}/." if reached else
@@ -5023,6 +5041,9 @@ class Session:
                     raise SetupError("several USB boards are connected (" + ", ".join(p for p, _d in boards) + "): unplug all but the coin box.")
                 port = boards[0][0]
                 existing = self.core.probe_box(port)
+                joining = bool(existing and existing.get("setup") == "joining")
+                if joining:
+                    self.plog("This board was set up before but never joined a Wi-Fi. " + box_says_why(existing) + "It takes the new Wi-Fi details now (nothing is erased).")
                 if existing and existing.get("setup") == "done" and not erase_ok:
                     with self.lock:
                         self.p["erase_needed"] = True
@@ -5032,7 +5053,7 @@ class Session:
                 if not write_box and not existing:
                     raise SetupError("no PisoPhone software answered on the board (it must be 3.11.0 or newer to be set up over USB). Untick "
                                      "'Do not write it' so the software is written first.")
-                if write_box:
+                if write_box and not joining:   # (a box that never joined already has the software: only its Wi-Fi details change)
                     stage(0)
                     self.core.flash_box(port, self.plog, product=self.mode if self.mode in ("phone", "wifi") else "full")
                     with self.lock:

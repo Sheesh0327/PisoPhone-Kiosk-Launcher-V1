@@ -112,6 +112,7 @@ For the next phone, choose the next slot and make the link again.
 | "The coin box did not join" | Is the box powered (the USB cable does it), near the router, and written by this program (it erases the board first)? Tap *Try again*: the installation continues where it stopped. |
 | esptool or ssh "Missing" on the first page | Tap *Install what is missing*. Without root rights it shows the exact `sudo apt install ...` command to run. |
 | The phone does not ask "Allow USB debugging?" | Unlock the phone, use a data cable, unplug and replug. Or use the on-phone setting. |
+| PisoPhone only: "the board could not join the Wi-Fi" (the box says the password was wrong or the network was not found) | Type the Wi-Fi details again and tap *Try again*: a box that was set up over USB but has never joined (and has no payment) takes new Wi-Fi details **without an erase** (coin box software 3.12.5 or newer; an older box still needs the ERASE route once). A box that has joined once refuses, as before. |
 | Anything else | Tap *Try again*: it is always safe, and the router keeps what is already done. If it keeps failing, send the file `pisophone-setup-log-<date>-<time>.txt` from the saved folder (the error names it). It holds the lines the page showed and this computer's network addresses; the unit's passwords are hidden. |
 
 ## After the setup
