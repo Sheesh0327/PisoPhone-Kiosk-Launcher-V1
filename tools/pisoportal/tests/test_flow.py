@@ -777,6 +777,59 @@ try:
         check(rc == 0 and out.startswith("OK 3 7") and "torn_tail" not in out, "RT-04: the chain holds and the tail is whole again: " + out)
     finally:
         e6.close()
+    # ---- feature 032: a ledger over its 1 MB budget is pruned at the month roll and the box still agrees with the total ---------------------------
+    e7 = Env(offset=57, EMPTY_COOLDOWN="1")
+    try:
+        import datetime
+        def chain(prev, rl):
+            return hashlib.sha256(f"{prev}|{rl}".encode()).hexdigest()[:12]
+        prev, total = "0", 0
+        for m in range(1, 6):   # Jan..May 2026, 9000 rows each (about 400 KB a month); May is the current file, the first sale rolls it
+            t0 = int(datetime.datetime(2026, m, 10, tzinfo=datetime.timezone.utc).timestamp())
+            lines = []
+            if m > 1:
+                rl = f"{t0},{prev},{total},0,carry"
+                prev = chain(prev, rl)
+                lines.append(f"{rl},{prev}")
+            for n in range(9000):
+                pesos = n % 5 + 1
+                rl = f"{t0 + n},hyper,{pesos},{pesos * 6},topup"
+                prev = chain(prev, rl)
+                lines.append(f"{rl},{prev}")
+                total += pesos
+            name = "revenue.csv" if m == 5 else f"revenue-2026-{m:02d}.csv"
+            open(f"{e7.data}/{name}", "w").write("\n".join(lines) + "\n")
+        size0 = sum(os.path.getsize(f"{e7.data}/{f}") for f in os.listdir(e7.data) if f.startswith("revenue"))
+        check(size0 > 1024 * 1024, f"feature 032: the seeded ledger is over the 1 MB budget: {size0} bytes")
+        e7.set_box(busy=False, coins_at=[0.3, 0.6], lifetime_base=total)   # the box counted exactly what the ledger holds
+        rc, out = e7.cli("verify", "all")
+        check(rc == 0 and out == f"OK {5 * 9000 + 4} {total}", "feature 032: before: the whole ledger verifies: " + out)
+        rc, out = e7.cli("reconcile")
+        check(rc == 0 and out.startswith(f"RECONCILE OK ledger={total} box={total}"), "feature 032: before the prune, the ledger and the box agree: " + out)
+        rc, out = e7.cli("ledger")
+        check(rc == 0 and out == f"Sales record: 5 months of detail kept, none deleted. Lifetime total: {total} pesos.", "feature 032: the owner is told the months kept and the total: " + out)
+        e7.start()
+        e7.nds_client(MAC_C)
+        c = Cust("127.0.0.3", port=e7.PP, reset=True)
+        c.wait_state("idle", 5)
+        c.send({"t": "start", "plan": "hyper"})
+        fin = c.wait_state("final", 25)
+        check(fin is not None and fin["online"] is True, f"feature 032: a sale on the first day of a new month still works: {fin}")
+        c.close()
+        pruned = f"{e7.data}/revenue-pruned.txt"
+        check(wait_until(lambda: os.path.exists(pruned), 5), "feature 032: the months deleted on purpose are written down")
+        left = sorted(f for f in os.listdir(e7.data) if f.startswith("revenue-2026"))
+        check(len(left) < 5 and "revenue-2026-01.csv" not in left, "feature 032: the oldest months are gone, the newest kept: " + str(left))
+        size1 = sum(os.path.getsize(f"{e7.data}/{f}") for f in os.listdir(e7.data) if f.startswith("revenue-2") or f == "revenue.csv")
+        check(size1 <= 1024 * 1024, f"feature 032: the ledger is inside 1 MB again: {size1} bytes")
+        rc, out = e7.cli("verify", "all")
+        check(rc == 0 and out.startswith("OK ") and out.split()[2] == str(total + 2), "feature 032: after: it still verifies and the total moved only by the sale: " + out)
+        rc, out = e7.cli("reconcile")
+        check(rc == 0 and out.startswith(f"RECONCILE OK ledger={total + 2} box={total + 2}"), "feature 032: after the prune, the ledger still agrees with the box: " + out)
+        rc, out = e7.cli("ledger")
+        check(rc == 0 and out == f"Sales record: 3 months of detail kept (the space only allows 2 of the 3 closed months you wanted), 3 months deleted on purpose (their totals are kept). Lifetime total: {total + 2} pesos.", "feature 032: and after: months kept, months deleted, the same lifetime total: " + out)
+    finally:
+        e7.close()
     # ---- fair use: HyperSpeed is slowed after the limit, released later; Endurance is never touched -----------------------------------------
     env.reset_device(MAC_D)
     env.set_box(busy=False, coins_at=[0.3, 0.5, 0.7, 0.9, 1.1])

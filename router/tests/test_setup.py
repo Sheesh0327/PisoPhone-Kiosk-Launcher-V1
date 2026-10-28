@@ -848,6 +848,16 @@ r = lib('check_all() { echo CHECKS; return 0; }; cmd_status; echo "rc=$?"', env=
 check("Recent alerts" in r.stdout and "alert number 6" in r.stdout and "alert number 2" in r.stdout and "alert number 1" not in r.stdout and "rc=0" in r.stdout,
       "status shows the last 5 alerts and does not fail because of them: " + r.stdout[-400:])
 
+# ---- feature 032: status tells the owner the months of sale detail kept, the months deleted, and the lifetime total ---------------------
+fp = f"{tmp}/fake_portal_ledger"
+open(fp, "w").write('#!/bin/sh\n[ "$1" = ledger ] && echo "Sales record: 3 months of detail kept, 20 months deleted on purpose (their totals are kept). Lifetime total: 135002 pesos."\n')
+os.chmod(fp, 0o755)
+r = lib('check_all() { echo CHECKS; return 0; }; cmd_status; echo "rc=$?"', env={"PISO_ROOT": aroot, "PISO_PORTAL_BIN": fp})
+check("Sales record: 3 months of detail kept, 20 months deleted on purpose" in r.stdout and "Lifetime total: 135002 pesos." in r.stdout and "rc=0" in r.stdout,
+      "status shows the sales record line: " + r.stdout[-400:])
+r = lib('check_all() { echo CHECKS; return 0; }; cmd_status; echo "rc=$?"', env={"PISO_ROOT": aroot, "PISO_PORTAL_BIN": f"{tmp}/no_such_portal"})
+check("Sales record" not in r.stdout and "rc=0" in r.stdout, "and a router with no program installed shows no such line and does not fail: " + r.stdout[-300:])
+
 # ---- feature 011 part B: the pairing tips say that another router nearby may answer the setup name ----------------------------
 PAIR_TIP = "another PisoHub router nearby may answer the setup name PisoCoinBox: switch it off for a few minutes, or run piso-setup box-wifi-name on it"
 cf = _bwn_conf("pairtips", KIOSK_PASS="kp-old-1")

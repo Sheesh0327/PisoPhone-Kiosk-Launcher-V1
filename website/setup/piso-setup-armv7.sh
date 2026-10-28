@@ -29,7 +29,7 @@
 
 VERSION="dev"
 # the release of this file (setup/RELEASE): routers install only a higher release that the owner signed
-PISO_RELEASE='1.5.23'
+PISO_RELEASE='1.5.24'
 # the CPU family the portal program in this file is built for (router_family below names the family of the router it runs on)
 PISO_ARCH='armv7'
 
@@ -1279,6 +1279,7 @@ cmd_status() {
 	DRY=1; check_all; _f=$?
 	box_name_notice   # (information only: it does not count as a failed check)
 	[ -s "$PISO_ROOT/etc/coinslot.d/alerts.txt" ] && { echo "Recent alerts (the router's monitor wrote them to /etc/coinslot.d/alerts.txt):"; tail -n 5 "$PISO_ROOT/etc/coinslot.d/alerts.txt" | sed 's/^/  /'; }
+	[ -x "$PORTAL_BIN" ] && "$PORTAL_BIN" ledger 2> /dev/null   # (information only: the months kept and deleted, and the lifetime total)
 	[ "$_f" = 0 ] && echo "All checks passed." || echo "$_f check(s) failed. Log: $LOG"
 	return "$_f"
 }

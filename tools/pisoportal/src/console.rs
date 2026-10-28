@@ -386,6 +386,7 @@ impl Console {
             Ok((n, _)) => (true, n),
             Err(l) => (false, l),
         };
+        let ledger_sum = crate::ledger::summary(&cfg.revenue_path());
         let mem = read("/proc/meminfo")
             .lines()
             .find_map(|l| l.strip_prefix("MemAvailable:").map(|v| v.trim().trim_end_matches("kB").trim().to_string()))
@@ -401,7 +402,7 @@ impl Console {
         let uptime = read("/proc/uptime").split_whitespace().next().unwrap_or("0").split('.').next().unwrap_or("0").to_string();
         format!(
             "{{\"version\":\"{}\",\"now\":{},\"online\":{},\"waiting\":{},\"wan_if\":\"{}\",\"rx_kbps\":{},\"tx_kbps\":{},\"rx_total\":{},\"tx_total\":{},\"history\":[{}],\
-             \"today\":{},\"week_total\":{},\"month_total\":{},\"total\":{},\"week\":[{}],\"box_ok\":{},\"box_signed\":{},\"ledger_ok\":{},\"ledger_lines\":{},\"mem_kb\":{},\"uptime\":{},\"alerts\":[{}]}}",
+             \"today\":{},\"week_total\":{},\"month_total\":{},\"total\":{},\"week\":[{}],\"box_ok\":{},\"box_signed\":{},\"ledger_ok\":{},\"ledger_lines\":{},\"ledger_kept\":{},\"ledger_pruned\":{},\"ledger_wanted\":{},\"mem_kb\":{},\"uptime\":{},\"alerts\":[{}]}}",
             env!("CARGO_PKG_VERSION"),
             now,
             online,
@@ -421,6 +422,9 @@ impl Console {
             box_signed,
             ledger_ok,
             ledger_lines,
+            ledger_sum.kept,
+            ledger_sum.pruned,
+            crate::ledger::Budget::load(&cfg.revenue_path()).keep_months,
             if mem.is_empty() { "0".into() } else { mem },
             uptime,
             alerts
@@ -491,12 +495,15 @@ impl Console {
 
 /// The owner's console settings (voucher choice at payment, mini-game minutes a day).
 fn settings_json(core: &Core) -> String {
+    let budget = crate::ledger::Budget::load(&core.cfg.revenue_path());
     format!(
-        "{{\"voucher_choice\":{},\"game_minutes\":{},\"file_send\":{},\"file_send_key\":{}}}",
+        "{{\"voucher_choice\":{},\"game_minutes\":{},\"file_send\":{},\"file_send_key\":{},\"ledger_max_kb\":{},\"ledger_keep_months\":{}}}",
         core.voucher_choice(),
         core.games.limit_secs() / 60,
         core.send.switch_on(),
-        core.send.has_key()
+        core.send.has_key(),
+        budget.max_kb,
+        budget.keep_months
     )
 }
 
@@ -708,8 +715,38 @@ fn handle(c: &Console, req: Request, mut conn: Incoming) {
                 ("POST", "/api/settings") => {
                     // (only the settings named in the body change)
                     let (vc, gm, fs) = (jget(&body, "voucher_choice"), jget(&body, "game_minutes"), jget(&body, "file_send"));
-                    if vc.is_empty() && gm.is_empty() && fs.is_empty() {
+                    let (lkb, lkm) = (jget(&body, "ledger_max_kb"), jget(&body, "ledger_keep_months"));
+                    if vc.is_empty() && gm.is_empty() && fs.is_empty() && lkb.is_empty() && lkm.is_empty() {
                         return json(&mut conn, "400 Bad Request", "{\"error\":\"NOTHING\"}", "");
+                    }
+                    // the revenue ledger's size budget (feature 032): both are checked before either is saved
+                    let kb = (!lkb.is_empty()).then(|| {
+                        lkb.parse::<u64>().ok().filter(|v| *v == 0 || (crate::ledger::MIN_KB..=crate::ledger::MAX_KB).contains(v))
+                    });
+                    let km =
+                        (!lkm.is_empty()).then(|| lkm.parse::<u64>().ok().filter(|v| (1..=crate::ledger::MAX_KEEP_MONTHS).contains(v)));
+                    if kb == Some(None) {
+                        let why = format!(
+                            "the ledger size must be 0 (never delete) or from {} to {} KB",
+                            crate::ledger::MIN_KB,
+                            crate::ledger::MAX_KB
+                        );
+                        return json(&mut conn, "400 Bad Request", &format!("{{\"error\":\"BAD_LEDGER_KB\",\"why\":\"{}\"}}", why), "");
+                    }
+                    if km == Some(None) {
+                        let why = format!("the months to keep must be a number from 1 to {}", crate::ledger::MAX_KEEP_MONTHS);
+                        return json(&mut conn, "400 Bad Request", &format!("{{\"error\":\"BAD_MONTHS\",\"why\":\"{}\"}}", why), "");
+                    }
+                    let dd = &c.core.cfg.data_dir;
+                    if let Some(Some(v)) = kb {
+                        if !crate::config::override_set(dd, "LEDGER_MAX_KB", &v.to_string()) {
+                            return json(&mut conn, "500 Internal Server Error", "{\"error\":\"IO\"}", "");
+                        }
+                    }
+                    if let Some(Some(v)) = km {
+                        if !crate::config::override_set(dd, "LEDGER_KEEP_MONTHS", &v.to_string()) {
+                            return json(&mut conn, "500 Internal Server Error", "{\"error\":\"IO\"}", "");
+                        }
                     }
                     if !gm.is_empty() {
                         match gm.parse::<u32>() {
