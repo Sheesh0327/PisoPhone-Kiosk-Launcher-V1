@@ -144,7 +144,7 @@ The owner makes cards on their own computer with `scripts/make_cards.py` (the ca
 - **Phone app:** `build-apk.yml` runs the unit tests, builds, signs and publishes the APK with `app.json`. `versionCode` is the CI run number and alone decides what is newer; the visible name is that number cut into digits (build 437 is 4.3.7).
 - **Coin box:** `firmware-images.yml` builds and signs the images; the box installs only a newer `PISO_FW_VERSION`, checks the signature and the hash, and goes back to its old image if the new one does not confirm itself.
 - **Router:** `publish-router.yml` signs `router-setup.sh` with a rollout percentage; a router installs only a newer, correctly signed release in its turn of the rollout, and undoes it if it does not run (`piso-setup self-update`).
-- **Path:** work on `beta`; `scripts/verify_release.py` checks keys, checksums, signatures and version rules; merging `beta` into `main` publishes. Details: `docs/RELEASE.md`, `docs/DEPLOY.md`.
+- **Path:** a feature branch merged into `main` (a router change goes through `beta` first: CI builds the router programs only there); `scripts/verify_release.py` checks keys, checksums, signatures and version rules; merging into `main` publishes. Details: `docs/RELEASE.md`, `docs/DEPLOY.md`.
 - A coin box is limited by its slot licenses: 2 phones are free, each more needs a P500 license key signed for that box, 12 at most; a box that already had more phones when licensing arrived keeps them (`getDeviceCap`, `SlotLicense.h`, docs/LICENSING.md).
 
 ## 9. Where things live
