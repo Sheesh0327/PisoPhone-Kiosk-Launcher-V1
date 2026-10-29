@@ -1,7 +1,7 @@
 # Feature 036: the site status panel (Part A: money agreement on the console front page)
 
-Status: **draft (waiting for the owner's approval; three decisions below change the epic)**   Branch: `feat/036-site-status-panel`   Area: router (console)
-Backlog rows: epic `specs/spec_03_overhaul.md` feature 036, D5 to D8   Release: router (next number after 1.5.26). **No firmware release, no app release in Part A.**
+Status: **decisions Q1 to Q4 answered by the owner 2026-10-29; waiting for the owner's word to approve the spec and plan (no code before it)**   Branch: `feat/036-site-status-panel`   Area: router (console)
+Backlog rows: epic `specs/spec_03_overhaul.md` feature 036, D5 to D8   Release: router (next number after 1.5.26). **No firmware release, no app release.** Version skew is split out as feature 044 (below).
 
 ## Intent
 A shop owner looking at the router console cannot see whether the coin box and the sales record agree. Today they see "Records OK", which only
@@ -65,17 +65,19 @@ Panel position: a full-width line directly under the earnings header, above the 
 8. `git diff` of `core.rs`, `ledger.rs` (write paths), `pricing.rs`, `voucher.rs` is empty: no payment code touched. `cargo test` and the seven setup test files pass; `check_security_rules.sh` passes.
 9. `setup/RELEASE` raised, generated files rebuilt, `build_piso_setup.py --check` passes; hardware check **RS58** added to `docs/REAL_WORLD_TESTING.md` (a real router and box: panel agrees after coins; after collecting revenue the restart note; box unplugged shows row 6).
 
-## Part B: version skew (D5, D6): NOT in this spec until the owner chooses
-Warn only, never block (D6) stays. The *where* has to be decided again (Q1), because the box cannot know what it never sees. Three designs:
+## Part B: version skew (D5, D6): split out as feature 044, not built here
+Warn only, never block (D6) stays. The *where* is decided again, because the box cannot know what it never sees. The owner chose (Q1, Q4) to split it and to start from **B3**. The three designs, kept for 044's spec:
 - **B1, the router holds the expected set.** The router already reads `router.json`. It would also read `firmware.json` and `app.json` (public, same host). It needs the box's firmware version (a new field in the link answer: router and box only, no phone change) and, for phones, their app version (the phone heartbeat would have to carry it: **a box <-> phone contract change, both sides, new vectors, app and firmware releases**). Warn on the console and in `alerts.txt`. Without the phone part it covers router and box only.
 - **B2, the owner's browser holds it.** The box's dashboard already fetches the feed. It could compare the box, and phones the box has seen with versions (same heartbeat change), and show a line. Nothing on the console, nothing in `alerts.txt` (the browser is not always open), so it fails the epic's "always visible".
-- **B3, router and box only (recommended first step).** Compare router and box firmware to the feeds; leave phone app versions for later. One small router change plus one link field; a firmware release only to add the field.
+- **B3, router and box only (chosen as 044's starting point).** Compare router and box firmware to the feeds; leave phone app versions for later. One small router change plus one link field; a firmware release only to add the field.
 
 ## Out of scope
 A sales history page (offered in the epic, not taken); changing any alert rule (Q3); the box's own dashboard; Telegram wording; PisoPhone-only shops; making the wifi counter part of the signed facts (a firmware and link contract change; recorded as a follow-up).
 
 ## Owner decisions
-- **Q1: split the feature?** Recommended: 036 is Part A only (router, one release); version skew becomes its own feature after you pick B1, B2 or B3. This changes the epic's 036 paragraph, D5 and section 5 (036 would no longer be "router + firmware").
-- **Q2: how fresh?** Recommended: live, with a 60-second cache, so the panel is current without hammering the box. Alternative: show what the hourly monitor last stored (always up to one hour old, zero extra box calls).
-- **Q3: box ahead on current firmware** (row 2). Recommended: show it only. Alternative: also write one line to `alerts.txt` when the gap lasts more than an hour (changes `piso_monitor.sh`).
+Answered by the owner on 2026-10-29 (recorded in the epic as D35 to D37):
+- **Q1 (D35): split the feature. Yes.** 036 is the money panel only (router, one release). Version skew becomes feature 044; D5's premise (the box fetches the feed) was wrong.
+- **Q2 (D36): live, with a 60-second cache.** Criterion 4 is the proof.
+- **Q3 (D37): box ahead on current firmware is shown only**, no alert and no change to `piso_monitor.sh`.
+- **Q4: 044 starts from B3** (router and box firmware against the feeds; phone app versions later).
 - Defaults I took, tell me if wrong: the panel is a full-width line above the tiles, not a tile; row 2 is gold, never red; the word "MISMATCH" is used only for row 4.

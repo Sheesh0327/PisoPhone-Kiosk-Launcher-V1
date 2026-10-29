@@ -51,7 +51,8 @@ Each is one branch, one area, one chat. **Do them in this order**; later ones as
 | **033** | Remove the spinning wheel | router | router |
 | **034** | Remove the mini-game | router | router |
 | **035** | Say which routers are actually supported | docs + setup | router (docs only) |
-| **036** | The site status panel (money agreement + version skew) | router + firmware | router + firmware |
+| **036** | The site status panel: money agreement only (version skew split out as 044, D35) | router | router |
+| **044** | Version skew warning (router and box firmware against the feeds; phone apps later) | router + firmware | router + firmware; spec when its turn comes |
 | **037** | Setup asks fewer questions, one front door | setup + router | router + site |
 | **038** | Phone-led setup | app + firmware + router | app + firmware + router |
 | **039** | Triage the owed hardware checks | docs | none |
@@ -107,7 +108,8 @@ ahead of the evidence. 035 must say honestly what "tested" covers — the progra
 RS35 has never been run, so not every feature has been checked on it — and must not imply a model is supported because it
 appears in the compatibility table.
 
-### 036 The site status panel  (owner: box holds it; warn only; always visible; show both numbers)
+### 036 The site status panel  (owner: warn only; always visible; show both numbers)
+**Changed 2026-10-29 (D35 to D37, `specs/features/036-site-status-panel/spec.md`): 036 is the money agreement panel only; the version-skew bullet below moves to feature 044 and its "the box holds it" design is withdrawn (the box never fetches the feed). On current firmware a box ahead of the record is not rental phones (D37).** The original text follows.
 Two gaps in one feature, both on surfaces the owner already looks at.
 - **Version skew.** The **coin box** holds the expected set, because it is the only part present in every configuration and it
   already sees phones (heartbeat) and the router (boxlink). It learns the expected versions from the signed feed it already
@@ -222,6 +224,9 @@ phones and you do not provision them as a service.
 | D32 | is `aarch64` supported? | **No, answered 2026-10-29.** Only `mipsel` (the Qihoo 360 T6M's family, the only one the program has run on) is supported; `aarch64` joins `mips`, `armv7` and `x86_64` as untested. Built in feature 035 (`docs/ROUTERS.md`, `check_arch` warns and proceeds for all four, never refuses). Overrides the first draft of the 035 paragraph in section 6 |
 | D33 | slot licensing and the 3.12.4 feed text | **Answered 2026-10-29: licensing stays (confirms D3 and D23); the feed text is wrong.** `website/update/firmware.json` says "Slot licensing removed: all 10 phone slots are available" but `SlotLicense.h` still has `FREE_SLOTS = 2`. The signed feed is not edited; the next firmware release carries an accurate changelog line |
 | D34 | branches | **Answered 2026-10-29:** no `beta`; a green feature branch merges straight into `main`; CI publishes the router at 0% and only the owner raises it. `CLAUDE.md` section 5 rewritten to say so (the frozen constitution still says "from `beta`" in rule 8; it is read as `main` until its next version) |
+| D35 | split 036? | **Yes, answered 2026-10-29.** 036 is the money agreement panel only (router, no firmware or app release). Version skew moves to **feature 044**, starting from design B3 (router and box firmware against the feeds; phone app versions later). Reason: the box never fetches the signed feed (the owner's browser does, `ota.js`) and phones do not report an app version, so D5's design cannot work as written. D6 (warn only) and D7, D8 stand |
+| D36 | how fresh the money panel is | **Live with a 60-second cache, answered 2026-10-29** (at most one extra box call a minute) |
+| D37 | box ahead of the record on current firmware | **Show it only, answered 2026-10-29.** The box reports Wi-Fi coins on their own, so a box ahead is not rental phones; the panel says so (gold, never red) and no alert is added |
 | D28 | the guide's "mixed" eFuse route | **Answered 2026-10-28: drop the hand burns, use the documented flow.** The operator burns **only the two keys** (the flash-encryption key and the Secure Boot digest). The Release-mode bootloader sets `SECURE_BOOT_EN`, the `DIS_*` fuses, secure download mode and `SPI_BOOT_CRYPT_CNT` itself on first boot, and revokes the unused digest slots. The whole procedure becomes one flow ESP-IDF documents, with three fewer irreversible operator steps. The irreversible moment is now the **first boot of the hardened bootloader**, which is what feature 040's corrected criterion 3 already says |
 
 ## 8. Sequencing and releases
