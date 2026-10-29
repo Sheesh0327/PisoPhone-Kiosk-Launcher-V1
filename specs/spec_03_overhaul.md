@@ -94,8 +94,8 @@ Already pointing this way in the code: the box dashboard builds `https://pisopho
 hands". The plan is the direction the repository was already taking.
 
 ### 035 Say which routers are actually supported  (owner: demote three, keep building them, name one to buy)
-`mipsel` and `aarch64` are **supported** (MT7621 plus the modern Wi-Fi 6 boards: the real market). `mips`, `armv7` and `x86_64`
-become **untested**: `docs/ROUTERS.md` gains a support column, and the installer **warns and proceeds** on an untested family —
+**Only `mipsel` is supported** (D32, 2026-10-29): it is the only family that has ever run on real hardware. `aarch64`,
+`mips`, `armv7` and `x86_64` are all **untested**: `docs/ROUTERS.md` gains a support column, and the installer **warns and proceeds** on an untested family —
 it never refuses. CI keeps building all five, so the door stays open and a family can be promoted the day one runs in a shop.
 Because routers are now bring-your-own, this document is the customer contract: it also **names one recommended model the
 customer can order**, so most buyers land on known-good hardware and most support conversations never start. You do **not**
@@ -210,6 +210,7 @@ phones and you do not provision them as a service.
 | D20 | which firmware ships on a sold box | **one full build for everything**; variants are not sold (037) |
 | D21 | the router's internet during setup | **required; the offline path is deleted** (feature 041) |
 | D22 | `docs/ROUTERS.md` | **name one recommended model to buy**, do not stock it (035) |
+| D32 | is aarch64 supported? | **No, answered 2026-10-29: aarch64 is untested too.** Only **mipsel** is supported — it is the only family that has ever run on real hardware. `aarch64`, `mips`, `armv7` and `x86_64` are all untested: the installer warns and proceeds on each, and never refuses. This resolves the contradiction feature 035 found between D4 (which called aarch64 supported) and D31's rule, and it makes the rule consistent: a family is supported when one has run in a shop, never before |
 | D31 | which model to recommend | **The tested one: Qihoo 360 T6M** (board `360,360t6m`, MT7621, mipsel, 16 MB NOR + 128 MB NAND), answered 2026-10-28. It is the only router the program has ever run on, on ImmortalWrt 23.05.0 (r27285). The owner's rule is to recommend only hardware that has actually been tested, so the list grows as models are proven, never ahead of the evidence. **Caveat to record in 035:** RS35 on that router has still never been run, so "tested" means the program runs on it, not that every feature has been checked |
 | D23 | slot licensing, now that boxes are sold | **still leave it alone**; revisit once boxes are selling |
 | D24 | where GATE 1 sits | **first, in parallel with the deletions** (section 8) |
