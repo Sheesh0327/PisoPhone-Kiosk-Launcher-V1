@@ -53,7 +53,10 @@ cmd_box_update() {
 	_mode="${1:-apply}"
 	[ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"
 	DRY=0
-	if [ ! -r "$CONF" ] || [ -z "$(conf_get BOX_ADMIN_PASS)" ]; then die "no coin box is set up on this router: run piso-setup pair first"; fi
+	if [ ! -r "$CONF" ] || [ -z "$(conf_get BOX_ADMIN_PASS)" ]; then
+		[ -r "$CONF" ] && record_update_state box unknown "" "" "no coin box password on this router: run piso-setup pair first"
+		die "no coin box is set up on this router: run piso-setup pair first"
+	fi
 	_lock="${TMPDIR:-/tmp}/piso-boxupdate.lock"
 	if ! mkdir "$_lock" 2> /dev/null; then
 		if kill -0 "$(cat "$_lock/pid" 2> /dev/null)" 2> /dev/null; then log "Another box update is running."; return 0; fi
@@ -67,16 +70,21 @@ cmd_box_update() {
 	_base=$(conf_get UPDATE_URL); _base="${_base:-$UPDATE_URL_DEFAULT}"
 	if ! fetch_url "$_base/firmware.json" "$_work/firmware.json" 65536; then
 		log "No box firmware information at $_base (offline, or nothing published yet)."
+		record_update_state box unknown "" "" "the website cannot be reached (offline, or nothing published yet)"
 		[ "$_mode" = apply ] && notify "box update: could not reach $_base"
 		return 0
 	fi
 	if ! box_info; then
 		log "The coin box does not answer, so its firmware cannot be checked now."
+		record_update_state box unknown "" "" "the coin box did not answer (switched off, out of range, busy, or the password is wrong)"
 		[ "$_mode" = apply ] && notify "box update: the coin box does not answer"
 		return 0
 	fi
 	_new=$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' "$_work/firmware.json" | head -n 1)
 	if ! ver_newer "$_new" "$BOX_FW"; then
+		if [ "$_new" = "$BOX_FW" ]; then record_update_state box current "$_new" "$BOX_FW" ""
+		elif ver_newer "$BOX_FW" "$_new"; then record_update_state box newer "$_new" "$BOX_FW" ""
+		else record_update_state box unknown "" "$BOX_FW" "the website's firmware information has no usable version"; fi
 		log "The coin box is up to date (firmware $BOX_FW)."
 		[ "$_mode" = apply ] && notify "box update: the coin box already runs the latest firmware ($BOX_FW)"
 		return 0
@@ -85,10 +93,11 @@ cmd_box_update() {
 	_size=$(fw_field "$_work/firmware.json" "$BOX_CHIP" size); _sig=$(fw_field "$_work/firmware.json" "$BOX_CHIP" sig)
 	if [ -z "$_url" ] || [ -z "$_sha" ] || [ -z "$_size" ] || [ -z "$_sig" ]; then
 		log "Box firmware $_new is published, but not for this box's chip ($BOX_CHIP)."
+		record_update_state box unknown "$_new" "$BOX_FW" "the published firmware is not built for this box's chip ($BOX_CHIP)"
 		return 0
 	fi
 	_note=$(sed -n 's/.*"changelog": *"\([^"]*\)".*/\1/p' "$_work/firmware.json" | tr -cd 'A-Za-z0-9 .,;:()/+_%-' | cut -c1-200)
-	if [ "$_mode" = check ]; then log "Box firmware $_new is available (the box runs $BOX_FW). $_note"; return 0; fi
+	if [ "$_mode" = check ]; then record_update_state box available "$_new" "$BOX_FW" "$_note"; log "Box firmware $_new is available (the box runs $BOX_FW). $_note"; return 0; fi
 
 	_hold=""
 	if [ "$BOX_IMG" = pending_verify ] || [ "$BOX_IMG" = new ]; then _hold="the box is still checking the firmware it was last given"
@@ -102,6 +111,8 @@ cmd_box_update() {
 	fi
 	if [ -n "$_hold" ]; then
 		log "Box firmware $_new is available; $_hold."
+		case "$_hold" in "automatic updates are off"*) _hs=off ;; "installing "*) _hs=failed ;; *) _hs=waiting ;; esac
+		record_update_state box "$_hs" "$_new" "$BOX_FW" "$_hold"
 		if [ "$_mode" = auto ] && [ "$(conf_get BOX_UPDATE_NOTIFIED)" != "$_new" ]; then conf_set BOX_UPDATE_NOTIFIED "$_new"; notify "box update: firmware $_new is available ($_note): $_hold"; fi
 		return 0
 	fi
@@ -110,9 +121,9 @@ cmd_box_update() {
 	trap '' HUP INT TERM
 	_tries=$(conf_get BOX_UPDATE_TRIES); case "$_tries" in "$_new":*) _tries="${_tries#*:}" ;; *) _tries=0 ;; esac
 	conf_set BOX_UPDATE_TRIES "$_new:$((_tries + 1))"
-	fetch_url "$_url" "$_work/box.bin" 3145728 || { log "Could not download box firmware $_new."; notify "box update: could not download firmware $_new"; return 1; }
+	fetch_url "$_url" "$_work/box.bin" 3145728 || { log "Could not download box firmware $_new."; record_update_state box failed "$_new" "$BOX_FW" "the download failed"; notify "box update: could not download firmware $_new"; return 1; }
 	if [ "$(wc -c < "$_work/box.bin" | tr -d ' ')" != "$_size" ] || [ "$(sha256sum "$_work/box.bin" | cut -d' ' -f1)" != "$_sha" ]; then
-		log "Box update refused: the downloaded file is not the one published."; notify "box update REFUSED, nothing was installed: the downloaded file is not the one published"; return 1
+		log "Box update refused: the downloaded file is not the one published."; record_update_state box failed "$_new" "$BOX_FW" "refused: the downloaded file is not the one published"; notify "box update REFUSED, nothing was installed: the downloaded file is not the one published"; return 1
 	fi
 	log "Installing box firmware $_new (the box runs $BOX_FW) $_note"
 	_pw=$(conf_get BOX_ADMIN_PASS)
@@ -120,11 +131,12 @@ cmd_box_update() {
 		--data-urlencode "chip=$BOX_CHIP" --data-urlencode "version=$_new" --data-urlencode "sha256=$_sha" --data-urlencode "size=$_size" --data-urlencode "sig=$_sig" 2> /dev/null)
 	if [ "$_r" != 200 ]; then
 		_why=$(sed -n 's/.*"message": *"\([^"]*\)".*/\1/p' "$_work/manifest.out" 2> /dev/null | head -n 1)
-		log "The coin box refused the update (HTTP $_r): $_why"; notify "box update REFUSED by the box (${_why:-HTTP $_r}): it stays on firmware $BOX_FW"; return 1
+		log "The coin box refused the update (HTTP $_r): $_why"; record_update_state box failed "$_new" "$BOX_FW" "the coin box refused the update (${_why:-HTTP $_r})"; notify "box update REFUSED by the box (${_why:-HTTP $_r}): it stays on firmware $BOX_FW"; return 1
 	fi
 	_r=$(curl -s -m 240 -o "$_work/upload.out" -w '%{http_code}' -u "admin:$_pw" -H 'Expect:' -F "update=@$_work/box.bin;filename=firmware.bin" "http://$BOX_IP/update" 2> /dev/null)
 	if [ "$_r" != 200 ]; then
 		log "The coin box did not take the firmware (HTTP $_r): $(head -c 200 "$_work/upload.out" 2> /dev/null)"
+		record_update_state box failed "$_new" "$BOX_FW" "the coin box did not take the firmware (HTTP $_r): $(head -c 100 "$_work/upload.out" 2> /dev/null)"
 		notify "box update FAILED ($(head -c 120 "$_work/upload.out" 2> /dev/null | tr -cd 'A-Za-z0-9 .,;:()/+_%-')): the box stays on firmware $BOX_FW; it tries again at a quiet moment"
 		return 1
 	fi
@@ -136,11 +148,13 @@ cmd_box_update() {
 	done
 	if [ "$BOX_FW" = "$_new" ]; then
 		conf_set BOX_UPDATE_TRIES ""
+		record_update_state box current "$_new" "$_new" ""
 		log "Box firmware $_new is installed and running."
 		notify "box update: coin box firmware $_new installed and running. $_note"
 		return 0
 	fi
 	log "The coin box did not come back on firmware $_new (it answers as ${BOX_FW:-nothing})."
+	record_update_state box failed "$_new" "$BOX_FW" "the coin box did not come back on firmware $_new (it answers as ${BOX_FW:-nothing})"
 	notify "box update to firmware $_new did not take: the box is on ${BOX_FW:-no answer}; if it does not answer, power-cycle it (it goes back to its old firmware by itself if the new one does not start)"
 	return 1
 }

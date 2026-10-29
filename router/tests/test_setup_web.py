@@ -227,9 +227,6 @@ class FakeCore:
     def router_reaches_site(self, host, password):
         self.calls.append(("reach", host, password))
         return getattr(self, "has_internet", True)
-    def prefetch(self, with_router, emit):
-        self.prefetched = getattr(self, "prefetched", []) + [with_router]
-        return []
     def board_mac(self, port):
         self.calls.append(("board_mac", port))
         return "AA:BB:CC:DD:EE:01"
@@ -894,46 +891,6 @@ core.advice = None
 c.do("search")
 s = c.wait(lambda s: s["router"]["host"] == "192.168.1.1", "Check again finds the router once the clash is gone")
 check(s["router"]["error"] is None and s["can_next"], "and the advice is gone")
-server.shutdown()
-
-# ---- feature 045 (SU-02): the early download at Start, and the page's two cable prompts -------------------------------------------------------
-for mode, with_router in (("wifi", True), ("phone", False)):
-    core, session, server = start(mode=mode)
-    session.run_checks()
-    end = time.time() + 5
-    while time.time() < end and not getattr(core, "prefetched", None):
-        time.sleep(0.05)
-    check(getattr(core, "prefetched", None) and core.prefetched[0] is with_router, f"{mode}: the software is downloaded at Start (router files: {with_router}): {getattr(core, 'prefetched', None)}")
-    server.shutdown()
-
-
-class CableCore(FakeCore):
-    def __init__(self):
-        super().__init__(state="configured")
-        self.go = threading.Event()
-
-    def install(self, host, answers, out_dir, emit, stage, notify):
-        notify("Unplug the network cable from the router now: this computer needs its own internet to download the router's software. "
-               "The installation continues by itself.")
-        self.go.wait(10)
-        notify("Plug the network cable back into the router. The installation continues by itself.")
-        return FakeCore.install(self, host, answers, out_dir, emit, stage, notify)
-
-
-core, session, server = start(core=CableCore())
-c = Client(server)
-c.call("POST", "/api/login", {"pin": "123456"})
-c.wait(lambda s: s["checks"] is not None, "checks")
-c.do("next")
-c.wait(lambda s: s["router"]["host"] is not None, "found")
-c.do("next")
-c.do("next")
-c.wait(lambda s: s["usb"]["boards"] is not None, "boards")
-c.do("start_install")
-s = c.wait(lambda s: s["install"]["banner"] and "Unplug the network cable from the router now" in s["install"]["banner"][1], "the unplug prompt is shown")
-check(s["install"]["banner"][0] == "warn" and "continues by itself" in s["install"]["banner"][1], "as a warning that says the install goes on by itself: " + str(s["install"]["banner"]))
-core.go.set()
-s = c.wait(lambda s: s["install"]["ok"], "the installation finishes after the cable is back")
 server.shutdown()
 
 # ---- feature 045 (SU-15): the Phones step does not offer the setup page while the router cannot reach the app's address ----------------------------

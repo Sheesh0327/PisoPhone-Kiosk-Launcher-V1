@@ -136,7 +136,7 @@ def restart_after_kill(cut):
     global cuts_done
     if cut:
         cuts_done += 1
-        for name in ("revenue.csv", "wheel.log"):
+        for name in ("revenue.csv",):
             p = f"{env.data}/{name}"
             if os.path.exists(p):
                 with open(p, "ab") as f:

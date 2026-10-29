@@ -34,6 +34,6 @@ Run the router tests with `< /dev/null` in the background and read the last line
 Order: the confirmed rows first (SU-06b, SU-07, SU-05), then the money row SU-11, then SU-03, then SU-08 (uncertain).
 
 ## Release
-Router: `setup/RELEASE` 1.5.23 -> 1.5.30. Regenerated, never edited: `setup/piso-setup*.sh` (+ `.sha256`), `website/setup/*`, `website/install.sh`, `website/pisophone_setup.py`. CI signs and publishes at 0% after the merge; the owner raises it to 100% (`CLAUDE.md` section 5, `docs/RELEASE.md`). No push to `beta`, no pull request and no merge from here: the feature waits for the owner's RS61 bench run (D8).
+Router: `setup/RELEASE` 1.5.29 -> 1.5.30. Regenerated, never edited: `setup/piso-setup*.sh` (+ `.sha256`), `website/setup/*`, `website/install.sh`, `website/pisophone_setup.py`. CI signs and publishes at 0% after the merge; the owner raises it to 100% (`CLAUDE.md` section 5, `docs/RELEASE.md`). No push to `beta`, no pull request and no merge from here: the feature waits for the owner's RS61 bench run (D8).
 
 Generated files (`setup/piso-setup*`, `website/setup/*`, `website/install.sh`, `website/pisophone_setup.py`) are rebuilt for the tests after each group but committed once, at the close-out (group 7), so the branch does not carry ten copies of 10 MB; a commit before that has stale generated files.

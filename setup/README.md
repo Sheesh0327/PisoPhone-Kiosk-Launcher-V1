@@ -8,7 +8,7 @@ box over USB, sets up the router and pairs them. About 15 minutes a unit, and on
 ## What you need
 - The **ESP32 coin box board** and a USB data cable (a charge-only cable does not work), plugged into the setup computer
 - An **OpenWrt router** (for example the 360T6M), factory reset
-- A **modem** with internet, and a network cable from it to the router's **WAN** port. The router does **not** need internet while the setup runs (this computer does: it downloads the router's software and copies it over, and the router checks it before it installs it); plug the modem in anyway, customers need it. If that cannot work for your router the setup says why and uses the router's internet instead; `--router-online` skips the copying.
+- A **modem that is online**, and a network cable from it to the router's **WAN** port. **The router needs internet for the first setup**: it downloads the installer and its packages itself. A router with no internet cannot be set up; the setup stops before it changes anything and says so. Check this before you begin (replacing a router, swapping a modem, or an ISP that is not connected yet are the usual causes).
 - A network cable from the setup computer to one of the router's **LAN** ports
 - **A phone or laptop** to open the setup page (it must reach the setup computer: see "Which network?" below)
 - The **rental phones**, factory reset
@@ -105,9 +105,8 @@ For the next phone, choose the next slot and make the link again.
 | "This computer is on two networks that use the same addresses" | The cable is on the router and the Wi-Fi is on a modem that is also 192.168.1.x. Put the computer's Wi-Fi on your phone's hotspot (or turn it off), then press *Search again*. |
 | "The router has a password ... Go back to the Router step" | A repeat after the password was set needs it: it is in `pisophone-router-password.txt` or the summary in the saved folder. *Try again* uses the saved one by itself. |
 | "... installs packages with apk" | The router runs OpenWrt 25.x (or a snapshot), which this setup does not support yet. Use OpenWrt 23.05 or 24.10 (`docs/ROUTERS.md`). Nothing was changed on the router. |
-| "Unplug the network cable from the router now" | This computer's internet goes through the router, which has none yet. Unplug the cable, wait for the download, then plug it back when asked: the installation continues by itself. |
 | The Phones step says to plug the modem into the WAN port | A rental phone gets the app through the router, so the router needs internet. Plug the modem into the router's WAN port, wait a minute, tap *Check again*. |
-| "The router could not download..." | The modem must be in the router's WAN port and have internet. (Normally this computer's internet is used instead; the message "setup without the router's internet is not possible: ..." says why it was not.) |
+| "The router has no internet, and the first setup needs it" / "The router could not download..." | The router needs internet for the first setup. Plug the modem into the router's WAN port, wait a minute until the modem is online, then tap *Try again*: nothing was changed on the router. |
 | The coin box takes long to join, or never, while another PisoHub router is on | Another router nearby may answer the name a new box knows (`PisoCoinBox`). Switch it off for a few minutes while this one pairs, or run `piso-setup box-wifi-name` on it (see "Prefer to do it by hand?" in `MANUAL.md`). After pairing, this router gives its box a name of its own. |
 | "The coin box did not join" | Is the box powered (the USB cable does it), near the router, and written by this program (it erases the board first)? Tap *Try again*: the installation continues where it stopped. |
 | esptool or ssh "Missing" on the first page | Tap *Install what is missing*. Without root rights it shows the exact `sudo apt install ...` command to run. |

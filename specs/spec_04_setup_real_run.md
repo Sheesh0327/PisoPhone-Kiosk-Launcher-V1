@@ -14,6 +14,8 @@ This epic and its three features were written on 2026-10-28 as **spec 03** and *
 | RS56, RS57, RS58 | **RS60, RS61, RS62** | `docs/REAL_WORLD_TESTING.md` | the hardware checks of 045, 046 and 047 |
 | router release 1.5.24 | **1.5.30** | `setup/RELEASE` | 1.5.24 went to the ledger cap; `main` was at 1.5.29 |
 
+Merged with `main` on 2026-10-29: feature 041 (already on `main`) removed the setup without the router's internet. So **SU-02** (the early download and the "unplug the router's cable" prompt) is `wont-fix`, and its code and tests were left out of the merge. **SU-06a** (an apk router is refused) was kept and now asks the router for its package program (`check_router_packager`) instead of reading its package sources. SU-04 (a router at any address) was kept.
+
 Old branch names are kept as they were; commits and ledger entries from before this date may still use the old numbers.
 
 ## 1. Goal

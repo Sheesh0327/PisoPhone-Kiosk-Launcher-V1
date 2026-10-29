@@ -1,7 +1,7 @@
 # Feature 046: the router installer in a real shop
 
 Status: **built and validated on a computer 2026-10-28; waits for the owner's RS61 bench run (D8)**   Branch: `feat/046-router-setup-real-run` (from `origin/main` plus the epic commit, as for 045)   Area: router (`setup/install.sh`, `setup/src/*.sh`, `router/piso_monitor.sh`, the setup program's answer line)
-Backlog rows: SU-03, SU-11, SU-06b, SU-05, SU-07, SU-08 (`specs/spec_04_findings.json`; SU-08 may close `wont-fix` on RS61 (c) evidence)   Release: router (`setup/RELEASE` 1.5.23 -> 1.5.30; CI signs and publishes at 0%, the owner raises it)
+Backlog rows: SU-03, SU-11, SU-06b, SU-05, SU-07, SU-08 (`specs/spec_04_findings.json`; SU-08 may close `wont-fix` on RS61 (c) evidence)   Release: router (`setup/RELEASE` 1.5.29 -> 1.5.30; CI signs and publishes at 0%, the owner raises it)
 
 ## Intent
 The router side of the one-click setup has never run end to end on real hardware. This feature fixes what a desk review says a real run will hit
@@ -18,7 +18,7 @@ rules: a box paired to the wrong router credits the wrong shop (money), and the 
   published by CI as always. `setup/RELEASE` goes up because the installed code changes.
 
 ## Constraints
-- Raise `setup/RELEASE` (1.5.23); regenerate with `python3 tools/build_piso_setup.py` (never by hand); `--check` must pass.
+- Raise `setup/RELEASE` (1.5.30); regenerate with `python3 tools/build_piso_setup.py` (never by hand); `--check` must pass.
 - **Size:** the installer is 1639 of 1700 KB and the installed command (`piso-setup.sh.in`) is **144 of 150 KB**, so about 6 KB are left
   (`router/tests/test_footprint.py`). Every fix is written small; shell shared between rows goes in one function. Raising a limit is the owner's
   decision (Q2); the test must stay green.

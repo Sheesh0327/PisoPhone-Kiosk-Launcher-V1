@@ -96,7 +96,8 @@
     "severity": "high",
     "money_or_signing": false,
     "confidence": "reported",
-    "status": "fixed",
+    "status": "wont-fix",
+    "reason": "Superseded on 2026-10-29 by feature 041, already on main: the first setup no longer builds a package bundle on the computer, so there is no download through the router's cable to protect. The router must have internet and downloads its own software.",
     "problem": "With the router cable in, the computer usually sends its internet through the router (a cable has a better route metric than Wi-Fi), and the factory router has none (WAN unplugged, or WAN 192.168.1.x clashes with its own LAN). The coin box software and the offline bundle then fail to download: the setup without the router's internet (feature 011) breaks exactly where it is meant to help.",
     "fix": "download coin box software (every chip), installer files and app.json at Start; before the router packages check the website answers, else ask to unplug the router cable for the download (D5)",
     "test": {

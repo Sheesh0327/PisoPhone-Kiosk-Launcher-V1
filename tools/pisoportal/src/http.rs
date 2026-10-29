@@ -2,7 +2,6 @@
 //! everything else (Insert Coin, coins, Done, the result) travels over it. A device is the MAC address the router itself
 //! sees behind its connection (ARP), never what the page says.
 use crate::core::{log, Core};
-use crate::game::device_key;
 use crate::pricing::{fmt_min, Plan, Pricing};
 use crate::util::{b64_decode, b64_encode, jget, json_esc, query_get, sha256_hex, url_decode, valid_mac};
 use std::collections::HashMap;
@@ -93,23 +92,10 @@ fn squeeze(src: &str) -> String {
     out.lines().map(str::trim).filter(|l| !l.is_empty()).collect::<Vec<_>>().join("\n")
 }
 
-/// The mini-game page for a device with `left` seconds of play today (a small page of its own: the coin page is not touched).
-pub fn game_page(left: u32) -> String {
-    squeeze(include_str!("game.html")).replace("%LEFT%", &left.to_string())
-}
-
 /// The page where a guest sends a file to the owner.
 pub fn send_page(max_mb: u64) -> String {
     squeeze(include_str!("send.html")).replace("%MAXB%", &(max_mb * 1024 * 1024).to_string()).replace("%MAX%", &max_mb.to_string())
 }
-
-/// The spinning wheel's page (the odds and the result come from the router: `/wheel/state`, `/wheel/spin`).
-pub fn wheel_page(t: &crate::wheel::Table) -> String {
-    squeeze(include_str!("wheel.html")).replace("%ODDS%", &crate::wheel_run::odds_rows(t))
-}
-
-/// What a device sees when it opens the game with no time left today.
-const GAME_USED_UP: &str = "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Coin Catch</title><style>body{margin:0;background:#050d22;color:#eef3ff;font:16px/24px system-ui,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:20px;box-sizing:border-box}div{max-width:340px;text-align:center;background:#0c1a3a;border:1px solid #1f3361;border-radius:12px;padding:20px}p{color:#97a6c7}a{display:block;margin-top:14px;padding:13px;border-radius:10px;background:#1d63d6;color:#fff;text-decoration:none;font-weight:700}</style></head><body><div><h1>Mini-game time is used up</h1><p>Each device gets a few minutes of play a day. Come back tomorrow.</p><a href=\"/\">Back to the Wi-Fi page</a></div></body></html>";
 
 pub fn build_page(core: &Core) -> String {
     let cfg = &core.cfg;
@@ -543,7 +529,7 @@ fn handle_send_upload(p: &Portal, req: Request, mut conn: Incoming, peer: Socket
         return answer(&mut conn, "411 Length Required", "INCOMPLETE", "");
     }
     let name = crate::send::encode_name(req.header("x-filename").unwrap_or(""));
-    let device = device_key(arp_mac(&p.core.cfg.arp_file, &peer.ip().to_string()), &peer.ip().to_string());
+    let device = crate::util::device_key(arp_mac(&p.core.cfg.arp_file, &peer.ip().to_string()), &peer.ip().to_string());
     let _ = conn.s.set_read_timeout(Some(crate::send::idle_time()));
     let mut body = (&mut conn).take(len);
     let started = Instant::now();
@@ -601,9 +587,6 @@ fn handle(p: Arc<Portal>, stream: TcpStream, peer: SocketAddr) {
     if req.method == "POST" && req.path == "/send/upload" {
         return handle_send_upload(&p, req, conn, peer);
     }
-    if req.method == "POST" && req.path == "/wheel/spin" {
-        return handle_wheel_spin(&p, req, conn, peer);
-    }
     if req.method != "GET" && !head_only {
         return respond(&mut conn.s, "405 Method Not Allowed", "text/plain", "", "Allow: GET, HEAD\r\n");
     }
@@ -625,51 +608,12 @@ fn handle(p: Arc<Portal>, stream: TcpStream, peer: SocketAddr) {
             };
             ws_session(Arc::clone(&p.core), conn, &key, mac);
         }
-        "/game" | "/game/" => {
-            let games = &p.core.games;
-            if !games.enabled() || p.core.wheel.enabled() {
-                return respond(&mut conn.s, "404 Not Found", "text/plain", "not found", "");
-            }
-            let key = device_key(arp_mac(&p.core.cfg.arp_file, &peer.ip().to_string()), &peer.ip().to_string());
-            let left = games.begin(&key, crate::util::now_secs());
-            let html = if left == 0 { GAME_USED_UP.to_string() } else { game_page(left) };
-            respond_bytes(&mut conn.s, "200 OK", "text/html; charset=utf-8", html.as_bytes(), "Cache-Control: no-store\r\n", !head_only)
-        }
-        "/wheel" | "/wheel/" => {
-            if !p.core.wheel.enabled() {
-                return respond(&mut conn.s, "404 Not Found", "text/plain", "not found", "");
-            }
-            let html = wheel_page(&p.core.wheel.table());
-            respond_bytes(&mut conn.s, "200 OK", "text/html; charset=utf-8", html.as_bytes(), "Cache-Control: no-store\r\n", !head_only)
-        }
-        "/wheel/state" => {
-            let Some(mac) = arp_mac(&p.core.cfg.arp_file, &peer.ip().to_string()) else {
-                return respond(&mut conn.s, "403 Forbidden", "application/json", "{\"error\":\"UNKNOWN_DEVICE\"}", "");
-            };
-            let now = crate::util::now_secs();
-            let (code, body) = p.core.wheel.state(&p.core.files, &mac, p.core.games.today(now), now);
-            wheel_reply(&mut conn.s, code, &body)
-        }
         "/send" | "/send/" => {
             if !p.core.send.enabled() {
                 return respond(&mut conn.s, "404 Not Found", "text/plain", "not found", "");
             }
             let html = send_page(p.core.send.max_mb());
             respond_bytes(&mut conn.s, "200 OK", "text/html; charset=utf-8", html.as_bytes(), "Cache-Control: no-store\r\n", !head_only)
-        }
-        "/game/tick" => {
-            // the page asks from its own address; another site's page must not be able to spend a child's minutes
-            if req.header("sec-fetch-site").is_some_and(|v| v != "same-origin" && v != "none") {
-                return respond(&mut conn.s, "403 Forbidden", "text/plain", "wrong origin", "");
-            }
-            let games = &p.core.games;
-            if !games.enabled() || p.core.wheel.enabled() {
-                return respond(&mut conn.s, "404 Not Found", "text/plain", "not found", "");
-            }
-            let key = device_key(arp_mac(&p.core.cfg.arp_file, &peer.ip().to_string()), &peer.ip().to_string());
-            let now = crate::util::now_secs();
-            let left = if query_get(&req.query, "s").is_some() { games.begin(&key, now) } else { games.tick(&key, now) };
-            respond(&mut conn.s, "200 OK", "application/json", &format!("{{\"left\":{}}}", left), "Cache-Control: no-store\r\n")
         }
         "/brand.png" => {
             respond_bytes(&mut conn.s, "200 OK", "image/png", BRAND_LOGO, "Cache-Control: public, max-age=86400\r\n", !head_only)
@@ -697,43 +641,6 @@ fn handle(p: Arc<Portal>, stream: TcpStream, peer: SocketAddr) {
             respond(&mut conn.s, "200 OK", "text/html; charset=utf-8", &page.0, &extra);
         }
     }
-}
-
-fn wheel_reply(s: &mut TcpStream, code: u16, body: &str) {
-    let status = match code {
-        200 => "200 OK",
-        400 => "400 Bad Request",
-        403 => "403 Forbidden",
-        404 => "404 Not Found",
-        409 => "409 Conflict",
-        429 => "429 Too Many Requests",
-        _ => "500 Internal Server Error",
-    };
-    respond(s, status, "application/json", body, "Cache-Control: no-store\r\n")
-}
-
-/// One spin. It is a POST that carries a header only this page sends, from this page's own address: another site's page cannot spend
-/// a customer's minutes (a cross-site request cannot add the header without the browser asking this router first, and it never agrees).
-fn handle_wheel_spin(p: &Portal, req: Request, mut conn: Incoming, peer: SocketAddr) {
-    if req.header("x-piso") != Some("1")
-        || !same_origin(&req)
-        || req.header("sec-fetch-site").is_some_and(|v| v != "same-origin" && v != "none")
-    {
-        return respond(&mut conn.s, "403 Forbidden", "application/json", "{\"error\":\"WRONG_ORIGIN\"}", "");
-    }
-    let Some(mac) = arp_mac(&p.core.cfg.arp_file, &peer.ip().to_string()) else {
-        return respond(&mut conn.s, "403 Forbidden", "application/json", "{\"error\":\"UNKNOWN_DEVICE\"}", "");
-    };
-    let id = query_get(&req.query, "id").unwrap_or_default();
-    let bet = query_get(&req.query, "bet").and_then(|b| b.parse::<u32>().ok()).unwrap_or(0);
-    let now = crate::util::now_secs();
-    let rand = u64::from_str_radix(&crate::util::random_hex(16), 16).unwrap_or(0);
-    let (code, body) = p.core.wheel.spin(&p.core.files, &mac, &id, bet, p.core.games.today(now), now, rand);
-    if code == 200 {
-        // the page of this device (and its tab) is told the new time
-        p.core.wheel_changed();
-    }
-    wheel_reply(&mut conn.s, code, &body)
 }
 
 /// Listen, waiting for the address if it is not there yet (at boot the guest network may come up after this program).

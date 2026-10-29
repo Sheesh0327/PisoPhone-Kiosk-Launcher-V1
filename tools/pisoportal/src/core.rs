@@ -3,7 +3,6 @@
 //! box), recovery after a restart, and the cooldown for devices that keep opening empty windows.
 use crate::boxlink::{parse_event, BoxLink};
 use crate::config::Config;
-use crate::game::Games;
 use crate::ledger;
 use crate::nds::Nds;
 use crate::pricing::{minutes_for, rates, Plan, Pricing};
@@ -24,10 +23,6 @@ pub(crate) use log;
 #[derive(Clone, Debug, PartialEq)]
 pub enum View {
     Idle {
-        /// seconds of mini-game left today for this device (-1: the game is off)
-        gm: i64,
-        /// the wheel is on and this device has time to bet (the Spin the wheel button)
-        wh: bool,
         /// guests may send a file to the owner (the Send a file button)
         sd: bool,
         /// pesos the session still has to pay before it may pause (0: it may, or pausing is off)
@@ -81,8 +76,6 @@ pub enum View {
         online: bool,
         /// a window paid for a voucher code: (the code as ABCDE-FGHJK, when it expires). Nothing was connected.
         voucher: Option<(String, u64)>,
-        /// the wheel is on: the Spin the wheel button is offered here too (set when the view is read, never stored)
-        wh: bool,
     },
     Empty,
     Error(String),
@@ -106,8 +99,8 @@ fn vflag(voucher: bool) -> &'static str {
 impl View {
     pub fn to_json(&self) -> String {
         match self {
-            View::Idle { gm, wh, sd, pn, left, plan, online, busy, cooldown, used_mb, slow, pm, pl, pw, vc, vs } => format!(
-                "{{\"t\":\"state\",\"s\":\"idle\",\"left\":{},\"plan\":\"{}\",\"online\":{},\"busy\":{},\"cooldown\":{},\"used_mb\":{},\"slow\":{},\"pm\":{},\"pl\":{},\"pw\":{},\"vc\":{},\"gm\":{},\"wh\":{},\"sd\":{},\"pn\":{},\"vs\":[{}]}}",
+            View::Idle { sd, pn, left, plan, online, busy, cooldown, used_mb, slow, pm, pl, pw, vc, vs } => format!(
+                "{{\"t\":\"state\",\"s\":\"idle\",\"left\":{},\"plan\":\"{}\",\"online\":{},\"busy\":{},\"cooldown\":{},\"used_mb\":{},\"slow\":{},\"pm\":{},\"pl\":{},\"pw\":{},\"vc\":{},\"sd\":{},\"pn\":{},\"vs\":[{}]}}",
                 left,
                 plan.map(|p| p.as_str()).unwrap_or(""),
                 online,
@@ -119,8 +112,6 @@ impl View {
                 pl,
                 pw,
                 vc,
-                gm,
-                wh,
                 sd,
                 pn,
                 vs.iter()
@@ -157,14 +148,13 @@ impl View {
                     vflag(*voucher)
                 )
             }
-            View::Final { plan, pulses, minutes, left, online, voucher, wh } => format!(
-                "{{\"t\":\"state\",\"s\":\"final\",\"plan\":\"{}\",\"pulses\":{},\"minutes\":{},\"left\":{},\"online\":{},\"wh\":{}{}}}",
+            View::Final { plan, pulses, minutes, left, online, voucher } => format!(
+                "{{\"t\":\"state\",\"s\":\"final\",\"plan\":\"{}\",\"pulses\":{},\"minutes\":{},\"left\":{},\"online\":{}{}}}",
                 plan.as_str(),
                 pulses,
                 minutes,
                 left,
                 online,
-                wh,
                 match voucher {
                     Some((code, exp)) => format!(",\"vcode\":\"{}\",\"vexp\":{}", json_esc(code), exp),
                     None => String::new(),
@@ -247,10 +237,6 @@ pub struct Core {
     /// the prices now in force (the settings file's, or what the owner set in the console) and a counter that rises with every change
     pricing: RwLock<Arc<Pricing>>,
     pricing_stamp: AtomicU32,
-    /// the mini-game's daily play time per device
-    pub games: Games,
-    /// the spinning wheel (off until the owner has confirmed the responsibility warning in the console)
-    pub wheel: crate::wheel_run::Wheel,
     /// guests' files for the owner (the print server's inbox)
     pub send: crate::send::Send,
     /// the coin page offers the choice "Use now" / "Get a voucher code" (VOUCHER_CHOICE, changed live from the console)
@@ -276,12 +262,6 @@ impl Core {
         let vchoice =
             AtomicBool::new(crate::config::parse_switch(&crate::config::override_get(&cfg.data_dir, "VOUCHER_CHOICE"), cfg.voucher_choice));
         let pricing = RwLock::new(Arc::new(Pricing::load(&cfg)));
-        let game_minutes = crate::config::override_get(&cfg.data_dir, "GAME_MINUTES")
-            .parse::<u32>()
-            .unwrap_or(cfg.game_minutes)
-            .min(crate::game::MAX_MINUTES);
-        let games = Games::new(&cfg.data_dir, cfg.game_seconds.unwrap_or(game_minutes * 60));
-        let wheel = crate::wheel_run::Wheel::new(&cfg.data_dir, &cfg.roll_path(), cfg.wheel);
         let send_on = crate::config::parse_switch(&crate::config::override_get(&cfg.data_dir, "SEND_ENABLED"), cfg.send_enabled);
         let send = crate::send::Send::new(&cfg.send_host, cfg.send_port, &cfg.data_dir, cfg.send_max_mb, cfg.send_per_hour, send_on);
         Arc::new(Core {
@@ -308,8 +288,6 @@ impl Core {
             started: Instant::now(),
             pricing,
             pricing_stamp: AtomicU32::new(1),
-            games,
-            wheel,
             send,
         })
     }
@@ -339,24 +317,6 @@ impl Core {
             self.bump(&mut st);
         }
         ok
-    }
-
-    /// The owner sets the mini-game minutes a device gets per day (0 = off). Kept in DATA_DIR/settings.txt; open pages are told at once.
-    pub fn set_game_minutes(&self, minutes: u32) -> bool {
-        let minutes = minutes.min(crate::game::MAX_MINUTES);
-        let ok = crate::config::override_set(&self.cfg.data_dir, "GAME_MINUTES", &minutes.to_string());
-        if ok {
-            self.games.set_limit_secs(minutes * 60);
-            let mut st = self.st.lock().unwrap();
-            self.bump(&mut st);
-        }
-        ok
-    }
-
-    /// The wheel changed a session or the owner switched it: open pages are told at once.
-    pub fn wheel_changed(&self) {
-        let mut st = self.st.lock().unwrap();
-        self.bump(&mut st);
     }
 
     /// The prices in force now (a payment keeps the ones it started with).
@@ -451,10 +411,6 @@ impl Core {
         // (the vouchers this device paid for are listed here: a page that was closed before the code was written down loses nothing)
         let vs = crate::voucher::for_device(&self.cfg.data_dir, now, mac);
         View::Idle {
-            // (with the wheel on, it replaces the free mini-game)
-            gm: if self.wheel.enabled() { -1 } else { self.games.left(mac, now) },
-            // (everyone is offered the wheel while it is on, paid or not; spinning needs paid time, which the router checks)
-            wh: self.wheel.enabled(),
             sd: self.send.enabled(),
             pn,
             left,
@@ -479,11 +435,10 @@ impl Core {
             // (a window that bought a voucher code connected nothing: its result stays as it was)
             View::Final { plan, pulses, minutes, online, voucher: None, .. } => {
                 let left = roll::peek(&self.cfg.roll_path(), now, mac).map(|(_, l)| l).unwrap_or(0);
-                View::Final { plan, pulses, minutes, left, online: online && left > 0, voucher: None, wh: self.wheel.enabled() }
+                View::Final { plan, pulses, minutes, left, online: online && left > 0, voucher: None }
             }
-            // (a voucher result never carries the button; whatever flag was stored is cleared)
             View::Final { plan, pulses, minutes, left, online, voucher, .. } => {
-                View::Final { plan, pulses, minutes, left, online, voucher, wh: false }
+                View::Final { plan, pulses, minutes, left, online, voucher }
             }
             other => other,
         }
@@ -1229,7 +1184,7 @@ impl Core {
             log!("window {} recorded but openNDS refused the grant for {}", &sid[..8], mac);
         }
         let t_grant = t0.elapsed().as_millis();
-        let result = View::Final { plan: s.plan, pulses, minutes, left: s.left_secs, online, voucher: None, wh: false };
+        let result = View::Final { plan: s.plan, pulses, minutes, left: s.left_secs, online, voucher: None };
         self.publish_early(sid, result.clone()); // the customer is online: the page says so now, not after the box answers
         let ack_ok = ack_now && self.ack_and_clear(sid);
         log!(
@@ -1257,7 +1212,7 @@ impl Core {
             Ok(v) => v,
             Err(e) => return e,
         };
-        let result = View::Final { plan, pulses, minutes, left: 0, online: false, voucher: Some(v), wh: false };
+        let result = View::Final { plan, pulses, minutes, left: 0, online: false, voucher: Some(v) };
         self.publish_early(sid, result.clone());
         let ack_ok = ack_now && self.ack_and_clear(sid);
         log!("timing {} settled pulses={} min={} voucher issued acked={}", &sid[..8], pulses, minutes, ack_ok);
@@ -1558,8 +1513,6 @@ impl Core {
         {
             let _g = self.files.lock().unwrap();
             roll::purge(&self.cfg.roll_path(), now_secs());
-            // a spin a power cut left half done is finished or voided, never applied twice
-            crate::wheel_spin::recover(&self.cfg.roll_path(), &self.cfg.data_dir);
             crate::voucher::prune(&self.cfg.data_dir, now_secs());
         }
         let now = now_secs();
@@ -1691,50 +1644,6 @@ mod tests {
     const MAC_A: &str = "aa:aa:aa:aa:aa:01";
     const MAC_B: &str = "aa:aa:aa:aa:aa:02";
     const MAC_C: &str = "aa:aa:aa:aa:aa:03";
-
-    /// A core whose wheel is switched on the way the console does it (the switch and the owner's record), or left off.
-    fn core_with_wheel(name: &str, on: bool) -> Arc<Core> {
-        let d = std::env::temp_dir().join(format!("pisoportal-corewheel-{}-{}", name, std::process::id()));
-        let _ = fs::remove_dir_all(&d);
-        fs::create_dir_all(&d).unwrap();
-        let dir = d.to_string_lossy().into_owned();
-        if on {
-            fs::write(format!("{}/settings.txt", dir), "WHEEL=on\n").unwrap();
-            fs::write(format!("{}/wheel-confirm.txt", dir), format!("v=1\nversion=1\nat={}\nsession=t\n", now_secs())).unwrap();
-        }
-        let mut cfg = Config::from_map(std::collections::HashMap::new());
-        cfg.data_dir = dir;
-        cfg.ndsctl = "/nonexistent/ndsctl".into();
-        Core::new(cfg)
-    }
-
-    #[test]
-    fn rt_with_the_wheel_on_every_device_is_offered_it_paid_or_not_and_the_mini_game_gives_way() {
-        let core = core_with_wheel("views", true);
-        // nobody has paid: the idle view still carries the wheel button (feature 006) and no mini-game
-        let idle = core.view_for(MAC_A);
-        assert!(matches!(idle, View::Idle { wh: true, gm: -1, left: 0, .. }), "{:?}", idle);
-        assert!(idle.to_json().contains("\"wh\":true"));
-        // the "You are online" screen after paying carries it too
-        let fin = View::Final { plan: Plan::Hyper, pulses: 5, minutes: 30, left: 1800, online: true, voucher: None, wh: false };
-        core.st.lock().unwrap().results.insert(MAC_B.to_string(), (now_secs(), fin));
-        let v = core.view_for(MAC_B);
-        assert!(matches!(v, View::Final { wh: true, .. }), "{:?}", v);
-        assert!(v.to_json().contains("\"wh\":true"), "{}", v.to_json());
-    }
-
-    #[test]
-    fn rt_with_the_wheel_off_no_view_mentions_a_wheel_and_the_mini_game_stays() {
-        let core = core_with_wheel("viewsoff", false);
-        let idle = core.view_for(MAC_A);
-        assert!(matches!(idle, View::Idle { wh: false, .. }), "{:?}", idle);
-        assert!(!matches!(idle, View::Idle { gm: -1, .. }), "the mini-game is still offered");
-        let fin = View::Final { plan: Plan::Hyper, pulses: 5, minutes: 30, left: 1800, online: true, voucher: None, wh: true };
-        core.st.lock().unwrap().results.insert(MAC_B.to_string(), (now_secs(), fin));
-        let v = core.view_for(MAC_B);
-        assert!(matches!(v, View::Final { wh: false, .. }), "a stored flag never outlives the switch: {:?}", v);
-        assert!(v.to_json().contains("\"wh\":false"));
-    }
 
     #[test]
     fn rt01_rt02_the_fair_use_tick_applies_the_clock_jump_before_it_looks_at_any_session() {

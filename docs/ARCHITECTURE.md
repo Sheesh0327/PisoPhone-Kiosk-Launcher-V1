@@ -106,8 +106,6 @@ openNDS is only the doorman: it blocks a guest phone from the internet until tol
 | `nds.rs` | `ndsctl`: grant, revoke, state, counters |
 | `roll.rs` | the roll: one line per device with paid time; written atomically |
 | `send.rs`, `send.html` | guest file send: the page `/send` and `POST /send/upload`; the router streams the guest's file (no storage here) to the print server's inbox `POST /api/inbox/upload` with `X-Router-Key` from `DATA_DIR/send.key`; size, per-device rate and parallel limits; on only when the key file exists and the owner's console switch is on (`SEND_ENABLED`, console Settings; `SEND_HOST`, `SEND_PORT`, `SEND_MAX_MB`, `SEND_PER_HOUR`) |
-| `game.rs`, `game.html` | the mini-game: a small offline game the router serves at `/game`, played in a browser tab; `/game/tick` counts each device's play time per day (default 10 min, `GAME_MINUTES`, console Settings; a soft limit) |
-| `wheel.rs`, `wheel_gate.rs`, `wheel_spin.rs`, `wheel_limits.rs`, `wheel_run.rs`, `wheel.html` | the spinning wheel (off until the owner confirms a responsibility warning in the console): the odds table and bet rules, the confirmation record, one journalled change to a session's time per spin id, the limits per device per day, and the routes `/wheel`, `/wheel/state`, `/wheel/spin`; it replaces the mini-game while on; its own log (`wheel.log`), never `revenue.csv` |
 | `pricing.rs`, `fair.rs` | plans and prices (best combination of tiers; a `Pricing` value the console edits live); fair use slow-down for HyperSpeed |
 | `ledger.rs`, `reconcile.rs` | the revenue ledger (hash-chained lines) and its comparison with the box's own count |
 | `voucher.rs` | voucher codes (below) |
@@ -146,7 +144,7 @@ The owner makes cards on their own computer with `scripts/make_cards.py` (the ca
 - **Phone app:** `build-apk.yml` runs the unit tests, builds, signs and publishes the APK with `app.json`. `versionCode` is the CI run number and alone decides what is newer; the visible name is that number cut into digits (build 437 is 4.3.7).
 - **Coin box:** `firmware-images.yml` builds and signs the images; the box installs only a newer `PISO_FW_VERSION`, checks the signature and the hash, and goes back to its old image if the new one does not confirm itself.
 - **Router:** `publish-router.yml` signs `router-setup.sh` with a rollout percentage; a router installs only a newer, correctly signed release in its turn of the rollout, and undoes it if it does not run (`piso-setup self-update`).
-- **Path:** work on `beta`; `scripts/verify_release.py` checks keys, checksums, signatures and version rules; merging `beta` into `main` publishes. Details: `docs/RELEASE.md`, `docs/DEPLOY.md`.
+- **Path:** a feature branch merged into `main` (a router change goes through `beta` first: CI builds the router programs only there); `scripts/verify_release.py` checks keys, checksums, signatures and version rules; merging into `main` publishes. Details: `docs/RELEASE.md`, `docs/DEPLOY.md`.
 - A coin box is limited by its slot licenses: 2 phones are free, each more needs a P500 license key signed for that box, 12 at most; a box that already had more phones when licensing arrived keeps them (`getDeviceCap`, `SlotLicense.h`, docs/LICENSING.md).
 
 ## 9. Where things live

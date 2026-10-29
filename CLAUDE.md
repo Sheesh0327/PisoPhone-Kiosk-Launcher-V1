@@ -53,8 +53,16 @@ A change under `setup/src/` or `tools/pisoportal/` changes what routers install:
 pages needs no router, firmware or app release.
 
 ## 5. Branches and releasing
-- Work on `beta`. Do not open a pull request, merge to `main` or release unless the owner asks.
-- Do not push to `beta` while a needed "Code quality" run is in flight: a new push cancels it.
+- One feature, one branch `feat/NNN-name` (or `fix/NNN-name`). The owner's rule (2026-10-24, confirmed 2026-10-29) is that a green
+  feature branch may be merged straight into `main`. Do not open a pull request, merge to `main` or release unless the owner asks.
+- **A change that alters the router (`tools/pisoportal/src/`, `setup/`, `router/`, `setup/RELEASE`) must go through `beta` before it
+  is released.** `router-program.yml` builds the router programs (`tools/pisoportal/bin/*`) and rebuilds the setup files around them
+  **only on pushes to `beta`**; on `main` the build is thrown away, and `publish-router.yml` signs whatever programs are committed. Releases
+  1.5.25, 1.5.26 and 1.5.28 were signed that way and embed the 2026-10-24 program. So: bring `main` into `beta`, raise `setup/RELEASE`,
+  push, wait for CI's commits ("ci: built the router program", "ci: rebuilt the setup files around the router programs"), merge
+  `beta` into `main` as below, and **before anyone raises the release, decode the program inside the signed file and check it has the
+  new text** (`verify_release.py` checks signatures and sizes, not what is inside).
+- Do not push to a branch while a needed "Code quality" run on it is in flight: a new push cancels it.
 - **Merge to `main`** (when asked, and only if Code quality is green on that exact commit): merge that commit in a separate git
   worktree; take `main`'s version of `website/update`, `website/flash` and every generated router file unless the change really
   alters the router; `python3 scripts/verify_release.py` must say 0 FAIL; push; then CI commits "router release X signed and

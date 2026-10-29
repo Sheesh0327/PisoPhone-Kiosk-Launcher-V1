@@ -1,5 +1,5 @@
 // TechNet PisoHub console: the page's behaviour. PISO_UI_VERSION rises with every change that is published (scripts/sign_console_ui.py).
-window.PISO_UI_VERSION = 9;
+window.PISO_UI_VERSION = 10;
 (function(){
 var $=function(i){return document.getElementById(i)},tab='over',timer=null,last={},sales=null,TABS=['over','cli','ph','sales','vch','set'];
 function esc(t){return String(t).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
@@ -29,10 +29,36 @@ function draw(h){var c=$('cv'),g=c.getContext('2d'),w=c.width,ht=c.height;g.clea
  var mx=1,col=[css('--bfg'),css('--teal')];h.forEach(function(p){mx=Math.max(mx,p[1],p[2])});
  [1,2].forEach(function(l){g.beginPath();h.forEach(function(p,i){var x=i*(w/(h.length-1)),y=ht-4-(ht-12)*p[l]/mx;i?g.lineTo(x,y):g.moveTo(x,y)});g.strokeStyle=col[l-1];g.lineWidth=3;g.stroke()});
  $('cvl').innerHTML='<span style="color:'+col[0]+'">&#9632;</span> download &nbsp; <span style="color:'+col[1]+'">&#9632;</span> upload &nbsp; last ~'+Math.round((h[h.length-1][0]-h[0][0])/60)+' min, peak '+sp(mx)}
-function over(j){last.over=j;var m=j.week||[],wk=m.reduce(function(a,b){return a+b},0);
+/* the money line: the coin box's count against the sales record, both numbers, and why they may differ (feature 036) */
+function money(m){var e=$('mny');if(!m){e.className='msg hide';return}var l=peso(m.ledger),b=peso(m.box),d=peso(m.diff),c='',t='';
+ if(m.state==='agrees'){c='ok';t='<b>Money agrees.</b> Coin box counted '+b+', sales record '+l+'.'}
+ else if(m.state==='box_ahead'){c='';t='Coin box counted '+b+', sales record '+l+'. <b>Difference '+d+'</b>: coins counted but not yet in the record. Normal for a minute while a customer is paying; if it stays, tell your installer.'}
+ else if(m.state==='box_ahead_phones'){c='ok';t='Coin box counted '+b+' (includes rental-phone coins), sales record '+l+'. Difference '+d+' = rental phones. <b>Normal.</b>'}
+ else if(m.state==='mismatch'){c='bad';t='<b>MISMATCH.</b> Sales record '+l+', coin box counted '+b+'. The record has '+d+' the box did not count.'}
+ else if(m.state==='box_silent'){c='';t='<b>Coin box is not answering.</b> Sales record '+l+'. The comparison resumes when the box is back.'}
+ else if(m.state==='bad_ledger'){c='bad';t='<b>The sales record was changed:</b> line '+m.bad_line+' is wrong.'}
+ else{c='n';t='<b>No sales recorded yet.</b> Coin box counted '+b+'.'}
+ if(m.restarted&&m.state!=='bad_ledger'&&m.state!=='box_silent')t+=" The box's count restarted when its revenue was collected; compared from here.";
+ e.className='msg '+c;e.innerHTML=t}
+/* the update line: is the router, is the coin box up to date, or waiting for an update (feature 044). Gold only for a wait longer than a day or a failure. */
+function upd(v,now){var e=$('upd');if(!v){e.className='msg hide';return}var gold=false,out=[];
+ function one(n,r,cmd){if(!r){out.push(n+': not checked yet.');return}var l=esc(r.latest),run=esc(r.running),d=esc(r.detail),old=now-r.since>=86400,days=Math.max(1,Math.floor((now-r.since)/86400)),w=days+(days===1?' day':' days');
+  if(r.state==='current')out.push(n+' '+run+' is up to date.');
+  else if(r.state==='available')out.push(n+' '+l+' is available.');
+  else if(r.state==='waiting'){if(old){gold=true;out.push(n+' '+l+' has waited '+w+' for a quiet moment. Install it when you close: '+cmd+'.')}else out.push(n+' '+l+' is waiting for a quiet moment.')}
+  else if(r.state==='off'){if(old)gold=true;out.push(n+' '+l+' is available. Automatic updates are off: run '+cmd+'.')}
+  else if(r.state==='rollout')out.push(n+' '+l+" is rolling out in stages; this router's turn has not come.");
+  else if(r.state==='newer')out.push(n+' '+run+' is newer than the published '+l+'.');
+  else if(r.state==='failed'){gold=true;out.push(n+(l?' '+l:'')+' could not be installed: '+d+'. Run '+cmd+' to try by hand.')}
+  else out.push(n+': not checked: '+d+'.')}
+ one('Router',v.router,'piso-setup self-update');one('Coin box',v.box,'piso-setup box-update');
+ var age=v.checked?Math.floor((now-v.checked)/3600):0;if(age>=3)out.push('(checked '+age+' hours ago)');
+ e.className='msg '+(gold?'gold':'n');e.innerHTML=out.join(' ')}
+function over(j){last.over=j;upd(j.versions,j.now);money(j.money);var m=j.week||[],wk=m.reduce(function(a,b){return a+b},0);
  $('hm').textContent=peso(j.today);$('hs').textContent='This week '+peso(wk)+' · all time '+peso(j.total);
  $('tiles').innerHTML=tile('Customers online',j.online,j.waiting+' waiting to pay')+tile('Internet',sp(j.rx_kbps),'down; up '+sp(j.tx_kbps))+
   tile('Coin box',j.box_ok?'OK':'Offline',j.box_ok?(j.box_signed?'answering, answers signed':'answering. Update its firmware: answers are not signed yet'):'check power and Wi-Fi',j.box_ok?'ok':'bad')+tile('Records',j.ledger_ok?'OK':'Check',j.ledger_lines+' lines'+(j.ledger_ok?'':' (line '+j.ledger_lines+' is wrong)'),j.ledger_ok?'ok':'bad')+
+  (j.ledger_kept!==undefined?tile('Sales detail',j.ledger_kept+(j.ledger_kept===1?' month':' months'),j.ledger_pruned?(j.ledger_pruned+(j.ledger_pruned===1?' older month was':' older months were')+' deleted to save space. Your total ('+peso(j.total)+') and each deleted month\'s total are kept.'+((j.ledger_kept-1<j.ledger_wanted)?' The space allows fewer than the '+j.ledger_wanted+' closed months you asked for (Settings).':'')):'nothing deleted'):'')+
   tile('Router',Math.floor(j.uptime/3600)+' h','up; '+Math.round(j.mem_kb/1024)+' MB memory free')+
   ((j.alerts&&j.alerts.length)?tile('Alerts',j.alerts.length,j.alerts.map(esc).join('<br>'),'gold'):'');draw(j.history)}
 function cli(j){var a=j.clients||[];$('cl').innerHTML=a.map(function(c){var on=c.state==='Authenticated',nm=c.name||c.mac;
@@ -64,28 +90,11 @@ $('csv').onclick=function(){if(!sales)return;var t='day,use_now,voucher_codes,vo
 function vch(j){if(soldOut(j))return;var a=j.batches||[];$('vl2').innerHTML=a.slice().reverse().map(function(b){var left=b.count-b.used,gone=b.expires&&b.expires*1e3<Date.now();
  return '<tr><td><b>'+(b.bought===false?esc(b.label||'Printed slips'):'Bought with coins')+'</b><div class="s">'+dt(b.created)+(b.count>1?' · '+b.count+' codes':'')+' · '+(b.plan==='endurance'?'Endurance':'HyperSpeed')+'</div></td><td>'+mins(b.minutes)+' · '+peso(b.pesos)+'</td><td>'+(b.void?chip('Cancelled','bad'):!left?chip('Used','ok'):b.used?chip(b.used+' of '+b.count+' used'):chip('Not used','gold'))+'</td><td>'+(gone?chip('Expired','bad'):b.expires?dt(b.expires):'No expiry')+'</td><td>'+(b.void||!left||gone?'':'<button class="b dg" data-v="'+b.id+'" data-n="'+esc(b.bought===false?(b.label||b.id):dt(b.created))+'" data-l="'+left+'">Cancel</button>')+'</td></tr>'}).join('')||'<tr><td colspan="5" class="s">No vouchers yet. Customers get one when they choose "Get a voucher code" at payment.</td></tr>';
  document.querySelectorAll('#vl2 button[data-v]').forEach(function(b){b.onclick=function(){ask('Cancel this voucher ('+b.dataset.n+')?',b.dataset.l+' unused code'+(b.dataset.l==='1'?'':'s')+' will stop working. The customer already paid; the money stays in the sales.','Cancel the voucher',true,function(){api('/api/vouchers/void',{batch:b.dataset.v}).then(refresh)})}})}
-/* spinning wheel: the warning (in console.html) and its number WARN_V belong together; the router refuses a different number or phrase */
-var WARN_V=1,WPHRASE='I TAKE RESPONSIBILITY',wdirty=false;
-function wavg(t){var p=t.trim().split(/\s+/),r=[],thin=false,i,m,tot=0,back=0,win=0,sz;for(i=0;i<p.length;i++){m=/^(\d+)x(\d+)(t?)$/.exec(p[i]);if(!m)return null;r.push([+m[1],+m[2],m[3]==='t']);if(m[3])thin=true}
- for(i=0;i<r.length;i++){sz=r[i][1]*(r[i][2]?1:thin?2:1);tot+=sz;back+=sz*r[i][0];if(r[i][0]>0)win+=sz}return tot?{r:back/tot*100,w:win/tot*100}:null}
-function wshow(){var a=wavg($('wtb').value);$('wav').textContent=!a?'Write the wheel as multiplier x slots, for example 0x12 2x6 3x1 5x1t.':'Pays back '+a.r.toFixed(1)+'% of the bets on average; customers win '+a.w.toFixed(1)+'% of spins.'+(a.r>100?' A wheel above 100% is refused.':a.r<80?' Below 80%, customers will think it unfair.':'')}
-function wheel(j,force){if(!j||j.error)return;var on=j.on;$('whs').textContent=on?'Wheel on since '+new Date(j.since*1e3).toLocaleString()+', responsibility confirmed.':j.switch?'The wheel is OFF: the setting says on, but there is no confirmation on record.':'The wheel is off.';
- $('whs').style.color=on?'var(--ok)':'';$('whon').style.display=on?'none':'';$('whoff').style.display=on||j.switch?'':'none';
- $('whst').textContent=j.spins?'Spins so far: '+j.spins+' · minutes bet: '+j.bet_min+' · customers are '+(j.net_min>=0?'ahead by ':'behind by ')+Math.abs(j.net_min)+' min (the shop gives away '+Math.max(0,j.net_min)+' min net).':'No spins yet.';
- if(!force&&(wdirty||$('whset').contains(document.activeElement)))return;
- $('wtb').value=j.table;$('wmb').value=j.max_bet;$('wfl').value=j.floor;$('wsp').value=j.spins_per_day;$('wwt').value=j.wait;$('wwc').value=j.win_cap;wshow()}
-['wtb','wmb','wfl','wsp','wwt','wwc'].forEach(function(i){$(i).oninput=function(){wdirty=true;$('whm').textContent='';if(i==='wtb')wshow()}});
-$('whsv').onclick=function(){$('whm').textContent='';api('/api/wheel',{table:$('wtb').value,max_bet:$('wmb').value,floor:$('wfl').value,spins_per_day:$('wsp').value,wait:$('wwt').value,win_cap:$('wwc').value}).then(function(j){if(j.ok){wdirty=false;wheel(j,true);$('whm').textContent='';$('whm').style.color='var(--ok)';$('whm').textContent='Saved.'}else{$('whm').style.color='';$('whm').textContent=j.why||'Could not save.'}}).catch(function(){})};
-$('whoff').onclick=function(){api('/api/wheel',{off:'1'}).then(function(j){if(j.ok)wheel(j,true)}).catch(function(){})};
-$('whon').onclick=function(){var d=$('wdlg');if(!d.showModal){$('whm').style.color='';$('whm').textContent='This browser cannot show the warning, so the wheel cannot be turned on from it.';return}
- $('wcf').value='';$('wdm').textContent='';$('wdyes').disabled=true;d.showModal();$('wcf').focus()};
-$('wcf').oninput=function(){$('wdyes').disabled=$('wcf').value!==WPHRASE};
-$('wdno').onclick=function(){$('wdlg').close()};
-$('wdyes').onclick=function(){if($('wcf').value!==WPHRASE)return;api('/api/wheel',{on:'1',phrase:$('wcf').value,version:String(WARN_V)}).then(function(j){if(j.ok){$('wdlg').close();wheel(j,true)}else $('wdm').textContent=j.why||'The router did not turn the wheel on.'}).catch(function(){})};
 /* settings */
-function sets(j){if(soldOut(j))return;if(document.activeElement!==$('vcs'))$('vcs').value=j.voucher_choice?'on':'off';if(document.activeElement!==$('gmi')&&j.game_minutes!==undefined)$('gmi').value=j.game_minutes;if(document.activeElement!==$('fss')&&j.file_send!==undefined)$('fss').value=j.file_send?'on':'off';if(j.file_send_key!==undefined)$('fsk').textContent=j.file_send_key?(j.file_send?'Customers can send files now.':''):'The print server key is not installed on this router, so the button stays hidden even when this is On (see the manual: Sending a file to the owner).'}
+function sets(j){if(soldOut(j))return;if(document.activeElement!==$('vcs'))$('vcs').value=j.voucher_choice?'on':'off';if(document.activeElement!==$('fss')&&j.file_send!==undefined)$('fss').value=j.file_send?'on':'off';if(document.activeElement!==$('lkb')&&j.ledger_max_kb!==undefined)$('lkb').value=j.ledger_max_kb;if(document.activeElement!==$('lkm')&&j.ledger_keep_months!==undefined)$('lkm').value=j.ledger_keep_months;if(j.file_send_key!==undefined)$('fsk').textContent=j.file_send_key?(j.file_send?'Customers can send files now.':''):'The print server key is not installed on this router, so the button stays hidden even when this is On (see the manual: Sending a file to the owner).'}
 $('fss').onchange=function(){var s=$('fss');$('setm').textContent='';api('/api/settings',{file_send:s.value}).then(function(j){$('setm').textContent=j.ok?'Saved. Open customer pages follow at once.':'Could not save.';if(j.ok){s.value=j.file_send?'on':'off';sets(j)}}).catch(function(){})};
-$('gmi').onchange=function(){var m=Math.round(+$('gmi').value);if(!(m>=0&&m<=120)){$('setm').textContent='Use a number from 0 to 120.';return}$('setm').textContent='';api('/api/settings',{game_minutes:String(m)}).then(function(j){$('setm').textContent=j.ok?'Saved. Coin pages follow at once.':(j.why||'Could not save.');if(j.ok)$('gmi').value=j.game_minutes}).catch(function(){})};
+$('lkb').onchange=function(){var m=Math.round(+$('lkb').value);if(!(m===0||(m>=256&&m<=16384))){$('setm').textContent='Use 0, or a number from 256 to 16384.';return}$('setm').textContent='';api('/api/settings',{ledger_max_kb:String(m)}).then(function(j){$('setm').textContent=j.ok?'Saved. Old months are deleted when the next month starts.':(j.why||'Could not save.');if(j.ok)sets(j)}).catch(function(){})};
+$('lkm').onchange=function(){var m=Math.round(+$('lkm').value);if(!(m>=1&&m<=60)){$('setm').textContent='Use a number from 1 to 60.';return}$('setm').textContent='';api('/api/settings',{ledger_keep_months:String(m)}).then(function(j){$('setm').textContent=j.ok?'Saved.':(j.why||'Could not save.');if(j.ok)sets(j)}).catch(function(){})};
 $('vcs').onchange=function(){var s=$('vcs');$('setm').textContent='';api('/api/settings',{voucher_choice:s.value}).then(function(j){$('setm').textContent=j.ok?'Saved. Open customer pages follow at once.':'Could not save.';if(j.ok)s.value=j.voucher_choice?'on':'off'}).catch(function(){})};
 /* prices: the editor keeps what is typed until it is saved (the page refreshes every few seconds and must not overwrite it) */
 var pdirty=false;
@@ -103,6 +112,6 @@ $('add-e').onclick=function(){$('rows-e').insertAdjacentHTML('beforeend',prow(''
 $('prs').onclick=function(){pmsg('');var body={hyper:pcollect('rows-h'),endurance:pcollect('rows-e'),prorata:String(Math.round(+$('pro').value||0)),down:String(Math.round((+$('edn').value||0)*1000)),up:String(Math.round((+$('eup').value||0)*1000))};
  api('/api/pricing',body).then(function(j){if(j.ok){pdirty=false;prices(j,true);pmsg('Saved. New payments use these prices.')}else pmsg(j.why?'Not saved: '+j.why+'.':'Not saved.',true)}).catch(function(){})};
 $('prr').onclick=function(){ask('Go back to the settings file?','The prices you changed here are forgotten; the router\'s settings file applies again.','Go back',true,function(){api('/api/pricing',{reset:'1'}).then(function(j){pdirty=false;if(j.ok){prices(j,true);pmsg('Done. The settings file\'s prices apply.')}}).catch(function(){})})};
-function refresh(){if(tab==='ph'){ph();return}var p={over:'/api/overview',cli:'/api/clients',sales:'/api/sales?days='+($('rng').value||30),vch:'/api/vouchers',set:'/api/settings'}[tab],f={over:over,cli:cli,sales:sale,vch:vch,set:sets}[tab];api(p).then(f).catch(function(){});if(tab==='set'){api('/api/pricing').then(prices).catch(function(){});api('/api/wheel').then(wheel).catch(function(){})}}
+function refresh(){if(tab==='ph'){ph();return}var p={over:'/api/overview',cli:'/api/clients',sales:'/api/sales?days='+($('rng').value||30),vch:'/api/vouchers',set:'/api/settings'}[tab],f={over:over,cli:cli,sales:sale,vch:vch,set:sets}[tab];api(p).then(f).catch(function(){});if(tab==='set'){api('/api/pricing').then(prices).catch(function(){})}}
 api('/api/overview').then(function(j){if(j.version)showApp();else showLogin()}).catch(showLogin);
 })();

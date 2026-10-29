@@ -134,40 +134,18 @@ check("https://beta.fake.test/setup/piso-setup.sh" in log("wget.log") and "relea
 r = run("--", "--branch", "beta;reboot")
 check(r.returncode != 0 and "not a branch name" in r.stdout and log("wget.log") == "", "a branch name with odd characters is refused")
 
-# ---- feature 011 part A: --local <folder>: the setup file the computer copied, checked against its published sha256 ------------------
-def local_bundle(name, data=None, sha=None, with_sha=True):
-    d = f"{tmp}/local_{name}"
-    shutil.rmtree(d, ignore_errors=True)
-    os.makedirs(d)
-    data = FAKE_SETUP.replace("1.2.3", "2.0.0").encode() if data is None else data
-    open(f"{d}/piso-setup.sh", "wb").write(data)
-    if with_sha:
-        open(f"{d}/piso-setup.sh.sha256", "w").write((sha or hashlib.sha256(data).hexdigest()) + "  piso-setup.sh\n")
-    return d
-
-
+# ---- feature 041: the installer takes no setup file from a folder: it always downloads it and checks its sha256 ---------------------
+check("--local" not in open(f"{ROOT}/setup/install.sh").read() and "LOCAL" not in open(f"{ROOT}/setup/install.sh").read(), "install.sh has no --local option any more")
 for f in os.listdir(home):
     os.remove(f"{home}/{f}")
-good = local_bundle("good")
-r = run("--", "--yes", "--local", good)
-check(r.returncode == 0 and "SETUP-RAN args=[--yes]" in r.stdout and "release 2.0.0" in r.stdout and log("wget.log") == "",
-      "--local: the setup file in the folder is used and nothing is downloaded: " + r.stdout + r.stderr + log("wget.log"))
-check(open(f"{home}/piso-setup.sh").read() == FAKE_SETUP.replace("1.2.3", "2.0.0") and os.access(f"{home}/piso-setup.sh", os.X_OK),
-      "and it is saved where a downloaded copy goes, executable, byte for byte (so the delete-after-success rule applies to it)")
-check(os.path.exists(f"{good}/piso-setup.sh") and not [f for f in os.listdir(home) if f.startswith(".piso-setup.download")], "the folder's copy stays (the second run at 10.0.0.1 uses it) and no partial copy is left")
-for name, kw, why in (("badsha", dict(sha="0" * 64), "damaged"), ("nosha", dict(with_sha=False), "checksum"), ("notsh", dict(data=b"echo hi\n"), "damaged")):
-    for f in os.listdir(home):
-        os.remove(f"{home}/{f}")
-    r = run("--", "--yes", "--local", local_bundle(name, **kw))
-    check(r.returncode != 0 and "SETUP-RAN" not in r.stdout and not os.path.exists(f"{home}/piso-setup.sh") and log("wget.log") == "",
-          f"--local with a file that does not match its sha256 ({name}): stops, runs nothing, downloads nothing: " + r.stdout + r.stderr)
-r = run("--", "--yes", "--local", f"{tmp}/no-such-folder")
-check(r.returncode != 0 and "SETUP-RAN" not in r.stdout and "--local" in r.stdout + r.stderr and log("wget.log") == "", "--local with a folder that does not exist stops and does not fall back to a download by itself: " + r.stdout + r.stderr)
-r = run("--", "--local")
-check(r.returncode != 0 and "needs a folder" in r.stdout + r.stderr, "--local without a folder is refused")
+folder = f"{tmp}/local_copy"
+os.makedirs(folder, exist_ok=True)
+other = FAKE_SETUP.replace("1.2.3", "2.0.0").encode()
+open(f"{folder}/piso-setup.sh", "wb").write(other)
+open(f"{folder}/piso-setup.sh.sha256", "w").write(hashlib.sha256(other).hexdigest() + "  piso-setup.sh\n")
 publish("main", FAKE_SETUP.encode())
-r = run("--", "--local", good, "update")
-check("SETUP-RAN args=[update]" in r.stdout and "release 1.2.3" in r.stdout and "piso-setup.sh" in log("wget.log"), "an update ignores --local and downloads as always: " + r.stdout + r.stderr)
+r = run("--", "--yes", "--local", folder)
+check("release 2.0.0" not in r.stdout and "piso-setup.sh" in log("wget.log"), "a setup file in a folder is never used: the installer downloads the published one: " + r.stdout + r.stderr + log("wget.log"))
 
 # ---- what is refused ------------------------------------------------------------------------------------------------------------
 shutil.rmtree(home)

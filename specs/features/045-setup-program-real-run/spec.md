@@ -3,6 +3,8 @@
 Status: **built and validated on a computer 2026-10-28; waits for the owner's RS60 bench run (D8)**   Branch: `feat/045-setup-program-real-run` (from `origin/main`, owner's choice 2026-10-28; `beta` is behind `main` on purpose)   Area: setup
 Backlog rows: SU-18, SU-09, SU-10, SU-06a, SU-01, SU-02, SU-04, SU-15, SU-17, SU-21 (`specs/spec_04_findings.json`; SU-14 only if RS60 (b) fails)   Release: site (the website's copy of the program, rebuilt; no router, firmware or app release)
 
+> **Merged with `main` on 2026-10-29.** Feature 041 (on `main`) removed the setup without the router's internet, so **SU-02** (early download, "unplug the router's cable") is dropped (`wont-fix`, see the epic). SU-06a stays, asked of the router directly. Acceptance checks that mention the offline bundle no longer apply.
+
 ## Intent
 The one-click setup program (`setup/pisophone_setup.py`) has passed its tests on a computer but has never run end to end in a real shop.
 This feature fixes what a desk review says a real run will hit, on the computer's side only: a log the owner can send, a *Try again* that

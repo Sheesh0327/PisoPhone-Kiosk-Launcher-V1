@@ -1,6 +1,6 @@
 # Combined merge of features 045, 046 and 047 (spec 04), prepared 2026-10-28
 
-Branch `merge/spec-03-045-046-047` (pushed), built in a separate worktree from `origin/main` at `2591448` (router 1.5.23, firmware 3.12.4) by merging, in order,
+Branch `merge/spec-03-032-033-034` (pushed), built in a separate worktree from `origin/main` at `2591448` (router 1.5.23, firmware 3.12.4) by merging, in order,
 `feat/045-setup-program-real-run`, `feat/046-router-setup-real-run`, `feat/047-box-wifi-retry` with `--no-ff`. **Nothing is merged into `main` or `beta`, no pull request is
 open, and nothing is released.** Per the owner's rule D8 each feature waits for its bench run (RS60, RS61, RS62) before this goes to `main`.
 

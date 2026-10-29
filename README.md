@@ -122,8 +122,8 @@ of checks is in [`CONTRIBUTING.md`](CONTRIBUTING.md).
 ## Branches
 | Branch | Contains | Purpose |
 |---|---|---|
-| `main` | Everything: PisoPhone and PisoWiFi (openNDS) | Production. It receives only code that has been tested on `beta`. |
-| `beta` | Everything | Testing and fixes. All shared changes land here first. |
+| `main` | Everything: PisoPhone and PisoWiFi (openNDS) | Production. A feature branch is merged into it when the owner asks and Code quality is green. |
+| `beta` | Everything | Where CI builds the router programs. A router change goes through it before it is released; keep it up to date with `main`. |
 
-Flow: change and test on `beta` (checklist: `docs/REAL_WORLD_TESTING.md`), then merge `beta` into `main` (`docs/RELEASE.md`).
+Flow: a feature is a branch from `main`, merged when it is green and the owner asks (hardware checklist: `docs/REAL_WORLD_TESTING.md`). A router change goes through `beta` first: bring `main` into `beta`, raise `setup/RELEASE`, let CI build the programs, then merge `beta` into `main` (`docs/RELEASE.md`).
 The coin box firmware is shared by both products and includes both features.

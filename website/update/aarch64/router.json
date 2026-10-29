@@ -1,8 +1,8 @@
 {
-  "version": "1.5.23",
-  "sha256": "4de90bdcb340ebe98d5ee09ffb364eaca18611a1cab3b7a7cdd87510300d4373",
-  "size": 1503767,
+  "version": "1.5.29",
+  "sha256": "27fd8c1848ec3479c9393e84efa6ed4ab6d21649fb67951b05b1f75285f8f272",
+  "size": 1417570,
   "rollout": 100,
-  "changelog": "Change Wifi mode default.",
-  "sig": "MEYCIQCdN5I3czl2u6H//oy7pHUuRluHQ+uJdgxMl3fMm432ZgIhAOa/8tiMgWSjybH98VZHlPPlmbmJxZXnS+d+zfz/rScK"
+  "changelog": "Router 1.5.29: the console shows whether the money agrees and whether updates are waiting; wheel and mini-game removed; first setup needs internet",
+  "sig": "MEUCIQDRMk10BS9cKhXaXDmIGXRsqWFuh3TzStZvfc5HuaEQHQIgNOxh0c5sxf10LMCShomT9nlJ7VZ2JrZ/O0aldui+O48="
 }

@@ -8,7 +8,7 @@ use crate::core::Core;
 use crate::http::{bind_retry, read_request, respond, respond_bytes, Incoming, Request, BRAND_LOGO, BRAND_MASCOT};
 use crate::nds::ClientInfo;
 use crate::pricing::{parse_tier_list, Plan, Pricing, MAX_KBPS, MAX_PRORATA_MIN};
-use crate::util::{b64_encode, jget, json_esc, now_secs, random_hex, sha256_hex, valid_mac};
+use crate::util::{b64_encode, jget, json_esc, now_secs, random_hex, valid_mac};
 use std::collections::{HashMap, VecDeque};
 use std::io::Read;
 use std::net::TcpStream;
@@ -223,6 +223,36 @@ fn read(path: &str) -> String {
     std::fs::read_to_string(path).unwrap_or_default()
 }
 
+/// The states the update scripts record (`record_update_state` in setup/src/90-updates.sh).
+const UPDATE_STATES: [&str; 8] = ["current", "available", "waiting", "off", "rollout", "newer", "failed", "unknown"];
+
+/// One update record the update scripts wrote into the setup conf: `state|latest|since|running|detail` (feature 044). Anything else
+/// is not drawn.
+pub(crate) fn update_record_json(raw: &str) -> String {
+    let f: Vec<&str> = raw.splitn(5, '|').collect();
+    if f.len() != 5 || !UPDATE_STATES.contains(&f[0]) {
+        return "null".into();
+    }
+    format!(
+        "{{\"state\":\"{}\",\"latest\":\"{}\",\"since\":{},\"running\":\"{}\",\"detail\":\"{}\"}}",
+        f[0],
+        json_esc(f[1]),
+        f[2].parse::<u64>().unwrap_or(0),
+        json_esc(f[3]),
+        json_esc(f[4])
+    )
+}
+
+/// The overview's `versions` object: the router's record, the coin box's record and when the hourly check last ran (0 = never).
+pub(crate) fn versions_json(router_raw: &str, box_raw: &str, checked: &str) -> String {
+    format!(
+        "{{\"router\":{},\"box\":{},\"checked\":{}}}",
+        update_record_json(router_raw),
+        update_record_json(box_raw),
+        checked.trim().parse::<u64>().unwrap_or(0)
+    )
+}
+
 pub(crate) fn conf_value(path: &str, key: &str) -> String {
     read(path)
         .lines()
@@ -386,6 +416,7 @@ impl Console {
             Ok((n, _)) => (true, n),
             Err(l) => (false, l),
         };
+        let ledger_sum = crate::ledger::summary(&cfg.revenue_path());
         let mem = read("/proc/meminfo")
             .lines()
             .find_map(|l| l.strip_prefix("MemAvailable:").map(|v| v.trim().trim_end_matches("kB").trim().to_string()))
@@ -401,7 +432,7 @@ impl Console {
         let uptime = read("/proc/uptime").split_whitespace().next().unwrap_or("0").split('.').next().unwrap_or("0").to_string();
         format!(
             "{{\"version\":\"{}\",\"now\":{},\"online\":{},\"waiting\":{},\"wan_if\":\"{}\",\"rx_kbps\":{},\"tx_kbps\":{},\"rx_total\":{},\"tx_total\":{},\"history\":[{}],\
-             \"today\":{},\"week_total\":{},\"month_total\":{},\"total\":{},\"week\":[{}],\"box_ok\":{},\"box_signed\":{},\"ledger_ok\":{},\"ledger_lines\":{},\"mem_kb\":{},\"uptime\":{},\"alerts\":[{}]}}",
+             \"today\":{},\"week_total\":{},\"month_total\":{},\"total\":{},\"week\":[{}],\"box_ok\":{},\"box_signed\":{},\"ledger_ok\":{},\"ledger_lines\":{},\"ledger_kept\":{},\"ledger_pruned\":{},\"ledger_wanted\":{},\"mem_kb\":{},\"uptime\":{},\"alerts\":[{}],\"money\":{},\"versions\":{}}}",
             env!("CARGO_PKG_VERSION"),
             now,
             online,
@@ -421,9 +452,18 @@ impl Console {
             box_signed,
             ledger_ok,
             ledger_lines,
+            ledger_sum.kept,
+            ledger_sum.pruned,
+            crate::ledger::Budget::load(&cfg.revenue_path()).keep_months,
             if mem.is_empty() { "0".into() } else { mem },
             uptime,
-            alerts
+            alerts,
+            crate::reconcile::peek(cfg).json(),
+            versions_json(
+                &conf_value(&cfg.setup_conf, "UPDATE_STATE_ROUTER"),
+                &conf_value(&cfg.setup_conf, "UPDATE_STATE_BOX"),
+                &conf_value(&cfg.setup_conf, "UPDATE_LAST_CHECK")
+            )
         )
     }
 
@@ -489,14 +529,16 @@ impl Console {
 
 // ---- the server ---------------------------------------------------------------------------------------------------------------------
 
-/// The owner's console settings (voucher choice at payment, mini-game minutes a day).
+/// The owner's console settings (voucher choice at payment, file send, ledger size).
 fn settings_json(core: &Core) -> String {
+    let budget = crate::ledger::Budget::load(&core.cfg.revenue_path());
     format!(
-        "{{\"voucher_choice\":{},\"game_minutes\":{},\"file_send\":{},\"file_send_key\":{}}}",
+        "{{\"voucher_choice\":{},\"file_send\":{},\"file_send_key\":{},\"ledger_max_kb\":{},\"ledger_keep_months\":{}}}",
         core.voucher_choice(),
-        core.games.limit_secs() / 60,
         core.send.switch_on(),
-        core.send.has_key()
+        core.send.has_key(),
+        budget.max_kb,
+        budget.keep_months
     )
 }
 
@@ -650,83 +692,41 @@ fn handle(c: &Console, req: Request, mut conn: Incoming) {
                     )
                 }
                 ("GET", "/api/vouchers") => json(&mut conn, "200 OK", &c.core.vouchers_json(), ""),
-                ("GET", "/api/wheel") => json(&mut conn, "200 OK", &c.core.wheel.console_json(), ""),
-                ("POST", "/api/wheel") => {
-                    // the table and the limits are checked first; the switch comes last, and turning on needs the phrase and the warning version
-                    let w = &c.core.wheel;
-                    let bad = |conn: &mut Incoming, code: &str, name: &str, why: &str| {
-                        json(conn, code, &format!("{{\"error\":\"{}\",\"why\":\"{}\"}}", name, crate::util::json_esc(why)), "")
-                    };
-                    let has = |k: &str| body.contains(&format!("\"{}\"", k));
-                    if has("table") {
-                        if let Err(e) = w.set_table(&jget(&body, "table")) {
-                            return bad(&mut conn, "400 Bad Request", "BAD_TABLE", &e);
-                        }
-                    }
-                    if ["max_bet", "floor", "spins_per_day", "wait", "win_cap"].iter().any(|k| has(k)) {
-                        let mut l = w.limits();
-                        let set = |key: &str, to: &mut u64| -> Result<(), String> {
-                            if has(key) {
-                                *to = jget(&body, key).parse::<u64>().map_err(|_| format!("{} is not a number", key))?;
-                            }
-                            Ok(())
-                        };
-                        let (mut mb, mut fl, mut sp, mut wt, mut wc) =
-                            (l.max_bet as u64, l.floor as u64, l.spins_per_day as u64, l.wait_secs, l.win_cap_per_day as u64);
-                        let parsed = set("max_bet", &mut mb)
-                            .and_then(|_| set("floor", &mut fl))
-                            .and_then(|_| set("spins_per_day", &mut sp))
-                            .and_then(|_| set("wait", &mut wt))
-                            .and_then(|_| set("win_cap", &mut wc));
-                        if let Err(e) = parsed {
-                            return bad(&mut conn, "400 Bad Request", "BAD_LIMITS", &e);
-                        }
-                        let small = |v: u64| u32::try_from(v).unwrap_or(u32::MAX);
-                        (l.max_bet, l.floor, l.spins_per_day, l.wait_secs, l.win_cap_per_day) =
-                            (small(mb), small(fl), small(sp), wt, small(wc));
-                        if let Err(e) = w.set_limits(l) {
-                            return bad(&mut conn, "400 Bad Request", "BAD_LIMITS", &e);
-                        }
-                    }
-                    if jget(&body, "off") == "1" {
-                        if !w.turn_off(now_secs()) {
-                            return bad(&mut conn, "500 Internal Server Error", "IO", "The router could not save the setting.");
-                        }
-                    } else if jget(&body, "on") == "1" {
-                        let label: String = sha256_hex(req.header("cookie").unwrap_or("").as_bytes()).chars().take(8).collect();
-                        let version = jget(&body, "version").parse::<u32>().unwrap_or(0);
-                        if let Err(why) = w.turn_on(now_secs(), &jget(&body, "phrase"), version, &label) {
-                            return bad(&mut conn, "403 Forbidden", "CONFIRM", &why);
-                        }
-                    }
-                    c.core.wheel_changed();
-                    let mut out = w.console_json();
-                    out.insert_str(1, "\"ok\":true,");
-                    json(&mut conn, "200 OK", &out, "")
-                }
                 ("GET", "/api/settings") => json(&mut conn, "200 OK", &settings_json(&c.core), ""),
                 ("POST", "/api/settings") => {
                     // (only the settings named in the body change)
-                    let (vc, gm, fs) = (jget(&body, "voucher_choice"), jget(&body, "game_minutes"), jget(&body, "file_send"));
-                    if vc.is_empty() && gm.is_empty() && fs.is_empty() {
+                    let (vc, fs) = (jget(&body, "voucher_choice"), jget(&body, "file_send"));
+                    let (lkb, lkm) = (jget(&body, "ledger_max_kb"), jget(&body, "ledger_keep_months"));
+                    if vc.is_empty() && fs.is_empty() && lkb.is_empty() && lkm.is_empty() {
                         return json(&mut conn, "400 Bad Request", "{\"error\":\"NOTHING\"}", "");
                     }
-                    if !gm.is_empty() {
-                        match gm.parse::<u32>() {
-                            Ok(m) if m <= crate::game::MAX_MINUTES => {
-                                if !c.core.set_game_minutes(m) {
-                                    return json(&mut conn, "500 Internal Server Error", "{\"error\":\"IO\"}", "");
-                                }
-                            }
-                            _ => {
-                                let why = format!("the mini-game minutes must be a number from 0 to {}", crate::game::MAX_MINUTES);
-                                return json(
-                                    &mut conn,
-                                    "400 Bad Request",
-                                    &format!("{{\"error\":\"BAD_MINUTES\",\"why\":\"{}\"}}", why),
-                                    "",
-                                );
-                            }
+                    // the revenue ledger's size budget (feature 032): both are checked before either is saved
+                    let kb = (!lkb.is_empty()).then(|| {
+                        lkb.parse::<u64>().ok().filter(|v| *v == 0 || (crate::ledger::MIN_KB..=crate::ledger::MAX_KB).contains(v))
+                    });
+                    let km =
+                        (!lkm.is_empty()).then(|| lkm.parse::<u64>().ok().filter(|v| (1..=crate::ledger::MAX_KEEP_MONTHS).contains(v)));
+                    if kb == Some(None) {
+                        let why = format!(
+                            "the ledger size must be 0 (never delete) or from {} to {} KB",
+                            crate::ledger::MIN_KB,
+                            crate::ledger::MAX_KB
+                        );
+                        return json(&mut conn, "400 Bad Request", &format!("{{\"error\":\"BAD_LEDGER_KB\",\"why\":\"{}\"}}", why), "");
+                    }
+                    if km == Some(None) {
+                        let why = format!("the months to keep must be a number from 1 to {}", crate::ledger::MAX_KEEP_MONTHS);
+                        return json(&mut conn, "400 Bad Request", &format!("{{\"error\":\"BAD_MONTHS\",\"why\":\"{}\"}}", why), "");
+                    }
+                    let dd = &c.core.cfg.data_dir;
+                    if let Some(Some(v)) = kb {
+                        if !crate::config::override_set(dd, "LEDGER_MAX_KB", &v.to_string()) {
+                            return json(&mut conn, "500 Internal Server Error", "{\"error\":\"IO\"}", "");
+                        }
+                    }
+                    if let Some(Some(v)) = km {
+                        if !crate::config::override_set(dd, "LEDGER_KEEP_MONTHS", &v.to_string()) {
+                            return json(&mut conn, "500 Internal Server Error", "{\"error\":\"IO\"}", "");
                         }
                     }
                     if !fs.is_empty() && !c.core.set_file_send(crate::config::parse_switch(&fs, true)) {
@@ -891,6 +891,38 @@ mod tests {
         assert_eq!(k, Kinds { coin: 8, vcoin: 12, voucher: 10, vi: 2 });
         assert_eq!(rows[6].day.len(), 10);
         assert!(rows[6].day > rows[5].day);
+    }
+
+    #[test]
+    fn f044_an_update_record_becomes_json_and_a_bad_one_becomes_null() {
+        assert_eq!(
+            update_record_json("waiting|1.5.28|1790000000|1.5.27|customers are online, so it installs at the next quiet moment"),
+            r#"{"state":"waiting","latest":"1.5.28","since":1790000000,"running":"1.5.27","detail":"customers are online, so it installs at the next quiet moment"}"#
+        );
+        assert_eq!(
+            update_record_json("current|3.12.4|5|3.12.4|"),
+            r#"{"state":"current","latest":"3.12.4","since":5,"running":"3.12.4","detail":""}"#
+        );
+        assert_eq!(update_record_json(""), "null", "nothing recorded yet");
+        assert_eq!(update_record_json("hello"), "null", "not a record");
+        assert_eq!(update_record_json("bogus|1|2|3|4"), "null", "an unknown state is not drawn");
+        assert_eq!(
+            update_record_json("failed||x|1.5.27|why"),
+            r#"{"state":"failed","latest":"","since":0,"running":"1.5.27","detail":"why"}"#,
+            "a since that is not a number is 0"
+        );
+        assert!(update_record_json("unknown|||| a \"quote\" and \\ ").contains(r#"a \"quote\" and"#), "text is escaped");
+    }
+
+    #[test]
+    fn f044_the_overview_object_has_both_records_and_the_last_check_and_no_secret_key() {
+        let j = versions_json("current|1.5.27|1|1.5.27|", "", "1790000123");
+        assert_eq!(
+            j,
+            r#"{"router":{"state":"current","latest":"1.5.27","since":1,"running":"1.5.27","detail":""},"box":null,"checked":1790000123}"#
+        );
+        assert_eq!(versions_json("", "", ""), r#"{"router":null,"box":null,"checked":0}"#);
+        assert_eq!(versions_json("", "", "soon"), r#"{"router":null,"box":null,"checked":0}"#, "a time that is not a number is 0");
     }
 
     #[test]
