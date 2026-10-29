@@ -41,7 +41,7 @@ It is read after the stable files, on demand: `specs/README.md` lists it with `s
   (time cards, admin QR, recovery code) and a read-only Check-up; "Start here" pages (`website/start/`); codebase cleanup of the
   setup program, tests, scripts and the phone app.
 - **Setup simplification plan** (nobody opening a shop should handle a key): Start pages, README front door and the Check-up are
-  done. **Print server pairing** (a code instead of copying `send.key`) is only specified (`docs/api/print-pairing.md`): it needs
+  done. **Print server pairing** (a code instead of copying `send.key`) is only specified (`docs/REFERENCE.md`): it needs
   `/api/inbox/pair` on the print server, which is a separate project, not in this repo. Until then the key is copied by hand.
 - **Known and open:**
   - cleanup skipped on purpose: firmware dead code (needs a firmware release); Android: `MainActivity` `isLockTaskActive`, unused

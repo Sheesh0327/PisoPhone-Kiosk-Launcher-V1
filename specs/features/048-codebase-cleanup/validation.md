@@ -45,6 +45,10 @@ Checks before any change (the same must hold at the end):
 Features archived (16): 001, 002, 003, 004, 008, 009, 011, 014, 016, 018, 020, 025, 026, 033, 034, 035. Each entry keeps the intent and success criteria; spec, plan and evidence are in git history at `aba69c8`.
 Kept as folders because `docs/REAL_WORLD_TESTING.md` still has an unticked check for them (the owner's rule for Q2): 010, 013, 015, 017, 021, 022, 023, 024, 027, 028, 029, 030, 031, 032, 036, and 039 (its inventory table), 040, 041, 043, 044, 048. Fewer folders were archived than the plan hoped (16 of 37) because 58 hardware checks are still unticked; archiving them is a later, one-step job once those checks pass.
 
+### Group 5 (Tier B2, B4)
+- `docs/COIN_SLOT_PROTECTION.md`, `docs/LICENSING.md`, `docs/api/print-pairing.md`, `docs/api/superadmin-qr.md` merged into `docs/REFERENCE.md` (4 files to 1; headings kept one level lower). No code, script or workflow named them (grep of `.py .sh .yml .rs .kt .h .cpp .html`).
+- `setup/MANUAL.md` appended unchanged to `setup/README.md` as "Advanced: setting up by hand" (code blocks untouched; headings one level lower). Links fixed in `README.md`, `docs/ROUTERS.md`, `docs/REAL_WORLD_TESTING.md` (text of RS1 only; the file did not move) and `website/start/shop.html` (one link). `test_start_pages`, `test_manual` and `test_site_page` (25 checks) pass.
+
 ## Not tested
 (to fill at the end)
 

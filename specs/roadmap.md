@@ -66,7 +66,7 @@ Each step changes both sides in one change, with test vectors (`protocol/gen_vec
 
 ## Phase 7: setup simplification
 
-- **7.1** Print-server pairing by a code instead of copying `send.key`. Specified in `docs/api/print-pairing.md`. Needs `/api/inbox/pair` on the print server, a separate project. **Blocked outside this repo.**
+- **7.1** Print-server pairing by a code instead of copying `send.key`. Specified in `docs/REFERENCE.md`. Needs `/api/inbox/pair` on the print server, a separate project. **Blocked outside this repo.**
 
 ## Phase 6b: the overhaul and selling boxes (spec 03, added at the 2026-10-29 replan)
 
@@ -81,7 +81,7 @@ Phases 1 and 2 are superseded by the ordered sessions in `docs/REAL_WORLD_TESTIN
 ## Phase 8: commercial readiness
 
 - **8.1** Confirm who holds the signing keys and that the owner-only steps in `docs/RELEASE.md` are written down.
-- **8.2** Licensing as in `docs/LICENSING.md` (2 free slots, P500 per extra slot) is tested on a real box (RS27). D3 and D23: leave it alone; but see the open question about the 3.12.4 feed changelog in `specs/STATUS.md`.
+- **8.2** Licensing as in `docs/REFERENCE.md` (2 free slots, P500 per extra slot) is tested on a real box (RS27). D3 and D23: leave it alone; but see the open question about the 3.12.4 feed changelog in `specs/STATUS.md`.
 - **8.3** Legal and liability terms, reviewed outside this repo.
 
 ## Cleanup (any time, low risk)
