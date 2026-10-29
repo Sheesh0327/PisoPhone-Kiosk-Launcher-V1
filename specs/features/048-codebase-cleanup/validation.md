@@ -11,17 +11,17 @@ Checks before any change (the same must hold at the end):
 ## Results
 | # | Success criterion | Check | Result | Evidence |
 |---|---|---|---|---|
-| 1 | no dead links in the files that remain | `python3 scripts/check_links.py` | not run | |
-| 2 | gates as before | the list above | not run | |
-| 3 | no running code or generated file touched | `git diff --stat origin/main..HEAD` | not run | |
-| 4 | file count falls | before 901 | not run | |
-| 5 | a reader can still find the live state and the old reasons | by hand | not run | |
+| 1 | no dead links in the files that remain | `python3 scripts/check_links.py` | pass | `0 dead link(s)` (on `main` it found 17, 13 of them placeholders or outside paths now excluded, 4 real, fixed) |
+| 2 | gates as before | the list above, again | pass | security rules, `--check`, vendored: as before; every `scripts/tests` result as in the baseline, and the six that could not run before (`test_portal_*_ui`, `test_site_page`) now pass with `CHROME=/opt/pw-browsers/chromium`; `test_admin_qr`, `test_make_cards`, `test_make_wifi_poster`, `test_recovery_code` fail or skip exactly as before (missing packages/temp file in this container); `test_provisioning.js` 55 / 0; `ruff` clean and `mypy` clean on the new script |
+| 3 | no running code or generated file touched | `git diff --name-only origin/main..HEAD` filtered to `app/ esp32_firmware/ tools/pisoportal/ setup/src/ router/ website/update website/flash setup/piso-setup* website/setup website/install.sh website/pisophone_setup.py` | pass | no path; the non-document files changed are `quality.yml` (one added step), `scripts/check_links.py`, its test, and one link in `website/start/shop.html` |
+| 4 | file count falls | `git ls-files \| wc -l` | pass | 901 to 834 (-67); size 64,712 to 64,068 KB (-0.6 MB) |
+| 5 | a reader can still find the live state and the old reasons | by hand | pass | `specs/RELEASE_STATE.md`, `specs/STATUS.md` (row 048), `specs/features/ARCHIVE.md`, `docs/HARDENING.md`, `CHANGELOG.md`; git history for everything removed (last full tree: `aba69c8`) |
 
 ## Gates (constitution rule 7)
-- [ ] Area checks from `CONTRIBUTING.md` (website and scripts rows)
-- [ ] `bash scripts/check_security_rules.sh`
-- [ ] Python: `ruff check` and `pytest -x` on `scripts/check_links.py` and its test
-- [ ] Generated files: none touched; `--check` passes
+- [x] Area checks from `CONTRIBUTING.md` (website and scripts rows)
+- [x] `bash scripts/check_security_rules.sh`
+- [x] Python: `ruff check`, `mypy` and the test on `scripts/check_links.py` (the repo's tests are plain scripts, not pytest)
+- [x] Generated files: none touched; `--check` passes
 
 ## Reader scan (group 2): who reads the files that are candidates
 | file | read by | verdict |
@@ -50,7 +50,10 @@ Kept as folders because `docs/REAL_WORLD_TESTING.md` still has an unticked check
 - `setup/MANUAL.md` appended unchanged to `setup/README.md` as "Advanced: setting up by hand" (code blocks untouched; headings one level lower). Links fixed in `README.md`, `docs/ROUTERS.md`, `docs/REAL_WORLD_TESTING.md` (text of RS1 only; the file did not move) and `website/start/shop.html` (one link). `test_start_pages`, `test_manual` and `test_site_page` (25 checks) pass.
 
 ## Not tested
-(to fill at the end)
+- Code quality on GitHub has not run on this branch (feature branches are not built); it runs when the branch is merged or a pull request is opened. The new `check_links.py` step in `quality.yml` has therefore only run on a computer.
+- Nothing was tried on a router, box or phone; none of the removed files is read by one.
+- Not done, on purpose: B3 (design drafts, named in code comments), the epics merge (B5), the 15 generated installer copies (Q5, a later feature), the 67 remote branches and the dependabot PRs.
+- Merging this branch with #123 (`merge/spec-03-032-033-034`) will conflict in `specs/STATUS.md` and the feature folders: merge #123 first or expect to resolve those.
 
 ## Money and time
 Not touched: no code, firmware, router or app file changes.

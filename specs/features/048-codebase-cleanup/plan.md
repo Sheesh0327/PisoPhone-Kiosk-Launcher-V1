@@ -18,8 +18,8 @@ Small, ordered, each checkable. Nothing is deleted before the owner answers Q1 t
 - [x] 3. Tier A deletions approved in Q1 (`git rm`), then links fixed in `README.md`, `specs/roadmap.md`, `specs/RELEASE_STATE.md`, `specs/spec_0*.md`; checker green.
 - [x] 4. `specs/features/ARCHIVE.md` from the finished feature folders (Q2): generated once by a throwaway script in the scratchpad (not committed), then the folders removed; `STATUS.md` links point to `ARCHIVE.md#NNN`; checker green.
 - [x] 5. `docs/REFERENCE.md` from four small documents (Q3) and `setup/MANUAL.md` appended to `setup/README.md` (Q4); originals removed; `README.md`, `docs/ARCHITECTURE.md`, `docs/ROUTERS.md`, `docs/REAL_WORLD_TESTING.md` (text only, path unchanged), `website/start/shop.html` links fixed; the fixed-path documents stay.
-- [ ] 6. Epics `spec_01..03` into `specs/EPICS.md` (only if Q2 is yes); `specs/README.md` Files section and `specs/GUIDE.md` updated to the new layout.
-- [ ] 7. Validate (`/sdd-validate`): criteria 1 to 5 with evidence, the full list of removed files, file count before and after; `CONTRIBUTING.md`, `CLAUDE.md` section 2 pointers checked; `specs/STATUS.md` row 048.
+- [x] 6. (dropped, see spec B5; `specs/README.md` Files line updated) Epics `spec_01..03` into `specs/EPICS.md` (only if Q2 is yes); `specs/README.md` Files section and `specs/GUIDE.md` updated to the new layout.
+- [x] 7. Validate (`/sdd-validate`): criteria 1 to 5 with evidence, the full list of removed files, file count before and after; `CONTRIBUTING.md`, `CLAUDE.md` section 2 pointers checked; `specs/STATUS.md` row 048.
 
 ## Release
 None. No router, firmware or app release, no regenerated files. Merged to `main` only when the owner asks, after Code quality is green on that commit (`CLAUDE.md` section 5).

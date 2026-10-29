@@ -1,6 +1,6 @@
 # Feature 048: codebase cleanup (fewer files, nothing live removed)
 
-Status: **approved 2026-10-29 (owner: "go with your recommendations"); in progress**   Branch: `feat/048-codebase-cleanup` (from `main`)   Area: docs, specs, scripts, ci
+Status: **done 2026-10-29: validated on a computer (`validation.md`); waits for the owner to merge**   Branch: `feat/048-codebase-cleanup` (from `main`)   Area: docs, specs, scripts, ci
 Backlog rows: none (owner request 2026-10-29: "refactor the entire code base, remove obsolete files or ones that are not important, merge documentation into a unified file")   Release: none (a change that only touches docs, specs and tests needs no router, firmware or app release; Tier C below would change that and is not in this feature)
 
 ## Intent
@@ -21,7 +21,7 @@ A shop owner or a new helper opens the repository and finds a lot of history: 43
 - B1 finished feature folders (`spec.md`, `plan.md`, `validation.md` each) into one `specs/features/ARCHIVE.md`: per feature a header, intent, success criteria and the evidence line. Active features (045 to 048) and anything with open hardware rows stay as folders.
 - B2 `docs/COIN_SLOT_PROTECTION.md`, `docs/LICENSING.md`, `docs/api/print-pairing.md` and `docs/api/superadmin-qr.md` into `docs/REFERENCE.md`. **Stay where they are** (the reader scan, `validation.md`, found a reader): `docs/PROVISIONING_SOLD_UNIT.md` (`scripts/make_firmware_bundles.py` copies it into the sold-unit zip; Code quality's website filter lists it), `docs/api/gateway-coinslot.md` (named in comments of the app, firmware and router sources) and both `docs/design/GUI_SPEC_*` files (named in Kotlin comments and in `make_wifi_poster.py`). Changing those would mean touching code.
 - B4 `setup/MANUAL.md` (36 KB, "set up by hand") into `setup/README.md`, or removed if the owner says nobody sets up by hand.
-- B5 `specs/spec_01..03` epics and their findings JSON into one `specs/EPICS.md` (the open rows stay as JSON until closed).
+- B5 ~~`specs/spec_01..03` epics into one `specs/EPICS.md`~~ **dropped during the work**: it saves two files, `spec_03_overhaul.md` is still the live decision list that `STATUS.md` and `RELEASE_STATE.md` cite, and the unmerged PR #123 adds `spec_04_*` beside them; merging would only create conflicts. Revisit when the epics are closed.
 
 **Tier C: not in this feature (would change what ships)**
 - C1 the 15 copies of the router installer and the 5 router programs, the app APK and firmware images under `website/` (generated; signed feeds read them).

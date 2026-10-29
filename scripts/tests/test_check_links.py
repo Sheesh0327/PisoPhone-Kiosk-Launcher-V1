@@ -15,7 +15,7 @@ def check(ok, what):
         print("FAIL:", what)
 
 
-import check_links  # noqa: E402
+import check_links
 
 root = tempfile.mkdtemp()
 for rel, text in {
@@ -28,7 +28,8 @@ for rel, text in {
 }.items():
     path = os.path.join(root, rel)
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    open(path, "w").write(text)
+    with open(path, "w") as f:
+        f.write(text)
 subprocess.run(["git", "init", "-q"], cwd=root, check=True)
 subprocess.run(["git", "add", "-A"], cwd=root, check=True)
 
@@ -41,7 +42,7 @@ check(not any(t in ("docs/GUIDE.md", "../README.md", "scripts/real.py", "https:/
 check(not any("NNN" in t or "*" in t for _f, t in dead), "placeholders and globs are not reported")
 check(not any(f in ("CHANGELOG.md", "specs/notes/old.md") for f, _t in dead), "history (CHANGELOG, notes) is not scanned by default")
 check(("specs/notes/old.md", "../nowhere.md") in {(f, t) for f, _n, t in check_links.find_dead(root, everything=True)}, "--all scans it")
-r = subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "check_links.py"), "--root", root], capture_output=True, text=True)
+r = subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "check_links.py"), "--root", root], capture_output=True, text=True, check=False)
 check(r.returncode == 1 and "docs/GONE.md" in r.stdout, "the command exits 1 and names the dead link: " + r.stdout + r.stderr)
 print(f"check_links: {fails} failures" if fails else "check_links: OK")
 sys.exit(1 if fails else 0)
