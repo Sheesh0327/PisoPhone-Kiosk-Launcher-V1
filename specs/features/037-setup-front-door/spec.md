@@ -1,6 +1,6 @@
 # Feature 037: one front door, and one question fewer
 
-Status: **draft, needs the owner.** Branch: `feat/037-setup-front-door`   Area: firmware + setup
+Status: **approved by the owner 2026-10-29 (D33, D34, D35 answered below).** Branch: `feat/037-setup-front-door`   Area: firmware + setup
 Epic: `specs/spec_03_overhaul.md` feature 037 (decisions D9, D10, D20)   Release: firmware + router
 
 ## Intent
@@ -123,14 +123,21 @@ firmware changes.
 ## Out of scope
 - Anything that removes the computer. That is 038, and its cost depends on an unanswered question: whether the phone can drive
   the router's **existing** `ubus`/`rpcd` HTTP API rather than a custom endpoint this feature would have to install first.
-  **Spike that before 038 is specced.**
+  **Answer that before 038 is specced** — it is the difference between a moderate feature and a large one. The owner chose not
+  to queue the investigation now (2026-10-29); it is recorded here so whoever picks 038 up finds it.
 - The box configuring a router (see part B, out of scope).
 - Any change to pairing, the gateway key's generation or direction, or the box↔phone protocol.
 - Removing `--product` outright (one release later).
 
 ## Owner decisions
-- **D33 — the epic's "pre-filled command" is wrong; approve the corrected part B?** The box cannot hold the gateway key before
-  setup, and after part A the command is a constant. The value is state, not secrets.
-- **D34 — if the always-created SSID costs something real on the T6M (criterion 2), keep asking the question or accept the
-  cost?**
-- **D35 — part C: does the owner zip for sale change now, or when boxes actually ship?**
+All answered 2026-10-29.
+- **D33 — the corrected part B: approved.** The box page shows state, not secrets: setup state, firmware, phones paired, and
+  whether a router has ever paired with this box. Inverting the pairing so the box generates the gateway key was offered and
+  **rejected** — it is a protocol change on the money path for a cosmetic gain.
+- **D34 — measure first, then decide.** Part A does **not** ship until criterion 2's number from the owner's 360 T6M is in
+  `validation.md`. If the cost is negligible the question goes as planned; if not, the owner decides with the number in hand.
+  This makes criterion 2 a gate, not a note.
+- **D35 — part C changes the sale zip when boxes actually ship, not now.** Document the one-SKU decision in this feature;
+  leave `scripts/make_firmware_bundles.py` alone. Nothing is gained by changing build tooling for a product that cannot ship
+  until GATE 1 (feature 040) and the NVS work (feature 043) are both done. **Task group 6 is therefore documentation only.**
+- **038's `ubus` spike: not queued** (owner, 2026-10-29). The question stays written in "Out of scope" for whoever specs 038.

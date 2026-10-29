@@ -31,14 +31,14 @@ Parts A, B and C are independent. **A is the only one that can hurt a running sh
 - [ ] **3. Part A, the measurement (criterion 2).** This needs the owner's router. Write the exact commands into
       `specs/features/040-sold-box-hardening/bench.md`'s style as a short note in this feature's folder, for the owner to run:
       free memory and radio state with and without the extra SSID. **Part A does not ship until the number is in
-      `validation.md`.**
+      `validation.md` (owner D34: this is a gate, not a note).**
 - [ ] **4. Part B, the pure logic.** What the view should say for each state (default password or not, router paired or not,
       phones paired) as a pure function in `esp32_firmware/include/` with a host test. Criteria 5, 6. Test first.
 - [ ] **5. Part B, the page.** Add the view to `esp32_firmware/web/`, then `python3 scripts/embed_web.py`. The one-liner is a
       literal constant (criterion 9). Reuse `website/start/shop.html:24`'s wording verbatim and add the test that compares the
       two strings (criterion 7). Measure the asset growth (criterion 8).
-- [ ] **6. Part C.** Documentation, and whatever `scripts/make_firmware_bundles.py` needs so the zip for sale holds the one
-      full image. No firmware code path changes.
+- [ ] **6. Part C, documentation only (owner D35).** Record the one-SKU decision. **Do not change
+      `scripts/make_firmware_bundles.py`** — the sale zip changes when boxes actually ship, not now.
 - [ ] **7. Docs and gates.** Criterion 13 (`setup/MANUAL.md`, `docs/ROUTERS.md`, `website/start/`), then criterion 12: the
       firmware host tests, the four router suites, `check_security_rules.sh`, `build_piso_setup.py --check`, `clang-format`,
       and raise both `PISO_FW_VERSION` and `setup/RELEASE`. Criteria 10 and 11 are greps — run them and paste the output.
