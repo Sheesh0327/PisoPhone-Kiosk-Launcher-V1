@@ -53,8 +53,10 @@ A change under `setup/src/` or `tools/pisoportal/` changes what routers install:
 pages needs no router, firmware or app release.
 
 ## 5. Branches and releasing
-- Work on `beta`. Do not open a pull request, merge to `main` or release unless the owner asks.
-- Do not push to `beta` while a needed "Code quality" run is in flight: a new push cancels it.
+- One feature, one branch `feat/NNN-name` (or `fix/NNN-name`). There is no `beta` branch: the owner's rule (2026-10-24, confirmed
+  2026-10-29) is that a green feature branch is merged straight into `main`. Do not open a pull request, merge to `main` or release
+  unless the owner asks.
+- Do not push to a branch while a needed "Code quality" run on it is in flight: a new push cancels it.
 - **Merge to `main`** (when asked, and only if Code quality is green on that exact commit): merge that commit in a separate git
   worktree; take `main`'s version of `website/update`, `website/flash` and every generated router file unless the change really
   alters the router; `python3 scripts/verify_release.py` must say 0 FAIL; push; then CI commits "router release X signed and

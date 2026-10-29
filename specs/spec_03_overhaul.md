@@ -1,6 +1,6 @@
 # Spec 03: the overhaul (make it simpler, provable, and quick to set up)
 
-Status: **draft, waiting for the owner**   Written: 2026-10-28 against `main` at `9a92c33` (router 1.5.23, firmware 3.12.4, app 547)
+Status: **decisions D1 to D32 answered (D32 on 2026-10-29); 033, 034, 035, 039, 041 built and released as router 1.5.26 at 0%; 040 and 043 open (replan 2026-10-29)**   Written: 2026-10-28 against `main` at `9a92c33` (router 1.5.23, firmware 3.12.4, app 547)
 Related: `specs/spec_02_always_on.md` (most of its reliability rows are now built, see section 2), `specs/roadmap.md` phases 6-8.
 
 ## 1. Goal
@@ -94,8 +94,8 @@ Already pointing this way in the code: the box dashboard builds `https://pisopho
 hands". The plan is the direction the repository was already taking.
 
 ### 035 Say which routers are actually supported  (owner: demote three, keep building them, name one to buy)
-`mipsel` and `aarch64` are **supported** (MT7621 plus the modern Wi-Fi 6 boards: the real market). `mips`, `armv7` and `x86_64`
-become **untested**: `docs/ROUTERS.md` gains a support column, and the installer **warns and proceeds** on an untested family —
+**Only `mipsel` is supported (D32, 2026-10-29: aarch64 is untested too; the first draft of this paragraph called aarch64
+supported).** `mips`, `aarch64`, `armv7` and `x86_64` are **untested**: `docs/ROUTERS.md` gains a support column, and the installer **warns and proceeds** on an untested family —
 it never refuses. CI keeps building all five, so the door stays open and a family can be promoted the day one runs in a shop.
 Because routers are now bring-your-own, this document is the customer contract: it also **names one recommended model the
 customer can order**, so most buyers land on known-good hardware and most support conversations never start. You do **not**
@@ -219,6 +219,9 @@ phones and you do not provision them as a service.
 | D30 | **hardening is an option, never a forced migration** | **Answered 2026-10-28.** The flash-encrypted path is kept correct and buildable, but the **legacy build that has actually run on real hardware stays the default and stays selectable by the owner.** Approach B already works this way: encryption engages only when the key partition exists *and* flash encryption is on; otherwise the code takes today's plaintext path, byte for byte unchanged. No feature under this epic may make hardening compulsory, and no release may drop the legacy path |
 | D26-old | (superseded, kept for the record) | **was open.** Proposed: yes — selling a box advertised as hardened whose secrets are readable is worse than selling an honestly unhardened one (feature 043) |
 | D29 | hardened boxes have no working update path from the feed | **open, and the most serious.** A Secure Boot V2 box runs only images carrying a Secure Boot signature block; feed images carry a manifest signature only, and the Secure Boot key is never in CI. A hardened box would report a successful update and then silently boot the old image. Found by 043's group 0; it belongs to 040. **D30 reduces its urgency** (a legacy box updates normally today), but it must be solved before any box is sold hardened |
+| D32 | is `aarch64` supported? | **No, answered 2026-10-29.** Only `mipsel` (the Qihoo 360 T6M's family, the only one the program has run on) is supported; `aarch64` joins `mips`, `armv7` and `x86_64` as untested. Built in feature 035 (`docs/ROUTERS.md`, `check_arch` warns and proceeds for all four, never refuses). Overrides the first draft of the 035 paragraph in section 6 |
+| D33 | slot licensing and the 3.12.4 feed text | **Answered 2026-10-29: licensing stays (confirms D3 and D23); the feed text is wrong.** `website/update/firmware.json` says "Slot licensing removed: all 10 phone slots are available" but `SlotLicense.h` still has `FREE_SLOTS = 2`. The signed feed is not edited; the next firmware release carries an accurate changelog line |
+| D34 | branches | **Answered 2026-10-29:** no `beta`; a green feature branch merges straight into `main`; CI publishes the router at 0% and only the owner raises it. `CLAUDE.md` section 5 rewritten to say so (the frozen constitution still says "from `beta`" in rule 8; it is read as `main` until its next version) |
 | D28 | the guide's "mixed" eFuse route | **Answered 2026-10-28: drop the hand burns, use the documented flow.** The operator burns **only the two keys** (the flash-encryption key and the Secure Boot digest). The Release-mode bootloader sets `SECURE_BOOT_EN`, the `DIS_*` fuses, secure download mode and `SPI_BOOT_CRYPT_CNT` itself on first boot, and revokes the unused digest slots. The whole procedure becomes one flow ESP-IDF documents, with three fewer irreversible operator steps. The irreversible moment is now the **first boot of the hardened bootloader**, which is what feature 040's corrected criterion 3 already says |
 
 ## 8. Sequencing and releases
