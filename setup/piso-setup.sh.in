@@ -2003,15 +2003,15 @@ trim_log() {
 }
 
 # check_arch: the portal program in this file is built for one CPU family (PISO_ARCH); on another it would not start, so say so before
-# anything is changed, and name the file that fits. An untested family (mips, armv7, x86_64) only gets a warning: it is never refused.
+# anything is changed, and name the file that fits. An untested family (every one but mipsel: mips, aarch64, armv7, x86_64) only gets a warning: it is never refused.
 check_arch() {
 	[ -z "$PISO_SKIP_ARCH" ] || return 0
 	[ -r "$PISO_ROOT/etc/openwrt_release" ] || return 0
 	_f=$(router_family)
 	if [ "$_f" = "$PISO_ARCH" ]; then
-		# right file for this CPU. Three families are built and self-tested in an emulator but have never run on a real router: say so, go on
+		# right file for this CPU. Four families are built and self-tested in an emulator but have never run on a real router: say so, go on
 		case "$_f" in
-			mips | armv7 | x86_64) log "  WARNING: \"$_f\" routers are untested: this program has only run on real hardware on mipsel. Setup goes on, but tell the owner how it went (docs/ROUTERS.md)." ;;
+			mips | aarch64 | armv7 | x86_64) log "  WARNING: \"$_f\" routers are untested: this program has only run on real hardware on mipsel. Setup goes on, but tell the owner how it went (docs/ROUTERS.md)." ;;
 		esac
 		return 0
 	fi
