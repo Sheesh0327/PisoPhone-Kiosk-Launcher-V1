@@ -7,6 +7,8 @@ use crate::config::Config;
 use crate::ledger;
 use crate::util::jget_u64;
 use std::fs;
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Base {
@@ -119,7 +121,7 @@ pub enum State {
     NoSales,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Money {
     pub state: State,
     /// pesos in the record since the base
@@ -131,6 +133,46 @@ pub struct Money {
     /// the box's count restarted and the hourly check has not recorded that yet
     pub restarted: bool,
     pub bad_line: Option<usize>,
+}
+
+/// One look at the files and the box's `status` answer. Reads only: the saved base is loaded, never written.
+pub fn look_from(revenue_path: &str, state_path: &str, status_body: &str) -> Look {
+    let (bad_line, ledger_total) = match ledger::verify(revenue_path) {
+        Ok((_, pesos)) => (None, pesos),
+        Err(line) => (Some(line), 0),
+    };
+    let box_count = jget_u64(status_body, "lifetime_wifi_pulses")
+        .map(|n| (CountKind::WifiOnly, n))
+        .or_else(|| jget_u64(status_body, "lifetime_pulses").map(|n| (CountKind::AllCoins, n)));
+    Look { bad_line, ledger_total, box_count, base: load(state_path) }
+}
+
+/// What the panel keeps between requests: the last answer and when it was made.
+pub type Slot = Mutex<Option<(Instant, Money)>>;
+
+/// `f` at most once per `ttl`, however many requests ask (the lock is held while `f` runs, so a second console waits for the first
+/// answer instead of calling the box again).
+pub fn cached(slot: &Slot, now: Instant, ttl: Duration, f: impl FnOnce() -> Money) -> Money {
+    let mut held = slot.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((at, m)) = held.as_ref() {
+        if now.saturating_duration_since(*at) < ttl {
+            return m.clone();
+        }
+    }
+    let m = f();
+    *held = Some((now, m.clone()));
+    m
+}
+
+static SLOT: Slot = Mutex::new(None);
+
+/// The console panel's money state: at most one `status` call to the box a minute, and nothing written (the hourly check stays
+/// the only one that saves the base).
+pub fn peek(cfg: &Config) -> Money {
+    cached(&SLOT, Instant::now(), Duration::from_secs(60), || {
+        let st = BoxLink::new(&cfg.gw_box, &cfg.gw_key).call(&"f".repeat(32), "status", "").unwrap_or_default();
+        money(&look_from(&cfg.revenue_path(), &state_path(cfg), &st))
+    })
 }
 
 /// The panel's state from one look at the ledger and the box (pure: it never saves the base).
@@ -158,6 +200,66 @@ pub fn money(look: &Look) -> Money {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn scratch(name: &str) -> String {
+        let d = std::env::temp_dir().join(format!("pisoportal-f036-{}-{}", name, std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        d.to_string_lossy().into_owned()
+    }
+
+    #[test]
+    fn f036_the_wifi_count_is_read_first_and_the_all_coins_count_is_the_fallback() {
+        let d = scratch("kind");
+        let (r, s) = (format!("{}/revenue.csv", d), format!("{}/reconcile.state", d));
+        let new = look_from(&r, &s, r#"{"success":true,"lifetime_pulses":1310,"lifetime_wifi_pulses":1247,"lifetime_phone_pulses":63}"#);
+        assert_eq!(new.box_count, Some((CountKind::WifiOnly, 1247)));
+        let old = look_from(&r, &s, r#"{"success":true,"lifetime_pulses":1310}"#);
+        assert_eq!(old.box_count, Some((CountKind::AllCoins, 1310)));
+        assert_eq!(look_from(&r, &s, "").box_count, None, "an empty answer is a silent box");
+        assert_eq!(look_from(&r, &s, r#"{"success":false}"#).box_count, None, "an answer with no count is a silent box");
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn f036_the_ledger_total_and_a_changed_line_are_read_and_the_saved_base_is_not_touched() {
+        let d = scratch("ledger");
+        let (r, s) = (format!("{}/revenue.csv", d), format!("{}/reconcile.state", d));
+        for (t, p) in [(100u64, 10u32), (200, 20), (300, 5)] {
+            ledger::append(&r, t, "hyper", p, 30, "coin").unwrap();
+        }
+        fs::write(&s, "5 600 5\n").unwrap();
+        let l = look_from(&r, &s, r#"{"lifetime_wifi_pulses":35}"#);
+        assert_eq!((l.bad_line, l.ledger_total), (None, 35));
+        assert_eq!(l.base, Some(Base { box_base: 5, ledger_base: 600, last_box: 5 }));
+        assert_eq!(fs::read_to_string(&s).unwrap(), "5 600 5\n", "looking never writes the base");
+        // change the amount on the second row: the chain no longer follows
+        let text = fs::read_to_string(&r).unwrap();
+        let mut rows: Vec<String> = text.lines().map(|x| x.to_string()).collect();
+        let mut f: Vec<String> = rows[1].split(',').map(|x| x.to_string()).collect();
+        f[2] = "99".into();
+        rows[1] = f.join(",");
+        fs::write(&r, rows.join("\n") + "\n").unwrap();
+        let bad = look_from(&r, &s, r#"{"lifetime_wifi_pulses":35}"#);
+        assert_eq!(bad.bad_line, Some(2));
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    fn some_money(ledger: u64) -> Money {
+        Money { state: State::Agrees, ledger, counted: Some(ledger), diff: 0, restarted: false, bad_line: None }
+    }
+
+    #[test]
+    fn f036_the_box_is_asked_once_inside_a_minute_however_many_consoles_ask() {
+        let slot: Slot = Mutex::new(None);
+        let (t0, ttl) = (Instant::now(), Duration::from_secs(60));
+        let mut calls = 0;
+        let a = cached(&slot, t0, ttl, || { calls += 1; some_money(1) });
+        let b = cached(&slot, t0 + Duration::from_secs(59), ttl, || { calls += 1; some_money(2) });
+        assert_eq!((calls, a.ledger, b.ledger), (1, 1, 1), "the second ask inside the minute gets the first answer");
+        let c = cached(&slot, t0 + Duration::from_secs(61), ttl, || { calls += 1; some_money(3) });
+        assert_eq!((calls, c.ledger), (2, 3), "after the minute the box is asked again");
+    }
 
     fn look(ledger: u64, box_count: Option<(CountKind, u64)>, base: Option<Base>) -> Look {
         Look { bad_line: None, ledger_total: ledger, box_count, base }
