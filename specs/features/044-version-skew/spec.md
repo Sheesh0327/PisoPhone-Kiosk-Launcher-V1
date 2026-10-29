@@ -1,6 +1,6 @@
 # Feature 044: show on the console when the router or the coin box is waiting for an update (version skew, design B3)
 
-Status: **approved by the owner 2026-10-29 (D38; Q1 to Q3 answered with the recommendations)**   Branch: `feat/044-version-skew` (cut from the tip of `feat/036-site-status-panel`, because it adds a line next to 036's money line on the console front page; 036 is not merged, so rebase onto `main` once it is)   Area: router (setup scripts, monitor, console)
+Status: **done on the branch (not merged, no pull request); hardware check RS59 owed**   Branch: `feat/044-version-skew` (cut from the tip of `feat/036-site-status-panel`, because it adds a line next to 036's money line on the console front page; 036 is not merged, so rebase onto `main` once it is)   Area: router (setup scripts, monitor, console)
 Backlog rows: epic `specs/spec_03_overhaul.md` feature 044 (split out of 036 by D35), D6   Release: router only. **No firmware release, no app release.**
 
 ## Intent
