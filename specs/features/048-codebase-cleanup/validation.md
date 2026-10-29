@@ -23,6 +23,18 @@ Checks before any change (the same must hold at the end):
 - [ ] Python: `ruff check` and `pytest -x` on `scripts/check_links.py` and its test
 - [ ] Generated files: none touched; `--check` passes
 
+## Reader scan (group 2): who reads the files that are candidates
+| file | read by | verdict |
+|---|---|---|
+| `docs/maintainers/AUDIT_REPORT.md`, `HARDENING_PLAN.md` | only documents (`README.md`, roadmap, two epics) | delete (A3) |
+| `specs/features/005,006,007` | nothing | delete (A2) |
+| `docs/COIN_SLOT_PROTECTION.md`, `LICENSING.md`, `api/print-pairing.md`, `api/superadmin-qr.md` | documents only (`scripts/README.md` names the last by file) | merge into `docs/REFERENCE.md` (B2) |
+| `docs/PROVISIONING_SOLD_UNIT.md` | `scripts/make_firmware_bundles.py` (copied into the sold-unit zip), Code quality's website filter | **stays** |
+| `docs/api/gateway-coinslot.md` | comments in `KioskEngine.kt`, `AccountProtocol.h`, `WebServerAccounts.h`, `boxlink.rs` | **stays** |
+| `docs/design/GUI_SPEC_*` | comments in six Kotlin files, `make_wifi_poster.py`, the router programs' source | **stays** |
+| `setup/MANUAL.md` | `README.md`, `docs/ROUTERS.md`, `docs/REAL_WORLD_TESTING.md` RS1 text, `setup/README.md`, `website/start/shop.html` (a link) | merge into `setup/README.md` (B4), links fixed |
+| `website/manual.html` (not MANUAL.md) | `scripts/tests/test_manual.py` | not a candidate |
+
 ## Removed files
 (filled in group by group)
 

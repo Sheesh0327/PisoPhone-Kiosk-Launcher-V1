@@ -19,8 +19,7 @@ A shop owner or a new helper opens the repository and finds a lot of history: 43
 
 **Tier B: merge into one file, then delete the originals**
 - B1 finished feature folders (`spec.md`, `plan.md`, `validation.md` each) into one `specs/features/ARCHIVE.md`: per feature a header, intent, success criteria and the evidence line. Active features (045 to 048) and anything with open hardware rows stay as folders.
-- B2 `docs/COIN_SLOT_PROTECTION.md`, `docs/LICENSING.md`, `docs/PROVISIONING_SOLD_UNIT.md`, `docs/api/*` (3 files) into `docs/REFERENCE.md`.
-- B3 `docs/design/GUI_SPEC_*` (2 files, 52 KB) into one `docs/DESIGN.md`, if still true (`scripts/tests` and CI read them: see constraints).
+- B2 `docs/COIN_SLOT_PROTECTION.md`, `docs/LICENSING.md`, `docs/api/print-pairing.md` and `docs/api/superadmin-qr.md` into `docs/REFERENCE.md`. **Stay where they are** (the reader scan, `validation.md`, found a reader): `docs/PROVISIONING_SOLD_UNIT.md` (`scripts/make_firmware_bundles.py` copies it into the sold-unit zip; Code quality's website filter lists it), `docs/api/gateway-coinslot.md` (named in comments of the app, firmware and router sources) and both `docs/design/GUI_SPEC_*` files (named in Kotlin comments and in `make_wifi_poster.py`). Changing those would mean touching code.
 - B4 `setup/MANUAL.md` (36 KB, "set up by hand") into `setup/README.md`, or removed if the owner says nobody sets up by hand.
 - B5 `specs/spec_01..03` epics and their findings JSON into one `specs/EPICS.md` (the open rows stay as JSON until closed).
 
@@ -54,9 +53,9 @@ Code refactors (Tier C3), removing generated copies (Tier C1), deleting branches
 ## Owner decisions
 - **Q1** Delete Tier A, or keep some? Recommended: **delete all of A**. The wheel and mini-game are gone; the audit is superseded by the findings rows. Git history keeps every file.
 - **Q2** Merge finished feature folders into `ARCHIVE.md` (B1)? Recommended: **yes**, keeping 040 to 048 and every feature with an unticked hardware row as folders. Otherwise: delete the folders and rely on `CHANGELOG.md` and git history (smallest repository, but the "why" of old decisions then lives only in git).
-- **Q3** Docs: merge the small reference docs and design drafts (B2, B3) into two files? Recommended: **yes**, after the grep shows nothing reads them by path.
+- **Q3** Docs: merge the small reference docs (B2) into one file? (B3, the design drafts, was dropped: code names them.) Recommended: **yes**, after the grep shows nothing reads them by path.
 - **Q4** `setup/MANUAL.md`: merge into `setup/README.md`, keep, or delete? Recommended: **merge**, keeping only the steps an owner needs when the setup program cannot run.
 - **Q5** Tier C (the 15 copies of the router installer): a separate feature later, where CI builds them at release and the repository keeps one? It changes the release flow and needs `beta`. Recommended: **yes, later, as its own feature**; not now.
 
 ## Owner answers (2026-10-29)
-Q1 delete all of Tier A. Q2 merge finished features into `ARCHIVE.md`, keep 040 to 048 and any feature with an unticked hardware row as folders. Q3 yes (two files). Q4 merge `setup/MANUAL.md` into `setup/README.md`. Q5 later, as its own feature; not here.
+Q1 delete all of Tier A. Q2 merge finished features into `ARCHIVE.md`, keep 040 to 048 and any feature with an unticked hardware row as folders. Q3 yes (one file: `docs/REFERENCE.md`). Q4 merge `setup/MANUAL.md` into `setup/README.md`. Q5 later, as its own feature; not here.
