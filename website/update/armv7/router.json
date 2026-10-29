@@ -1,8 +1,8 @@
 {
-  "version": "1.5.23",
-  "sha256": "98c99c8bd57ce352d6cd2f4d01b457493385474c96e664e275951c8ade57a685",
-  "size": 1457480,
-  "rollout": 100,
-  "changelog": "Change Wifi mode default.",
-  "sig": "MEYCIQCo7GSLGTD+kOP4CPPXN3HJc4nQhnR0D/Ex1Yc3V8tHhAIhAI/BJntp10i076jSwLGqUSs+NHWuSYBe5NLJPPvURwQL"
+  "version": "1.5.26",
+  "sha256": "e107beb115bbebd84bd0728e5e44b18ff3eb403ee5699caf7f89eda5c247be1f",
+  "size": 1453155,
+  "rollout": 0,
+  "changelog": "Router software release 1.5.26",
+  "sig": "MEUCIA03Vc7QH81AF9D5UGnnJYHZV5SAALF8boP6F43w5j00AiEA/lYf3RViLuvsoPHHWEobQgoi9s96+lda9T/A19PtkcI="
 }
