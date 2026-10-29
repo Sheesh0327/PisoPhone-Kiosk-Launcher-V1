@@ -1,8 +1,8 @@
 {
-  "version": "1.5.28",
-  "sha256": "deb62b6cfaffd6f24d4630a863f1638cf6403cee17548ade9b595888d813e48c",
-  "size": 1681077,
+  "version": "1.5.29",
+  "sha256": "b161b7be54319ca757820ddb5110b85752086c5c5695ec7b589d03b4a7440b77",
+  "size": 1592657,
   "rollout": 0,
-  "changelog": "Paused: this release carries the old portal program; a rebuilt release follows",
-  "sig": "MEQCIHa9tYhfDkeutXkRoCmbQeKUBpxTaWC3JYDtcggy4YTVAiB2BvVXszkz8WVElTIdlLUetE/JDsFr4tVBsEZcDkRxAw=="
+  "changelog": "Router software release 1.5.29",
+  "sig": "MEUCIHnV5CZaIE0e8YX8Z1PDWKpattaetkaxdHB2z6WgWziIAiEAikMz2WXHjqosy+YGHQRadOwjDUN8+DLEswbi1jAsYH8="
 }
