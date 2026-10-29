@@ -20,7 +20,8 @@
     <div class="card">
         <h1>Set up a shop</h1>
         <p class="lead">One program writes the coin box, sets up the router and pairs them. About 15 minutes for a unit.</p>
-        <p><b>You need:</b> an ESP32 coin box board and a USB <i>data</i> cable; an OpenWrt router (for example the 360T6M), factory reset; a modem with internet; two network cables; a computer to run the program (Windows, macOS or Linux, Python 3.8 or newer); your own phone to open the setup page.</p>
+        <p><b>You need:</b> an ESP32 coin box board and a USB <i>data</i> cable; an OpenWrt router (for example the 360T6M), factory reset; a modem <b>that is online</b>; two network cables; a computer to run the program (Windows, macOS or Linux, Python 3.8 or newer); your own phone to open the setup page.</p>
+        <div class="note warn"><span class="grow"><b>Before you begin: the router needs internet for the first setup.</b> Plug the modem into the router's <b>WAN</b> port and check that the modem is online. The router downloads its own software during the setup; with no internet it cannot be set up at all, and the program stops and tells you so before it changes anything on the router. Replacing a router, or changing the modem? Get the new modem online first.</span></div>
         <svg class="cables" viewBox="0 0 560 150" role="img" aria-label="Cables: the modem goes to the router's WAN port, the computer goes to a LAN port, the coin box is plugged into the computer by USB">
             <g fill="none" stroke="currentColor" stroke-width="2" style="color:var(--muted)">
                 <rect x="10" y="50" width="110" height="50" rx="8" style="fill:var(--surface-2);stroke:var(--line-strong)"/>
@@ -46,7 +47,7 @@
         <ol class="steps">
             <li><b>Download and run the setup program.</b> <a href="../pisophone_setup.py" download>pisophone_setup.py</a>, then <code>python3 pisophone_setup.py</code> (Windows: <code>py pisophone_setup.py</code>). It installs what it is missing.</li>
             <li><b>Open the address it prints</b> on your phone (or scan the QR code it draws) and type the PIN shown in the terminal.</li>
-            <li><b>Cable it as in the picture</b> and reset the router. The program finds the router by itself.</li>
+            <li><b>Cable it as in the picture</b> (the modem must be online: the router needs internet for the first setup) and reset the router. The program finds the router by itself.</li>
             <li><b>Type the shop's name and its public Wi-Fi name.</b> Passwords are made for you and saved on a printable sheet; nothing to type.</li>
             <li><b>Plug the coin box into the computer by USB</b>, tap <i>Start the installation</i> and wait about 10 minutes.</li>
             <li><b>Insert a coin</b> to test, join the customer Wi-Fi with a phone, and print the sheet. Then <a href="phone.html">add your phones</a>.</li>

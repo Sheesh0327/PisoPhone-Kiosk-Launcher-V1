@@ -38,4 +38,4 @@ after all four are merged. Generated files are rebuilt by `tools/build_piso_setu
 ## Hardware check
 **RS36 is retired** by this feature (it tested the offline path). Mark it removed in `docs/REAL_WORLD_TESTING.md` with a
 one-line reason and the release number; do not delete the row. **RS37 stays** — it tests part B, which is not touched.
-A new **RS55**: a first setup on a real router with internet, using only the box page's one-liner and no computer.
+A new **RS57** (RS55 was already taken by feature 031; this file has no RS36 row, so a RETIRED RS36 line is added): a first setup on a real router with internet, using only the box page's one-liner and no computer.

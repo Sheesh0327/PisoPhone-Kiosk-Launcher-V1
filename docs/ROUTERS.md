@@ -16,6 +16,7 @@ file by themselves; a file for another CPU refuses to run before changing anythi
 (for example `riscv64_*`, older ARM) is refused with a clear message.
 
 What else the router needs:
+- **Internet during the first setup.** The router downloads the installer (over https, checked against its published checksum) and its packages (`opkg`, against the router's own signed feeds) itself, so the modem must be plugged into its WAN port and online. A router with no internet cannot be set up: the setup stops before it changes anything and says so. (Until router 1.5.25 the setup program could copy the packages from the computer instead; that was removed by feature 041.)
 - **OpenWrt 23.05 or newer** with the `opennds` package (ImmortalWrt 23.05, an OpenWrt fork, is what the owner's 360T6M runs: `DISTRIB_DESCRIPTION` reads `ImmortalWrt 23.05.0`; other forks are not checked), a **2.4 GHz** Wi-Fi radio (the coin box is 2.4 GHz only) and a LAN you can run SSH on.
 - **Room (sizes from the builds; flash use is an estimate, not a reading from a router):** the portal program is 0.7 to 1.1 MB (about 0.57 MB on
   flash once compressed), the installed `piso-setup` command about 0.1 MB (about 0.05 MB), and an update keeps a backup of the old program (another
