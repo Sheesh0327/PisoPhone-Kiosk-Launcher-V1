@@ -201,7 +201,7 @@ r = run(lan="192.168.1.1", answer="y")
 time.sleep(3.6)
 check(r.returncode == 0 and "set network.lan.ipaddr=10.0.0.1" in log("uci.log") and "commit network" in log("uci.log"), "answered yes: the router is moved to 10.0.0.1: " + log("uci.log"))
 check(log("network.log") == "restart\n", "the network is restarted (after the message is shown)")
-# feature 033 (SU-03): then the LAN ports go down and up again, so a Linux or macOS computer (and the Armbian box) asks for a new address by itself
+# feature 046 (SU-03): then the LAN ports go down and up again, so a Linux or macOS computer (and the Armbian box) asks for a new address by itself
 time.sleep(9)
 ips = [ln.split() for ln in log("ip.log").splitlines()]
 downs, ups = [i for i, a in enumerate(ips) if a[-1] == "down"], [i for i, a in enumerate(ips) if a[-1] == "up"]
@@ -215,13 +215,13 @@ check("ssh root@10.0.0.1" in r.stdout and f"sh {home}/piso-setup.sh" in r.stdout
 r = run(lan="192.168.1.1", wan="10.0.0.23", answer="y")
 check(r.returncode != 0 and "192.168.100.1" in r.stdout and "network.lan.ipaddr=10.0.0.1" not in log("uci.log"), "a modem on 10.0.0.x: it stops and says what to change")
 r = run(lan="192.168.1.1", wan="10.1.2.3", mask=8, answer="y")
-check(r.returncode != 0 and "192.168.100.1" in r.stdout and "network.lan.ipaddr=10.0.0.1" not in log("uci.log"), "feature 033 (SU-05): a modem lease of 10.1.2.3/8 overlaps the kiosk network too: refused by the netmask")
+check(r.returncode != 0 and "192.168.100.1" in r.stdout and "network.lan.ipaddr=10.0.0.1" not in log("uci.log"), "feature 046 (SU-05): a modem lease of 10.1.2.3/8 overlaps the kiosk network too: refused by the netmask")
 r = run(lan="192.168.1.1", wan="10.9.9.9", mask=24, answer="y")
 time.sleep(3.6)
 check(r.returncode == 0 and "set network.lan.ipaddr=10.0.0.1" in log("uci.log"), "and 10.9.9.9/24 is another network: the router is moved: " + r.stdout)
 r = run("update", lan="192.168.1.1")
 check("SETUP-RAN args=[update]" in r.stdout and "set network.lan.ipaddr" not in log("uci.log"), "update never moves the router")
-# feature 033 (SU-06b): a router without opkg (OpenWrt 25.x, apk) is refused before anything is downloaded, moved or run
+# feature 046 (SU-06b): a router without opkg (OpenWrt 25.x, apk) is refused before anything is downloaded, moved or run
 r = run(lan="192.168.1.1", answer="y", opkg=False)
 check(r.returncode != 0 and "opkg" in r.stdout + r.stderr and "ROUTERS.md" in r.stdout + r.stderr and "Nothing was changed" in r.stdout + r.stderr,
       "no opkg: it stops and says which routers are supported: " + r.stdout + r.stderr)

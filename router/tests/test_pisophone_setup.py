@@ -80,7 +80,7 @@ except ps.SetupError:
 check(ps.find_router(lambda h: h == "192.168.1.1") == "192.168.1.1", "a factory router is found")
 check(ps.find_router(lambda h: True) == "10.0.0.1", "10.0.0.1 is preferred")
 check(ps.find_router(lambda h: False, gateways=lambda: []) is None, "no router: None")
-# feature 032 (SU-04): a router with another factory address is found at the gateway the cable's lease names
+# feature 045 (SU-04): a router with another factory address is found at the gateway the cable's lease names
 WINDOWS_ROUTES = """IPv4 Route Table
 Active Routes:
 Network Destination        Netmask          Gateway       Interface  Metric
@@ -103,7 +103,7 @@ check(ps.default_gateways({"kind": "linux"}, run=broken_run) == [], "a missing r
 ran_cmd = []
 check(ps.default_gateways({"kind": "windows"}, run=lambda c, **kw: ran_cmd.append(c) or types.SimpleNamespace(stdout=WINDOWS_ROUTES.encode())) == ["192.168.8.1"] and ran_cmd[0][0] == "route",
       "Windows: asks route print")
-# feature 032 (SU-01): two networks in the same range (the shop modem's Wi-Fi and the factory router's cable are both 192.168.1.x)
+# feature 045 (SU-01): two networks in the same range (the shop modem's Wi-Fi and the factory router's cable are both 192.168.1.x)
 LINUX_ADDR = "1: lo    inet 127.0.0.1/8 scope host lo\n2: eth0    inet 192.168.1.50/24 brd 192.168.1.255 scope global dynamic eth0\n3: wlan0    inet 192.168.1.23/24 brd 192.168.1.255 scope global wlan0\n"
 MAC_ADDR = "lo0: flags=8049<UP,LOOPBACK> mtu 16384\n\tinet 127.0.0.1 netmask 0xff000000\nen0: flags=8863<UP> mtu 1500\n\tinet 192.168.1.50 netmask 0xffffff00 broadcast 192.168.1.255\nen1: flags=8863<UP> mtu 1500\n\tinet 192.168.1.23 netmask 0xffffff00 broadcast 192.168.1.255\n"
 WIN_ADDR = """Windows IP Configuration
@@ -351,7 +351,7 @@ r = e2e(lan="10.0.0.1", probe="denied", yes=True, needpw="Changed1234567", saved
 check("was not accepted" in r.out and "Type the router password" in r.out, "a saved password that no longer works is said so, and ssh asks: " + r.out[-500:])
 r = e2e(lan="10.0.0.1", probe="denied", yes=True, needpw="Saved12345678", no_browser=True)
 check("Logged in to the router" not in r.out and "Type the router password" in r.out, "nothing saved: ssh asks as before")
-# ---- feature 032 (SU-10): a refused ssh login is not "the connection was lost" ---------------------------------------------------------------
+# ---- feature 045 (SU-10): a refused ssh login is not "the connection was lost" ---------------------------------------------------------------
 for typed, word in (("", "was not given"), ("Wrong12345678", "did not accept")):
     open(f"{tmp}/lan", "w").write("10.0.0.1")
     open(f"{tmp}/needpw", "w").write("Right12345678")
@@ -845,15 +845,15 @@ FLASHED.clear()
 r = e2e(answers=("Tindahan WiFi", "Aling Nena", "y", "", "n"), secrets_=("routerpass1", "routerpass1", "kioskpass1", "kioskpass1", "boxadmin99", "boxadmin99"))
 check(r.rc == 0 and "Coin box board found: CH340 on COM5" in r.out, "a board on USB is found and the setup goes on: " + r.out[:600])
 check(FLASHED == ["COM5"], "the board is written once: " + str(FLASHED))
-check(r.input.endswith("\nboth\n\n"), "feature 033: no MAC was read, so none is sent (the router pairs any box): " + repr(r.input))
+check(r.input.endswith("\nboth\n\n"), "feature 046: no MAC was read, so none is sent (the router pairs any box): " + repr(r.input))
 MAC_READ["mac"] = "AA:BB:CC:DD:EE:01"
 BOARDS[:] = [("COM5", "CH340")]
 r = e2e(answers=("Tindahan WiFi", "Aling Nena", "y", "", "n"), secrets_=("routerpass1", "routerpass1", "kioskpass1", "kioskpass1", "boxadmin99", "boxadmin99"))
-check(r.rc == 0 and r.input.endswith("\nboth\nAA:BB:CC:DD:EE:01\n"), "feature 033 (SU-11): the MAC of the board that was just written is sent as the last answer: " + repr(r.input))
+check(r.rc == 0 and r.input.endswith("\nboth\nAA:BB:CC:DD:EE:01\n"), "feature 046 (SU-11): the MAC of the board that was just written is sent as the last answer: " + repr(r.input))
 FLASHED.clear()
 r = e2e(answers=("Tindahan WiFi", "Aling Nena", "y", "n"), secrets_=("routerpass1", "routerpass1", "kioskpass1", "kioskpass1", "boxadmin99", "boxadmin99"), no_flash=True)
 check(r.rc == 0 and FLASHED == [], "--no-flash writes nothing")
-check(r.input.endswith("\nboth\n\n"), "feature 033: and sends no MAC (any box may be paired, as before): " + repr(r.input))
+check(r.input.endswith("\nboth\n\n"), "feature 046: and sends no MAC (any box may be paired, as before): " + repr(r.input))
 MAC_READ.clear()
 BOARDS[:] = [("COM5", "CH340"), ("COM6", "CP210x")]
 r = e2e(answers=("Tindahan WiFi", "Aling Nena", "y", "n"), secrets_=("routerpass1", "routerpass1", "kioskpass1", "kioskpass1", "boxadmin99", "boxadmin99"))
@@ -1138,18 +1138,18 @@ r = offline_run(inet=False)
 check(r.err and "signature" in r.err and "internet" in r.err and "Nothing was changed" in r.err, "no way to prepare and no internet: it stops with both reasons: " + str(r.err))
 check(open(f"{tmp}/lan").read().strip() == "192.168.1.1" and r.uci == "" and not any("install" in c and "--yes" in c for c in commands(r)) and not os.path.exists(f"{fake_root}/tmp/piso-offline"),
       "and the router was not changed (same address, nothing installed, nothing copied)")
-# feature 032 (SU-04): a router found at another address (here 192.168.8.1) is moved to 10.0.0.1 like a factory one
+# feature 045 (SU-04): a router found at another address (here 192.168.8.1) is moved to 10.0.0.1 like a factory one
 r = e2e(lan="192.168.8.1", router="192.168.8.1", answers=("Tindahan WiFi", "Aling Nena", "y", "n"), secrets_=("routerpass1", "routerpass1", "kioskpass1", "kioskpass1", "boxadmin99", "boxadmin99"))
 check(r.rc == 0 and r.err is None and "set network.lan.ipaddr=10.0.0.1" in r.uci and open(f"{tmp}/lan").read().strip() == "10.0.0.1", f"a router at 192.168.8.1 is moved to 10.0.0.1 and set up ({r.err}): " + r.out[-500:])
 check("Router found at 192.168.8.1" in r.out and "moving it to 10.0.0.1" in r.out, "and the address it was found at is named: " + r.out[:300])
-# feature 032 (SU-06a): an apk router (OpenWrt 25.x) is refused before anything is changed, even when it has internet (the online way fails at opkg)
+# feature 045 (SU-06a): an apk router (OpenWrt 25.x) is refused before anything is changed, even when it has internet (the online way fails at opkg)
 router_knows([], apk="yes", release="25.12.0")
 open(f"{tmp}/lan", "w").write("192.168.1.1")
 r = offline_run(inet=True)
 check(r.err and "apk" in r.err and "25.12.0" in r.err and "ROUTERS.md" in r.err and "Nothing was changed" in r.err, "an apk router: refused, naming its release and the supported ones: " + str(r.err))
 check(r.wget == "" and "SETUP-RAN" not in r.out and r.uci == "" and not any("ping -c 1" in c for c in commands(r)) and not any("cat >" in c for c in commands(r)),
       "and nothing was tried on it (no download, no internet test, no copy, no setup, no change)")
-# feature 032 (SU-02): the computer's internet goes through the router's cable and the router has none: ask to unplug it for the download
+# feature 045 (SU-02): the computer's internet goes through the router's cable and the router has none: ask to unplug it for the download
 class Clock:
     def __init__(self): self.t = 0.0
     def now(self): return self.t
@@ -1298,7 +1298,7 @@ check(ps.build_parser().parse_args(["--router-online"]).router_online is True an
 OFFLINE_SITE = None
 
 shutil.rmtree(tmp, ignore_errors=True)
-# ---- feature 032 (SU-18): the computer's addresses at the top of the setup log -------------------------------------------------------------
+# ---- feature 045 (SU-18): the computer's addresses at the top of the setup log -------------------------------------------------------------
 import types as _types
 for kind, first in (("windows", "ipconfig"), ("mac", "ifconfig"), ("linux", "ip")):
     ran = []
@@ -1316,7 +1316,7 @@ report = ps.network_report({"kind": "linux"}, run=refusing_run)
 check(len(report) == 2 and all("could not be run" in x for x in report), "a missing command is noted, not raised: " + str(report))
 check(ps.SetupLog.mask("pw is Secret123 and ab", ["Secret123", "ab", ""]) == "pw is *** and ab", "only secrets of 6 characters or more are hidden")
 
-# ---- feature 032 (SU-17): the coin box software list and image are asked for with the program's own name ----------------------------------
+# ---- feature 045 (SU-17): the coin box software list and image are asked for with the program's own name ----------------------------------
 import json
 seen_agents = []
 
@@ -1338,7 +1338,7 @@ try:
 except ps.SetupError:
     pass   # (the checksum is fake: only the request matters here)
 check(seen_agents == [ps.USER_AGENT, ps.USER_AGENT], "the software list and the image requests carry USER_AGENT: " + str(seen_agents))
-# ---- feature 033 (SU-11): the board the program just wrote tells its MAC, and the router is told to pair only that one --------------------------------
+# ---- feature 046 (SU-11): the board the program just wrote tells its MAC, and the router is told to pair only that one --------------------------------
 check(ps.ANSWER_ORDER[-1] == "BOX_EXPECT_MAC" and "IFS= read -r BOX_EXPECT_MAC" in ps.setup_command("main") and ps.setup_command("main").count("BOX_EXPECT_MAC") == 2,
       "the answers line ends with BOX_EXPECT_MAC, read and exported by the router's side")
 

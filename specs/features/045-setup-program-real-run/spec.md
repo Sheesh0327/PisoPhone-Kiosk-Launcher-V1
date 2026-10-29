@@ -1,7 +1,7 @@
-# Feature 032: the setup program in a real shop
+# Feature 045: the setup program in a real shop
 
-Status: **built and validated on a computer 2026-10-28; waits for the owner's RS56 bench run (D8)**   Branch: `feat/032-setup-program-real-run` (from `origin/main`, owner's choice 2026-10-28; `beta` is behind `main` on purpose)   Area: setup
-Backlog rows: SU-18, SU-09, SU-10, SU-06a, SU-01, SU-02, SU-04, SU-15, SU-17, SU-21 (`specs/spec_03_findings.json`; SU-14 only if RS56 (b) fails)   Release: site (the website's copy of the program, rebuilt; no router, firmware or app release)
+Status: **built and validated on a computer 2026-10-28; waits for the owner's RS60 bench run (D8)**   Branch: `feat/045-setup-program-real-run` (from `origin/main`, owner's choice 2026-10-28; `beta` is behind `main` on purpose)   Area: setup
+Backlog rows: SU-18, SU-09, SU-10, SU-06a, SU-01, SU-02, SU-04, SU-15, SU-17, SU-21 (`specs/spec_04_findings.json`; SU-14 only if RS60 (b) fails)   Release: site (the website's copy of the program, rebuilt; no router, firmware or app release)
 
 ## Intent
 The one-click setup program (`setup/pisophone_setup.py`) has passed its tests on a computer but has never run end to end in a real shop.
@@ -17,10 +17,10 @@ both rules by getting an owner who is not a programmer to a working unit on the 
 
 ## Constraints
 - Only `setup/pisophone_setup.py`, its tests in `router/tests/`, `setup/README.md`, `docs/REAL_WORLD_TESTING.md`, `CHANGELOG.md`, `specs/`.
-  Nothing under `setup/src/`, `setup/install.sh`, `tools/pisoportal/` or `esp32_firmware/` (those are features 033 and 034).
+  Nothing under `setup/src/`, `setup/install.sh`, `tools/pisoportal/` or `esp32_firmware/` (those are features 046 and 047).
 - The program uses only the Python standard library. Website copy rebuilt with `python3 tools/build_piso_setup.py`; `--check` must pass and
   `git status` must show no router file changed (else `setup/RELEASE` would need raising: stop and tell the owner).
-- The log file (spec 03 section 5): `pisophone-setup-log-<YYYYMMDD-HHMM>.txt` in the saved folder, mode 0600, plain text, the unit's
+- The log file (spec 04 section 5): `pisophone-setup-log-<YYYYMMDD-HHMM>.txt` in the saved folder, mode 0600, plain text, the unit's
   passwords written as `***`. It covers both paths that write page lines today (`Session.log` and `plog`, the PisoPhone-only one).
 - Passwords already saved by the program (`pisophone-router-password.txt`) keep their format and place.
 - Every page the owner can reach keeps its present wording unless a row below changes it.
@@ -39,7 +39,7 @@ both rules by getting an owner who is not a programmer to a working unit on the 
   login says which password is needed.
 
 ## Success criteria
-Each becomes a line in `validation.md`; ids follow spec 03 section 7.
+Each becomes a line in `validation.md`; ids follow spec 04 section 7.
 1. AC1.1 A run with a fake core writes `pisophone-setup-log-*.txt`, mode 0600, holding every page line and the computer's addresses and routes,
    and none of the unit's passwords (SU-18); the last page and the error banner name the file.
 2. AC1.2 After a first run that set the router password, *Try again* logs in with the saved password and continues (SU-09); a refused login says
@@ -55,15 +55,15 @@ Each becomes a line in `validation.md`; ids follow spec 03 section 7.
 8. AC1.8 The coin box list and image requests carry `USER_AGENT` (SU-17); `--install-service` copies the program to `/var/lib/pisophone-setup/`
    and starts that copy (SU-21).
 9. AC1.9 `python3 tools/build_piso_setup.py --check` passes; the eight router test files, `check_security_rules.sh`, `ruff`, `mypy`, `pytest -x` on the
-   touched files pass; no router file changed. RS56 is added to `docs/REAL_WORLD_TESTING.md`; the owner runs it before this feature merges (D8).
+   touched files pass; no router file changed. RS60 is added to `docs/REAL_WORLD_TESTING.md`; the owner runs it before this feature merges (D8).
 
 ## Out of scope
-SU-03, SU-11, SU-06b, SU-05, SU-07, SU-08 (feature 033), SU-16 (feature 034). Full apk support, a hotspot made by the setup computer (D2), the
-PisoPhone-only box address (Q2 of spec 03), the Android Go USB path, the Telegram step, the Owner tools. SU-14 (Windows 10 OpenSSH 8.1) is
-decided only by RS56 (b): if it fails, one more small group is added after the owner's run.
+SU-03, SU-11, SU-06b, SU-05, SU-07, SU-08 (feature 046), SU-16 (feature 047). Full apk support, a hotspot made by the setup computer (D2), the
+PisoPhone-only box address (Q2 of spec 04), the Android Go USB path, the Telegram step, the Owner tools. SU-14 (Windows 10 OpenSSH 8.1) is
+decided only by RS60 (b): if it fails, one more small group is added after the owner's run.
 
 ## Owner decisions
-Spec 03 D1 to D8 are answered (2026-10-28). For this feature:
+Spec 04 D1 to D8 are answered (2026-10-28). For this feature:
 Answered by the owner on 2026-10-28 (all four as recommended):
 - **Q1** SU-02: unplug prompt and flow as in the epic (D5).
 - **Q2** SU-01: no "continue anyway"; the page stops with the advice and *Check again*.

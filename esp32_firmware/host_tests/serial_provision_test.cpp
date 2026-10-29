@@ -79,7 +79,7 @@ int main() {
     CHECK(std::string(reason(Parse::BadAdminPassword)) == "bad-admin-password" &&
           std::string(reason(Parse::Ok)) == "ok");
 
-    // feature 034: a box that never joined a Wi-Fi and never recorded a payment may be given new Wi-Fi details; a box in use never
+    // feature 047: a box that never joined a Wi-Fi and never recorded a payment may be given new Wi-Fi details; a box in use never
     BoxFacts fresh; // the admin password was never changed: the factory state
     CHECK(setupState(fresh) == SetupState::Needed && acceptsSetup(SetupState::Needed));
     BoxFacts waiting = fresh; // set up over USB, the Wi-Fi never worked, no money

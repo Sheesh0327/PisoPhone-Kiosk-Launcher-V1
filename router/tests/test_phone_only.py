@@ -54,7 +54,7 @@ class FakeBox:
 
     def __init__(self, mac="aa:bb:cc:00:11:22", setup_done=False, drop_first=False, joins=True, wifi_wait=False, payment=False, why="none"):
         self.mac, self.setup_done, self.drop_first, self.joins = mac, setup_done, drop_first, joins
-        self.wifi_wait, self.payment, self.why = wifi_wait, payment, why   # (feature 034: set up over USB and never got an address; any payment; why it cannot join)
+        self.wifi_wait, self.payment, self.why = wifi_wait, payment, why   # (feature 047: set up over USB and never got an address; any payment; why it cannot join)
         self.rx = b""
         self.out = b"boot noise\n"
         self.wifi = self.admin = None
@@ -124,7 +124,7 @@ status = link.hello(5)
 check(status and status["setup"] == "needed" and status["mac"] == "aa:bb:cc:00:11:22", "hello finds a new box (boot noise ignored)")
 ps.provision_box(link, "Dela Cruz 5G", "p@ss w0rd!", "Shop-Admin-2026", emit=lambda t: None)
 check(box.wifi == ("Dela Cruz 5G", "p@ss w0rd!") and box.admin == "Shop-Admin-2026", "provisioning gives the box the Wi-Fi and the admin password")
-# (feature 034) set up but not yet on a Wi-Fi: it still takes new details; once it has joined, it refuses a second setup
+# (feature 047) set up but not yet on a Wi-Fi: it still takes new details; once it has joined, it refuses a second setup
 box.joins = False   # (its Wi-Fi details do not work)
 check(link.hello(3)["setup"] == "joining", "a box that was set up and has not joined yet says joining")
 ps.provision_box(link, "Dela Cruz 5G", "n3w p@ssword", "Shop-Admin-2026", emit=lambda t: None)
@@ -209,7 +209,7 @@ ps.run_phone_setup(Args, read=lambda p: "ERASE", read_secret=lambda p: "", emit=
              flasher=flasher, opener=opener, waiter=waiter, sleep=lambda s: None, out_dir=out)
 check(state["flashed"] == 1, "typing ERASE goes on")
 
-# feature 034 (SU-16): a box set up over USB that never joined (a mistyped Wi-Fi password) takes new details: no ERASE, no rewrite
+# feature 047 (SU-16): a box set up over USB that never joined (a mistyped Wi-Fi password) takes new details: no ERASE, no rewrite
 ps_status = ps.parse_status("PISO-BOX fw=3.12.5 mac=aa:bb setup=joining wifi=down ip=- why=wrong-password")
 check(ps_status and ps_status["setup"] == "joining" and ps_status["why"] == "wrong-password" and ps_status["ip"] == "-", "the hello with setup=joining and why= is read")
 stuck = FakeBox(setup_done=True, wifi_wait=True, joins=False, why="wrong-password")

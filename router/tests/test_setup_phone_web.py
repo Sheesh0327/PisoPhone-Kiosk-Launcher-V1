@@ -269,7 +269,7 @@ else:
     server2.shutdown()
 
 server.shutdown()
-# ---- feature 034 (SU-16): a board set up over USB that never joined a Wi-Fi takes the new details: no erase, no rewrite ------------------------------
+# ---- feature 047 (SU-16): a board set up over USB that never joined a Wi-Fi takes the new details: no erase, no rewrite ------------------------------
 def run_install_on(existing):
     c2 = FakeCore()
     c2.existing = existing

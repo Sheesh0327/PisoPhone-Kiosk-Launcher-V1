@@ -34,7 +34,7 @@ int main() {
     CHECK(std::strstr(reasonHint(203), "refused") != nullptr);
     CHECK(reasonHint(250)[0] == '\0');
 
-    // feature 034: the short word the hello line carries for why the box cannot join
+    // feature 047: the short word the hello line carries for why the box cannot join
     CHECK(std::strcmp(whyCode(15), "wrong-password") == 0 && std::strcmp(whyCode(202), "wrong-password") == 0 &&
           std::strcmp(whyCode(204), "wrong-password") == 0 && std::strcmp(whyCode(14), "wrong-password") == 0);
     CHECK(std::strcmp(whyCode(201), "no-network") == 0);

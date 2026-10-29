@@ -18,7 +18,7 @@
       "fails_before": true
     },
     "release": "site",
-    "feature": "032-setup-program-real-run"
+    "feature": "045-setup-program-real-run"
   },
   {
     "id": "SU-09",
@@ -40,7 +40,7 @@
       "fails_before": true
     },
     "release": "site",
-    "feature": "032-setup-program-real-run"
+    "feature": "045-setup-program-real-run"
   },
   {
     "id": "SU-10",
@@ -61,7 +61,7 @@
       "fails_before": true
     },
     "release": "site",
-    "feature": "032-setup-program-real-run"
+    "feature": "045-setup-program-real-run"
   },
   {
     "id": "SU-01",
@@ -79,11 +79,11 @@
     "fix": "detect two interfaces in the router's range (or the router address reached through Wi-Fi) and stop with advice; README recommends the owner's phone hotspot (D2)",
     "test": {
       "kind": "unit",
-      "where": "router/tests/test_pisophone_setup.py (SU-01 checks, fake address tables for Windows, Linux, macOS); RS56 (a)",
+      "where": "router/tests/test_pisophone_setup.py (SU-01 checks, fake address tables for Windows, Linux, macOS); RS60 (a)",
       "fails_before": true
     },
     "release": "site",
-    "feature": "032-setup-program-real-run"
+    "feature": "045-setup-program-real-run"
   },
   {
     "id": "SU-02",
@@ -101,11 +101,11 @@
     "fix": "download coin box software (every chip), installer files and app.json at Start; before the router packages check the website answers, else ask to unplug the router cable for the download (D5)",
     "test": {
       "kind": "unit",
-      "where": "router/tests/test_offline_setup.py (SU-02 checks); RS56 (c) = RS36",
+      "where": "router/tests/test_offline_setup.py (SU-02 checks); RS60 (c) = RS36",
       "fails_before": true
     },
     "release": "site",
-    "feature": "032-setup-program-real-run"
+    "feature": "045-setup-program-real-run"
   },
   {
     "id": "SU-04",
@@ -127,7 +127,7 @@
       "fails_before": true
     },
     "release": "site",
-    "feature": "032-setup-program-real-run"
+    "feature": "045-setup-program-real-run"
   },
   {
     "id": "SU-06a",
@@ -150,7 +150,7 @@
       "fails_before": true
     },
     "release": "site",
-    "feature": "032-setup-program-real-run"
+    "feature": "045-setup-program-real-run"
   },
   {
     "id": "SU-15",
@@ -172,7 +172,7 @@
       "fails_before": true
     },
     "release": "site",
-    "feature": "032-setup-program-real-run"
+    "feature": "045-setup-program-real-run"
   },
   {
     "id": "SU-17",
@@ -193,7 +193,7 @@
       "fails_before": true
     },
     "release": "site",
-    "feature": "032-setup-program-real-run"
+    "feature": "045-setup-program-real-run"
   },
   {
     "id": "SU-21",
@@ -214,7 +214,7 @@
       "fails_before": true
     },
     "release": "site",
-    "feature": "032-setup-program-real-run"
+    "feature": "045-setup-program-real-run"
   },
   {
     "id": "SU-14",
@@ -228,14 +228,14 @@
     "confidence": "uncertain",
     "status": "open",
     "problem": "On Windows 10 the built-in OpenSSH is 8.1, older than `SSH_ASKPASS_REQUIRE` (8.4): logins that need a password (a re-run, the coin test, Telegram) may hang or fail.",
-    "fix": "decide after RS56 (b) on Windows 10 (OpenSSH 8.1 has no SSH_ASKPASS_REQUIRE): if logins with a password fail, say so on the first page with the fix",
+    "fix": "decide after RS60 (b) on Windows 10 (OpenSSH 8.1 has no SSH_ASKPASS_REQUIRE): if logins with a password fail, say so on the first page with the fix",
     "test": {
       "kind": "hardware",
-      "where": "RS56 (b)",
+      "where": "RS60 (b)",
       "fails_before": true
     },
     "release": "site",
-    "feature": "032-setup-program-real-run"
+    "feature": "045-setup-program-real-run"
   },
   {
     "id": "SU-03",
@@ -253,11 +253,11 @@
     "fix": "after network restart switch every LAN port off for 3 s and on (DSA: ip link; swconfig: the switch command) so every computer asks for a new address (D3)",
     "test": {
       "kind": "integration",
-      "where": "router/tests/test_install.py (SU-03 checks, fake ip and swconfig); RS57 (a)",
+      "where": "router/tests/test_install.py (SU-03 checks, fake ip and swconfig); RS61 (a)",
       "fails_before": true
     },
     "release": "router",
-    "feature": "033-router-setup-real-run"
+    "feature": "046-router-setup-real-run"
   },
   {
     "id": "SU-11",
@@ -276,11 +276,11 @@
     "fix": "program reads mac= from PISO-HELLO after writing (the Wi-Fi station MAC, esp32_firmware/src/main.cpp:228-235) and sends BOX_EXPECT_MAC; pair_box admits only that MAC; empty = any box as today (D4)",
     "test": {
       "kind": "integration",
-      "where": "router/tests/test_setup.py (SU-11 checks: a wrong MAC joins first); router/tests/test_setup_web.py; RS57 (b)",
+      "where": "router/tests/test_setup.py (SU-11 checks: a wrong MAC joins first); router/tests/test_setup_web.py; RS61 (b)",
       "fails_before": true
     },
     "release": "router",
-    "feature": "033-router-setup-real-run"
+    "feature": "046-router-setup-real-run"
   },
   {
     "id": "SU-06b",
@@ -302,7 +302,7 @@
       "fails_before": true
     },
     "release": "router",
-    "feature": "033-router-setup-real-run"
+    "feature": "046-router-setup-real-run"
   },
   {
     "id": "SU-05",
@@ -324,7 +324,7 @@
       "fails_before": true
     },
     "release": "router",
-    "feature": "033-router-setup-real-run"
+    "feature": "046-router-setup-real-run"
   },
   {
     "id": "SU-07",
@@ -345,7 +345,7 @@
       "fails_before": true
     },
     "release": "router",
-    "feature": "033-router-setup-real-run"
+    "feature": "046-router-setup-real-run"
   },
   {
     "id": "SU-08",
@@ -360,14 +360,14 @@
     "confidence": "uncertain",
     "status": "fixed",
     "problem": "`restart_router_access` restarts dropbear and uhttpd **before** the `DONE` state is written and the summary is sent. If the restart ends the setup's own ssh session, the setup stops half way and the computer gets no summary.",
-    "fix": "write the state and send the results first, then restart dropbear and uhttpd in the background; or wont-fix with RS57 (c) evidence",
+    "fix": "write the state and send the results first, then restart dropbear and uhttpd in the background; or wont-fix with RS61 (c) evidence",
     "test": {
       "kind": "integration",
-      "where": "router/tests/test_setup.py (SU-08 checks, a restart that hangs up the session); RS57 (c)",
+      "where": "router/tests/test_setup.py (SU-08 checks, a restart that hangs up the session); RS61 (c)",
       "fails_before": true
     },
     "release": "router",
-    "feature": "033-router-setup-real-run"
+    "feature": "046-router-setup-real-run"
   },
   {
     "id": "SU-16",
@@ -385,10 +385,10 @@
     "fix": "until the box has joined a Wi-Fi once and has no payment, take new Wi-Fi details over USB (setup=joining, why=); the program offers Change the Wi-Fi details (D6)",
     "test": {
       "kind": "host",
-      "where": "esp32_firmware/host_tests (SU-16: joined once or a payment -> already-set-up); router/tests/test_phone_only.py; RS58",
+      "where": "esp32_firmware/host_tests (SU-16: joined once or a payment -> already-set-up); router/tests/test_phone_only.py; RS62",
       "fails_before": true
     },
     "release": "firmware",
-    "feature": "034-box-wifi-retry"
+    "feature": "047-box-wifi-retry"
   }
 ]

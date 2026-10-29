@@ -167,7 +167,7 @@ for label, kw, words in (
 ):
     ok, text = not_possible(lambda kw=kw: ps.read_router_feeds(FakeSsh(router_output(**kw)), "10.0.0.1"), *words)
     check(ok, f"{label}: 'offline setup not possible: <reason>': {text}")
-# feature 032 (SU-06a): an apk router (or one without opkg) is refused outright: not a reason to fall back to the online way
+# feature 045 (SU-06a): an apk router (or one without opkg) is refused outright: not a reason to fall back to the online way
 for label, kw in (("an apk router (OpenWrt 25.x)", {"feeds": "", "apk": True, "installed": "", "release": "DISTRIB_RELEASE='25.12.0'\n"}),
                   ("a router without opkg", {"feeds": "", "installed": "", "opkg": False, "release": "DISTRIB_RELEASE='25.12.0'\n"})):
     try:

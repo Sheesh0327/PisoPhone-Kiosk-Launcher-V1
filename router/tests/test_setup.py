@@ -982,7 +982,7 @@ r = lib(NONET + ostub + '(install_packages); echo "rc=$?"', env={"HAVE": ""})
 nl = open(f"{tmp}/nonet.log").read()
 check("opkg update" in nl and "opkg install" not in nl.split("opkg update")[0] and "LOCAL" not in nl, "without the setting install_packages still starts with opkg update (the online path is as before): " + nl)
 check("unset SHOP_PRODUCT PISO_LOCAL_PKGS" in text.split("main() {")[1], "a command other than the first setup (an update included) never uses PISO_LOCAL_PKGS")
-# feature 033 (SU-05): the modem's range is compared with the netmask, and the same rule answers `piso-setup wan-clash` later
+# feature 046 (SU-05): the modem's range is compared with the netmask, and the same rule answers `piso-setup wan-clash` later
 for wan, prefix, clash in (("10.0.0.5", 24, "10.0.0.1"), ("10.1.2.3", 8, "10.0.0.1"), ("10.0.30.7", 24, "10.0.30.1"), ("192.168.1.50", 24, ""), ("10.9.9.9", 24, ""), ("", 24, "")):
     r = lib(f'wan_ip() {{ echo "{wan}"; }}; wan_prefix() {{ echo {prefix}; }}; wan_clash; echo "rc=$?"')
     check(r.stdout.split()[0] == clash if clash else "rc=1" in r.stdout and "10." not in r.stdout.replace("rc=1", ""), f"WAN {wan}/{prefix}: overlaps {clash or 'nothing'}: {r.stdout}{r.stderr}")
@@ -994,7 +994,7 @@ check(r.stdout.startswith("the modem's network (10.1.2.3/8)") and "rc=1" in r.st
 r = lib('wan_ip() { echo 192.168.1.50; }; wan_prefix() { echo 24; }; cmd_wan_clash; echo "rc=$?"')
 check(r.stdout.strip() == "rc=0", "and prints nothing when the ranges are apart: " + r.stdout + r.stderr)
 check("wan_clash" in open(SCRIPT).read().split("check_all() {")[1].split("\n}\n")[0], "the status checks include the modem's range")
-# feature 033 (SU-11): with BOX_EXPECT_MAC only the board the setup program just wrote is paired; without it the first station, as before
+# feature 046 (SU-11): with BOX_EXPECT_MAC only the board the setup program just wrote is paired; without it the first station, as before
 ASSOC = 'iwinfo() { [ "$2" = assoclist ] && for m in $STATIONS; do echo "$m  -50 dBm / -95 dBm"; done; }; box_ifname() { echo wlan0-3; }; '
 for stations, expect, want_first, want_other in (("aa:bb:cc:dd:ee:99 aa:bb:cc:dd:ee:01", "AA:BB:CC:DD:EE:01", "AA:BB:CC:DD:EE:01", "AA:BB:CC:DD:EE:99"),
                                                   ("aa:bb:cc:dd:ee:99", "AA:BB:CC:DD:EE:01", "", "AA:BB:CC:DD:EE:99"),
@@ -1015,7 +1015,7 @@ check("rc=0 MAC=AA:BB:CC:DD:EE:01" in r.stdout, "the expected board is paired ev
 open(f"{tmp}/uci.log", "w").close()
 r = lib(PAIR, env={"STATIONS": "aa:bb:cc:dd:ee:99", "PAIR_WAIT": "20"})
 check("rc=0 MAC=AA:BB:CC:DD:EE:99" in r.stdout, "no expected board (older program, by hand, Do not write it): the first station is paired, as before: " + r.stdout + r.stderr)
-# feature 033 (SU-08): the restart of SSH and LuCI must not cut the setup before it writes its result. Here the restart sends HUP to the session (a
+# feature 046 (SU-08): the restart of SSH and LuCI must not cut the setup before it writes its result. Here the restart sends HUP to the session (a
 # dropped SSH connection): the state and the summary must be out already.
 st8 = f"{tmp}/state8"
 if os.path.exists(st8):
@@ -1031,7 +1031,7 @@ r = lib(STUBS8 + 'PPID_OF_SESSION=$$; stage2; echo "after"', env={"PISO_STATE": 
 check(os.path.exists(st8) and open(st8).read().startswith("DONE all checks passed"),
       "the access restart cuts the session: the state is DONE all the same: " + (open(st8).read() if os.path.exists(st8) else "no state file") + r.stdout[-300:] + r.stderr[-300:])
 check("SETUP COMPLETE" in r.stdout, "and the last message was shown before the restart: " + r.stdout[-300:])
-# feature 033 (SU-07): a failing opkg update on a router that has internet says the release's package sources do not answer
+# feature 046 (SU-07): a failing opkg update on a router that has internet says the release's package sources do not answer
 old_root = tempfile.mkdtemp(dir=tmp)
 os.makedirs(f"{old_root}/etc")
 open(f"{old_root}/etc/openwrt_release", "w").write("DISTRIB_ID='OpenWrt'\nDISTRIB_RELEASE='21.02.7'\nDISTRIB_ARCH='mipsel_24kc'\n")

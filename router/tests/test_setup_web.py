@@ -188,7 +188,7 @@ if hasattr(os, "geteuid") and os.geteuid() == 0:
     check(rc == 0 and open(unit_path).read().count("--port 8800") == 1 and ["systemctl", "enable", "--now", "pisophone-setup"] in r.calls
           and open(os.path.join(tmp, "svc", "pin")).read().strip() == "654321" and any("PIN 654321" in l for l in out),
           "--install-service writes the unit, enables it, keeps the PIN and prints the address: " + str(out))
-# feature 032 (SU-21): the service starts its own copy of the program, not the file in Downloads
+# feature 045 (SU-21): the service starts its own copy of the program, not the file in Downloads
 if hasattr(os, "geteuid") and os.geteuid() == 0:
     downloaded = os.path.join(tmp, "Downloads", "pisophone_setup.py")
     os.makedirs(os.path.dirname(downloaded))
@@ -735,7 +735,7 @@ page = page.decode() if isinstance(page, bytes) else page
 check('id="kioskPw"' in page and "S.mode==='wifi'" in page and page.count('name="mode"') == 3 and "checked" not in page.split('name="mode"')[1].split(">")[0],
       "the page has the three choices, none checked, and hides the rental-phone password for PisoWiFi only")
 server.shutdown()
-# ---- feature 032 (SU-18): the setup log file, so a failed real run leaves evidence to send ----------------------------------------------
+# ---- feature 045 (SU-18): the setup log file, so a failed real run leaves evidence to send ----------------------------------------------
 import glob, stat
 
 
@@ -803,7 +803,7 @@ except Exception as e:
     check(False, "an unwritable log must not raise: " + repr(e))
 server.shutdown()
 
-# ---- feature 032 (SU-09): Try again after the router password was set logs in with the saved one -------------------------------------------
+# ---- feature 045 (SU-09): Try again after the router password was set logs in with the saved one -------------------------------------------
 class PasswordCore(FakeCore):
     """A router that gets its password in the first run, which then breaks off: the program's ssh login still has no password."""
 
@@ -870,7 +870,7 @@ check("password" in s["install"]["error"] and len([x for x in core.calls if x[0]
 check(not s["router"]["login_ok"], "the Router step asks for the password again")
 server.shutdown()
 
-# ---- feature 032 (SU-01): two networks in 192.168.1.x stop the search before any ssh, with the hotspot advice ---------------------------------
+# ---- feature 045 (SU-01): two networks in 192.168.1.x stop the search before any ssh, with the hotspot advice ---------------------------------
 class ClashCore(FakeCore):
     def __init__(self):
         super().__init__(state="factory")
@@ -896,7 +896,7 @@ s = c.wait(lambda s: s["router"]["host"] == "192.168.1.1", "Check again finds th
 check(s["router"]["error"] is None and s["can_next"], "and the advice is gone")
 server.shutdown()
 
-# ---- feature 032 (SU-02): the early download at Start, and the page's two cable prompts -------------------------------------------------------
+# ---- feature 045 (SU-02): the early download at Start, and the page's two cable prompts -------------------------------------------------------
 for mode, with_router in (("wifi", True), ("phone", False)):
     core, session, server = start(mode=mode)
     session.run_checks()
@@ -936,7 +936,7 @@ core.go.set()
 s = c.wait(lambda s: s["install"]["ok"], "the installation finishes after the cable is back")
 server.shutdown()
 
-# ---- feature 032 (SU-15): the Phones step does not offer the setup page while the router cannot reach the app's address ----------------------------
+# ---- feature 045 (SU-15): the Phones step does not offer the setup page while the router cannot reach the app's address ----------------------------
 core, session, server = start(state="configured")
 core.has_internet = False
 c = Client(server)
@@ -957,7 +957,7 @@ page = page.decode() if isinstance(page, bytes) else page
 check("p.state==='nointernet'" in page and "WAN port" in page, "the page says to plug the modem into the router's WAN port")
 server.shutdown()
 
-# ---- feature 033 (SU-11): the MAC of the board the page wrote goes to the router; a board that was not written adds none -------------------------
+# ---- feature 046 (SU-11): the MAC of the board the page wrote goes to the router; a board that was not written adds none -------------------------
 for skip, want in ((False, "AA:BB:CC:DD:EE:01"), (True, "")):
     core, session, server = start(state="configured")
     c = Client(server)

@@ -1,4 +1,4 @@
-# Plan: feature 032, the setup program in a real shop
+# Plan: feature 045, the setup program in a real shop
 
 Context manifest (constitution rule 1; line numbers from `origin/main` at `2591448`, re-check with `grep -n` before editing):
 
@@ -13,7 +13,7 @@ Context manifest (constitution rule 1; line numbers from `origin/main` at `25914
 | `router/tests/test_setup_web.py` | fake `Core` (line 202), page tests | read ranges only | 2,000 |
 | `router/tests/test_pisophone_setup.py` | unit tests of `find_router`, `install`, `fetch_image` | read ranges only | 2,000 |
 | `setup/README.md` | "Which network?" | 1-115 | 2,000 |
-| `docs/REAL_WORLD_TESTING.md` | RS56 (append) | tail | 300 |
+| `docs/REAL_WORLD_TESTING.md` | RS60 (append) | tail | 300 |
 
 Unresolved ledger entries loaded: none for the setup program (the last unresolved-looking rows are other areas). Baseline (2026-10-28): `test_setup` 458,
 `test_pisophone_setup` 232, `test_setup_web` 115, `test_offline_setup` 98, `test_setup_tools` 78, `test_install` 48, `test_phone_only` 39, `test_setup_phone_web` 31, 0 failures.
@@ -30,11 +30,11 @@ Run the router tests in the background and read the last lines only.
 - [x] 6. SU-01 detect two 192.168.1.x networks and stop with the hotspot advice; README "Which network?" (test: fake address tables for the three systems; red result logged: yes)
 - [x] 7. SU-02 download early at Start, then the website check and the unplug-the-cable prompt before the router packages (test: page asks when the opener fails, continues after; red result logged: yes)
 - [x] 8. SU-15 the Phones step waits for the router to reach the app's address (test: page test with a router that has no internet; red result logged: yes)
-- [x] 9. Close-out: add RS56 to `docs/REAL_WORLD_TESTING.md` (unticked), `CHANGELOG.md`, `setup/README.md`; rebuild with `python3 tools/build_piso_setup.py`, `--check`, `git status` shows no router file changed; run all gates; fill `validation.md`; set rows to `fixed` in `specs/spec_03_findings.json`; update `specs/STATUS.md`.
-- [ ] 10. (only if the owner's RS56 (b) fails) SU-14 first-page warning for Windows 10 OpenSSH 8.1 with the fix.
+- [x] 9. Close-out: add RS60 to `docs/REAL_WORLD_TESTING.md` (unticked), `CHANGELOG.md`, `setup/README.md`; rebuild with `python3 tools/build_piso_setup.py`, `--check`, `git status` shows no router file changed; run all gates; fill `validation.md`; set rows to `fixed` in `specs/spec_04_findings.json`; update `specs/STATUS.md`.
+- [ ] 10. (only if the owner's RS60 (b) fails) SU-14 first-page warning for Windows 10 OpenSSH 8.1 with the fix.
 
-Order: SU-18 first (the saved log helps every bench run), then the confirmed rows, then the reported ones (SU-01, SU-02, SU-15), as in spec 03.
+Order: SU-18 first (the saved log helps every bench run), then the confirmed rows, then the reported ones (SU-01, SU-02, SU-15), as in spec 04.
 
 ## Release
 None for routers, firmware or the app. The website's copy (`website/pisophone_setup.py` and the files `tools/build_piso_setup.py` writes) is regenerated, never edited by hand;
-`--check` must pass. If `git status` shows a changed router file, stop and ask the owner (`setup/RELEASE` would need raising). No push to `beta`, no pull request, no merge: the feature waits for the owner's RS56 bench run (D8).
+`--check` must pass. If `git status` shows a changed router file, stop and ask the owner (`setup/RELEASE` would need raising). No push to `beta`, no pull request, no merge: the feature waits for the owner's RS60 bench run (D8).

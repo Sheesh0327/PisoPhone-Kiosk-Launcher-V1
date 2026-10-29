@@ -1,7 +1,7 @@
-# Validation: feature 034, a box that never joined takes new Wi-Fi details
+# Validation: feature 047, a box that never joined takes new Wi-Fi details
 
 Run 2026-10-28 on a computer (Linux container; no ESP32 board, no PlatformIO, no mbedtls development files). Router tests run with `< /dev/null`.
-Branch `feat/034-box-wifi-retry` from `origin/main` (2591448) plus the epic commit.
+Branch `feat/047-box-wifi-retry` from `origin/main` (2591448) plus the epic commit.
 
 | # | Success criterion (spec.md) | Check | Result | Evidence |
 |---|---|---|---|---|
@@ -10,7 +10,7 @@ Branch `feat/034-box-wifi-retry` from `origin/main` (2591448) plus the epic comm
 | 3 | AC3.3 `applySetup` keeps the flag; the first address clears it | code review (`SerialCli.cpp`, `Config.cpp` `markWifiJoined`, `main.cpp`) | **not run: ESP32-only code** | `wifi_wait` is saved before the password-changed flag; cleared once, at the first got-IP, writing flash only that once; a factory reset clears it with everything else |
 | 4 | AC3.4 program: a joining box gets no ERASE question, no rewrite, the new Wi-Fi; the reason is shown | `test_phone_only.py` (terminal flow, `wait_online` message, Python box), `test_setup_phone_web.py` (page) | pass (computer) | flashed 0 times, no ERASE prompt, new details accepted; boxes that joined, have a payment or were set up another way still refused; `wait_online` says the box's own reason and "without an erase"; the page test failed on the old program (it flashed the board) |
 | 5 | AC3.5 version raised; tests, format, generated files, security | below | pass (computer) | `PISO_FW_VERSION` 3.12.5; `--check` passes; only `website/pisophone_setup.py` changed among generated files, no router file |
-| 6 | AC3.6 RS58 added, unticked; owner runs it before merge (D8) | `docs/REAL_WORLD_TESTING.md` | **RS58 not run** | |
+| 6 | AC3.6 RS62 added, unticked; owner runs it before merge (D8) | `docs/REAL_WORLD_TESTING.md` | **RS62 not run** | |
 
 ## Gates (constitution rule 7)
 - [x] Firmware host tests: 38 of 46 built and passed (`g++ -std=c++17 ... -fsanitize=address,undefined`, as `run.sh`). The 8 that need mbedtls (`admin_qr`, `admin_session`, `card_codec`, `fw_manifest`, `gateway_auth`, `gateway_event`, `protocol_contract`, `slot_license`) were **not built here** (`libmbedtls-dev` is missing and cannot be installed); none of them includes a file changed by this feature. CI runs all of them.
@@ -22,8 +22,8 @@ Branch `feat/034-box-wifi-retry` from `origin/main` (2591448) plus the epic comm
 - [x] Generated files: `python3 tools/build_piso_setup.py` then `--check` passes; `git status` shows no router file changed, so `setup/RELEASE` is not raised.
 
 ## Not tested
-Nothing ran on a real board, router, phone or computer. Not seen: the real hello line on a board (the format is by code review); NVS writes and the clearing of `wifi_wait` at the first IP; the real `Wi-Fi disconnect` reason codes (the mapping uses the codes `WifiLink.h` already names); that the first-run `PISO-SETUP` really restarts into a box that the later run sees as `joining` (RS58); the 8 mbedtls host tests; the ESP32 build. The first-IP event in `reportWifiEvents` runs from `loop()`, so a box that gets an address and loses power within that moment would still count as not joined: it then simply takes new details again, which is harmless (no payment can exist yet).
-Hardware check added: **RS58** (a to c).
+Nothing ran on a real board, router, phone or computer. Not seen: the real hello line on a board (the format is by code review); NVS writes and the clearing of `wifi_wait` at the first IP; the real `Wi-Fi disconnect` reason codes (the mapping uses the codes `WifiLink.h` already names); that the first-run `PISO-SETUP` really restarts into a box that the later run sees as `joining` (RS62); the 8 mbedtls host tests; the ESP32 build. The first-IP event in `reportWifiEvents` runs from `loop()`, so a box that gets an address and loses power within that moment would still count as not joined: it then simply takes new details again, which is harmless (no payment can exist yet).
+Hardware check added: **RS62** (a to c).
 
 ## Money and time
 Not touched. No payment, coin, credit, expiry or `revenue.csv` code was changed. The new state reads `totalCoinsLifetime`, `getPendingPaymentCount()` and `hasUnpersistedPayments()` and refuses `PISO-SETUP` when any of them says money exists (host test: lifetime coins, pending and unpersisted each force `done`). A box already working in a shop cannot become "joining" by this update: the flag exists only on a box whose Wi-Fi was given by this firmware's USB setup.
