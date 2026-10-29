@@ -17,6 +17,22 @@ notify() {
 	return 0
 }
 
+# record_update_state <router|box> <state> <latest> <detail>: what the console and the monitor show about updates (feature 044). It only
+# records what the update scripts already decided. States: current, available, waiting (for a quiet moment), off (automatic updates
+# are off), rollout (this router's turn has not come), newer (the box is newer than the website), failed, unknown (not checked: the
+# detail says why). It is written only when it changes, so the small flash is not written every hour; "since" is when this state of
+# this release was first seen. The time of the last check is UPDATE_LAST_CHECK, as before.
+record_update_state() {
+	_rk="UPDATE_STATE_$(echo "$1" | tr 'a-z' 'A-Z')"
+	_rd=$(printf '%s' "$4" | tr -cd 'A-Za-z0-9 .,;:()/+_%-' | cut -c1-160)
+	_ro=$(conf_get "$_rk")
+	case "$_ro" in "$2|$3|"*) _rs=$(printf '%s' "$_ro" | cut -d'|' -f3) ;; *) _rs="" ;; esac
+	[ -n "$_rs" ] || _rs=$(date +%s)
+	_rn="$2|$3|$_rs|$_rd"
+	[ "$_ro" = "$_rn" ] || conf_set "$_rk" "$_rn"
+	return 0
+}
+
 # fetch_url <url> <file> <max bytes>: https only (the signature is what protects the router; this keeps the download private)
 fetch_url() {
 	case "$1" in
@@ -99,22 +115,25 @@ cmd_self_update() {
 	[ "$PISO_ARCH" = mipsel ] || _base="$_base/$PISO_ARCH"   # the first family (mipsel) is at the top, as it always was; the others have a folder each
 	if ! fetch_url "$_base/router.json" "$_work/router.json" 20000; then
 		log "No update information at $_base (offline, or nothing published yet)."
+		record_update_state router unknown "" "the website cannot be reached (offline, or nothing published yet)"
 		[ "$_mode" = apply ] && notify "update: could not reach $_base"
 		return 0
 	fi
 	_res=$("$PORTAL_BIN" update-check "$_work/router.json" "$PISO_RELEASE" "$(conf_get GW_KEY)"); _rc=$?
 	case "$_rc" in
 		0) _new="${_res#AVAILABLE }" ;;
-		10) log "Up to date (release $PISO_RELEASE)."; [ "$_mode" = apply ] && notify "update: already on the latest release ($PISO_RELEASE)"; return 0 ;;
+		10) log "Up to date (release $PISO_RELEASE)."; record_update_state router current "$PISO_RELEASE" ""; [ "$_mode" = apply ] && notify "update: already on the latest release ($PISO_RELEASE)"; return 0 ;;
 		11) log "Release ${_res#WAIT } is published; this router's turn in the staged rollout has not come yet."
+			record_update_state router rollout "${_res#WAIT }" "this router's turn in the staged rollout has not come yet"
 			[ "$_mode" = apply ] && notify "update: release ${_res#WAIT } is rolling out in stages; this router is not in the current stage (it has $PISO_RELEASE)"
 			return 0 ;;
 		*) log "Update refused: ${_res#REFUSED }"
+			case "$_res" in *"no owner key"*) record_update_state router unknown "" "this router cannot check releases: ${_res#REFUSED }" ;; *) record_update_state router failed "" "refused: ${_res#REFUSED }" ;; esac
 			case "$_res" in *"no owner key"*) ;; *) notify "update REFUSED, nothing was installed: ${_res#REFUSED }" ;; esac
 			return 1 ;;
 	esac
 	_note=$(sed -n 's/.*"changelog": *"\([^"]*\)".*/\1/p' "$_work/router.json" | tr -cd 'A-Za-z0-9 .,;:()/+_%-' | cut -c1-200)
-	if [ "$_mode" = check ]; then log "Release $_new is available for this router (installed: $PISO_RELEASE). $_note"; return 0; fi
+	if [ "$_mode" = check ]; then record_update_state router available "$_new" "$_note"; log "Release $_new is available for this router (installed: $PISO_RELEASE). $_note"; return 0; fi
 	_hold=""
 	if [ "$_mode" = auto ]; then
 		if [ "$(conf_get AUTO_UPDATE)" = 0 ]; then _hold="automatic updates are off: send /update in Telegram, or run piso-setup self-update, to install it"
@@ -122,18 +141,19 @@ cmd_self_update() {
 	fi
 	if [ -n "$_hold" ]; then
 		log "Release $_new is available; $_hold."
+		case "$_hold" in "automatic updates are off"*) record_update_state router off "$_new" "$_hold" ;; *) record_update_state router waiting "$_new" "$_hold" ;; esac
 		if [ "$(conf_get UPDATE_NOTIFIED)" != "$_new" ]; then conf_set UPDATE_NOTIFIED "$_new"; notify "update: release $_new is available ($_note): $_hold"; fi
 		return 0
 	fi
 
 	# from here on nothing may cut the update short half way (not even the monitor being restarted by the update itself)
 	trap '' HUP INT TERM
-	fetch_url "$_base/router-setup.sh" "$_work/new.sh" 4194304 || { log "Could not download release $_new."; notify "update: could not download release $_new"; return 1; }
+	fetch_url "$_base/router-setup.sh" "$_work/new.sh" 4194304 || { log "Could not download release $_new."; record_update_state router failed "$_new" "the download failed"; notify "update: could not download release $_new"; return 1; }
 	if ! _v=$("$PORTAL_BIN" update-verify "$_work/router.json" "$_work/new.sh"); then
-		log "Update refused: ${_v#REFUSED }"; notify "update REFUSED, nothing was installed: ${_v#REFUSED }"; return 1
+		log "Update refused: ${_v#REFUSED }"; record_update_state router failed "$_new" "refused: ${_v#REFUSED }"; notify "update REFUSED, nothing was installed: ${_v#REFUSED }"; return 1
 	fi
 	if [ "$(sed -n "s/^PISO_RELEASE='\\(.*\\)'\$/\\1/p" "$_work/new.sh" | head -n 1)" != "$_new" ]; then
-		log "Update refused: the signed file is not release $_new"; notify "update REFUSED: the signed file is not release $_new"; return 1
+		log "Update refused: the signed file is not release $_new"; record_update_state router failed "$_new" "refused: the signed file is not release $_new"; notify "update REFUSED: the signed file is not release $_new"; return 1
 	fi
 	log "Installing release $_new (installed: $PISO_RELEASE) $_note"
 	rm -rf "$UPDATE_BACKUP"; mkdir -p "$UPDATE_BACKUP" || die "could not create $UPDATE_BACKUP"
@@ -146,6 +166,7 @@ cmd_self_update() {
 	else sleep "${PISO_HEALTH_WAIT:-8}"; update_healthy; fi
 	if [ -z "$UPDATE_WHY" ]; then
 		conf_set UPDATE_NOTIFIED "$_new"
+		record_update_state router current "$_new" ""
 		log "Release $_new is installed and running."
 		rm -rf "$UPDATE_BACKUP"   # it has proven itself: the backup of the old release is not needed any more
 		trim_log
@@ -154,6 +175,7 @@ cmd_self_update() {
 	fi
 	tail -n 15 "$_work/update.out" 2> /dev/null | while IFS= read -r _l; do log "  installer: $_l"; done
 	rollback_update
+	record_update_state router failed "$_new" "the update to $_new failed and was undone ($UPDATE_WHY)"
 	notify "update to release $_new FAILED and was undone ($UPDATE_WHY): the router is back on release $PISO_RELEASE. See /root/piso-setup.log"
 	return 1
 }

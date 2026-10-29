@@ -3,7 +3,7 @@
 by a throwaway owner key (scripts/sign_router.py), the real portal program built for this computer with that key as the owner
 key (the cargo feature test-owner-key; the router program never has it), and the real setup file doing the installing.
 Run with:  python3 router/tests/test_selfupdate.py   (needs: cargo, curl, pip install cryptography)"""
-import base64, hashlib, http.server, json, os, re, shutil, subprocess, sys, tempfile, threading
+import base64, hashlib, http.server, json, os, re, shutil, subprocess, sys, tempfile, threading, time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, f"{ROOT}/scripts")
@@ -315,6 +315,66 @@ r = subprocess.run([sys.executable, f"{ROOT}/scripts/sign_router.py", "--private
 check(r.returncode != 0 and "PISO_RELEASE" in r.stderr and not os.path.exists(f"{tmp}/out2/router.json"), "it refuses a file that is not a router setup: " + r.stderr)
 r = subprocess.run([sys.executable, f"{ROOT}/scripts/sign_router.py", "--private", keyfile_pem, "--setup", s, "--rollout", "101", "--out-dir", f"{tmp}/out3"], capture_output=True, text=True)
 check(r.returncode != 0 and "percentage" in r.stderr, "and a rollout above 100%")
+
+# ---- feature 044: the router records what it decided, for the console and the monitor -------------------------------------------------
+def rec(who="ROUTER"):
+    """UPDATE_STATE_<who> from the setup conf: [state, latest, since, detail], or None."""
+    m = re.search(rf"^UPDATE_STATE_{who}='([^']*)'$", open(conf).read(), re.M)
+    return m.group(1).split("|") if m else None
+
+
+reset()
+publish(None)
+self_update("auto")
+x = rec()
+check(x and x[0] == "unknown" and "website" in x[3], f"044: a feed that cannot be reached is recorded as not checked, with the reason: {x}")
+reset()
+publish(release("1.0.0"))
+self_update("auto")
+x = rec()
+check(x and x[:2] == ["current", "1.0.0"], f"044: on the published release: {x}")
+reset()
+publish(release("1.1.0"))
+self_update("check")
+x = rec()
+check(x and x[:2] == ["available", "1.1.0"], f"044: `check` records that a newer release is available: {x}")
+reset()
+publish(release("1.1.0"))
+open(f"{tmp}/guests", "w").close()
+self_update("auto")
+x = rec()
+check(x and x[:2] == ["waiting", "1.1.0"] and "quiet moment" in x[3], f"044: customers online: waiting for a quiet moment: {x}")
+time.sleep(1.2)
+self_update("auto")
+y = rec()
+check(y == x, f"044: nothing changed, so the record is the same line, with the same 'since': {x} then {y}")
+check("abab" not in "|".join(y or []), "044: no secret is in the record")
+reset("AUTO_UPDATE='0'\n")
+publish(release("1.1.0"))
+self_update("auto")
+x = rec()
+check(x and x[:2] == ["off", "1.1.0"] and "automatic updates are off" in x[3], f"044: automatic updates off: {x}")
+reset()
+publish(release("1.1.0"), rollout=0)
+self_update()
+x = rec()
+check(x and x[:2] == ["rollout", "1.1.0"], f"044: a staged rollout whose turn has not come: {x}")
+reset()
+publish(release("1.1.0"), key=other)
+self_update()
+x = rec()
+check(x and x[0] == "failed" and x[1] == "" and x[3], f"044: a release the owner did not sign is recorded as refused: {x}")
+reset()
+publish(release("1.1.0"))
+self_update(PISO_HEALTH_CMD="false")
+x = rec()
+check(x and x[:2] == ["failed", "1.1.0"] and "health check" in x[3], f"044: a release that did not run and was undone: {x}")
+reset()
+publish(release("1.1.0"))
+self_update()
+x = rec()
+check(x and x[:2] == ["current", "1.1.0"], f"044: after a good install the router is current on the new release: {x}")
+reset()
 
 print(f"{checks} checks, {failures} failures")
 shutil.rmtree(tmp, ignore_errors=True)
