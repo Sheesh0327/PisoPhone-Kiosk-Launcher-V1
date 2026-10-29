@@ -16,6 +16,163 @@ Save `adb logcat -d > phone.log` and the serial output right after each failure.
 
 **Legend:** `[x]` pass, `[ ]` not tested yet, `[!]` failed (add a line to the Issue log with the same ID).
 
+## Owed checks, in the order to do them (feature 039, 2026-10-28)
+This section only sorts and orders. It changes no check: every row is still in its own section below with its own tick, and the text there is what you run. The lines here are pointers, not the checks. Nothing was run to write it. Rows are never deleted and never renumbered; a row that stops being needed is retired where it stands, like RS34.
+
+Do the sessions in this order. Inside a session, go top to bottom: money checks come first. `S2` below is the older security row S2, not a session. In section 10 the five lines have no id; they are called §10-1 to §10-5, counted from the top.
+
+### Summary
+- **55 checks are owed:** 38 `RS` rows, 12 older rows (B9, C3b, C8, F8, R4, H2, S1 to S6) and the 5 unnumbered lines of section 10. By session: 15 + 17 + 12 + 11 + 0 = 55.
+- **0 were retired by this triage.** None met one of the three reasons (the thing it tested is gone; a later check on a newer release covers the same ground and can be named; the code was replaced and the new code has its own check). One `RS` row was retired earlier (RS34, feature 033) and 11 are done; they are in the closed list at the end of this section. 11 done + 1 retired + 38 owed = the 50 `RS` rows.
+- **Start with session 1, part 1a.** It needs the least set up (a box, a phone, a power strip) and holds the money rows that have never run on a box: RS30, RS28, RS31, F8, RS29. A failure there means a coin lost or counted twice, so it is the place to look first.
+
+### Session 1: the box on the bench (the firmware money rows)
+**Needs:** a coin box with its coin acceptor, a USB cable and a computer with the setup program, one paired phone, a power strip with a switch, a serial monitor (`pio device monitor`), and a Wi-Fi the box can join. Part 1b also needs a new or erased ESP32-C3. **Roughly:** part 1a about 3 hours, plus a 24-hour wait for one part of RS46; part 1b about 2 hours. (My estimates, not measured.) The box here needs no OpenWrt add-on; if a row turns out to need the router, move it to session 3.
+
+| # | Check | What it is (pointer only) | Notes |
+|---|---|---|---|
+| 1 | RS30 | Power cut between the coin and the queue (FW-03) | Money. Several tries; the switched power strip is the tool. |
+| 2 | RS28 | Settings saved during a coin drop (FW-02) | Money. The full P5 must be credited. |
+| 3 | RS31 | A coin at an idle slot (FW-06) and a large rate (FW-05) | Money. |
+| 4 | F8 | Unacknowledged payment survives a factory reset | Money. You wrote on 2026-10-11 that you were not sure how to make one: the ticked M3a describes how to leave a coin unacknowledged (switch the phone's app off after the coin). F8's own text is unchanged. |
+| 5 | RS29 | Reboot, update and reset refused while a slot is armed (FW-01) | Nothing paid is lost to a restart. |
+| 6 | RS46 | A coin box that keeps working (feature 017), parts a to g | Do a, b, c, d, f in the evening; start the 24-hour soak (e) and read it the next day; g needs a box on 3.12.0 first (may not be possible: say so). |
+| 7 | C3b | Vendor page: finish collecting, the counter goes to ₱0, lifetime coins do not go down | Money. You skipped it on 2026-10-11 because super admin would not open. The admin QR code comes from `python3 scripts/make_admin_qr.py` (S6 names it) and the box must be built with the matching `SuperAdminPubKey.h`. |
+| 8 | C8 | Revenue counter resets after 5 minutes or on logout | Skipped on 2026-10-11 for the same reason as C3b. |
+
+Part 1b, a new or erased board on USB:
+
+| # | Check | What it is (pointer only) | Notes |
+|---|---|---|---|
+| 9 | B9 | The setup program writes a factory ESP32-C3 over USB | Add a classic ESP32 if you have one; it has its own image. |
+| 10 | RS50 | PisoPhone-only setup over USB on Windows: the board stays up | Windows computer. |
+| 11 | §10-1 | Run the setup program, choose PisoPhone only | Needs an ordinary Wi-Fi router. |
+| 12 | §10-2 | The saved summary opens only for you; the admin page opens with that password | |
+| 13 | §10-3 | A rental phone finds the box and pairs; a coin unlocks it | Money. Do it right after 11 and 12; keep this box for part 2b. |
+| 14 | §10-4 | Run the setup again on that working box: it asks to type ERASE first | |
+| 15 | §10-5 | A box with its own admin password refuses the USB Wi-Fi command | |
+
+### Session 2: the box and a phone in a shop
+**Needs:** a working box on the current firmware with two paired phones (a tablet as one of them, if you have one: RS33 and RS49 want it), the shop's usual Wi-Fi, and a phone you can factory-reset. Part 2b needs the PisoPhone-only box you set up in session 1b and a factory-reset phone. RS27 wipes the box's pairings, so it is last. **Roughly:** part 2a about 4 hours (RS38 alone is long), part 2b about 1.5 hours. (My estimates.)
+
+| # | Check | What it is (pointer only) | Notes |
+|---|---|---|---|
+| 1 | RS39 | Nothing old breaks: old phone build with the new box and the other way round | Money (a coin credited once, also during a box update). Needs phone build 495 and a box on 3.11.1: if you cannot get them, write that under Notes and leave it owed. |
+| 2 | RS49 | Phone profiles: PisoTab and PisoPhone Pro | Minutes a coin gives must be the same at every step. Wants a tablet and a phone. |
+| 3 | RS26 | Spoken welcome for QR cards | Time and balance must be the same as before. |
+| 4 | RS33 | Touch in games on a tablet (APP-27) | Includes the lock when time runs out. Its "built-in game" wording will change when feature 034 merges. |
+| 5 | RS55 | Owner can uninstall an installed game during the admin window | |
+| 6 | RS53 | YouTube, Chrome, Maps and Photos are back on the home screen | Needs a phone set up before feature 029 (YouTube missing); may no longer exist. |
+| 7 | RS48 | The shop name as a running band (feature 023) | An hour on the lock screen to watch heat and battery. Run it with RS38. |
+| 8 | RS38 | Shop branding set on the box reaches the phones (feature 013), parts a to h | Long. Its parts f, g and g2 about the name standing still are older than feature 023; the wording is left as it is. |
+| 9 | S1 | Phone's port 8080 answers `/ping` only; `/status` without a signature is 401 | |
+| 10 | S3 | Remote admin actions need the admin PIN | |
+| 11 | S4 | A phone cannot be factory-reset or get USB debugging from the network | |
+| 12 | H2 | Box commands are fresh (a replayed command gets `STALE_TIMESTAMP`) | |
+| 13 | S2 | A replayed signed request is ignored | Optional (the row says so): needs a packet capture. |
+| 14 | RS27 | Slot licensing (firmware 3.10.0) | Needs four paired phones for its first part and a box you may factory-reset; a licence key from the setup program's Owner tools. |
+
+Part 2b, the PisoPhone-only box from session 1b:
+
+| # | Check | What it is (pointer only) | Notes |
+|---|---|---|---|
+| 15 | RS52 | The box page's *Set up a phone* fills in the shop Wi-Fi; QR on a factory-reset phone | |
+| 16 | RS51 | A new rental phone joins the shop Wi-Fi, once with the network saved and once without | |
+| 17 | RS54 | The "joining" toast no longer repeats every minute | |
+
+### Session 3: the router
+**Needs:** the shop's router with the add-on installed, the box paired to it with its coin acceptor, one guest phone (two for RS22: one on 2.4 GHz, one on 5 GHz), a computer on a LAN cable, a smart plug on a timer for RS45. Do it with the shop closed: you skipped RS7 on 2026-10-11 because customers were connected, and RS14 waits for a quiet moment by design. **Roughly:** about 5 hours. RS45 is ten power cuts; RS44 and RS56 change the router's date. (My estimates.)
+
+| # | Check | What it is (pointer only) | Notes |
+|---|---|---|---|
+| 1 | RS45 | A power cut at the worst moment (feature 021) | Money. Ten tries is not too many. |
+| 2 | RS32 | Clock jump with a voucher (RT-01 to RT-07) | Money and time. |
+| 3 | RS7 | Restart the router in the middle of a window | Money. |
+| 4 | RS44 | A router that keeps running (feature 015), parts a to f | Part d is a month roll with money; part b freezes the portal. |
+| 5 | RS56 | The sales record's space cap (feature 032) | Needs sales in the ledger; also a month roll, so do it next to RS44. |
+| 6 | RS6 | `piso-setup reconcile` says RECONCILE OK; a broken ledger is reported | |
+| 7 | R4 | Layout B: a guest device cannot reach the box or the phones | Skipped on 2026-10-11 ("will check later"). The Test setup table's layout cell is empty: fill it in. |
+| 8 | RS22 | Guests apart (router 1.5.9/1.5.10) | Two guest phones. |
+| 9 | RS10 | `piso-setup handout` writes `/root/piso-handout.html` | |
+| 10 | RS13 | A signed test release installs with `piso-setup self-update` | Needs your owner key in `tools/pisoportal/owner_key.b64` and a router built from it. It publishes a release: read `docs/RELEASE.md` first. I could not tell from the row whether the test release can reach routers other than the one under test. |
+| 11 | RS14 | `self-update auto` waits while a phone is online | After RS13. |
+| 12 | RS16 | A hand-edited, signed script is refused | After RS13. Also publishes: same warning. |
+
+### Session 4: the whole site
+**Needs:** part 4a: the working site (router, box, a rental phone on PisoKiosk, a guest phone, a computer on a LAN cable). Part 4b: a router you can factory-reset (not the shop's), a second coin box board on USB, another router in range for RS21, and for RS35 the owner's 360T6M with a NOR-only and a NAND build. Do not run 4b on a router that is trading. **Roughly:** part 4a about 3 hours; part 4b about 5 hours or more. (My estimates.)
+
+| # | Check | What it is (pointer only) | Notes |
+|---|---|---|---|
+| 1 | RS47 | Quick time adjust from the console: Add, Subtract, all phones | Time must change once, not twice. Two paired phones. |
+| 2 | RS23 | Rental phones apart from each other; the router's login page closed to phones | Includes arming a coin and unlocking. |
+| 3 | RS24 | One admin page: the box's page inside the console | |
+| 4 | RS25 | `admin.hub`, the router at `:8080`, no mDNS | |
+| 5 | S5 | A provisioned phone joins only the box's PisoKiosk network | |
+| 6 | S6 | Owner QR login | Needs the admin QR code from `python3 scripts/make_admin_qr.py`. |
+
+Part 4b, a spare router and bare units:
+
+| # | Check | What it is (pointer only) | Notes |
+|---|---|---|---|
+| 7 | RS35 | PisoWiFi on a 16 MB router (feature 010), parts a to e | Includes a coin, a pause, a voucher and a power cut that keeps paid time. Its part d takes the rental phones' Wi-Fi away on a set-up router; the row asks first. |
+| 8 | RS17 | One click from a bare unit | |
+| 9 | RS19 | *Set up the next unit* | After RS17. |
+| 10 | RS20 | No board, or two boards, on USB | |
+| 11 | RS21 | Two routers in range of each other (router 1.5.0, firmware 3.6.0) | |
+
+### Session 5: the hardened box (last, by the owner's rule)
+**Needs:** a sacrificial board and the eFuse steps (feature 040's bench work, feature 043's checks). **Roughly:** not known yet.
+
+No owed row of this document belongs here yet: features 040 and 043 add theirs when they ship, at the next free `RS` number (RS57 or later). Their bench steps are in `specs/features/040-sold-box-hardening/bench.md`. The owner's rule of 2026-10-28 (epic D30) decides that this session is last: the legacy, field-proven build is the default and stays selectable, and hardening is an option. Nothing in sessions 1 to 4 needs a hardened box.
+
+### Closed: done and retired (12 `RS` rows, not owed)
+| RS | Status | Reason and where the evidence is |
+|---|---|---|
+| RS1 | done | Ticked in section 9. |
+| RS2 | done | Ticked in section 9. |
+| RS3 | done | Ticked in section 9. |
+| RS4 | done | Ticked in section 9. |
+| RS5 | done | Ticked in section 9. |
+| RS8 | done | Ticked in section 9. |
+| RS9 | done | Ticked in section 9. |
+| RS11 | done | Ticked in section 9. |
+| RS12 | done | Ticked in section 9. |
+| RS15 | done | Ticked in section 9. |
+| RS18 | done | Ticked in section 9. |
+| RS34 | retired | Router 1.5.25, feature 033: the spinning wheel it tested was deleted before it ever ran. Already marked on its own row; not touched here. |
+
+"Done" for the eleven means: ticked from the owner's session of 2026-10-10/11 (Test setup table below: firmware 3.3.3, APK 411, ImmortalWrt 23.05.0), committed in `72c68c7`, counted in the Baseline summary. The only evidence is the tick, and it is from an earlier release than the current one.
+
+### Notes on this triage
+**Where I was unsure (each stays owed):**
+- RS24 and RS25 overlap on how the console opens. RS25 does not repeat RS24's checks, so both stay; run RS24 first.
+- RS38 and RS48 both describe the shop name on the lock screen, and feature 023 (RS48) changed how it looks. RS38 still owns palette, title, validation and survive-a-restart, so it stays whole. Its parts f, g and g2 are older than 023; I left the wording.
+- RS39, RS53 and part g of RS46 need an old version (phone build 495, a box on 3.11.1 or 3.12.0, a phone set up before feature 029). "Hard to arrange" is not a reason to retire; if you cannot arrange them, write that under Notes and ideas.
+- RS35's last sentence is about the one-line installer, which feature 041 will touch; 041 has not started.
+- Session 1 assumes its rows run on a box with only an ordinary Wi-Fi. I could not tell from the rows alone that every one does.
+- RS13 and RS16 publish a release. I could not tell whether the test release can reach routers other than the one under test.
+- Where a row sits (RS27 last in session 2 because it wipes pairings, RS35 in 4b because it needs a re-flash, RS47 in session 4 because it needs the console and a rental phone) and every time estimate are my judgment.
+
+**Timing, as asked:** feature 034 (the mini-game) has not merged: its code is still in this checkout. No row tests the mini-game by itself; RS33 says "a built-in game" and 034 will change that wording. Feature 041 (the offline package path) has not started, and there is no RS36 row in this document to retire (next note).
+
+**Numbers other files use but this document does not have:**
+- RS36 and RS37 (feature 011, offline setup and the box network name). `specs/features/011-offline-setup/validation.md` says you ran both on 2026-10-23 and they passed, but no row exists in this file or in its history, and the per-step output was never pasted in. Feature 041 plans to "retire RS36"; there is nothing to retire.
+- RS40 to RS43 (feature 019, the soak checks) were planned in `specs/spec_02_always_on.md` and never written here.
+- I added none of them: they would be invented rows. Decide whether to add them at the next free number.
+
+**A numbering clash to fix in the other specs:** RS53 to RS56 are already features 029 to 032 in this document, so the next free number is **RS57**. Feature 041's plan ("a new RS55") and feature 043's plan ("RS53, RS54 and RS55 are taken by features 032, 040 and 041") assume otherwise, and feature 040's plan already says "next free". Those files are outside this feature and were not changed.
+
+**Things that look wrong, left as they are:**
+- The five lines of section 10 have no ids, so the tickable page (`tools/checklist/build.py`) does not show them and a result cannot be written back for them.
+- The Test setup table's router layout (A or B) cell is empty, and R4 needs layout B.
+- The Baseline summary's last row (2026-10-16) is older than most of the rows above it; it is updated when results are written back.
+- RS38 part g2 has stray backslashes before two quote marks. A few rows are out of numeric order (RS27 before RS26, RS46 before RS45, RS50 and RS49 before RS48); renumbering is forbidden, so they stay.
+
+### Suggestions (not owed, not numbered, not part of the list)
+- After sessions 1 and 2, run the short money path again (B1 to B3, P1 to P4, C1 to C4, F1 to F3) on the current firmware and app. The ticks are from firmware 3.3.3 and APK 411, and the money code has changed since (3.11.1, router 1.5.13 and 1.5.19).
+- Give the five section 10 lines ids (RS57 onward), so the phone page can report them.
+- Record the 2026-10-23 results of the offline-setup checks (RS36 and RS37) as done, if you want the log to say so.
+
 ## 0. Test setup (fill in first)
 | Item | Value |
 |---|---|
