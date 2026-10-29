@@ -402,7 +402,7 @@ impl Console {
         let uptime = read("/proc/uptime").split_whitespace().next().unwrap_or("0").split('.').next().unwrap_or("0").to_string();
         format!(
             "{{\"version\":\"{}\",\"now\":{},\"online\":{},\"waiting\":{},\"wan_if\":\"{}\",\"rx_kbps\":{},\"tx_kbps\":{},\"rx_total\":{},\"tx_total\":{},\"history\":[{}],\
-             \"today\":{},\"week_total\":{},\"month_total\":{},\"total\":{},\"week\":[{}],\"box_ok\":{},\"box_signed\":{},\"ledger_ok\":{},\"ledger_lines\":{},\"ledger_kept\":{},\"ledger_pruned\":{},\"ledger_wanted\":{},\"mem_kb\":{},\"uptime\":{},\"alerts\":[{}]}}",
+             \"today\":{},\"week_total\":{},\"month_total\":{},\"total\":{},\"week\":[{}],\"box_ok\":{},\"box_signed\":{},\"ledger_ok\":{},\"ledger_lines\":{},\"ledger_kept\":{},\"ledger_pruned\":{},\"ledger_wanted\":{},\"mem_kb\":{},\"uptime\":{},\"alerts\":[{}],\"money\":{}}}",
             env!("CARGO_PKG_VERSION"),
             now,
             online,
@@ -427,7 +427,8 @@ impl Console {
             crate::ledger::Budget::load(&cfg.revenue_path()).keep_months,
             if mem.is_empty() { "0".into() } else { mem },
             uptime,
-            alerts
+            alerts,
+            crate::reconcile::peek(cfg).json()
         )
     }
 

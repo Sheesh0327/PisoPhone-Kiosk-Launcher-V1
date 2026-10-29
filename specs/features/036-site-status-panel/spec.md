@@ -55,7 +55,7 @@ Panel position: a full-width line directly under the earnings header, above the 
 ## Success criteria
 1. A pure function maps (box count kind, box count, ledger since base, restart flag, box reachable, ledger ok) to one of rows 1 to 8 with the numbers and the
    reason. Unit tests (names `f036_*`) cover every row; they fail first (logged in `ledger/`).
-2. `/api/overview` gains a `money` object (`state`, `ledger`, `box`, `diff`, `kind`, `note`); `tests/test_console.py` checks each state against `fakebox.py`
+2. `/api/overview` gains a `money` object (`state`, `ledger`, `box`, `diff`, `restarted`, `bad_line`; the state already says which kind of count the box reported, so there is no separate `kind` *(edited in group 3)*); `tests/test_console.py` checks each state against `fakebox.py`
    (extended with the wifi and phone counters and a "restarted" and "silent" mode).
 3. The front page draws the panel for every state with both numbers; `tests/test_browser.py` checks the text for rows 1, 2, 4, 6, in light and dark and at phone width.
 4. Reading the panel never changes `reconcile.state` (bytes identical after 50 overview polls) and calls the box at most once per 60 seconds (the fakebox counts calls).

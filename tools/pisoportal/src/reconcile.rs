@@ -175,6 +175,36 @@ pub fn peek(cfg: &Config) -> Money {
     })
 }
 
+impl State {
+    /// The word the console page switches on.
+    pub fn word(self) -> &'static str {
+        match self {
+            State::Agrees => "agrees",
+            State::BoxAhead => "box_ahead",
+            State::BoxAheadPhones => "box_ahead_phones",
+            State::Mismatch => "mismatch",
+            State::BoxSilent => "box_silent",
+            State::BadLedger => "bad_ledger",
+            State::NoSales => "no_sales",
+        }
+    }
+}
+
+impl Money {
+    /// The `money` object of `/api/overview`.
+    pub fn json(&self) -> String {
+        format!(
+            "{{\"state\":\"{}\",\"ledger\":{},\"box\":{},\"diff\":{},\"restarted\":{},\"bad_line\":{}}}",
+            self.state.word(),
+            self.ledger,
+            self.counted.map_or("null".to_string(), |c| c.to_string()),
+            self.diff,
+            self.restarted,
+            self.bad_line.unwrap_or(0)
+        )
+    }
+}
+
 /// The panel's state from one look at the ledger and the box (pure: it never saves the base).
 pub fn money(look: &Look) -> Money {
     let (ledger_total, bad_line) = (look.ledger_total, look.bad_line);
@@ -259,6 +289,14 @@ mod tests {
         assert_eq!((calls, a.ledger, b.ledger), (1, 1, 1), "the second ask inside the minute gets the first answer");
         let c = cached(&slot, t0 + Duration::from_secs(61), ttl, || { calls += 1; some_money(3) });
         assert_eq!((calls, c.ledger), (2, 3), "after the minute the box is asked again");
+    }
+
+    #[test]
+    fn f036_the_overview_object_names_the_state_and_both_numbers() {
+        let m = money(&look(1247, Some((CountKind::WifiOnly, 1310)), FROM_ZERO));
+        assert_eq!(m.json(), r#"{"state":"box_ahead","ledger":1247,"box":1310,"diff":63,"restarted":false,"bad_line":0}"#);
+        let silent = money(&look(5, None, None));
+        assert_eq!(silent.json(), r#"{"state":"box_silent","ledger":5,"box":null,"diff":0,"restarted":false,"bad_line":0}"#);
     }
 
     fn look(ledger: u64, box_count: Option<(CountKind, u64)>, base: Option<Base>) -> Look {
