@@ -155,7 +155,7 @@ guide's own table, and writes nothing else. **No box is sold until it passes.** 
 an unhardened box sold today stays unhardened for its life.
 
 ### 041 Require internet on the router: delete the offline package path  (owner: delete, confirmed twice)
-Feature 011's offline path is removed: `setup/src/21-local-packages.sh`, the `usign`-per-source verification, `--local` /
+Feature 011's offline path is removed: the copied-packages script (removed), the `usign`-per-source verification, `--local` /
 `PISO_LOCAL_PKGS`, `--router-online` and the fallback logic. The setup pages state that the router needs internet.
 **Recorded consequence, accepted by the owner:** a router with no WAN during first setup can no longer be set up at all, where
 today it degrades to the computer path. That is the case of replacing an old router, a modem being swapped, or the ISP not yet
@@ -217,7 +217,7 @@ phones and you do not provision them as a service.
 | D24 | where GATE 1 sits | **first, in parallel with the deletions** (section 8) |
 | D25 | what "drop the offline path" meant | **actually delete the code** (feature 041), confirmed after the consequence was put to the owner |
 | D26 | does the NVS finding block the first sale? | **No, answered 2026-10-28 by D30.** Both paths are supported and the owner picks; a box sold on the legacy build simply has the guide's promise corrected to say what is and is not protected (043 criterion 8) |
-| D27 | NVS: approach A or B | **B, answered 2026-10-28.** A cannot be done on the build the boxes run: `nvs_flash_secure_init` is not compiled into the stock Arduino libraries (`CONFIG_SECURE_FLASH_ENC_ENABLED` is off) and `initArduino()` runs the plain init, which **erases** entries whose CRC fails, before `setup()`. Evidence: `specs/features/043-nvs-secrets-at-rest/group0-findings.md` |
+| D27 | NVS: approach A or B | **B, answered 2026-10-28.** A cannot be done on the build the boxes run: `nvs_flash_secure_init` is not compiled into the stock Arduino libraries (`CONFIG_SECURE_FLASH_ENC_ENABLED` is off) and `initArduino()` runs the plain init, which **erases** entries whose CRC fails, before `setup()`. Evidence: the group 0 findings of feature 043 (not kept) |
 | D30 | **hardening is an option, never a forced migration** | **Answered 2026-10-28.** The flash-encrypted path is kept correct and buildable, but the **legacy build that has actually run on real hardware stays the default and stays selectable by the owner.** Approach B already works this way: encryption engages only when the key partition exists *and* flash encryption is on; otherwise the code takes today's plaintext path, byte for byte unchanged. No feature under this epic may make hardening compulsory, and no release may drop the legacy path |
 | D26-old | (superseded, kept for the record) | **was open.** Proposed: yes — selling a box advertised as hardened whose secrets are readable is worse than selling an honestly unhardened one (feature 043) |
 | D29 | hardened boxes have no working update path from the feed | **open, and the most serious.** A Secure Boot V2 box runs only images carrying a Secure Boot signature block; feed images carry a manifest signature only, and the Secure Boot key is never in CI. A hardened box would report a successful update and then silently boot the old image. Found by 043's group 0; it belongs to 040. **D30 reduces its urgency** (a legacy box updates normally today), but it must be solved before any box is sold hardened |
