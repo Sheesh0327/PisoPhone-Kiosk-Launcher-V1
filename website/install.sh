@@ -7,8 +7,6 @@
 #                                                                           "piso-setup update"; with --branch the
 #                                                                           unsigned setup file of that branch, for testing)
 #   wget -qO- https://pisophone.pages.dev/install.sh | sh -s -- --branch beta   the setup file of another branch (testing)
-#   ... | sh -s -- --local <folder>   a first setup without the router's internet: use the setup file (with its .sha256) in that
-#                               folder instead of downloading it (setup/pisophone_setup.py copies it there; an update ignores it)
 #   ... | sh -s -- --yes        no questions (moves the router to 10.0.0.1 by itself; the setup runs unattended, its
 #                               passwords from ROOT_PASSWORD, KIOSK_PASSWORD, BOX_NEW_ADMIN_PASSWORD or generated). Used by
 #                               setup/pisophone_setup.py, which does the whole router setup from your computer
@@ -113,12 +111,10 @@ move_lan() {
 main() {
 	branch=main
 	ASSUME_YES=""
-	LOCAL=""
 	while [ $# -gt 0 ]; do
 		case "$1" in
 			--branch) [ -n "$2" ] || fail "--branch needs a name"; branch="$2"; shift 2 ;;
 			--yes) ASSUME_YES=1; shift ;;
-			--local) [ -n "$2" ] || fail "--local needs a folder"; LOCAL="$2"; shift 2 ;;
 			*) break ;;
 		esac
 	done
@@ -152,16 +148,9 @@ main() {
 	fi
 	tmp="$DIR/.piso-setup.download.$$"
 	trap 'rm -f "$tmp" "$tmp.sha256"' EXIT
-	if [ -n "$LOCAL" ] && [ "$1" != update ]; then
-		# a first setup from the setup program on a computer: it copied the setup file (and its checksum) here; nothing is downloaded
-		say "Using the PisoPhone setup the computer copied to this router ($LOCAL)..."
-		[ -f "$LOCAL/$file" ] && [ -f "$LOCAL/$file.sha256" ] || fail "--local: $LOCAL has no $file with its checksum. Nothing was changed."
-		if ! cp "$LOCAL/$file" "$tmp" || ! cp "$LOCAL/$file.sha256" "$tmp.sha256"; then fail "could not copy the setup file from $LOCAL (is the router's memory full?)"; fi
-	else
-		say "Downloading the PisoPhone setup ($branch)..."
-		fetch "$base/$file" "$tmp" || fail "could not download $base/$file (is the router online? the modem must be in the WAN port)"
-		fetch "$base/$file.sha256" "$tmp.sha256" || fail "could not download the checksum of the setup file"
-	fi
+	say "Downloading the PisoPhone setup ($branch)..."
+	fetch "$base/$file" "$tmp" || fail "could not download $base/$file (the router needs internet for the first setup: plug the modem into its WAN port, wait a minute, then run this again)"
+	fetch "$base/$file.sha256" "$tmp.sha256" || fail "could not download the checksum of the setup file"
 	want=$(cut -c1-64 < "$tmp.sha256")
 	have=$(sha256sum "$tmp" | cut -c1-64)
 	if [ "${#want}" != 64 ] || [ "$want" != "$have" ]; then fail "the downloaded setup file is damaged or incomplete (checksum differs). Run this again."; fi

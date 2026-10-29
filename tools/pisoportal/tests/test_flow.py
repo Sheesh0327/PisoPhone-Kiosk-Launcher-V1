@@ -4,7 +4,7 @@ import hashlib, hmac, json, os, signal, socket, time, urllib.error, urllib.reque
 from harness import *
 
 MAC_A, MAC_B, MAC_C, MAC_D = "aa:bb:cc:00:00:01", "aa:bb:cc:00:00:02", "aa:bb:cc:00:00:03", "aa:bb:cc:00:00:04"
-env = Env(PAUSE_GAP_SECONDS=2, PAUSE_MAX=2, PAUSE_MIN_PESOS=3, GAME_LIMIT_SECONDS=6)
+env = Env(PAUSE_GAP_SECONDS=2, PAUSE_MAX=2, PAUSE_MIN_PESOS=3)
 
 
 def gget(ip, path, headers=None):
@@ -28,7 +28,6 @@ try:
     check(code == 200 and "TechNet" in body and "PisoWifi" in body and "Test Spot" not in body and "HyperSpeed" in body and "&#8369;10" in body and "11 hrs 30 min" not in body, "the splash page carries the TechNet PisoWifi brand (not the configurable name) and the price list")
     check("1 day" not in body and "24 hrs" in body, "tiers are listed in the page (Endurance 20 pesos = 24 hrs)")
     check(len(body) < 27500, f"the page is small ({len(body)} bytes; it goes over the shop Wi-Fi once, then a 304)")
-    check('id="gm"' in body and "Play a mini-game" in body and 'href="/game"' in body and 'target=' not in body.split('id="gm"')[1].split('>')[0], "the coin page has the mini-game button (a plain link: the sign-in window of a phone opens no new tabs)")
     check("Get a voucher code" in body and "Use now" in body and "Save voucher file" in body and "Have a voucher?" in body and 't:"ping"' in body,
           "the page carries the voucher choice, the voucher code view, the voucher entry and the heartbeat")
     check(page_ms < 100, f"the page comes back fast ({page_ms:.1f} ms)")
@@ -37,30 +36,6 @@ try:
     check(code2 == 304 and body2 == "", "a returning phone gets 304 and downloads nothing")
     check(env.get("/generate_204")[0] == 200 and env.get("/ping")[1] == "ok", "any other address is the page; ping answers")
 
-    # ---- the mini-game: a small offline game, a few minutes a device a day, counted by the router ------------------------------------
-    code, game, gh = gget("127.0.0.1", "/game")
-    check(code == 200 and "Coin Catch" in game and "<canvas" in game and "left=6," in game and "no-store" in gh.get("Cache-Control", ""), "the game page is served with the device's minutes (6 s in this test)")
-    check("http://" not in game and "https://" not in game and "src=" not in game.replace("src=\"/", ""), "and it needs nothing from the internet")
-    check(len(game) < 9000, f"and it is small ({len(game)} bytes)")
-    check(json.loads(gget("127.0.0.1", "/game/tick")[1])["left"] in (5, 6), "a tick right after the start adds almost nothing")
-    check(gget("127.0.0.1", "/game/tick", {"Sec-Fetch-Site": "cross-site"})[0] == 403 and gget("127.0.0.1", "/game/tick", {"Sec-Fetch-Site": "same-origin"})[0] == 200, "another site's page cannot spend a device's minutes")
-    gget("127.0.0.3", "/game")
-    fast = [json.loads(gget("127.0.0.3", "/game/tick")[1])["left"] for _ in range(25)]
-    check(min(fast) >= 5, f"asking fast adds only the real time that passed: {fast[-1]} s left after 25 quick ticks")
-    seen = []
-    for _ in range(9):
-        time.sleep(1)
-        seen.append(json.loads(gget("127.0.0.1", "/game/tick")[1])["left"])
-    check(seen == sorted(seen, reverse=True) and seen[-1] == 0, f"real time runs the minutes down to nothing: {seen}")
-    code, used, _ = gget("127.0.0.1", "/game")
-    check(code == 200 and "used up" in used and "<canvas" not in used, "with no time left the game page says so and has no game")
-    check("left=6," in gget("127.0.0.2", "/game")[1], "another device still has all its minutes")
-    check(json.loads(gget("127.0.0.1", "/game/tick")[1])["left"] == 0, "and the first device stays at zero")
-    for ip, want in (("127.0.0.1", 0), ("127.0.0.2", 6)):
-        cc = Cust(ip, port=env.PP)
-        st = cc.wait_state("idle", 5)
-        check(st is not None and st.get("gm") == want, f"the coin page's state tells {ip} how much game time is left ({want} s): {st and st.get('gm')}")
-        cc.close()
     code_s, body_s, _ = env.get("/status")
     check(code_s == 200 and body_s == body and "time left" in body and "TechNet" in body and "WebSocket" in body,
           "there is one page: /status (an old bookmark) is the same page as / and carries the live countdown")
@@ -84,6 +59,28 @@ try:
     check(a.ok, "websocket connects for a known device")
     s = a.wait_state("idle", 5)
     check(s is not None and s["left"] == 0 and s["online"] is False, f"first view: idle, nothing paid: {s}")
+    # ---- feature 033: the spinning wheel is gone from the customer page, in every state ----------------------------------------------
+    check("wh" not in s, f"033: the idle view carries no wheel flag: {s}")
+    page_code, page, _h = gget("127.0.0.1", "/")
+    check(page_code == 200 and "Spin the wheel" not in page and 'id="wh"' not in page and "/wheel" not in page, "033: the customer page has no Spin button and no odds text")
+    wcode, wbody, _h = gget("127.0.0.1", "/wheel")
+    check(wcode == 200 and wbody == page, "033: /wheel is no route any more: the portal answers it with the ordinary customer page")
+    check(gget("127.0.0.1", "/wheel/state")[1] == page, "033: /wheel/state is no route any more")
+    import http.client
+    hc = http.client.HTTPConnection("127.0.0.1", env.PP, timeout=10, source_address=("127.0.0.1", 0))
+    hc.request("POST", "/wheel/spin?id=x&bet=1", headers={"X-Piso": "1"})
+    check(hc.getresponse().status == 405, "033: a spin is refused: there is no wheel to spin")
+    hc.close()
+    # ---- feature 034: the mini-game is gone --------------------------------------------------------------------------------------------
+    check("gm" not in s, f"034: the idle view carries no game field: {s}")
+    check("Play a mini-game" not in page and 'id="gm"' not in page and "/game" not in page and "Mini-game" not in page, "034: the customer page has no game button and no time-left text")
+    check(gget("127.0.0.1", "/game")[1] == page and gget("127.0.0.1", "/game/")[1] == page, "034: /game is no route any more: the portal answers it with the ordinary customer page")
+    check(gget("127.0.0.1", "/game/tick")[1] == page and gget("127.0.0.1", "/game/tick?s=1")[1] == page, "034: /game/tick is no route any more: no JSON, no minutes counted")
+    hc = http.client.HTTPConnection("127.0.0.1", env.PP, timeout=10, source_address=("127.0.0.1", 0))
+    hc.request("POST", "/game/tick", headers={"X-Piso": "1"})
+    check(hc.getresponse().status == 405, "034: a POST to the old tick address is refused")
+    hc.close()
+    check(not any(f.startswith("game") for f in os.listdir(env.data)), f"034: the router keeps no game record: {os.listdir(env.data)}")
     t0 = time.time()
     a.send({"t": "start", "plan": "endurance"})
     armed = a.wait_state("armed", 8)
@@ -94,6 +91,7 @@ try:
     check(os.listdir(f"{env.data}/open") != [], "the open window is noted on flash for crash recovery")
     fin = a.wait_state("final", 25)
     check(fin is not None and fin["pulses"] == 17 and fin["minutes"] == 690 and fin["online"] is True, f"closes by itself and settles: {fin}")
+    check("wh" not in fin, f"033: the final view carries no wheel flag: {fin}")
     r = env.roll().get(MAC_A)
     check(r and r[5] == "690" and r[13] == "17" and r[11] == "endurance" and r[16] == "1" and r[1] == "5000" and r[2] == "2000", f"the roll holds the whole window priced once: {r}")
     check(env.revenue().count("\n") == 1 and ",endurance,17,690,new," in env.revenue(), "revenue logged once: " + env.revenue())
@@ -366,6 +364,7 @@ try:
     d.send({"t": "ping"})
     p2 = d.last()
     nd2 = env.nds_get(MAC_D)
+    check("wh" not in p and "wh" not in p2, f"033: the paused view carries no wheel flag: {p} {p2}")
     check(p2.get("s") == "paused" and p2["left"] == left0 and nd2["STATE"] == "Authenticated" and nd2["DOWNRATE"] == "1",
           f"a reloaded page stays paused, the clock is stopped, and the fair-use timer (every second here) neither resumes it nor speeds it up: {p2} {nd2}")
     n = d.count()
@@ -777,6 +776,59 @@ try:
         check(rc == 0 and out.startswith("OK 3 7") and "torn_tail" not in out, "RT-04: the chain holds and the tail is whole again: " + out)
     finally:
         e6.close()
+    # ---- feature 032: a ledger over its 1 MB budget is pruned at the month roll and the box still agrees with the total ---------------------------
+    e7 = Env(offset=57, EMPTY_COOLDOWN="1")
+    try:
+        import datetime
+        def chain(prev, rl):
+            return hashlib.sha256(f"{prev}|{rl}".encode()).hexdigest()[:12]
+        prev, total = "0", 0
+        for m in range(1, 6):   # Jan..May 2026, 9000 rows each (about 400 KB a month); May is the current file, the first sale rolls it
+            t0 = int(datetime.datetime(2026, m, 10, tzinfo=datetime.timezone.utc).timestamp())
+            lines = []
+            if m > 1:
+                rl = f"{t0},{prev},{total},0,carry"
+                prev = chain(prev, rl)
+                lines.append(f"{rl},{prev}")
+            for n in range(9000):
+                pesos = n % 5 + 1
+                rl = f"{t0 + n},hyper,{pesos},{pesos * 6},topup"
+                prev = chain(prev, rl)
+                lines.append(f"{rl},{prev}")
+                total += pesos
+            name = "revenue.csv" if m == 5 else f"revenue-2026-{m:02d}.csv"
+            open(f"{e7.data}/{name}", "w").write("\n".join(lines) + "\n")
+        size0 = sum(os.path.getsize(f"{e7.data}/{f}") for f in os.listdir(e7.data) if f.startswith("revenue"))
+        check(size0 > 1024 * 1024, f"feature 032: the seeded ledger is over the 1 MB budget: {size0} bytes")
+        e7.set_box(busy=False, coins_at=[0.3, 0.6], lifetime_base=total)   # the box counted exactly what the ledger holds
+        rc, out = e7.cli("verify", "all")
+        check(rc == 0 and out == f"OK {5 * 9000 + 4} {total}", "feature 032: before: the whole ledger verifies: " + out)
+        rc, out = e7.cli("reconcile")
+        check(rc == 0 and out.startswith(f"RECONCILE OK ledger={total} box={total}"), "feature 032: before the prune, the ledger and the box agree: " + out)
+        rc, out = e7.cli("ledger")
+        check(rc == 0 and out == f"Sales record: 5 months of detail kept, none deleted. Lifetime total: {total} pesos.", "feature 032: the owner is told the months kept and the total: " + out)
+        e7.start()
+        e7.nds_client(MAC_C)
+        c = Cust("127.0.0.3", port=e7.PP, reset=True)
+        c.wait_state("idle", 5)
+        c.send({"t": "start", "plan": "hyper"})
+        fin = c.wait_state("final", 25)
+        check(fin is not None and fin["online"] is True, f"feature 032: a sale on the first day of a new month still works: {fin}")
+        c.close()
+        pruned = f"{e7.data}/revenue-pruned.txt"
+        check(wait_until(lambda: os.path.exists(pruned), 5), "feature 032: the months deleted on purpose are written down")
+        left = sorted(f for f in os.listdir(e7.data) if f.startswith("revenue-2026"))
+        check(len(left) < 5 and "revenue-2026-01.csv" not in left, "feature 032: the oldest months are gone, the newest kept: " + str(left))
+        size1 = sum(os.path.getsize(f"{e7.data}/{f}") for f in os.listdir(e7.data) if f.startswith("revenue-2") or f == "revenue.csv")
+        check(size1 <= 1024 * 1024, f"feature 032: the ledger is inside 1 MB again: {size1} bytes")
+        rc, out = e7.cli("verify", "all")
+        check(rc == 0 and out.startswith("OK ") and out.split()[2] == str(total + 2), "feature 032: after: it still verifies and the total moved only by the sale: " + out)
+        rc, out = e7.cli("reconcile")
+        check(rc == 0 and out.startswith(f"RECONCILE OK ledger={total + 2} box={total + 2}"), "feature 032: after the prune, the ledger still agrees with the box: " + out)
+        rc, out = e7.cli("ledger")
+        check(rc == 0 and out == f"Sales record: 3 months of detail kept (the space only allows 2 of the 3 closed months you wanted), 3 months deleted on purpose (their totals are kept). Lifetime total: {total + 2} pesos.", "feature 032: and after: months kept, months deleted, the same lifetime total: " + out)
+    finally:
+        e7.close()
     # ---- fair use: HyperSpeed is slowed after the limit, released later; Endurance is never touched -----------------------------------------
     env.reset_device(MAC_D)
     env.set_box(busy=False, coins_at=[0.3, 0.5, 0.7, 0.9, 1.1])
