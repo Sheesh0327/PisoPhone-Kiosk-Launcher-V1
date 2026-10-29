@@ -60,7 +60,7 @@ Panel position: a full-width line directly under the earnings header, above the 
 3. The front page draws the panel for every state with both numbers; `tests/test_browser.py` checks the text for rows 1, 2, 4, 6, in light and dark and at phone width.
 4. Reading the panel never changes `reconcile.state` (bytes identical after 50 overview polls) and calls the box at most once per 60 seconds (the fakebox counts calls).
 5. `pisoportal reconcile` prints the same lines and returns the same exit codes as before (the existing `test_flow.py` checks pass unchanged).
-6. A counter restart (row 5) is a note, not a mismatch; the second poll after it shows row 1.
+6. A counter restart (row 5) is a note, not a mismatch. The panel never writes the base (criterion 4), so the note stays until the hourly check records the restart (up to an hour), after which the panel shows row 1. *(Edited 2026-10-29 during group 1: the first wording, "the second poll shows row 1", would have needed the panel to write `reconcile.state`, which contradicts criterion 4. Owner told.)*
 7. Row 2 versus row 3 is decided by which count the box reported, never by the size of the gap.
 8. `git diff` of `core.rs`, `ledger.rs` (write paths), `pricing.rs`, `voucher.rs` is empty: no payment code touched. `cargo test` and the seven setup test files pass; `check_security_rules.sh` passes.
 9. `setup/RELEASE` raised, generated files rebuilt, `build_piso_setup.py --check` passes; hardware check **RS58** added to `docs/REAL_WORLD_TESTING.md` (a real router and box: panel agrees after coins; after collecting revenue the restart note; box unplugged shows row 6).
