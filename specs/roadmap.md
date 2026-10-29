@@ -68,10 +68,20 @@ Each step changes both sides in one change, with test vectors (`protocol/gen_vec
 
 - **7.1** Print-server pairing by a code instead of copying `send.key`. Specified in `docs/api/print-pairing.md`. Needs `/api/inbox/pair` on the print server, a separate project. **Blocked outside this repo.**
 
+## Phase 6b: the overhaul and selling boxes (spec 03, added at the 2026-10-29 replan)
+
+Spec 03 (`specs/spec_03_overhaul.md`) now drives the order. Done: 033, 034, 035, 039, 041 (router 1.5.26 at 0%). Open, in this order:
+
+- **6b.1** Hardware session 1 (box money rows) first, then session 3 (router, RS57); raise router 1.5.26 only after session 3 (owner's step).
+- **6b.2** 040 on the bench (GATE 1) and 043 (approach B, group 0 rewritten); **D29**, the update path of a hardened box, needs a feature before any box is sold hardened.
+- **6b.3** 036 site status panel (money agreement and version skew), then 037 and 038 (fewer setup questions, phone-led setup), 042 (phone provisioning guide). Each gets its spec when its turn comes.
+
+Phases 1 and 2 are superseded by the ordered sessions in `docs/REAL_WORLD_TESTING.md` (feature 039). Phase 6.1 (monitor restarts a hung portal) and the Spec 02 items were built in features 014 to 021.
+
 ## Phase 8: commercial readiness
 
 - **8.1** Confirm who holds the signing keys and that the owner-only steps in `docs/RELEASE.md` are written down.
-- **8.2** Licensing as in `docs/LICENSING.md` (2 free slots, P500 per extra slot) is tested on a real box (RS27).
+- **8.2** Licensing as in `docs/LICENSING.md` (2 free slots, P500 per extra slot) is tested on a real box (RS27). D3 and D23: leave it alone; but see the open question about the 3.12.4 feed changelog in `specs/STATUS.md`.
 - **8.3** Legal and liability terms, reviewed outside this repo.
 
 ## Cleanup (any time, low risk)

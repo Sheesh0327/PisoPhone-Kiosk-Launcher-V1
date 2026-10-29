@@ -1,6 +1,10 @@
 # Feature 043: the box's secrets must not be readable on a sold box
 
-Status: **draft, needs the owner. Blocking before any box is sold, alongside feature 040.**
+Status: **approach chosen, no code yet (replan 2026-10-29).** The owner answered D26, D27 and D30 on 2026-10-28 (epic section 7): approach **B**
+(encrypt the few secret values in the application; encryption engages only when the key partition exists *and* flash encryption is on,
+otherwise today's plaintext path runs unchanged), and it does **not** block the first sale. Still to be approved: the plan as rewritten for
+B. **The evidence D27 cites, `group0-findings.md`, is not in this folder or anywhere in git history** (only its name is, in commit `bf7612f`);
+group 0 must be written again before any code. Release: firmware (sold units only).
 Branch: `feat/043-nvs-secrets-at-rest`   Area: firmware   Epic: `specs/spec_03_overhaul.md` feature 043
 Release: firmware (**sold units only** — see "The rule that must not be broken")
 

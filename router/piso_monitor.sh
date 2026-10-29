@@ -34,6 +34,8 @@ TICK_SECONDS="${TICK_SECONDS:-60}"
 LOGREAD="${LOGREAD:-logread}"
 ALERTS_FILE="${ALERTS_FILE:-/etc/coinslot.d/alerts.txt}"
 COINSLOT_CONF="${COINSLOT_CONF:-/etc/coinslot.conf}"
+SETUP_CONF="${PISO_SETUP_CONF:-/etc/piso-setup.conf}"
+UPDATE_GRACE="${UPDATE_GRACE:-86400}"                  # seconds an update may wait before it is a warning
 [ -n "$PORTAL_PORT" ] || PORTAL_PORT=$(sed -n "s/^PORTAL_PORT=['\"]\{0,1\}\([0-9]*\).*/\1/p" "$COINSLOT_CONF" 2> /dev/null | head -n 1)
 PING_URL="${PING_URL:-http://127.0.0.1:${PORTAL_PORT:-2080}/ping}"
 PING_TIMEOUT="${PING_TIMEOUT:-5}"
@@ -130,6 +132,43 @@ check_ledger() {  # at most once an hour
 	esac
 }
 
+# What the update scripts recorded in the setup conf (UPDATE_STATE_ROUTER / _BOX = state|latest|since|running|detail), shown to an
+# owner who has no Telegram: an update that waited longer than UPDATE_GRACE (for a quiet moment, or because automatic updates are off)
+# is an alert, one a day, with the command to run; a failure goes into alerts.txt once a day without a second Telegram message (the
+# update script told Telegram when it failed). Nothing here installs or blocks anything. At most once an hour. Only these two keys are read.
+check_updates() {
+	_f="$S/lastupdates"; _n=$(now)
+	[ -r "$_f" ] && [ $((_n - $(cat "$_f"))) -lt 3600 ] && return 0
+	[ -r "$SETUP_CONF" ] || return 0
+	echo "$_n" > "$_f"
+	for _w in ROUTER BOX; do
+		_r=$(sed -n "s/^UPDATE_STATE_$_w='\(.*\)'\$/\1/p" "$SETUP_CONF" | tail -n 1)
+		_st=$(printf '%s' "$_r" | cut -d'|' -f1); _lt=$(printf '%s' "$_r" | cut -d'|' -f2); _since=$(printf '%s' "$_r" | cut -d'|' -f3)
+		_run=$(printf '%s' "$_r" | cut -d'|' -f4); _dt=$(printf '%s' "$_r" | cut -d'|' -f5)
+		if [ "$_w" = ROUTER ]; then _who="the router"; _cmd="piso-setup self-update"; _k=updrouter; else _who="the coin box"; _cmd="piso-setup box-update"; _k=updbox; fi
+		case "$_since" in "" | *[!0-9]*) _since=$_n ;; esac
+		_days=$(((_n - _since) / 86400)); [ "$_days" -ge 1 ] || _days=1
+		case "$_st" in
+			failed)
+				rm -f "$S/alert.$_k" "$S/alert.$_k.tg"   # (a different problem than a wait: its own one-a-day stamp)
+				_a="$S/alert.${_k}f"
+				if [ ! -r "$_a" ] || [ $((_n - $(cat "$_a"))) -ge 86400 ]; then
+					echo "$_n" > "$_a"
+					if [ -n "$_lt" ]; then note "update: the update of $_who to $_lt did not finish: $_dt. Run $_cmd to try by hand."
+					else note "update: $_who could not be updated: $_dt. Run $_cmd to try by hand."; fi
+				fi ;;
+			waiting | off)
+				rm -f "$S/alert.${_k}f"
+				if [ $((_n - _since)) -ge "$UPDATE_GRACE" ]; then
+					if [ "$_st" = off ]; then alert "$_k" 86400 "update: $_who is on $_run and $_lt is available. Automatic updates are off: run $_cmd, or turn them on with piso-setup auto-update on."
+					else alert "$_k" 86400 "update: $_who is on $_run and $_lt has waited $_days day(s) for a quiet moment. Install it when you close: $_cmd."; fi
+				fi ;;
+			*) rm -f "$S/alert.$_k" "$S/alert.$_k.tg" "$S/alert.${_k}f" ;;
+		esac
+	done
+	return 0
+}
+
 check_grief() {  # "alert grief:" lines the portal writes to the system log
 	touch "$S/grief.seen"
 	$LOGREAD -e coinslot 2> /dev/null | grep 'alert grief:' | tail -n 10 | while IFS= read -r _l; do
@@ -150,7 +189,7 @@ $("$PORTAL" report 1 2>&1)"
 
 do_tick() {
 	[ -e "$S/booted" ] || { : > "$S/booted"; note "the router started (or this monitor did)."; tg_send "the router started (or this monitor did)."; }
-	check_portal; check_box; check_space; check_ledger; check_grief; check_report
+	check_portal; check_box; check_space; check_ledger; check_updates; check_grief; check_report
 	[ -n "$HEALTHCHECK_URL" ] && curl -fsS -m 10 -o /dev/null "$HEALTHCHECK_URL" 2> /dev/null
 	return 0
 }

@@ -29,7 +29,32 @@ function draw(h){var c=$('cv'),g=c.getContext('2d'),w=c.width,ht=c.height;g.clea
  var mx=1,col=[css('--bfg'),css('--teal')];h.forEach(function(p){mx=Math.max(mx,p[1],p[2])});
  [1,2].forEach(function(l){g.beginPath();h.forEach(function(p,i){var x=i*(w/(h.length-1)),y=ht-4-(ht-12)*p[l]/mx;i?g.lineTo(x,y):g.moveTo(x,y)});g.strokeStyle=col[l-1];g.lineWidth=3;g.stroke()});
  $('cvl').innerHTML='<span style="color:'+col[0]+'">&#9632;</span> download &nbsp; <span style="color:'+col[1]+'">&#9632;</span> upload &nbsp; last ~'+Math.round((h[h.length-1][0]-h[0][0])/60)+' min, peak '+sp(mx)}
-function over(j){last.over=j;var m=j.week||[],wk=m.reduce(function(a,b){return a+b},0);
+/* the money line: the coin box's count against the sales record, both numbers, and why they may differ (feature 036) */
+function money(m){var e=$('mny');if(!m){e.className='msg hide';return}var l=peso(m.ledger),b=peso(m.box),d=peso(m.diff),c='',t='';
+ if(m.state==='agrees'){c='ok';t='<b>Money agrees.</b> Coin box counted '+b+', sales record '+l+'.'}
+ else if(m.state==='box_ahead'){c='';t='Coin box counted '+b+', sales record '+l+'. <b>Difference '+d+'</b>: coins counted but not yet in the record. Normal for a minute while a customer is paying; if it stays, tell your installer.'}
+ else if(m.state==='box_ahead_phones'){c='ok';t='Coin box counted '+b+' (includes rental-phone coins), sales record '+l+'. Difference '+d+' = rental phones. <b>Normal.</b>'}
+ else if(m.state==='mismatch'){c='bad';t='<b>MISMATCH.</b> Sales record '+l+', coin box counted '+b+'. The record has '+d+' the box did not count.'}
+ else if(m.state==='box_silent'){c='';t='<b>Coin box is not answering.</b> Sales record '+l+'. The comparison resumes when the box is back.'}
+ else if(m.state==='bad_ledger'){c='bad';t='<b>The sales record was changed:</b> line '+m.bad_line+' is wrong.'}
+ else{c='n';t='<b>No sales recorded yet.</b> Coin box counted '+b+'.'}
+ if(m.restarted&&m.state!=='bad_ledger'&&m.state!=='box_silent')t+=" The box's count restarted when its revenue was collected; compared from here.";
+ e.className='msg '+c;e.innerHTML=t}
+/* the update line: is the router, is the coin box up to date, or waiting for an update (feature 044). Gold only for a wait longer than a day or a failure. */
+function upd(v,now){var e=$('upd');if(!v){e.className='msg hide';return}var gold=false,out=[];
+ function one(n,r,cmd){if(!r){out.push(n+': not checked yet.');return}var l=esc(r.latest),run=esc(r.running),d=esc(r.detail),old=now-r.since>=86400,days=Math.max(1,Math.floor((now-r.since)/86400)),w=days+(days===1?' day':' days');
+  if(r.state==='current')out.push(n+' '+run+' is up to date.');
+  else if(r.state==='available')out.push(n+' '+l+' is available.');
+  else if(r.state==='waiting'){if(old){gold=true;out.push(n+' '+l+' has waited '+w+' for a quiet moment. Install it when you close: '+cmd+'.')}else out.push(n+' '+l+' is waiting for a quiet moment.')}
+  else if(r.state==='off'){if(old)gold=true;out.push(n+' '+l+' is available. Automatic updates are off: run '+cmd+'.')}
+  else if(r.state==='rollout')out.push(n+' '+l+" is rolling out in stages; this router's turn has not come.");
+  else if(r.state==='newer')out.push(n+' '+run+' is newer than the published '+l+'.');
+  else if(r.state==='failed'){gold=true;out.push(n+(l?' '+l:'')+' could not be installed: '+d+'. Run '+cmd+' to try by hand.')}
+  else out.push(n+': not checked: '+d+'.')}
+ one('Router',v.router,'piso-setup self-update');one('Coin box',v.box,'piso-setup box-update');
+ var age=v.checked?Math.floor((now-v.checked)/3600):0;if(age>=3)out.push('(checked '+age+' hours ago)');
+ e.className='msg '+(gold?'gold':'n');e.innerHTML=out.join(' ')}
+function over(j){last.over=j;upd(j.versions,j.now);money(j.money);var m=j.week||[],wk=m.reduce(function(a,b){return a+b},0);
  $('hm').textContent=peso(j.today);$('hs').textContent='This week '+peso(wk)+' · all time '+peso(j.total);
  $('tiles').innerHTML=tile('Customers online',j.online,j.waiting+' waiting to pay')+tile('Internet',sp(j.rx_kbps),'down; up '+sp(j.tx_kbps))+
   tile('Coin box',j.box_ok?'OK':'Offline',j.box_ok?(j.box_signed?'answering, answers signed':'answering. Update its firmware: answers are not signed yet'):'check power and Wi-Fi',j.box_ok?'ok':'bad')+tile('Records',j.ledger_ok?'OK':'Check',j.ledger_lines+' lines'+(j.ledger_ok?'':' (line '+j.ledger_lines+' is wrong)'),j.ledger_ok?'ok':'bad')+

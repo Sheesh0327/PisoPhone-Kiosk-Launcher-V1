@@ -7,6 +7,8 @@ Behaviour is driven by a JSON control file (path in FAKEBOX_CTL) that tests rewr
                                           # counted than its coin times say (coins the router never saw)
   "expire": true                          # like the real box, an armed window ends by itself when the arm's duration has passed
                                           # (a portal that was killed never releases it); off by default
+  "wifi_counter": true                    # report lifetime_wifi_pulses and lifetime_phone_pulses too (current firmware); "phone_coins": n
+                                          # rental-phone coins counted by the box (only in the all-coins count)
   "sign": "good" | "none" | "bad"         # sign the answers like the firmware (default), send them unsigned (older firmware), or with a wrong signature
 Coin events (GatewayEvent.h): an arm with wid & evport makes it push signed UDP lines to the caller, like the box.
 The action log is appended to FAKEBOX_LOG (one action per line)."""
@@ -27,6 +29,16 @@ def pulses_now(s, c, at=None):
     end = s["rel_at"] if s["released"] else (at if at is not None else time.time())
     # pulses that arrive while the acceptor settles are ignored by the real box, not delayed
     return max(sum(1 for t in c.get("coins_at", []) if s["armed_at"] + t <= end and s["armed_at"] + t >= s.get("settle_until", 0)) - s["acked"], 0)
+
+
+def lifetime_wifi(c, sessions):
+    return c.get("lifetime_base", 1000) + sum(x.get("acked", 0) for x in sessions.values()) - c.get("uncounted", 0)
+
+
+def lifetime_total(c, sessions):
+    """Every coin the box took. With "wifi_counter" (current firmware) the rental phones' coins ("phone_coins") are counted in
+    as well, so the all-coins count is ahead of the Wi-Fi count by exactly those."""
+    return lifetime_wifi(c, sessions) + (c.get("phone_coins", 0) if c.get("wifi_counter") else 0)
 
 
 def push(sid, s, typ):
@@ -153,7 +165,10 @@ class H(BaseHTTPRequestHandler):
                                    x["armed_at"] and not x["released"] for x in sessions.values()),
                                # the box's revenue counter: "lifetime_base" moves it (a collection restarts it),
                                # "uncounted" pesos were recorded by the router but never counted here
-                               "lifetime_pulses": c.get("lifetime_base", 1000) + sum(x.get("acked", 0) for x in sessions.values()) - c.get("uncounted", 0),
+                               "lifetime_pulses": lifetime_total(c, sessions),
+                               # current firmware also reports the Wi-Fi coins and the rental phones' coins on their own
+                               **({"lifetime_wifi_pulses": lifetime_wifi(c, sessions), "lifetime_phone_pulses": c.get("phone_coins", 0)}
+                                  if c.get("wifi_counter") else {}),
                                **({"events": True} if c.get("events", True) else {})}))
 
 

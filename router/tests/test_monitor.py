@@ -75,7 +75,7 @@ fakends = os.path.join(tmp, "ndsctl"); open(fakends, "w").write("""#!/bin/sh
 os.chmod(fakends, 0o755)
 conf = os.path.join(tmp, "mon.conf")
 open(conf, "w").write(f"TG_TOKEN=T0K\nTG_CHAT=111\nSITE_NAME=Shop1\nREPORT_HOUR=0\nHEALTHCHECK_URL=http://127.0.0.1:{port}/hc\n")
-env = dict(os.environ, PISO_MONITOR_CONF=conf, TG_API=f"http://127.0.0.1:{port}", MON_STATE=f"{tmp}/state", PORTAL=fake,
+env = dict(os.environ, PISO_SETUP_CONF=f"{tmp}/setup.conf", PISO_MONITOR_CONF=conf, TG_API=f"http://127.0.0.1:{port}", MON_STATE=f"{tmp}/state", PORTAL=fake,
            PISO_SETUP=fakesetup, LOGREAD=fakelog, BOX_DOWN_AFTER="2", PORTAL_SERVICE=fakesvc, NDSCTL=fakends,
            PING_URL=f"http://127.0.0.1:{port}/ping", PING_TIMEOUT="1", ALERTS_FILE=f"{tmp}/alerts.txt", DF=f"{tmp}/df.sh")
 open(f"{tmp}/df.sh", "w").write("#!/bin/sh\necho 'Filesystem 1K-blocks Used Available Use% Mounted on'\necho \"overlayfs:/overlay 14000 1000 $(cat " + tmp + "/free 2>/dev/null || echo 9000) 7% /overlay\"\n")
@@ -208,5 +208,56 @@ a2 = open(f"{tmp}/alerts2.txt").read() if os.path.exists(f"{tmp}/alerts2.txt") e
 check(len(sent) == n, "no Telegram settings: nothing is sent")
 check(restarts() == base + 1 and "did not answer for 3 minutes" in a2 and "router started" in a2, "no Telegram settings: the portal is still restarted and the alerts are written: " + a2)
 os.remove(f"{tmp}/pinghang")
+# ---- feature 044: update states the update scripts recorded are shown as alerts, not as Telegram noise ----------------------------------
+def set_updates(router="", box=""):
+    """The setup conf as the update scripts leave it (state|latest|since|running|detail), plus secrets that must never be repeated."""
+    open(f"{tmp}/setup.conf", "w").write("GW_KEY='ab" + "cd" * 31 + "'\nBOX_ADMIN_PASS='boxpw-secret'\n"
+                                         + (f"UPDATE_STATE_ROUTER='{router}'\n" if router else "") + (f"UPDATE_STATE_BOX='{box}'\n" if box else ""))
+
+
+def upd_tick():
+    if os.path.exists(f"{tmp}/state/lastupdates"):
+        os.remove(f"{tmp}/state/lastupdates")
+    n = len(sent)
+    mon("tick")
+    return texts()[n:], open(f"{tmp}/alerts.txt").read() if os.path.exists(f"{tmp}/alerts.txt") else ""
+
+
+NOW = int(time.time())
+OLD, FRESH = NOW - 90000, NOW - 3600
+set_updates("current|1.5.27|%d|1.5.27|" % FRESH, "current|3.12.4|%d|3.12.4|" % FRESH)
+t_, a_ = upd_tick()
+check(not any("update" in x.lower() for x in t_), f"044: up to date: no update alert: {t_}")
+set_updates("waiting|1.5.28|%d|1.5.27|customers are online, so it installs at the next quiet moment" % FRESH)
+t_, a_ = upd_tick()
+check(not any("quiet moment" in x for x in t_) and "quiet moment" not in a_, "044: waiting for less than a day: no alert")
+set_updates("", "waiting|3.12.5|%d|3.12.4|a phone has time running, so it installs at the next quiet moment" % OLD)
+t_, a_ = upd_tick()
+check(any("coin box" in x and "3.12.5" in x and "waited" in x and "piso-setup box-update" in x for x in t_) and "waited" in a_, f"044: the coin box has waited over a day: one alert with the command: {t_}")
+t2, a2 = upd_tick()
+check(not t2 and a2.count("waited") == 1, "044: and it is not repeated every hour")
+set_updates("off|1.5.28|%d|1.5.27|automatic updates are off: send /update in Telegram" % OLD)
+t_, a_ = upd_tick()
+check(any("router" in x and "1.5.28" in x and "Automatic updates are off" in x for x in t_), f"044: automatic updates off for over a day: alert for the router: {t_}")
+set_updates("failed|1.5.28|%d|1.5.27|the update to 1.5.28 failed and was undone (the health check command failed)" % FRESH)
+t_, a_ = upd_tick()
+check(not t_ and "1.5.28" in a_ and "did not finish" in a_, f"044: a failure goes to alerts.txt at once and not to Telegram again: {t_} {a_[-200:]}")
+check("boxpw-secret" not in a_ and "abcdcd" not in a_ and not any("boxpw-secret" in x for x in texts()), "044: no secret reaches alerts.txt or Telegram")
+before = open(f"{tmp}/alerts.txt").read()
+set_updates("rollout|1.5.28|%d|1.5.27|" % OLD, "newer|3.12.4|%d|3.13.0|" % OLD)
+t_, a_ = upd_tick()
+check(not t_ and a_ == before, "044: a staged rollout and a box newer than the website never alert")
+set_updates("unknown||%d||the website cannot be reached" % OLD, "available|3.12.5|%d|3.12.4|" % OLD)
+t_, a_ = upd_tick()
+check(not t_ and a_ == before, f"044: not checked and merely available never alert: {t_}")
+set_updates("current|1.5.28|%d|1.5.28|" % FRESH)
+upd_tick()
+set_updates("failed|1.5.29|%d|1.5.28|the download failed" % FRESH)
+t_, a_ = upd_tick()
+check("1.5.29" in a_ and "the download failed" in a_, "044: after it recovered, a new failure is shown at once again")
+os.remove(f"{tmp}/setup.conf")
+t_, a_ = upd_tick()
+check(not t_, "044: no setup conf at all: nothing happens")
+
 print(f"{checks} checks, {failures} failures")
 sys.exit(1 if failures else 0)

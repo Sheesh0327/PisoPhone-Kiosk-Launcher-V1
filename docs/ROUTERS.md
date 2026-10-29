@@ -3,7 +3,7 @@
 ## The router we recommend
 
 **Qihoo 360 T6M** (the router's own board name is `360,360t6m`; chip MT7621, family `mipsel`; 16 MB of small flash memory plus 128 MB of larger flash memory).
-It is the only router this software has ever run on, and it runs ImmortalWrt 23.05.0 (build r27285) in the owner's test log.
+It is the only router this software has ever run on (**the exact model name is unconfirmed: the 011 validation files call the owner's router a 360 T6GS, this log and RS35 call it a 360T6M; the owner will read the label and settle it**), and it runs ImmortalWrt 23.05.0 (build r27285) in the owner's test log.
 
 What "tested" means here, and what it does not:
 - **The program runs on it.** That is all that has been shown.

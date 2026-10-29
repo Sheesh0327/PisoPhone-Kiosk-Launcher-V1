@@ -2,7 +2,11 @@ Moved out of `CLAUDE.md` section 2 so that `CLAUDE.md` stays byte-for-byte the s
 be read from the prompt cache; see `specs/GUIDE.md`, part B). **Update this file whenever a release goes out**, never `CLAUDE.md`.
 It is read after the stable files, on demand: `specs/README.md` lists it with `specs/STATUS.md` (the board of features).
 
-# Where the repository is now (release state) (2026-10-24, features 022 to 028 on `main`)
+# Where the repository is now (release state) (2026-10-29, after router 1.5.26)
+- **Replan 2026-10-29.** `main` is at `f58f682`; there is no `beta` branch on the remote. Everything below this bullet dated before 2026-10-29 is history, except where a bullet here says otherwise.
+- **Router 1.5.26 is signed and published at 0%** (`website/update/router.json`: version 1.5.26, rollout 0), the batch of features 033 (wheel removed, was 1.5.25), 034 (mini-game removed), 035 (supported routers: only `mipsel`, D32) and 041 (first setup needs internet). `verify_release.py` was not re-run in this replan. **It has not been raised to 100%** and nothing of it has run on a router (RS57 is the check). The earlier rollout level of 1.5.19 to 1.5.25 is not recorded in the repository; the owner knows what is at 100%.
+- **Firmware 3.12.4** (feed, 2026-10-24). **App stable build 546 (5.4.6)** (feed, 2026-10-24); dev build 547 exists. The feed's changelog text for firmware 3.12.4 says "Slot licensing removed: all 10 phone slots are available"; **that text is wrong** (owner, D33): `SlotLicense.h` `FREE_SLOTS = 2` is live. It is corrected at the next firmware release.
+- **Selling assembled boxes (epic D17)** is blocked on feature 040 (GATE 1 never run on a board) and 043 (NVS secrets readable on flash; no code yet), plus D29 (a hardened box cannot take a feed update). The legacy, unhardened build stays the default and stays selectable (D30).
 - **Owner's rule (2026-10-24):** a feature branch that is green is merged directly into `main`, skipping `beta` (which is behind `main` on purpose).
   Router rollouts are still raised only by the owner's own step.
 - **Live on `main` (2026-10-24):** router **1.5.21** (features 022 and 025: the box's Quick time buttons work from the router console; a fresh page never sees the old result) signed and published at **0%** (the owner raises it to 100% after hardware checks RS44-RS47);

@@ -97,7 +97,6 @@ pub fn send_page(max_mb: u64) -> String {
     squeeze(include_str!("send.html")).replace("%MAXB%", &(max_mb * 1024 * 1024).to_string()).replace("%MAX%", &max_mb.to_string())
 }
 
-
 pub fn build_page(core: &Core) -> String {
     let cfg = &core.cfg;
     let pr = core.pricing();
