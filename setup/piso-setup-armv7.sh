@@ -1467,18 +1467,19 @@ notify() {
 	return 0
 }
 
-# record_update_state <router|box> <state> <latest> <detail>: what the console and the monitor show about updates (feature 044). It only
+# record_update_state <router|box> <state> <latest> <running> <detail>: what the console and the monitor show about updates (feature 044). It only
 # records what the update scripts already decided. States: current, available, waiting (for a quiet moment), off (automatic updates
 # are off), rollout (this router's turn has not come), newer (the box is newer than the website), failed, unknown (not checked: the
 # detail says why). It is written only when it changes, so the small flash is not written every hour; "since" is when this state of
-# this release was first seen. The time of the last check is UPDATE_LAST_CHECK, as before.
+# this release was first seen; the record is state|latest|since|running|detail. The time of the last check is UPDATE_LAST_CHECK, as before.
 record_update_state() {
-	_rk="UPDATE_STATE_$(echo "$1" | tr 'a-z' 'A-Z')"
-	_rd=$(printf '%s' "$4" | tr -cd 'A-Za-z0-9 .,;:()/+_%-' | cut -c1-160)
+	_rk="UPDATE_STATE_$(echo "$1" | tr '[:lower:]' '[:upper:]')"
+	_rd=$(printf '%s' "$5" | tr -cd 'A-Za-z0-9 .,;:()/+_%-' | cut -c1-160)
+	_rr=$(printf '%s' "$4" | tr -cd 'A-Za-z0-9.-' | cut -c1-30)
 	_ro=$(conf_get "$_rk")
 	case "$_ro" in "$2|$3|"*) _rs=$(printf '%s' "$_ro" | cut -d'|' -f3) ;; *) _rs="" ;; esac
 	[ -n "$_rs" ] || _rs=$(date +%s)
-	_rn="$2|$3|$_rs|$_rd"
+	_rn="$2|$3|$_rs|$_rr|$_rd"
 	[ "$_ro" = "$_rn" ] || conf_set "$_rk" "$_rn"
 	return 0
 }
@@ -1565,25 +1566,25 @@ cmd_self_update() {
 	[ "$PISO_ARCH" = mipsel ] || _base="$_base/$PISO_ARCH"   # the first family (mipsel) is at the top, as it always was; the others have a folder each
 	if ! fetch_url "$_base/router.json" "$_work/router.json" 20000; then
 		log "No update information at $_base (offline, or nothing published yet)."
-		record_update_state router unknown "" "the website cannot be reached (offline, or nothing published yet)"
+		record_update_state router unknown "" "$PISO_RELEASE" "the website cannot be reached (offline, or nothing published yet)"
 		[ "$_mode" = apply ] && notify "update: could not reach $_base"
 		return 0
 	fi
 	_res=$("$PORTAL_BIN" update-check "$_work/router.json" "$PISO_RELEASE" "$(conf_get GW_KEY)"); _rc=$?
 	case "$_rc" in
 		0) _new="${_res#AVAILABLE }" ;;
-		10) log "Up to date (release $PISO_RELEASE)."; record_update_state router current "$PISO_RELEASE" ""; [ "$_mode" = apply ] && notify "update: already on the latest release ($PISO_RELEASE)"; return 0 ;;
+		10) log "Up to date (release $PISO_RELEASE)."; record_update_state router current "$PISO_RELEASE" "$PISO_RELEASE" ""; [ "$_mode" = apply ] && notify "update: already on the latest release ($PISO_RELEASE)"; return 0 ;;
 		11) log "Release ${_res#WAIT } is published; this router's turn in the staged rollout has not come yet."
-			record_update_state router rollout "${_res#WAIT }" "this router's turn in the staged rollout has not come yet"
+			record_update_state router rollout "${_res#WAIT }" "$PISO_RELEASE" "this router's turn in the staged rollout has not come yet"
 			[ "$_mode" = apply ] && notify "update: release ${_res#WAIT } is rolling out in stages; this router is not in the current stage (it has $PISO_RELEASE)"
 			return 0 ;;
 		*) log "Update refused: ${_res#REFUSED }"
-			case "$_res" in *"no owner key"*) record_update_state router unknown "" "this router cannot check releases: ${_res#REFUSED }" ;; *) record_update_state router failed "" "refused: ${_res#REFUSED }" ;; esac
+			case "$_res" in *"no owner key"*) record_update_state router unknown "" "$PISO_RELEASE" "this router cannot check releases: ${_res#REFUSED }" ;; *) record_update_state router failed "" "$PISO_RELEASE" "refused: ${_res#REFUSED }" ;; esac
 			case "$_res" in *"no owner key"*) ;; *) notify "update REFUSED, nothing was installed: ${_res#REFUSED }" ;; esac
 			return 1 ;;
 	esac
 	_note=$(sed -n 's/.*"changelog": *"\([^"]*\)".*/\1/p' "$_work/router.json" | tr -cd 'A-Za-z0-9 .,;:()/+_%-' | cut -c1-200)
-	if [ "$_mode" = check ]; then record_update_state router available "$_new" "$_note"; log "Release $_new is available for this router (installed: $PISO_RELEASE). $_note"; return 0; fi
+	if [ "$_mode" = check ]; then record_update_state router available "$_new" "$PISO_RELEASE" "$_note"; log "Release $_new is available for this router (installed: $PISO_RELEASE). $_note"; return 0; fi
 	_hold=""
 	if [ "$_mode" = auto ]; then
 		if [ "$(conf_get AUTO_UPDATE)" = 0 ]; then _hold="automatic updates are off: send /update in Telegram, or run piso-setup self-update, to install it"
@@ -1591,19 +1592,19 @@ cmd_self_update() {
 	fi
 	if [ -n "$_hold" ]; then
 		log "Release $_new is available; $_hold."
-		case "$_hold" in "automatic updates are off"*) record_update_state router off "$_new" "$_hold" ;; *) record_update_state router waiting "$_new" "$_hold" ;; esac
+		case "$_hold" in "automatic updates are off"*) record_update_state router off "$_new" "$PISO_RELEASE" "$_hold" ;; *) record_update_state router waiting "$_new" "$PISO_RELEASE" "$_hold" ;; esac
 		if [ "$(conf_get UPDATE_NOTIFIED)" != "$_new" ]; then conf_set UPDATE_NOTIFIED "$_new"; notify "update: release $_new is available ($_note): $_hold"; fi
 		return 0
 	fi
 
 	# from here on nothing may cut the update short half way (not even the monitor being restarted by the update itself)
 	trap '' HUP INT TERM
-	fetch_url "$_base/router-setup.sh" "$_work/new.sh" 4194304 || { log "Could not download release $_new."; record_update_state router failed "$_new" "the download failed"; notify "update: could not download release $_new"; return 1; }
+	fetch_url "$_base/router-setup.sh" "$_work/new.sh" 4194304 || { log "Could not download release $_new."; record_update_state router failed "$_new" "$PISO_RELEASE" "the download failed"; notify "update: could not download release $_new"; return 1; }
 	if ! _v=$("$PORTAL_BIN" update-verify "$_work/router.json" "$_work/new.sh"); then
-		log "Update refused: ${_v#REFUSED }"; record_update_state router failed "$_new" "refused: ${_v#REFUSED }"; notify "update REFUSED, nothing was installed: ${_v#REFUSED }"; return 1
+		log "Update refused: ${_v#REFUSED }"; record_update_state router failed "$_new" "$PISO_RELEASE" "refused: ${_v#REFUSED }"; notify "update REFUSED, nothing was installed: ${_v#REFUSED }"; return 1
 	fi
 	if [ "$(sed -n "s/^PISO_RELEASE='\\(.*\\)'\$/\\1/p" "$_work/new.sh" | head -n 1)" != "$_new" ]; then
-		log "Update refused: the signed file is not release $_new"; record_update_state router failed "$_new" "refused: the signed file is not release $_new"; notify "update REFUSED: the signed file is not release $_new"; return 1
+		log "Update refused: the signed file is not release $_new"; record_update_state router failed "$_new" "$PISO_RELEASE" "refused: the signed file is not release $_new"; notify "update REFUSED: the signed file is not release $_new"; return 1
 	fi
 	log "Installing release $_new (installed: $PISO_RELEASE) $_note"
 	rm -rf "$UPDATE_BACKUP"; mkdir -p "$UPDATE_BACKUP" || die "could not create $UPDATE_BACKUP"
@@ -1616,7 +1617,7 @@ cmd_self_update() {
 	else sleep "${PISO_HEALTH_WAIT:-8}"; update_healthy; fi
 	if [ -z "$UPDATE_WHY" ]; then
 		conf_set UPDATE_NOTIFIED "$_new"
-		record_update_state router current "$_new" ""
+		record_update_state router current "$_new" "$_new" ""
 		log "Release $_new is installed and running."
 		rm -rf "$UPDATE_BACKUP"   # it has proven itself: the backup of the old release is not needed any more
 		trim_log
@@ -1625,7 +1626,7 @@ cmd_self_update() {
 	fi
 	tail -n 15 "$_work/update.out" 2> /dev/null | while IFS= read -r _l; do log "  installer: $_l"; done
 	rollback_update
-	record_update_state router failed "$_new" "the update to $_new failed and was undone ($UPDATE_WHY)"
+	record_update_state router failed "$_new" "$PISO_RELEASE" "the update to $_new failed and was undone ($UPDATE_WHY)"
 	notify "update to release $_new FAILED and was undone ($UPDATE_WHY): the router is back on release $PISO_RELEASE. See /root/piso-setup.log"
 	return 1
 }
@@ -1719,7 +1720,10 @@ cmd_box_update() {
 	_mode="${1:-apply}"
 	[ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"
 	DRY=0
-	if [ ! -r "$CONF" ] || [ -z "$(conf_get BOX_ADMIN_PASS)" ]; then die "no coin box is set up on this router: run piso-setup pair first"; fi
+	if [ ! -r "$CONF" ] || [ -z "$(conf_get BOX_ADMIN_PASS)" ]; then
+		[ -r "$CONF" ] && record_update_state box unknown "" "" "no coin box password on this router: run piso-setup pair first"
+		die "no coin box is set up on this router: run piso-setup pair first"
+	fi
 	_lock="${TMPDIR:-/tmp}/piso-boxupdate.lock"
 	if ! mkdir "$_lock" 2> /dev/null; then
 		if kill -0 "$(cat "$_lock/pid" 2> /dev/null)" 2> /dev/null; then log "Another box update is running."; return 0; fi
@@ -1733,16 +1737,21 @@ cmd_box_update() {
 	_base=$(conf_get UPDATE_URL); _base="${_base:-$UPDATE_URL_DEFAULT}"
 	if ! fetch_url "$_base/firmware.json" "$_work/firmware.json" 65536; then
 		log "No box firmware information at $_base (offline, or nothing published yet)."
+		record_update_state box unknown "" "" "the website cannot be reached (offline, or nothing published yet)"
 		[ "$_mode" = apply ] && notify "box update: could not reach $_base"
 		return 0
 	fi
 	if ! box_info; then
 		log "The coin box does not answer, so its firmware cannot be checked now."
+		record_update_state box unknown "" "" "the coin box did not answer (switched off, out of range, busy, or the password is wrong)"
 		[ "$_mode" = apply ] && notify "box update: the coin box does not answer"
 		return 0
 	fi
 	_new=$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' "$_work/firmware.json" | head -n 1)
 	if ! ver_newer "$_new" "$BOX_FW"; then
+		if [ "$_new" = "$BOX_FW" ]; then record_update_state box current "$_new" "$BOX_FW" ""
+		elif ver_newer "$BOX_FW" "$_new"; then record_update_state box newer "$_new" "$BOX_FW" ""
+		else record_update_state box unknown "" "$BOX_FW" "the website's firmware information has no usable version"; fi
 		log "The coin box is up to date (firmware $BOX_FW)."
 		[ "$_mode" = apply ] && notify "box update: the coin box already runs the latest firmware ($BOX_FW)"
 		return 0
@@ -1751,10 +1760,11 @@ cmd_box_update() {
 	_size=$(fw_field "$_work/firmware.json" "$BOX_CHIP" size); _sig=$(fw_field "$_work/firmware.json" "$BOX_CHIP" sig)
 	if [ -z "$_url" ] || [ -z "$_sha" ] || [ -z "$_size" ] || [ -z "$_sig" ]; then
 		log "Box firmware $_new is published, but not for this box's chip ($BOX_CHIP)."
+		record_update_state box unknown "$_new" "$BOX_FW" "the published firmware is not built for this box's chip ($BOX_CHIP)"
 		return 0
 	fi
 	_note=$(sed -n 's/.*"changelog": *"\([^"]*\)".*/\1/p' "$_work/firmware.json" | tr -cd 'A-Za-z0-9 .,;:()/+_%-' | cut -c1-200)
-	if [ "$_mode" = check ]; then log "Box firmware $_new is available (the box runs $BOX_FW). $_note"; return 0; fi
+	if [ "$_mode" = check ]; then record_update_state box available "$_new" "$BOX_FW" "$_note"; log "Box firmware $_new is available (the box runs $BOX_FW). $_note"; return 0; fi
 
 	_hold=""
 	if [ "$BOX_IMG" = pending_verify ] || [ "$BOX_IMG" = new ]; then _hold="the box is still checking the firmware it was last given"
@@ -1768,6 +1778,8 @@ cmd_box_update() {
 	fi
 	if [ -n "$_hold" ]; then
 		log "Box firmware $_new is available; $_hold."
+		case "$_hold" in "automatic updates are off"*) _hs=off ;; "installing "*) _hs=failed ;; *) _hs=waiting ;; esac
+		record_update_state box "$_hs" "$_new" "$BOX_FW" "$_hold"
 		if [ "$_mode" = auto ] && [ "$(conf_get BOX_UPDATE_NOTIFIED)" != "$_new" ]; then conf_set BOX_UPDATE_NOTIFIED "$_new"; notify "box update: firmware $_new is available ($_note): $_hold"; fi
 		return 0
 	fi
@@ -1776,9 +1788,9 @@ cmd_box_update() {
 	trap '' HUP INT TERM
 	_tries=$(conf_get BOX_UPDATE_TRIES); case "$_tries" in "$_new":*) _tries="${_tries#*:}" ;; *) _tries=0 ;; esac
 	conf_set BOX_UPDATE_TRIES "$_new:$((_tries + 1))"
-	fetch_url "$_url" "$_work/box.bin" 3145728 || { log "Could not download box firmware $_new."; notify "box update: could not download firmware $_new"; return 1; }
+	fetch_url "$_url" "$_work/box.bin" 3145728 || { log "Could not download box firmware $_new."; record_update_state box failed "$_new" "$BOX_FW" "the download failed"; notify "box update: could not download firmware $_new"; return 1; }
 	if [ "$(wc -c < "$_work/box.bin" | tr -d ' ')" != "$_size" ] || [ "$(sha256sum "$_work/box.bin" | cut -d' ' -f1)" != "$_sha" ]; then
-		log "Box update refused: the downloaded file is not the one published."; notify "box update REFUSED, nothing was installed: the downloaded file is not the one published"; return 1
+		log "Box update refused: the downloaded file is not the one published."; record_update_state box failed "$_new" "$BOX_FW" "refused: the downloaded file is not the one published"; notify "box update REFUSED, nothing was installed: the downloaded file is not the one published"; return 1
 	fi
 	log "Installing box firmware $_new (the box runs $BOX_FW) $_note"
 	_pw=$(conf_get BOX_ADMIN_PASS)
@@ -1786,11 +1798,12 @@ cmd_box_update() {
 		--data-urlencode "chip=$BOX_CHIP" --data-urlencode "version=$_new" --data-urlencode "sha256=$_sha" --data-urlencode "size=$_size" --data-urlencode "sig=$_sig" 2> /dev/null)
 	if [ "$_r" != 200 ]; then
 		_why=$(sed -n 's/.*"message": *"\([^"]*\)".*/\1/p' "$_work/manifest.out" 2> /dev/null | head -n 1)
-		log "The coin box refused the update (HTTP $_r): $_why"; notify "box update REFUSED by the box (${_why:-HTTP $_r}): it stays on firmware $BOX_FW"; return 1
+		log "The coin box refused the update (HTTP $_r): $_why"; record_update_state box failed "$_new" "$BOX_FW" "the coin box refused the update (${_why:-HTTP $_r})"; notify "box update REFUSED by the box (${_why:-HTTP $_r}): it stays on firmware $BOX_FW"; return 1
 	fi
 	_r=$(curl -s -m 240 -o "$_work/upload.out" -w '%{http_code}' -u "admin:$_pw" -H 'Expect:' -F "update=@$_work/box.bin;filename=firmware.bin" "http://$BOX_IP/update" 2> /dev/null)
 	if [ "$_r" != 200 ]; then
 		log "The coin box did not take the firmware (HTTP $_r): $(head -c 200 "$_work/upload.out" 2> /dev/null)"
+		record_update_state box failed "$_new" "$BOX_FW" "the coin box did not take the firmware (HTTP $_r): $(head -c 100 "$_work/upload.out" 2> /dev/null)"
 		notify "box update FAILED ($(head -c 120 "$_work/upload.out" 2> /dev/null | tr -cd 'A-Za-z0-9 .,;:()/+_%-')): the box stays on firmware $BOX_FW; it tries again at a quiet moment"
 		return 1
 	fi
@@ -1802,11 +1815,13 @@ cmd_box_update() {
 	done
 	if [ "$BOX_FW" = "$_new" ]; then
 		conf_set BOX_UPDATE_TRIES ""
+		record_update_state box current "$_new" "$_new" ""
 		log "Box firmware $_new is installed and running."
 		notify "box update: coin box firmware $_new installed and running. $_note"
 		return 0
 	fi
 	log "The coin box did not come back on firmware $_new (it answers as ${BOX_FW:-nothing})."
+	record_update_state box failed "$_new" "$BOX_FW" "the coin box did not come back on firmware $_new (it answers as ${BOX_FW:-nothing})"
 	notify "box update to firmware $_new did not take: the box is on ${BOX_FW:-no answer}; if it does not answer, power-cycle it (it goes back to its old firmware by itself if the new one does not start)"
 	return 1
 }
