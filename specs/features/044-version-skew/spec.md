@@ -1,6 +1,6 @@
 # Feature 044: show on the console when the router or the coin box is waiting for an update (version skew, design B3)
 
-Status: **draft (waiting for the owner's approval)**   Branch: `feat/044-version-skew` (cut from the tip of `feat/036-site-status-panel`, because it adds a line next to 036's money line on the console front page; 036 is not merged, so rebase onto `main` once it is)   Area: router (setup scripts, monitor, console)
+Status: **approved by the owner 2026-10-29 (D38; Q1 to Q3 answered with the recommendations)**   Branch: `feat/044-version-skew` (cut from the tip of `feat/036-site-status-panel`, because it adds a line next to 036's money line on the console front page; 036 is not merged, so rebase onto `main` once it is)   Area: router (setup scripts, monitor, console)
 Backlog rows: epic `specs/spec_03_overhaul.md` feature 044 (split out of 036 by D35), D6   Release: router only. **No firmware release, no app release.**
 
 ## Intent
@@ -55,7 +55,8 @@ Placement: a quiet line on the console front page under 036's money line, always
 Phone app versions; a line on the box's own dashboard (needs a firmware change); changing when or how anything is installed (for example installing in a busy shop); doing anything about a skew; checking the signature of the version text shown (it comes from state the already-verified scripts wrote); telling box variants apart; a version history page; changing the Telegram messages.
 
 ## Owner decisions
-- **D38 (for the record, no answer needed):** 044 is router only and writes no new fetch or compare code; the epic's "router + firmware" and "the box holds the expected set" are withdrawn. The epic's table and 044's paragraph change to match when you approve.
-- **Q1: how long before a waiting update becomes a warning (rows 3 and 4)?** Recommended: **24 hours** for the router and the coin box alike. Failures (row 5) warn at once either way. Alternative: router 24 hours, coin box 7 days (you update boxes on a shop visit).
-- **Q2: show the quiet "up to date" lines when everything is current?** Recommended: **yes, always** (an absent line cannot be told from a broken check). Alternative: show the lines only when something is waiting or not checked.
-- **Q3: a shop that is never quiet.** This feature only tells you ("waited N days for a quiet moment") and tells you the command to run when you close. It does not change when updates install. Say if you want a separate feature for that.
+Answered by the owner on 2026-10-29:
+- **D38: approved.** 044 is router only and writes no new fetch or compare code; the epic's "router + firmware" and "the box holds the expected set" are withdrawn.
+- **Q1: grace time 24 hours** for the router and the coin box alike (rows 3 and 4). Failures (row 5) warn at once.
+- **Q2: always show** the quiet "up to date" lines.
+- **Q3: a shop that is never quiet is told, not changed.** The line says how long the update has waited and the command to run at closing time; when or how updates install does not change (that would be a separate feature).
