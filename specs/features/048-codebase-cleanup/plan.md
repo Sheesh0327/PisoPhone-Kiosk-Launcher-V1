@@ -12,7 +12,7 @@ Context manifest (constitution rule 1): `file | purpose | lines | est_tokens`. U
 ## Task groups
 Small, ordered, each checkable. Nothing is deleted before the owner answers Q1 to Q5.
 
-- [ ] 0. Baseline: record tracked file count and size, and the output of the checks in success criterion 2 in `validation.md` (files: `validation.md`; test: the checks run clean before any change; red result: n/a).
+- [x] 0. Baseline: record tracked file count and size, and the output of the checks in success criterion 2 in `validation.md` (files: `validation.md`; test: the checks run clean before any change; red result: n/a).
 - [ ] 1. A link checker `scripts/check_links.py` (relative markdown links and `path:` mentions in `*.md`) with its test: lists links to missing files. Run on `main` first: the red result (dead links that already exist) is logged. Needed so criteria 1 is a command, not a promise (files: `scripts/check_links.py`, `scripts/tests/test_check_links.py`; red result logged: yes).
 - [ ] 2. Reader scan: `git grep` each Tier A and B file in `.github/`, `scripts/`, `tools/`, `setup/`, `esp32_firmware/`, `app/src/`; write the result table into `validation.md`. A file with a code reader moves to "stays" or its reader changes in the same step (test: the table).
 - [ ] 3. Tier A deletions approved in Q1 (`git rm`), then links fixed in `README.md`, `specs/roadmap.md`, `specs/RELEASE_STATE.md`, `specs/spec_0*.md`; checker green.

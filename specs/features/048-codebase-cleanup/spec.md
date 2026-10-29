@@ -1,6 +1,6 @@
 # Feature 048: codebase cleanup (fewer files, nothing live removed)
 
-Status: **draft: waiting for the owner to approve and answer Q1 to Q5**   Branch: `feat/048-codebase-cleanup` (from `main`)   Area: docs, specs, scripts, ci
+Status: **approved 2026-10-29 (owner: "go with your recommendations"); in progress**   Branch: `feat/048-codebase-cleanup` (from `main`)   Area: docs, specs, scripts, ci
 Backlog rows: none (owner request 2026-10-29: "refactor the entire code base, remove obsolete files or ones that are not important, merge documentation into a unified file")   Release: none (a change that only touches docs, specs and tests needs no router, firmware or app release; Tier C below would change that and is not in this feature)
 
 ## Intent
@@ -15,7 +15,7 @@ A shop owner or a new helper opens the repository and finds a lot of history: 43
 - A1 `specs/features/007-wheel-graphics/evidence/wheel-360x740.png` (224 KB; the wheel was removed in 033).
 - A2 the wheel and mini-game features' folders `005-spinning-wheel`, `006-wheel-button`, `007-wheel-graphics` (and the mini-game one if present): the code they describe is gone; their decisions live in `spec_03_overhaul.md` and `CHANGELOG.md`.
 - A3 `docs/maintainers/AUDIT_REPORT.md` (28 KB) and `docs/maintainers/HARDENING_PLAN.md` (16 KB): the 2026-10-17 pre-production audit; only `README.md`, `specs/roadmap.md`, `specs/RELEASE_STATE.md` and two epics link to them. Their open items are the rows of `spec_01_findings.json`.
-- A4 handoff notes in `specs/notes/` (12 files, 60 KB) and `specs/replans/` (3 files): history, not instructions.
+- A4 handoff notes in `specs/notes/` and `specs/replans/`: history, not instructions. **Except** `2026-10-29_session-1-run-sheet.md` (the hardware session 1 sheet is still to be run) and the newest replan and batch note, which `STATUS.md` and `RELEASE_STATE.md` point to: those stay.
 
 **Tier B: merge into one file, then delete the originals**
 - B1 finished feature folders (`spec.md`, `plan.md`, `validation.md` each) into one `specs/features/ARCHIVE.md`: per feature a header, intent, success criteria and the evidence line. Active features (045 to 048) and anything with open hardware rows stay as folders.
@@ -57,3 +57,6 @@ Code refactors (Tier C3), removing generated copies (Tier C1), deleting branches
 - **Q3** Docs: merge the small reference docs and design drafts (B2, B3) into two files? Recommended: **yes**, after the grep shows nothing reads them by path.
 - **Q4** `setup/MANUAL.md`: merge into `setup/README.md`, keep, or delete? Recommended: **merge**, keeping only the steps an owner needs when the setup program cannot run.
 - **Q5** Tier C (the 15 copies of the router installer): a separate feature later, where CI builds them at release and the repository keeps one? It changes the release flow and needs `beta`. Recommended: **yes, later, as its own feature**; not now.
+
+## Owner answers (2026-10-29)
+Q1 delete all of Tier A. Q2 merge finished features into `ARCHIVE.md`, keep 040 to 048 and any feature with an unticked hardware row as folders. Q3 yes (two files). Q4 merge `setup/MANUAL.md` into `setup/README.md`. Q5 later, as its own feature; not here.
