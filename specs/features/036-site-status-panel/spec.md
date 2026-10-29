@@ -1,6 +1,6 @@
 # Feature 036: the site status panel (Part A: money agreement on the console front page)
 
-Status: **approved by the owner 2026-10-29 (Q1 to Q4 answered: D35 to D37)**   Branch: `feat/036-site-status-panel`   Area: router (console)
+Status: **done on the branch (not merged, no pull request); hardware check RS58 owed**   Branch: `feat/036-site-status-panel`   Area: router (console)
 Backlog rows: epic `specs/spec_03_overhaul.md` feature 036, D5 to D8   Release: router (next number after 1.5.26). **No firmware release, no app release.** Version skew is split out as feature 044 (below).
 
 ## Intent
