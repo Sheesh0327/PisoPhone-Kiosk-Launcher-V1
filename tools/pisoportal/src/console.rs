@@ -493,13 +493,12 @@ impl Console {
 
 // ---- the server ---------------------------------------------------------------------------------------------------------------------
 
-/// The owner's console settings (voucher choice at payment, mini-game minutes a day).
+/// The owner's console settings (voucher choice at payment, file send, ledger size).
 fn settings_json(core: &Core) -> String {
     let budget = crate::ledger::Budget::load(&core.cfg.revenue_path());
     format!(
-        "{{\"voucher_choice\":{},\"game_minutes\":{},\"file_send\":{},\"file_send_key\":{},\"ledger_max_kb\":{},\"ledger_keep_months\":{}}}",
+        "{{\"voucher_choice\":{},\"file_send\":{},\"file_send_key\":{},\"ledger_max_kb\":{},\"ledger_keep_months\":{}}}",
         core.voucher_choice(),
-        core.games.limit_secs() / 60,
         core.send.switch_on(),
         core.send.has_key(),
         budget.max_kb,
@@ -660,9 +659,9 @@ fn handle(c: &Console, req: Request, mut conn: Incoming) {
                 ("GET", "/api/settings") => json(&mut conn, "200 OK", &settings_json(&c.core), ""),
                 ("POST", "/api/settings") => {
                     // (only the settings named in the body change)
-                    let (vc, gm, fs) = (jget(&body, "voucher_choice"), jget(&body, "game_minutes"), jget(&body, "file_send"));
+                    let (vc, fs) = (jget(&body, "voucher_choice"), jget(&body, "file_send"));
                     let (lkb, lkm) = (jget(&body, "ledger_max_kb"), jget(&body, "ledger_keep_months"));
-                    if vc.is_empty() && gm.is_empty() && fs.is_empty() && lkb.is_empty() && lkm.is_empty() {
+                    if vc.is_empty() && fs.is_empty() && lkb.is_empty() && lkm.is_empty() {
                         return json(&mut conn, "400 Bad Request", "{\"error\":\"NOTHING\"}", "");
                     }
                     // the revenue ledger's size budget (feature 032): both are checked before either is saved
@@ -692,24 +691,6 @@ fn handle(c: &Console, req: Request, mut conn: Incoming) {
                     if let Some(Some(v)) = km {
                         if !crate::config::override_set(dd, "LEDGER_KEEP_MONTHS", &v.to_string()) {
                             return json(&mut conn, "500 Internal Server Error", "{\"error\":\"IO\"}", "");
-                        }
-                    }
-                    if !gm.is_empty() {
-                        match gm.parse::<u32>() {
-                            Ok(m) if m <= crate::game::MAX_MINUTES => {
-                                if !c.core.set_game_minutes(m) {
-                                    return json(&mut conn, "500 Internal Server Error", "{\"error\":\"IO\"}", "");
-                                }
-                            }
-                            _ => {
-                                let why = format!("the mini-game minutes must be a number from 0 to {}", crate::game::MAX_MINUTES);
-                                return json(
-                                    &mut conn,
-                                    "400 Bad Request",
-                                    &format!("{{\"error\":\"BAD_MINUTES\",\"why\":\"{}\"}}", why),
-                                    "",
-                                );
-                            }
                         }
                     }
                     if !fs.is_empty() && !c.core.set_file_send(crate::config::parse_switch(&fs, true)) {

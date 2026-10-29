@@ -41,6 +41,30 @@ try:
         tby = pp.text_content("#tby") or ""
         check("Resume by" in tby and "Use by" not in tby and "lost" in tby, f"a paused page says when the time must be resumed: {tby}")
         pp.close()
+        # feature 034: the mini-game is gone. In each of the six states the page serves (the server's own JSON, stubbed) there is no game
+        # button, no game text and no link to /game, and every button or link that is shown does something (no dead button, no empty gap)
+        six = {
+            "idle": '{"t":"state","s":"idle","left":0,"plan":"","online":false,"busy":false,"cooldown":0,"used_mb":0,"slow":0,"pm":0,"pl":0,"pw":0,"vc":true,"sd":true,"pn":0,"vs":[]}',
+            "starting": '{"t":"state","s":"starting","plan":"hyper"}',
+            "armed": '{"t":"state","s":"armed","plan":"hyper","pulses":1,"minutes":10,"remaining":30,"total":60}',
+            "closing": '{"t":"state","s":"closing","plan":"hyper","pulses":1,"minutes":10}',
+            "final": '{"t":"state","s":"final","plan":"hyper","pulses":1,"minutes":10,"left":600,"online":true}',
+            "paused": paused,
+        }
+        for name, frame in six.items():
+            sp6 = br.new_page()
+            sp6.route_web_socket("**/ws", lambda ws, f=frame: ws.on_message(lambda m: ws.send(f)))
+            sp6.goto(url)
+            sp6.wait_for_function("[...document.querySelectorAll('.v')].some(v=>v.style.display==='block')", timeout=8000)
+            seen = sp6.evaluate("""() => { const v = [...document.querySelectorAll('.v')].filter(x => x.style.display === 'block');
+              const vis = e => !!(e.offsetWidth || e.offsetHeight);
+              return {views: v.map(x => x.id), text: v.map(x => x.innerText).join(' '),
+                      acts: v.flatMap(x => [...x.querySelectorAll('a,button')]).filter(vis).map(e => (e.innerText || e.id).trim() + ' ' + (e.getAttribute('href') || '')),
+                      dead: v.flatMap(x => [...x.querySelectorAll('a')]).filter(vis).filter(e => !e.getAttribute('href')).length,
+                      ids: !!document.getElementById('gm') || !!document.getElementById('gms'), html: document.documentElement.outerHTML}; }""")
+            check(seen["views"] and not seen["ids"] and "game" not in seen["html"].lower() and "/game" not in seen["html"], f"034 {name}: no game button, text or link ({seen['views']})")
+            check(seen["dead"] == 0, f"034 {name}: no link without a target; shown: {seen['acts']}")
+            sp6.close()
         env.set_box(busy=False, coins_at=[1.0, 1.6, 2.2])
         # the page opens on Endurance since router 1.5.22; this test buys HyperSpeed (the later "other plan" step relies on it). Checked in the page, not
         # clicked: the first click anywhere primes the speech engine, and the check below needs the tap on the coin button to be that first click.

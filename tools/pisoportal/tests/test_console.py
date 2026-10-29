@@ -7,6 +7,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 CP = 18290
 env = Env(offset=40)
 open(f"{env.data}/send.key", "w").write("k" * 40 + "\n")   # the print server's key is installed on this router
+# feature 034: a router that had the mini-game setting keeps the owner's line; an unknown key is harmless and not ours to delete
+OLD_SETTINGS = "GAME_MINUTES=10\nGAME_LIMIT_SECONDS=6\n"
+open(f"{env.data}/settings.txt", "w").write(OLD_SETTINGS)
 tmp = env.tmp
 # a fake `ubus`: the password "router-pass" is the router's
 open(f"{tmp}/ubus", "w").write('#!/bin/sh\ncase "$4" in *\\"password\\":\\"router-pass\\"*) echo \'{ "ubus_rpc_session": "abc" }\';; *) echo \'{}\';; esac\n')
@@ -72,6 +75,7 @@ def call(path, body=None, cookie=None, headers=None):
 
 try:
     check(env.start(), "the portal starts")
+    check(open(f"{env.data}/settings.txt", "rb").read() == OLD_SETTINGS.encode(), "034: starting the new program leaves the owner's settings.txt byte-identical (criterion 11)")
     check(wait_until(lambda: call("/")[0] == 200, 5), "the console page is served")
     code, body, h = call("/")
     check(b"TechNet PisoHub" in body and "default-src 'none'" in h.get("Content-Security-Policy", ""), "the page is the TechNet console, with a strict content security policy")
@@ -205,7 +209,7 @@ try:
     check(b"wheel" not in call("/ui.js")[1].lower() and b"wheel" not in call("/")[1].lower(), "033: the console page and its script have no wheel panel")
     # ---- settings: the voucher choice ----------------------------------------------------------------------------------------------------------
     code, body, _h = call("/api/settings", cookie=cookie)
-    check(code == 200 and json.loads(body) == {"voucher_choice": True, "game_minutes": 10, "file_send": True, "file_send_key": True, "ledger_max_kb": 1024, "ledger_keep_months": 3}, f"settings: the voucher choice is on, the mini-game has 10 minutes, file sending is on and the revenue ledger has 1024 KB for 3 wanted months by default: {body}")
+    check(code == 200 and json.loads(body) == {"voucher_choice": True, "file_send": True, "file_send_key": True, "ledger_max_kb": 1024, "ledger_keep_months": 3}, f"settings: the voucher choice is on, the mini-game has 10 minutes, file sending is on and the revenue ledger has 1024 KB for 3 wanted months by default: {body}")
     check(call("/api/settings", cookie="piso_console=x")[0] == 401, "settings need a session")
     check(call("/api/settings", {"voucher_choice": "off"}, cookie=cookie, headers={"X-Piso": "0"})[0] == 403, "changing a setting needs the page's header")
     check(call("/api/settings", {}, cookie=cookie)[0] == 400, "a change that names nothing is refused")
@@ -232,33 +236,20 @@ try:
     check(code == 200 and json.loads(body)["ledger_max_kb"] == 0, "0 turns the pruning off and is accepted")
     call("/api/settings", {"ledger_max_kb": "1024", "ledger_keep_months": "3"}, cookie=cookie)
     check(json.loads(call("/api/settings", cookie=cookie)[1])["ledger_max_kb"] == 1024, "and back to the default")
-    # the mini-game minutes a device gets per day (0 = no game), live
-    check(env.get("/game")[0] == 200, "the mini-game page is served by default")
-    for bad in ("abc", "-1", "121", "1.5"):
-        code, body, _h = call("/api/settings", {"game_minutes": bad}, cookie=cookie)
-        check(code == 400 and b"BAD_MINUTES" in body, f"refused: game_minutes {bad!r}")
-    code, body, _h = call("/api/settings", {"game_minutes": "0"}, cookie=cookie)
-    check(code == 200 and json.loads(body)["game_minutes"] == 0 and json.loads(body)["voucher_choice"] is True, f"the owner turns the game off: {body}")
-    check("GAME_MINUTES=0" in open(f"{env.data}/settings.txt").read() and "VOUCHER_CHOICE" in open(f"{env.data}/settings.txt").read(), "it is kept next to the other console settings")
-    check(env.get("/game")[0] == 404 and env.get("/game/tick")[0] == 404, "no game page and no ticks while it is off")
-    c8 = Cust("127.0.0.1", port=env.PP, reset=True)
-    st = c8.wait_state("idle", 5)
-    check(st is not None and st["gm"] == -1, f"the coin page is told there is no game: {st and st.get('gm')}")
-    c8.close()
-    code, body, _h = call("/api/settings", {"game_minutes": 15}, cookie=cookie)
-    check(code == 200 and json.loads(body)["game_minutes"] == 15 and env.get("/game")[0] == 200, "and 15 minutes turns it back on at once")
-    c8 = Cust("127.0.0.1", port=env.PP, reset=True)
-    st = c8.wait_state("idle", 5)
-    check(st is not None and st["gm"] == 900, f"with all 15 minutes ahead: {st and st.get('gm')}")
-    c8.close()
-    call("/api/settings", {"game_minutes": 10}, cookie=cookie)
+    # feature 034: the mini-game is gone. Its setting is no setting any more; the owner's old line stays where it is, unread
+    check("game_minutes" not in json.loads(call("/api/settings", cookie=cookie)[1]), "034: the console reports no mini-game setting")
+    code, body, _h = call("/api/settings", {"game_minutes": "15"}, cookie=cookie)
+    check(code == 400 and b"NOTHING" in body, f"034: a request for the old setting changes nothing and is told so: {code} {body}")
+    check(env.get("/game")[1] == env.get("/")[1], "034: /game is the ordinary customer page (the portal answers every unknown address that way)")
+    st = open(f"{env.data}/settings.txt").read()
+    check("GAME_MINUTES=10\n" in st and "GAME_MINUTES=15" not in st and "GAME_LIMIT_SECONDS=6\n" in st, f"034: the owner's old lines are still there after other settings were saved (criterion 11): {st!r}")
     # sending files to the owner (the print inbox): on by default when the key is installed; the owner can switch it off for sites without printing
     c7 = Cust("127.0.0.1", port=env.PP, reset=True)
     st = c7.wait_state("idle", 5)
     check(st is not None and st["sd"] is True and env.get("/send")[0] == 200, f"file sending is offered by default: {st and st.get('sd')}")
     c7.mark()
     code, body, _h = call("/api/settings", {"file_send": "off"}, cookie=cookie)
-    check(code == 200 and json.loads(body)["file_send"] is False and json.loads(body)["voucher_choice"] is True and json.loads(body)["game_minutes"] == 10, f"the owner switches it off: {body}")
+    check(code == 200 and json.loads(body)["file_send"] is False and json.loads(body)["voucher_choice"] is True, f"the owner switches it off: {body}")
     check("SEND_ENABLED=off" in open(f"{env.data}/settings.txt").read(), "and it is kept next to the other console settings")
     check(c7.wait(lambda m: m.get("s") == "idle" and m.get("sd") is False, 5) is not None, "an open customer page is told at once and hides the button")
     check(env.get("/send")[0] == 404, "the upload page is gone while it is off")
