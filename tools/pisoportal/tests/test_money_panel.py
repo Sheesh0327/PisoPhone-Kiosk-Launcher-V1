@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Feature 036: the console front page says whether the coin box and the sales record agree. Each state of the panel against the fake coin
 box; the panel never writes the saved base (reconcile.state) and asks the box at most once a minute."""
-import hashlib, json, os, time, urllib.error, urllib.request
+import glob, hashlib, json, os, shutil, time, urllib.error, urllib.request
 from harness import *
 
 CP = 18600
@@ -130,6 +130,58 @@ try:
     check(not os.path.exists(STATE), "036: fifty polls never created reconcile.state")
     rc, out = env.cli("reconcile")
     check(rc == 0 and out.startswith("RECONCILE OK") and "ledger=1247" in out, f"036: pisoportal reconcile still says the same thing: {rc} {out}")
+
+    # ---- the page itself, in a real browser: the line sits under the earnings header, above the tiles, with both numbers ------------------
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        sync_playwright = None
+        print("skipped: playwright is not installed (browser checks)")
+    if sync_playwright:
+        chrome = os.environ.get("CHROME") or next((c for c in [shutil.which(x) for x in ("google-chrome", "chromium", "chromium-browser")] + glob.glob("/opt/pw-browsers/chromium-*/chrome-linux*/chrome") + glob.glob(os.path.expanduser("~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome")) if c), None)
+        with sync_playwright() as pw:
+            br = pw.chromium.launch(executable_path=chrome, args=["--no-sandbox"])
+
+            def see(scheme="light", width=1100):
+                m, cookie = panel()
+                ctx = br.new_context(viewport={"width": width, "height": 900}, color_scheme=scheme)
+                ctx.add_cookies([{"name": "piso_console", "value": cookie.split("=", 1)[1], "url": f"http://127.0.0.1:{CP}"}])
+                pg = ctx.new_page()
+                errs = []
+                pg.on("pageerror", lambda e: errs.append(str(e)))
+                pg.goto(f"http://127.0.0.1:{CP}/")
+                try:
+                    pg.wait_for_function("(document.getElementById('mny')||{}).textContent", timeout=10000)
+                except Exception:
+                    pass
+                info = pg.evaluate("""() => { const e = document.getElementById('mny'), t = document.getElementById('tiles');
+                  if (!e) return {text: '', cls: '', above: false, fits: false};
+                  const r = e.getBoundingClientRect();
+                  return {text: e.textContent, cls: e.className, above: r.bottom <= t.getBoundingClientRect().top + 1,
+                          fits: r.left >= 0 && r.right <= innerWidth, wide: r.width >= innerWidth * 0.8 - 40, shown: !!(e.offsetWidth && e.offsetHeight)}; }""")
+                ctx.close()
+                return info, errs
+
+            ledger(1000, 247)
+            env.set_box(wifi_counter=True, lifetime_base=1247)
+            i, errs = see("light")
+            check("Money agrees" in i["text"] and i["text"].count("1,247") == 2 and "ok" in i["cls"] and i["above"] and i["shown"] and not errs, f"036 page, row 1 (light): {i} {errs}")
+            env.set_box(wifi_counter=True, lifetime_base=1310, phone_coins=63)
+            i, errs = see("dark")
+            check("1,310" in i["text"] and "1,247" in i["text"] and "63" in i["text"] and "if it stays" in i["text"] and "bad" not in i["cls"] and i["above"] and not errs,
+                  f"036 page, row 2 (dark): the box ahead is gold and never red: {i} {errs}")
+            ledger(1300)
+            open(STATE, "w").write("0 0 1247\n")
+            env.set_box(wifi_counter=True, lifetime_base=1247)
+            i, errs = see("light", width=360)
+            os.remove(STATE)
+            check("MISMATCH" in i["text"] and "1,300" in i["text"] and "1,247" in i["text"] and "53" in i["text"] and "bad" in i["cls"] and i["fits"] and not errs,
+                  f"036 page, row 4 (phone width): the mismatch is red, both numbers, the line fits the screen: {i} {errs}")
+            ledger(1000, 247)
+            env.set_box(wifi_counter=True, lifetime_base=1247, status_fail=True)
+            i, errs = see("dark", width=360)
+            check("not answering" in i["text"] and "1,247" in i["text"] and i["fits"] and not errs, f"036 page, row 6 (dark, phone width): {i} {errs}")
+            br.close()
 finally:
     env.close()
 finish()
