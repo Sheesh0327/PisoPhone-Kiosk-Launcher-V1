@@ -52,13 +52,14 @@ Each is one branch, one area, one chat. **Do them in this order**; later ones as
 | **034** | Remove the mini-game | router | router |
 | **035** | Say which routers are actually supported | docs + setup | router (docs only) |
 | **036** | The site status panel (money agreement + version skew) | router + firmware | router + firmware |
-| **037** | Setup asks fewer questions, one front door | setup + router | router + site |
-| **038** | Phone-led setup | app + firmware + router | app + firmware + router |
+| ~~037~~ | ~~Setup asks fewer questions, one front door~~ **PARKED 2026-10-29** (section 0a) | - | none |
+| ~~038~~ | ~~Phone-led setup~~ **PARKED 2026-10-29** (section 0a) | - | none |
 | **039** | Triage the owed hardware checks | docs | none |
 | **040** | Prove the hardening of a box that leaves your hands (GATE 1) | firmware (bench) | none |
 | **041** | Require internet on the router: delete the offline package path | setup | router |
-| **042** | Phone provisioning, documented end to end | docs + site | site |
+| ~~042~~ | ~~Phone provisioning documented for the customer~~ **PARKED 2026-10-29**: the owner provisions the phones, so this becomes their own assembly runbook, not a customer guide | - | none |
 | **043** | The box's secrets must not be readable on a sold box | firmware | firmware (sold units) |
+| **044** | **(D29) A hardened box must be able to take a signed update** | firmware + CI | firmware |
 
 Specs 033, 034, 040, 041 and 043 are **written in full** (`specs/features/033-remove-wheel/`, `034-remove-minigame/`). 035 to 039 have their
 design decided in section 6 and get their full spec **when their turn comes** — a spec written three features early is stale by
@@ -74,6 +75,29 @@ deleted; `/wheel*` becomes 404; RS34 is retired with a reason, not silently drop
 ### 034 Remove the mini-game  (owner: remove)
 Full spec written. Unlike the wheel it is **on by default**, so `CHANGELOG.md` says plainly that the free game is gone. A
 `GAME_MINUTES` line already in a router's `settings.txt` is left in place and ignored.
+
+### 0a. The model, corrected  (owner, 2026-10-29) — read this before anything else in section 6
+**The owner builds and installs every unit and sells them finished. Nobody else sets one up.** `specs/mission.md` was
+rewritten on 2026-10-29 because it had said the goal was a non-programmer shop owner opening a shop — a customer who does not
+exist. Setup does not need to be short; it needs to be **reliable and repeatable**, and the owner already knows it.
+
+What that changes:
+- **Parked: 037, 038, 042.** Setup convenience for a person who is the owner. 038 especially — it was called "the decisive
+  competitive move" and for this model it is worth close to nothing. Parked, **not deleted**: they come back the day someone
+  else installs these, and they carry findings worth keeping.
+- **Reframed: 035.** The support table is the owner's own record of what has been proved, not guidance for a customer
+  choosing a router. Already shipped; no further work.
+- **Promoted: everything about a unit the owner cannot physically reach.** A sold unit that cannot be updated must be
+  collected. A sold unit that breaks silently is a call the owner gets days late. That is now the whole risk.
+
+**The order of work, decided 2026-10-29:**
+| | why |
+|---|---|
+| **1. The owed hardware checks** (feature 039 ordered them; session 1 first) | The owner stakes their own name on units they assembled, and none of the always-on work has ever run on a router. Verification is the bottleneck, not features. |
+| **2. Feature 044 (D29): hardened boxes cannot take feed updates** | A unit that cannot be fixed from a distance must be collected. In this model that is close to disqualifying. |
+| **3. Feature 040: GATE 1** | Units leave the owner's hands; the hardening has never been proved on a board. |
+| **4. Feature 043: the box's secrets** | A sold box's credentials are readable today, which is the promise the guide already makes. |
+| **5. Feature 036: the site status panel** | The owner is not in the shop. Remote visibility, and the version skew that already bit once. |
 
 ### 0. The business model this epic now serves  (owner, 2026-10-28)
 **You sell assembled ESP32-C3 coin boxes. Routers are bring-your-own.** The box is where the product's value is (the coin ISR
@@ -180,7 +204,30 @@ accounts and its queued payments.
 **Follow-up from the same review, not part of 043:** `scripts/sold_unit_check.py` calls `espefuse.py`, which stops working once
 `ENABLE_SECURITY_DOWNLOAD` is burned; it needs to use `esptool get_security_info` instead. Small, its own change.
 
-### 042 Phone provisioning, documented end to end  (owner: document it, the customer does it)
+### 044 A hardened box must be able to take a signed update  (D29, D37 — second in the order of work)
+**The problem, found by 043's group 0 and verified in the code.** A Secure Boot V2 box runs only images carrying a Secure
+Boot signature block, made with the owner's offline key. The feed's images carry a **manifest** signature only (the
+firmware-signing key, in CI), and the Secure Boot key is deliberately never in CI. The stock Arduino libraries are built
+without `CONFIG_SECURE_BOOT`, so the app does not check the block when the upload finishes: `Update.end()` succeeds, the
+dashboard says SUCCESS, the box restarts — **and the bootloader refuses the new slot and boots the old image.** The update
+silently never happens.
+
+**Why it is second in the order.** The owner sells finished units they cannot physically reach. A unit that cannot be updated
+must be collected, which turns a bug into a recall. Hardening a box without solving this makes the box *less* maintainable,
+not more.
+
+**Shapes to consider (the feature's group 0 chooses, with evidence):**
+- the owner signs a hardened image offline with the Secure Boot key and publishes it to a **separate feed**, keyed by
+  something the box reports;
+- or **one image carries both** signatures — the Secure Boot block appended to the manifest-signed image, which an
+  unhardened box would (reasoned, not verified) simply ignore.
+The second needs no new feed and no "which image for whom" check. Verify that an unhardened box really does ignore the block
+before relying on it.
+
+**Note the dependency:** feature 043's choice must survive whichever is picked. If hardened boxes get a separate image, 043
+may use a build only they run; if one image serves both, 043 **must** work on both, which is what approach B already does.
+
+### 042 Phone provisioning, documented end to end  (owner: document it, the customer does it) — **PARKED**, see section 0a
 Device owner needs a factory reset plus QR or NFC provisioning, and it is the hardest step in the product. This feature writes
 the end-to-end guide and has the box page produce the provisioning QR, so the customer has one page to follow. You do not sell
 phones and you do not provision them as a service.
@@ -210,6 +257,8 @@ phones and you do not provision them as a service.
 | D20 | which firmware ships on a sold box | **one full build for everything**; variants are not sold (037) |
 | D21 | the router's internet during setup | **required; the offline path is deleted** (feature 041) |
 | D22 | `docs/ROUTERS.md` | **name one recommended model to buy**, do not stock it (035) |
+| D36 | the model: who installs these? | **The owner, and only the owner, 2026-10-29.** Units are sold finished. `specs/mission.md` rewritten; 037, 038 and 042 parked; the update path, hardening, the box's secrets, remote visibility and the owed hardware checks promoted (section 0a) |
+| D37 | D29 needs a home | **Feature 044, 2026-10-29.** It was a decision row with nowhere to live. It is now second in the order of work, behind the hardware checks only because those need no new code |
 | D32 | is aarch64 supported? | **No, answered 2026-10-29: aarch64 is untested too.** Only **mipsel** is supported — it is the only family that has ever run on real hardware. `aarch64`, `mips`, `armv7` and `x86_64` are all untested: the installer warns and proceeds on each, and never refuses. This resolves the contradiction feature 035 found between D4 (which called aarch64 supported) and D31's rule, and it makes the rule consistent: a family is supported when one has run in a shop, never before |
 | D31 | which model to recommend | **The tested one: Qihoo 360 T6M** (board `360,360t6m`, MT7621, mipsel, 16 MB NOR + 128 MB NAND), answered 2026-10-28. It is the only router the program has ever run on, on ImmortalWrt 23.05.0 (r27285). The owner's rule is to recommend only hardware that has actually been tested, so the list grows as models are proven, never ahead of the evidence. **Caveat to record in 035:** RS35 on that router has still never been run, so "tested" means the program runs on it, not that every feature has been checked |
 | D23 | slot licensing, now that boxes are sold | **still leave it alone**; revisit once boxes are selling |

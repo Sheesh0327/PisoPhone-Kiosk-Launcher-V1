@@ -1,6 +1,19 @@
 # Feature 037: one front door, and one question fewer
 
-Status: **approved by the owner 2026-10-29 (D33, D34, D35 answered below).** Branch: `feat/037-setup-front-door`   Area: firmware + setup
+Status: **PARKED 2026-10-29 — approved, correct, and not wanted yet.**
+
+> **Why this is parked.** The owner builds and installs every unit and sells them finished (`specs/mission.md`, rewritten
+> 2026-10-29). Nobody else sets one up. This feature removes a question the owner already knows the answer to and builds a
+> front door for a person who is the owner. Its value returns the day someone else installs these — resellers, or volume —
+> and the spec is kept whole for that day.
+>
+> **One piece of it is still wanted, for a different reason than this spec gives.** Part B's *"has a router ever paired with
+> this box?"* is useful to the **owner**, in the field, deciding whether a unit is good before it leaves. If that is built,
+> build it alone: it needs no part A, no measurement gate and no live-shop risk.
+>
+> **Findings worth keeping, which is why this is parked and not deleted:** the gateway key is generated on the router and
+> pushed to the box (`98-setup-flow.sh:130`, `50-coin-box.sh:118-137`), so the box can never pre-fill it; and after feature
+> 041 the installer takes no user-facing parameter, so the one-liner is already a constant. Branch: `feat/037-setup-front-door`   Area: firmware + setup
 Epic: `specs/spec_03_overhaul.md` feature 037 (decisions D9, D10, D20)   Release: firmware + router
 
 ## Intent
