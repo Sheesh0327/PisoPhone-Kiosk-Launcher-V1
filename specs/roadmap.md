@@ -2,7 +2,7 @@
 
 High-level implementation order, in small phases. Each phase should be one change, or a few small ones, that can be finished and checked on its own. The order follows the mission: money first, then safety, then convenience.
 
-The phases come from the open items in `docs/maintainers/HARDENING_PLAN.md` (section 3, and the hardware checks in section 4), `docs/REAL_WORLD_TESTING.md`, and `CLAUDE.md` (section 2).
+The phases come from the open items in `docs/HARDENING.md` (section 3, and the hardware checks in section 4), `docs/REAL_WORLD_TESTING.md`, and `CLAUDE.md` (section 2).
 
 Items marked **Owner decision** need the owner's answer before work starts.
 

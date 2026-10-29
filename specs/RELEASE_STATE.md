@@ -28,7 +28,7 @@ It is read after the stable files, on demand: `specs/README.md` lists it with `s
 - **The mini-game (`/game`, Coin Catch) was removed by feature 034 (router 1.5.25 too, on branch `feat/034-remove-minigame`, not yet merged or released; same release as 033, 035 and 041).** Unlike the wheel it was **on by default** (10 minutes a day per device), so customers see the button gone; it never touched money or paid time. `/game` and `/game/tick` are no routes any more (the portal answers them with the coin page); the console setting and `gm` view field are gone; an owner's `GAME_MINUTES` line in `settings.txt` stays and is ignored. `pisoportal-mipsel` size: see `specs/features/034-remove-minigame/validation.md`. The history above describes the game as it was.
 - **Branches:** `main` is production, `beta` is where work happens. After CI rebuilds on each branch their generated router
   files differ byte for byte, so merges to `main` keep `main`'s generated files (section 5).
-- **Production hardening pass** (`docs/maintainers/HARDENING_PLAN.md`: what was fixed, what is open, the hardware checks): router
+- **Production hardening pass** (`docs/HARDENING.md`: what was fixed, what is open, the hardware checks): router
   1.5.5 went to 100% before the owner's hardware checks were done, so those checks are still owed. After 1.5.5 paying phones were
   reported online with no internet; the fix in 1.5.6 (the portal lets on a paid customer openNDS forgot; the 1.5.5 guest
   private-network rules removed) was tried by the owner on a router and works. Phone app: paid time starts at

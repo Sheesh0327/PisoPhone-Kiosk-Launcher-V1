@@ -36,7 +36,10 @@ Checks before any change (the same must hold at the end):
 | `website/manual.html` (not MANUAL.md) | `scripts/tests/test_manual.py` | not a candidate |
 
 ## Removed files
-(filled in group by group)
+### Group 3 (Tier A): 22 files deleted
+- `docs/maintainers/AUDIT_REPORT.md`, `docs/maintainers/HARDENING_PLAN.md`: their **open** items are kept in the new `docs/HARDENING.md` (HARDENING_PLAN section 3, audit risks 4, 9 and 10, owner questions Q5 and Q7); the rest was fixed work, now in `CHANGELOG.md` and git history at `aba69c8`. (The spec had said the open items were rows of `spec_01_findings.json`; for section 3 that was wrong, so they were moved, not dropped.)
+- `specs/features/005-spinning-wheel`, `006-wheel-button`, `007-wheel-graphics` (with the 224 KB screenshot).
+- `specs/notes/` all but `2026-10-29_session-1-run-sheet.md` and `2026-10-29_spec03-batch.md`; `specs/replans/` all but `2026-10-29.md`.
 
 ## Not tested
 (to fill at the end)

@@ -116,8 +116,7 @@ of checks is in [`CONTRIBUTING.md`](CONTRIBUTING.md).
 | [`docs/REAL_WORLD_TESTING.md`](docs/REAL_WORLD_TESTING.md) | The hardware test checklist and issue log |
 | [`docs/PROVISIONING_SOLD_UNIT.md`](docs/PROVISIONING_SOLD_UNIT.md) | Secure boot and flash encryption for boxes you sell |
 | [`docs/api/`](docs/api) | The router gateway API, the super-admin QR login and print server pairing |
-| [`docs/maintainers/AUDIT_REPORT.md`](docs/maintainers/AUDIT_REPORT.md) | The security audit and what was done about each finding |
-| [`docs/maintainers/HARDENING_PLAN.md`](docs/maintainers/HARDENING_PLAN.md) | The hardening pass: findings, fixes, confidence, hardware checks and release order |
+| [`docs/HARDENING.md`](docs/HARDENING.md) | What is still open after the security audit and hardening pass |
 
 ## Branches
 | Branch | Contains | Purpose |

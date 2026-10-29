@@ -1,7 +1,7 @@
 # Spec 02: always on (a shop that runs 24 hours a day, every day, for a year)
 
 Status: **approved by the owner 2026-10-24 (answers in section 8)**   Written: 2026-10-23 against `main` at `3d822f6` (`beta` at `a994cd4`)
-Related: `specs/spec_01_codebase_refactor.md` (R3 reliability rows are taken over here), `docs/maintainers/HARDENING_PLAN.md`
+Related: `specs/spec_01_codebase_refactor.md` (R3 reliability rows are taken over here), `docs/HARDENING.md`
 section 3, `specs/roadmap.md` phase 6, `docs/REAL_WORLD_TESTING.md` section 8 (soak).
 
 ## 1. Goal
