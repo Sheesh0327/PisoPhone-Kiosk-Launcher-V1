@@ -29,7 +29,7 @@
 
 VERSION="dev"
 # the release of this file (setup/RELEASE): routers install only a higher release that the owner signed
-PISO_RELEASE='1.5.25'
+PISO_RELEASE='1.5.26'
 # the CPU family the portal program in this file is built for (router_family below names the family of the router it runs on)
 PISO_ARCH='armv7'
 
@@ -2074,12 +2074,18 @@ trim_log() {
 }
 
 # check_arch: the portal program in this file is built for one CPU family (PISO_ARCH); on another it would not start, so say so before
-# anything is changed, and name the file that fits.
+# anything is changed, and name the file that fits. An untested family (mips, armv7, x86_64) only gets a warning: it is never refused.
 check_arch() {
 	[ -z "$PISO_SKIP_ARCH" ] || return 0
 	[ -r "$PISO_ROOT/etc/openwrt_release" ] || return 0
 	_f=$(router_family)
-	[ "$_f" != "$PISO_ARCH" ] || return 0
+	if [ "$_f" = "$PISO_ARCH" ]; then
+		# right file for this CPU. Three families are built and self-tested in an emulator but have never run on a real router: say so, go on
+		case "$_f" in
+			mips | armv7 | x86_64) log "  WARNING: \"$_f\" routers are untested: this program has only run on real hardware on mipsel. Setup goes on, but tell the owner how it went (docs/ROUTERS.md)." ;;
+		esac
+		return 0
+	fi
 	_pkg=$(sed -n "s/^DISTRIB_ARCH=['\"]\\{0,1\\}\\([^'\"]*\\).*/\\1/p" "$PISO_ROOT/etc/openwrt_release" | head -n 1)
 	if [ -z "$_f" ]; then
 		die "this router's CPU (\"$_pkg\") has no portal program built yet; this file is for \"$PISO_ARCH\" routers. Nothing was changed. Tell the owner which router this is."
