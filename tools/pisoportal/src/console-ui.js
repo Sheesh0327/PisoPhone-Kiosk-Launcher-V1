@@ -40,7 +40,21 @@ function money(m){var e=$('mny');if(!m){e.className='msg hide';return}var l=peso
  else{c='n';t='<b>No sales recorded yet.</b> Coin box counted '+b+'.'}
  if(m.restarted&&m.state!=='bad_ledger'&&m.state!=='box_silent')t+=" The box's count restarted when its revenue was collected; compared from here.";
  e.className='msg '+c;e.innerHTML=t}
-function over(j){last.over=j;money(j.money);var m=j.week||[],wk=m.reduce(function(a,b){return a+b},0);
+/* the update line: is the router, is the coin box up to date, or waiting for an update (feature 044). Gold only for a wait longer than a day or a failure. */
+function upd(v,now){var e=$('upd');if(!v){e.className='msg hide';return}var gold=false,out=[];
+ function one(n,r,cmd){if(!r){out.push(n+': not checked yet.');return}var l=esc(r.latest),run=esc(r.running),d=esc(r.detail),old=now-r.since>=86400,days=Math.max(1,Math.floor((now-r.since)/86400)),w=days+(days===1?' day':' days');
+  if(r.state==='current')out.push(n+' '+run+' is up to date.');
+  else if(r.state==='available')out.push(n+' '+l+' is available.');
+  else if(r.state==='waiting'){if(old){gold=true;out.push(n+' '+l+' has waited '+w+' for a quiet moment. Install it when you close: '+cmd+'.')}else out.push(n+' '+l+' is waiting for a quiet moment.')}
+  else if(r.state==='off'){if(old)gold=true;out.push(n+' '+l+' is available. Automatic updates are off: run '+cmd+'.')}
+  else if(r.state==='rollout')out.push(n+' '+l+" is rolling out in stages; this router's turn has not come.");
+  else if(r.state==='newer')out.push(n+' '+run+' is newer than the published '+l+'.');
+  else if(r.state==='failed'){gold=true;out.push(n+(l?' '+l:'')+' could not be installed: '+d+'. Run '+cmd+' to try by hand.')}
+  else out.push(n+': not checked: '+d+'.')}
+ one('Router',v.router,'piso-setup self-update');one('Coin box',v.box,'piso-setup box-update');
+ var age=v.checked?Math.floor((now-v.checked)/3600):0;if(age>=3)out.push('(checked '+age+' hours ago)');
+ e.className='msg '+(gold?'gold':'n');e.innerHTML=out.join(' ')}
+function over(j){last.over=j;upd(j.versions,j.now);money(j.money);var m=j.week||[],wk=m.reduce(function(a,b){return a+b},0);
  $('hm').textContent=peso(j.today);$('hs').textContent='This week '+peso(wk)+' · all time '+peso(j.total);
  $('tiles').innerHTML=tile('Customers online',j.online,j.waiting+' waiting to pay')+tile('Internet',sp(j.rx_kbps),'down; up '+sp(j.tx_kbps))+
   tile('Coin box',j.box_ok?'OK':'Offline',j.box_ok?(j.box_signed?'answering, answers signed':'answering. Update its firmware: answers are not signed yet'):'check power and Wi-Fi',j.box_ok?'ok':'bad')+tile('Records',j.ledger_ok?'OK':'Check',j.ledger_lines+' lines'+(j.ledger_ok?'':' (line '+j.ledger_lines+' is wrong)'),j.ledger_ok?'ok':'bad')+

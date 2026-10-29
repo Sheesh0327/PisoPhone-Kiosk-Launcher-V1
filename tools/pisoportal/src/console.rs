@@ -223,6 +223,36 @@ fn read(path: &str) -> String {
     std::fs::read_to_string(path).unwrap_or_default()
 }
 
+/// The states the update scripts record (`record_update_state` in setup/src/90-updates.sh).
+const UPDATE_STATES: [&str; 8] = ["current", "available", "waiting", "off", "rollout", "newer", "failed", "unknown"];
+
+/// One update record the update scripts wrote into the setup conf: `state|latest|since|running|detail` (feature 044). Anything else
+/// is not drawn.
+pub(crate) fn update_record_json(raw: &str) -> String {
+    let f: Vec<&str> = raw.splitn(5, '|').collect();
+    if f.len() != 5 || !UPDATE_STATES.contains(&f[0]) {
+        return "null".into();
+    }
+    format!(
+        "{{\"state\":\"{}\",\"latest\":\"{}\",\"since\":{},\"running\":\"{}\",\"detail\":\"{}\"}}",
+        f[0],
+        json_esc(f[1]),
+        f[2].parse::<u64>().unwrap_or(0),
+        json_esc(f[3]),
+        json_esc(f[4])
+    )
+}
+
+/// The overview's `versions` object: the router's record, the coin box's record and when the hourly check last ran (0 = never).
+pub(crate) fn versions_json(router_raw: &str, box_raw: &str, checked: &str) -> String {
+    format!(
+        "{{\"router\":{},\"box\":{},\"checked\":{}}}",
+        update_record_json(router_raw),
+        update_record_json(box_raw),
+        checked.trim().parse::<u64>().unwrap_or(0)
+    )
+}
+
 pub(crate) fn conf_value(path: &str, key: &str) -> String {
     read(path)
         .lines()
@@ -402,7 +432,7 @@ impl Console {
         let uptime = read("/proc/uptime").split_whitespace().next().unwrap_or("0").split('.').next().unwrap_or("0").to_string();
         format!(
             "{{\"version\":\"{}\",\"now\":{},\"online\":{},\"waiting\":{},\"wan_if\":\"{}\",\"rx_kbps\":{},\"tx_kbps\":{},\"rx_total\":{},\"tx_total\":{},\"history\":[{}],\
-             \"today\":{},\"week_total\":{},\"month_total\":{},\"total\":{},\"week\":[{}],\"box_ok\":{},\"box_signed\":{},\"ledger_ok\":{},\"ledger_lines\":{},\"ledger_kept\":{},\"ledger_pruned\":{},\"ledger_wanted\":{},\"mem_kb\":{},\"uptime\":{},\"alerts\":[{}],\"money\":{}}}",
+             \"today\":{},\"week_total\":{},\"month_total\":{},\"total\":{},\"week\":[{}],\"box_ok\":{},\"box_signed\":{},\"ledger_ok\":{},\"ledger_lines\":{},\"ledger_kept\":{},\"ledger_pruned\":{},\"ledger_wanted\":{},\"mem_kb\":{},\"uptime\":{},\"alerts\":[{}],\"money\":{},\"versions\":{}}}",
             env!("CARGO_PKG_VERSION"),
             now,
             online,
@@ -428,7 +458,12 @@ impl Console {
             if mem.is_empty() { "0".into() } else { mem },
             uptime,
             alerts,
-            crate::reconcile::peek(cfg).json()
+            crate::reconcile::peek(cfg).json(),
+            versions_json(
+                &conf_value(&cfg.setup_conf, "UPDATE_STATE_ROUTER"),
+                &conf_value(&cfg.setup_conf, "UPDATE_STATE_BOX"),
+                &conf_value(&cfg.setup_conf, "UPDATE_LAST_CHECK")
+            )
         )
     }
 
@@ -856,6 +891,38 @@ mod tests {
         assert_eq!(k, Kinds { coin: 8, vcoin: 12, voucher: 10, vi: 2 });
         assert_eq!(rows[6].day.len(), 10);
         assert!(rows[6].day > rows[5].day);
+    }
+
+    #[test]
+    fn f044_an_update_record_becomes_json_and_a_bad_one_becomes_null() {
+        assert_eq!(
+            update_record_json("waiting|1.5.28|1790000000|1.5.27|customers are online, so it installs at the next quiet moment"),
+            r#"{"state":"waiting","latest":"1.5.28","since":1790000000,"running":"1.5.27","detail":"customers are online, so it installs at the next quiet moment"}"#
+        );
+        assert_eq!(
+            update_record_json("current|3.12.4|5|3.12.4|"),
+            r#"{"state":"current","latest":"3.12.4","since":5,"running":"3.12.4","detail":""}"#
+        );
+        assert_eq!(update_record_json(""), "null", "nothing recorded yet");
+        assert_eq!(update_record_json("hello"), "null", "not a record");
+        assert_eq!(update_record_json("bogus|1|2|3|4"), "null", "an unknown state is not drawn");
+        assert_eq!(
+            update_record_json("failed||x|1.5.27|why"),
+            r#"{"state":"failed","latest":"","since":0,"running":"1.5.27","detail":"why"}"#,
+            "a since that is not a number is 0"
+        );
+        assert!(update_record_json("unknown|||| a \"quote\" and \\ ").contains(r#"a \"quote\" and"#), "text is escaped");
+    }
+
+    #[test]
+    fn f044_the_overview_object_has_both_records_and_the_last_check_and_no_secret_key() {
+        let j = versions_json("current|1.5.27|1|1.5.27|", "", "1790000123");
+        assert_eq!(
+            j,
+            r#"{"router":{"state":"current","latest":"1.5.27","since":1,"running":"1.5.27","detail":""},"box":null,"checked":1790000123}"#
+        );
+        assert_eq!(versions_json("", "", ""), r#"{"router":null,"box":null,"checked":0}"#);
+        assert_eq!(versions_json("", "", "soon"), r#"{"router":null,"box":null,"checked":0}"#, "a time that is not a number is 0");
     }
 
     #[test]

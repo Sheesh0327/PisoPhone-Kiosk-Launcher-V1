@@ -40,7 +40,7 @@ label{display:block;font-size:12px;font-weight:550;color:var(--mut);margin-botto
 .bars{display:flex;align-items:flex-end;gap:4px;height:120px;margin-top:8px}.bars div{flex:1;background:var(--bfg);opacity:.85;border-radius:3px 3px 0 0;min-height:2px;position:relative}.bars span{position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:11px;color:var(--mut);white-space:nowrap}
 .days{display:flex;gap:4px;font-size:11px;color:var(--mut)}.days div{flex:1;text-align:center;white-space:nowrap;overflow:visible}
 canvas{width:100%;height:80px;display:block}
-.msg{border:1px solid var(--ln);border-left:3px solid var(--goldf);background:var(--s1);padding:8px 12px;border-radius:8px;margin:8px 0}.msg.bad{border-left-color:var(--bad)}.msg.ok{border-left-color:var(--ok)}.msg.n{border-left-color:var(--ln)}#mny{overflow-wrap:anywhere}
+.msg{border:1px solid var(--ln);border-left:3px solid var(--goldf);background:var(--s1);padding:8px 12px;border-radius:8px;margin:8px 0}.msg.bad{border-left-color:var(--bad)}.msg.ok{border-left-color:var(--ok)}.msg.n{border-left-color:var(--ln)}.msg.gold{border-left-color:var(--gold)}#mny,#upd{overflow-wrap:anywhere}
 .err{color:var(--bad);min-height:20px}.hide{display:none!important}
 #login{max-width:380px;margin:64px auto;padding:24px;background:var(--s1);border:1px solid var(--ln);border-radius:12px}#login img{width:72px}#login h1{font-size:18px;margin:8px 0}
 dialog{border:1px solid var(--ln);border-radius:12px;background:var(--s1);color:var(--tx);padding:20px;max-width:420px;box-shadow:0 8px 24px rgba(0,0,0,.45)}dialog::backdrop{background:rgba(0,0,0,.7)}
@@ -62,6 +62,7 @@ footer{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;paddin
 <main>
 <section id="t-over"><div class="grid"><div class="card hero"><div class="k">Money today</div><div class="v money" id="hm"></div><div class="s" id="hs"></div></div></div>
 <div id="mny" class="msg hide" role="status"></div>
+<div id="upd" class="msg hide" role="status"></div>
 <h2>At a glance</h2><div class="grid" id="tiles"></div>
 <h2>Internet line</h2><div class="card"><canvas id="cv" width="900" height="160"></canvas><div class="s" id="cvl"></div></div></section>
 <section id="t-cli" class="hide"><h2>Customers on PisoWiFi</h2><div class="card" style="overflow-x:auto"><table><thead><tr><th>Device</th><th class="hm">Address</th><th>Plan</th><th class="n">Time left</th><th class="n hm">Data</th><th class="n hm">Speed now</th><th></th></tr></thead><tbody id="cl"></tbody></table></div><p class="s" id="clnote"></p></section>
