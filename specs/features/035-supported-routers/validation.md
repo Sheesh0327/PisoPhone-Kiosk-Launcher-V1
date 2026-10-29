@@ -44,7 +44,7 @@ Note on the container: `/dev/null` here is a regular file, as 011's validation a
 No payment, credit, expiry, deduction or queue code touched (`tools/pisoportal`, `esp32_firmware`, `app` are not in the diff). The change is a log line in the setup program, documentation, and a workflow edit.
 
 ## Flagged in the epic
-1. **aarch64 is "supported" without ever running on real hardware.** The epic (D4, 035) calls it supported and, in the same breath, says only mipsel has run on real hardware. I kept the owner's classification but marked aarch64 in ROUTERS.md as "supported, but only checked on a computer so far". The owner may prefer it untested.
+1. **RESOLVED (D32, owner, 2026-10-29): aarch64 is untested too; only `mipsel` is supported.** `docs/ROUTERS.md` now marks aarch64 Untested; `check_arch` warns and goes on for mips, aarch64, armv7 and x86_64 (never refuses); the check "aarch64 gets no warning" now expects the warning, exit status 0 and "reached". `test_setup.py` stays at 467 checks; the wrong-file-for-aarch64 refusal is unchanged. Re-ran: `test_setup` 467, `test_pisophone_setup` 232, `test_setup_web` 115, `test_setup_tools` 78, `test_install` 48, all 0 failures; `check_security_rules.sh` passed; `build_piso_setup.py --check` clean. ShellCheck is not installed here, so it was not run (the change is one case pattern). `setup/RELEASE` left at 1.5.26.
 2. **D31 vs D22 wording:** D22 says "name one recommended model to buy"; 035 says the customer "can order" it. Both are fine with "do not stock"; ROUTERS.md says buy from any shop.
 3. **T6M vs T6GS** (above) in the 011 files.
 4. **The brief's claim about 034 and `test_game_browser.py`** (above).

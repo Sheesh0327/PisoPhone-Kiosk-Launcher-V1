@@ -20,7 +20,7 @@ for each of five CPU families (OpenWrt names a router's CPU in `/etc/openwrt_rel
 | Family | Support | `DISTRIB_ARCH` is | Typical routers (examples to check, not a promise) | Setup file |
 |---|---|---|---|---|
 | **mipsel** | **Supported**: has run on a real router (the Qihoo 360 T6M above) | `mipsel_24kc`, `mipsel_74kc` | MediaTek MT7621 / MT7620 / MT7628: Qihoo 360T6M, Xiaomi 4A Gigabit, Redmi AC2100, Cudy WR1300, GL.iNet MT300N-V2 | `piso-setup.sh` |
-| **aarch64** | **Supported**, but only checked on a computer so far: no real router of this kind has run it yet | `aarch64_cortex-a53`, `aarch64_cortex-a72`, `aarch64_generic` | Newer Wi-Fi 6 routers: GL.iNet Beryl AX (MT3000), Flint 2 (MT6000), Xiaomi AX3000T, Cudy WR3000, Redmi AX6000, Linksys E8450 / Belkin RT3200; Raspberry Pi 4, NanoPi R4S / R5S | `piso-setup-aarch64.sh` |
+| **aarch64** | **Untested** | `aarch64_cortex-a53`, `aarch64_cortex-a72`, `aarch64_generic` | Newer Wi-Fi 6 routers: GL.iNet Beryl AX (MT3000), Flint 2 (MT6000), Xiaomi AX3000T, Cudy WR3000, Redmi AX6000, Linksys E8450 / Belkin RT3200; Raspberry Pi 4, NanoPi R4S / R5S | `piso-setup-aarch64.sh` |
 | **mips** | **Untested** | `mips_24kc`, `mips_74kc` | Atheros / Qualcomm ath79: many older TP-Link routers (WR841N, Archer C7), GL.iNet AR300M | `piso-setup-mips.sh` |
 | **armv7** | **Untested** | `arm_cortex-a7_neon-vfpv4`, `arm_cortex-a15_neon-vfpv4`, `arm_cortex-a9_neon` | Qualcomm IPQ40xx: GL.iNet B1300, ASUS RT-AC58U, Linksys EA8300 | `piso-setup-armv7.sh` |
 | **x86_64** | **Untested** | `x86_64` | A mini PC or a virtual machine running OpenWrt | `piso-setup-x86_64.sh` |
@@ -48,7 +48,7 @@ What else the router needs:
 
 What is checked: every family's program runs its self-test, and the portal's own test suite passes, in a software copy of a router (QEMU) on a computer in CI and here, including the
 big-endian MIPS build (byte order is where a port goes wrong). That is not the same as a real router of each kind. So far only a Qihoo 360 T6
-router (`mipsel`) has run the program on real hardware, according to the owner's test log (`docs/REAL_WORLD_TESTING.md`); every other family, **aarch64 included**, is
+router (`mipsel`) has run the program on real hardware, according to the owner's test log (`docs/REAL_WORLD_TESTING.md`); every other family is
 checked on a computer only. That is why the table marks them as it does. When you try a router, record which one it was and what `piso-setup status` said.
 A CPU that is none of the five families has no program built and is refused before anything changes; that is different from an untested family, which is allowed.
 

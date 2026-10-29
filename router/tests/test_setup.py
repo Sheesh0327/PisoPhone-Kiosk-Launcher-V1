@@ -1246,7 +1246,9 @@ open(f"{osr}/etc/openwrt_release", "w").write("DISTRIB_ARCH='mipsel_24kc'\n")
 check("reached" in lib("check_arch; echo reached", env={"PISO_ROOT": osr}).stdout, "mipsel_24kc passes (this file is built for mipsel)")
 open(f"{osr}/etc/openwrt_release", "w").write("DISTRIB_ARCH='aarch64_cortex-a53'\n")
 check("reached" in lib("PISO_ARCH=aarch64; check_arch; echo reached", env={"PISO_ROOT": osr}).stdout, "an aarch64 router passes with the aarch64 file")
-check("untested" not in lib("PISO_ARCH=aarch64; check_arch", env={"PISO_ROOT": osr}).stdout, "a supported family (aarch64) gets no untested warning")
+r = lib("PISO_ARCH=aarch64; check_arch; echo reached", env={"PISO_ROOT": osr})
+check("reached" in r.stdout and r.returncode == 0 and "WARNING" in r.stdout and '"aarch64" routers are untested' in r.stdout,
+      "an untested family (aarch64) is warned about and setup goes on (never refused): " + r.stdout + r.stderr)
 for pkg, fam_, file_ in (("mips_24kc", "mips", "mips"), ("arm_cortex-a7_neon-vfpv4", "armv7", "armv7"), ("x86_64", "x86_64", "x86_64")):
     open(f"{osr}/etc/openwrt_release", "w").write(f"DISTRIB_ARCH='{pkg}'\n")
     r = lib(f"PISO_ARCH={fam_}; check_arch; echo reached", env={"PISO_ROOT": osr})
