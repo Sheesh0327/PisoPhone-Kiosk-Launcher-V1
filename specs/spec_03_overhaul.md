@@ -52,7 +52,7 @@ Each is one branch, one area, one chat. **Do them in this order**; later ones as
 | **034** | Remove the mini-game | router | router |
 | **035** | Say which routers are actually supported | docs + setup | router (docs only) |
 | **036** | The site status panel: money agreement only (version skew split out as 044, D35) | router | router |
-| **044** | Version skew warning (router and box firmware against the feeds; phone apps later) | router + firmware | router + firmware; spec when its turn comes |
+| **044** | Show when the router or the coin box is waiting for an update (the update scripts already compare and install; this records, shows and warns). Phone apps later | router (setup scripts, monitor, console) | router only (D38); spec in `specs/features/044-version-skew/` |
 | **037** | Setup asks fewer questions, one front door | setup + router | router + site |
 | **038** | Phone-led setup | app + firmware + router | app + firmware + router |
 | **039** | Triage the owed hardware checks | docs | none |
@@ -227,6 +227,7 @@ phones and you do not provision them as a service.
 | D35 | split 036? | **Yes, answered 2026-10-29.** 036 is the money agreement panel only (router, no firmware or app release). Version skew moves to **feature 044**, starting from design B3 (router and box firmware against the feeds; phone app versions later). Reason: the box never fetches the signed feed (the owner's browser does, `ota.js`) and phones do not report an app version, so D5's design cannot work as written. D6 (warn only) and D7, D8 stand |
 | D36 | how fresh the money panel is | **Live with a 60-second cache, answered 2026-10-29** (at most one extra box call a minute) |
 | D37 | box ahead of the record on current firmware | **Show it only, answered 2026-10-29.** The box reports Wi-Fi coins on their own, so a box ahead is not rental phones; the panel says so (gold, never red) and no alert is added |
+| D38 | what 044 is | **Proposed 2026-10-29, owner to approve with the spec.** Router only, no new fetch or compare code: the router's `self-update` / `box-update` already compare with the feeds and install every hour, and hold for named reasons that go to Telegram only. 044 records that state, shows it on the console and in `alerts.txt`. Withdraws D5's "the box holds the expected set" and the epic's "router + firmware" |
 | D28 | the guide's "mixed" eFuse route | **Answered 2026-10-28: drop the hand burns, use the documented flow.** The operator burns **only the two keys** (the flash-encryption key and the Secure Boot digest). The Release-mode bootloader sets `SECURE_BOOT_EN`, the `DIS_*` fuses, secure download mode and `SPI_BOOT_CRYPT_CNT` itself on first boot, and revokes the unused digest slots. The whole procedure becomes one flow ESP-IDF documents, with three fewer irreversible operator steps. The irreversible moment is now the **first boot of the hardened bootloader**, which is what feature 040's corrected criterion 3 already says |
 
 ## 8. Sequencing and releases
