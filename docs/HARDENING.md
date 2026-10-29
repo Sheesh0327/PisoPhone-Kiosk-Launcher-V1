@@ -1,6 +1,6 @@
 # Open hardening items
 
-What was still open after the 2026-10-17 pre-production audit and hardening pass (written then; a later release may have fixed an item, so check `CHANGELOG.md` before you start one). Everything that was fixed is in `CHANGELOG.md`; the checks to run on a router are in `docs/REAL_WORLD_TESTING.md`. The full text of the two reports this was taken from (`docs/maintainers/AUDIT_REPORT.md` and `HARDENING_PLAN.md`) is in git history at commit `aba69c8`. The numbers below are the ones the roadmap and the specs use (HARDENING_PLAN item N, audit risk N).
+What was still open after the 2026-10-17 pre-production audit and hardening pass (written then; a later release may have fixed an item, so check `CHANGELOG.md` before you start one). Everything that was fixed is in `CHANGELOG.md`; the checks to run on a router are in `docs/REAL_WORLD_TESTING.md`. The full text of the two reports this was taken from (AUDIT_REPORT.md and HARDENING_PLAN.md, both in docs/maintainers/) is in git history at commit `aba69c8`. The numbers below are the ones the roadmap and the specs use (HARDENING_PLAN item N, audit risk N).
 
 ## Open items (HARDENING_PLAN section 3)
 

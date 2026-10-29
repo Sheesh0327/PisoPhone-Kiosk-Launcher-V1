@@ -41,6 +41,10 @@ Checks before any change (the same must hold at the end):
 - `specs/features/005-spinning-wheel`, `006-wheel-button`, `007-wheel-graphics` (with the 224 KB screenshot).
 - `specs/notes/` all but `2026-10-29_session-1-run-sheet.md` and `2026-10-29_spec03-batch.md`; `specs/replans/` all but `2026-10-29.md`.
 
+### Group 4 (Tier B1): 45 files merged into `specs/features/ARCHIVE.md`
+Features archived (16): 001, 002, 003, 004, 008, 009, 011, 014, 016, 018, 020, 025, 026, 033, 034, 035. Each entry keeps the intent and success criteria; spec, plan and evidence are in git history at `aba69c8`.
+Kept as folders because `docs/REAL_WORLD_TESTING.md` still has an unticked check for them (the owner's rule for Q2): 010, 013, 015, 017, 021, 022, 023, 024, 027, 028, 029, 030, 031, 032, 036, and 039 (its inventory table), 040, 041, 043, 044, 048. Fewer folders were archived than the plan hoped (16 of 37) because 58 hardware checks are still unticked; archiving them is a later, one-step job once those checks pass.
+
 ## Not tested
 (to fill at the end)
 

@@ -61,7 +61,7 @@ Each is one branch, one area, one chat. **Do them in this order**; later ones as
 | **042** | Phone provisioning, documented end to end | docs + site | site |
 | **043** | The box's secrets must not be readable on a sold box | firmware | firmware (sold units) |
 
-Specs 033, 034, 040, 041 and 043 are **written in full** (`specs/features/033-remove-wheel/`, `034-remove-minigame/`). 035 to 039 have their
+Specs 033, 034, 040, 041 and 043 are **written in full** (`specs/features/ARCHIVE.md` (033-remove-wheel), `034-remove-minigame/`). 035 to 039 have their
 design decided in section 6 and get their full spec **when their turn comes** — a spec written three features early is stale by
 the time it runs, which is exactly what happened to spec 02's AO-01, AO-05, AO-06 and AO-07 (section 2).
 
