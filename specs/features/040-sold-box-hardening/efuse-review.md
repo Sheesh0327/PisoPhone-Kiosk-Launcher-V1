@@ -82,6 +82,21 @@ bootloader sets it (to **1**, not 7).
   condition is a risk. The conclusions above rest on statements that are not conditional on the target (the counter semantics,
   the first-boot order, the external workflow) and on the esptool sources.
 
+## Decision on item 3 (added 2026-10-28, owner decision D28)
+
+The owner decided item 3: **drop the hand burns and use the flow ESP-IDF documents.** The operator burns only the flash-encryption key (`BLOCK_KEY0`, `XTS_AES_128_KEY`) and the Secure Boot digest
+(`BLOCK_KEY1`, `SECURE_BOOT_DIGEST0`). The Release-mode bootloader sets `SECURE_BOOT_EN`, the `DIS_*` fuses, secure download mode and `SPI_BOOT_CRYPT_CNT` on its first boot and revokes the unused digest slots (item 8).
+`docs/PROVISIONING_SOLD_UNIT.md` section 4 and `bench.md` part C were rewritten the same day. The findings above are left as they were; what the follow-up read of the v5.4.2 **bootloader source** adds or corrects:
+
+- **Item 8 is answered:** the unused slots are revoked by the first-boot bootloader, also when the digest was pre-burned (`components/bootloader_support/src/secure_boot_v2/secure_boot.c`, "Revoking empty key digest slot"; `secure-boot-v2.rst`, "Key Revocation" note). `CONFIG_SECURE_BOOT_ALLOW_UNUSED_DIGEST_SLOTS` only affects the app.
+- **A pre-burned digest is accepted** ("Using pre-loaded public key digest in eFuse"), but the code compares only the **app** with it, not the bootloader's own signature: a wrongly signed bootloader would be accepted on first boot and refused on the next. The guide now compares the digests before flashing.
+- **A pre-burned flash-encryption key must be read- and write-protected with its purpose write-protected**, or the bootloader refuses it ("Invalid key state", `flash_encrypt.c`). `espefuse burn_key` does this by default; the guide forbids the `--no-*protect*` options.
+- **Correction to item 2's "reads 1, not 7":** in Release mode the source writes the counter "straight to max" (`flash_encrypt.c`, `esp_flash_encrypt_enable`, release branch), so on the C3 it ends at **7**; the ESP-IDF page says "the first available bit". Both are odd, i.e. "enabled". The guide and bench accept any odd value.
+- **Secure download mode** is set by the *Secure Boot* path (`esp32c3/secure_boot_secure_features.c`, under `CONFIG_SECURE_ENABLE_SECURE_ROM_DL_MODE`, the Release-mode default). `DIS_DOWNLOAD_MODE` is burned only if `CONFIG_SECURE_DISABLE_ROM_DL_MODE` is chosen, so it stays unburned.
+- **The guide's sdkconfig list was wrong in one name:** `CONFIG_SECURE_UART_ROM_DL_MODE` is a menu choice, not a setting; the setting is `CONFIG_SECURE_ENABLE_SECURE_ROM_DL_MODE`.
+- **A new hazard in the old order:** esptool resets the chip after `write_flash` by default; with the hardened images in place that reset is the first boot, so the keys are now burned first and the images are written with `--after no_reset`.
+- Still not run on a board. Not established: what a real C3's `get_security_info` prints, and whether the bootloader log level in the final build shows the first-boot lines.
+
 ## Answer for the bench
 
 The earlier flag was **not** a false alarm. Step 5 is fixed. The bench is **unblocked for the sacrificial board**, but run

@@ -2,8 +2,8 @@
 
 Status: **approved by the owner 2026-10-28 (epic D18). Runs first, in parallel with the deletions (epic D24).**
 Groups 1-2 attempted 2026-10-28: the bootloader could not be built in a cloud container (see `validation.md`); `bench.md` is
-written. The criterion 3 correction below is **accepted**. **Blocked before any bench work** on the open question in
-`docs/PROVISIONING_SOLD_UNIT.md` section 4 step 5 (the `SPI_BOOT_CRYPT_CNT` ordering).
+written. The criterion 3 correction below is **accepted**. The step 5 ordering question is **closed**:
+owner decision D28 (2026-10-28) replaced the mixed route with the flow ESP-IDF documents (operator burns only the two keys; the bootloader's first boot does the rest). Criteria 7 and 8 were adjusted to match.
 Branch: `feat/040-sold-box-hardening`   Area: firmware (bench work)   Epic: `specs/spec_03_overhaul.md` feature 040
 Release: **none** — this feature ships no software.
 
@@ -58,7 +58,7 @@ the procedure it proves. It writes **no source code** and produces **no release*
 ## Success criteria
 Each becomes a line in `validation.md`, with the actual console output.
 1. A bootloader with `CONFIG_SECURE_BOOT_V2_ENABLED`, `CONFIG_SECURE_FLASH_ENC_ENABLED`,
-   `CONFIG_SECURE_FLASH_ENCRYPTION_MODE_RELEASE` and `CONFIG_SECURE_UART_ROM_DL_MODE` **builds**, by whichever of the guide's
+   `CONFIG_SECURE_FLASH_ENCRYPTION_MODE_RELEASE` and `CONFIG_SECURE_ENABLE_SECURE_ROM_DL_MODE` *(edited 2026-10-28 for D28: the old name was a menu title, not a setting)* **builds**, by whichever of the guide's
    two routes was chosen. Say which route and why.
 2. Both rollback options are enabled in that build. Show the sdkconfig lines.
 3. The board **boots** the signed app with no eFuses burned, on the stock bootloader (see scope 3 for why not the hardened one).
@@ -68,10 +68,11 @@ Each becomes a line in `validation.md`, with the actual console output.
 6. A **deliberately bad update is reverted** (`docs/REAL_WORLD_TESTING.md` item H4), and `ota_image_state` was observed going
    `pending_verify` → `valid` after a good one. If it never shows `pending_verify`, the bootloader has no rollback: **stop,
    GATE 1 has failed.**
-7. Only after 1-6: the eFuse steps run on the sacrificial board, and it still boots, runs a signed OTA, keeps its queue, shows
+7. Only after 1-6: the two keys are burned and the hardened bootloader's first boot runs on the sacrificial board *(edited 2026-10-28 for D28: the operator no longer burns any other eFuse)*, and it still boots, runs a signed OTA, keeps its queue, shows
    `pending_verify` → `valid` after a good update and reverts a bad one (criteria 4 to 6 again, now on the hardened bootloader).
 8. Secure download mode is on (`ENABLE_SECURITY_DOWNLOAD`); `DIS_DOWNLOAD_MODE` is **not** burned, so there is a way back
-   until OTA recovery is proven on a hardened board. JTAG disabled (`DIS_USB_JTAG`, `DIS_PAD_JTAG`).
+   until OTA recovery is proven on a hardened board. JTAG disabled (`DIS_USB_JTAG`, `DIS_PAD_JTAG`). *(Edited 2026-10-28 for D28: these are set by the bootloader on first boot, and read back with
+   `esptool.py get_security_info`, not `espefuse.py`, which stops working in secure download mode. The build must not set `CONFIG_SECURE_DISABLE_ROM_DL_MODE`.)*
 9. The result table in `docs/PROVISIONING_SOLD_UNIT.md` is filled in, including the board, chip revision
    (`esptool.py chip_id`) and date.
 10. `bash scripts/check_security_rules.sh` passes and `git status` shows **no key material** of any kind.
