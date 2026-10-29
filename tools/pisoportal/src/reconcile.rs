@@ -284,10 +284,19 @@ mod tests {
         let slot: Slot = Mutex::new(None);
         let (t0, ttl) = (Instant::now(), Duration::from_secs(60));
         let mut calls = 0;
-        let a = cached(&slot, t0, ttl, || { calls += 1; some_money(1) });
-        let b = cached(&slot, t0 + Duration::from_secs(59), ttl, || { calls += 1; some_money(2) });
+        let a = cached(&slot, t0, ttl, || {
+            calls += 1;
+            some_money(1)
+        });
+        let b = cached(&slot, t0 + Duration::from_secs(59), ttl, || {
+            calls += 1;
+            some_money(2)
+        });
         assert_eq!((calls, a.ledger, b.ledger), (1, 1, 1), "the second ask inside the minute gets the first answer");
-        let c = cached(&slot, t0 + Duration::from_secs(61), ttl, || { calls += 1; some_money(3) });
+        let c = cached(&slot, t0 + Duration::from_secs(61), ttl, || {
+            calls += 1;
+            some_money(3)
+        });
         assert_eq!((calls, c.ledger), (2, 3), "after the minute the box is asked again");
     }
 
