@@ -30,13 +30,13 @@ Rule of thumb: what rarely changes goes at the top of the list and is read first
 1. **Constitution and direction** (once, then at replans). The two project rules decide every trade-off: money and time are never wrong; only
    owner-signed software is installed.
 2. **Backlog.** Findings and roadmap items become rows with an id, files, severity, test and release type.
-3. **Feature loop**, one feature = one branch `feat/NNN-name` cut from `beta`:
+3. **Feature loop**, one feature = one branch `feat/NNN-name` cut from `main` (a router change: cut from `beta`, see `CLAUDE.md` section 5):
    - `/sdd-plan` writes `spec.md` and `plan.md` and **stops**. The owner approves. No code before approval.
    - `/sdd-implement` works one task group at a time, test first (see it fail, log it, fix, see it pass), one commit per group.
    - `/sdd-validate` fills `validation.md` with evidence (command and last lines of output), runs the gates and lists what was not tested.
    - Review: the owner reads the spec, the success criteria and the evidence first; code style last.
-4. **Land**: open a pull request into `beta` (Code quality only runs on pull requests and on `beta`/`main`, not on `feat/*` pushes). Merge when CI is
-   green. Never push to `beta` while a needed Code quality run is in flight (a push cancels it). `main` and releases only when the owner asks.
+4. **Land**: open a pull request into `main` (a router change: into `beta`) (Code quality only runs on pull requests and on `beta`/`main`, not on `feat/*` pushes). Merge when CI is
+   green. Never push to a branch while a needed Code quality run on it is in flight (a push cancels it). Merging to `main` and releases only when the owner asks.
 5. **Replan** (`/sdd-replan`): what was learned, roadmap order, workflow changes, the next feature. Write `specs/replans/YYYY-MM-DD.md`.
 6. **Handoff** (`/sdd-handoff`) before ending a long chat; the next chat starts from files.
 
