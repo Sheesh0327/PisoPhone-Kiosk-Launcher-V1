@@ -26,12 +26,14 @@ header #mn,#scrim{display:none}
 #shell{flex:1;width:100%;max-width:1180px;margin:0 auto}
 main{padding:24px 24px 80px;min-width:0}
 h2{font-size:15px;line-height:22px;font-weight:650;margin:24px 0 8px}h2:first-child{margin-top:0}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,200px),1fr));gap:12px}
 .card{background:var(--s1);border:1px solid var(--ln);border-radius:12px;padding:16px 20px}
-.k{color:var(--mut);font-size:12px;line-height:16px;font-weight:550}.v{font-size:26px;line-height:32px;font-weight:600;letter-spacing:-.01em}.s{color:var(--mut);font-size:12px;line-height:16px}
-.hero .v{font-size:40px;line-height:44px}.money{color:var(--tx)}
+.k{display:flex;align-items:center;gap:8px;color:var(--mut);font-size:12px;line-height:16px;font-weight:550}.k svg{flex:none;width:16px;height:16px}.v{font-size:26px;line-height:32px;font-weight:600;letter-spacing:-.01em}.s{color:var(--mut);font-size:12px;line-height:16px}
+.hero{grid-column:1/-1;padding:20px 24px}.hero .v{font-size:40px;line-height:44px}.money{color:var(--tx)}
 table{width:100%;border-collapse:collapse}th,td{padding:0 8px;height:40px;text-align:left;border-bottom:1px solid var(--ln);vertical-align:middle}tbody tr:last-child td{border-bottom:0}th{color:var(--mut);font-size:12px;font-weight:550;position:sticky;top:0;background:var(--s1)}
-td.n,th.n{text-align:right}
+td.n,th.n{text-align:right}td:first-child{white-space:nowrap}
+thead th{position:sticky;top:0;z-index:1;background:var(--s1)}tbody tr:hover td{background:var(--s2)}td.empty{height:auto;padding:36px 8px;text-align:center;color:var(--mut)}td.empty .s{margin-top:4px}
+.ch{display:flex;align-items:center;justify-content:space-between;gap:8px 16px;flex-wrap:wrap;margin:0 0 12px}.ch h2{margin:0}.ch button.b{min-height:40px}.per{display:flex;align-items:center;gap:8px}.per label{margin:0}.per select{width:auto;min-width:150px}
 .chip{display:inline-block;padding:0 9px;border-radius:99px;border:1px solid var(--ln);color:var(--mut);font-size:12px;line-height:20px;font-weight:550}
 .chip.ok{color:var(--ok)}.chip.bad{color:var(--bad)}.chip.gold{color:var(--gold);border-color:var(--goldf)}
 button.b,a.b{display:inline-block;min-height:32px;padding:5px 12px;border-radius:8px;border:1px solid var(--ln2);background:var(--s1);color:var(--tx);cursor:pointer;font:inherit;font-size:13px;font-weight:550;text-decoration:none}
@@ -44,7 +46,7 @@ input,select{height:40px;width:100%;padding:0 12px;border-radius:8px;border:1px 
 label{display:block;font-size:12px;font-weight:550;color:var(--mut);margin-bottom:6px}
 .f{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;align-items:end}
 .bars{display:flex;align-items:flex-end;gap:4px;height:120px;margin-top:8px}.bars div{flex:1;background:var(--bfg);opacity:.85;border-radius:3px 3px 0 0;min-height:2px;position:relative}.bars span{position:absolute;top:-16px;left:50%;transform:translateX(-50%);font-size:11px;color:var(--mut);white-space:nowrap}
-.days{display:flex;gap:4px;font-size:11px;color:var(--mut)}.days div{flex:1;min-width:0;text-align:center;white-space:nowrap;overflow:hidden}
+.days{display:flex;gap:4px;font-size:11px;color:var(--mut)}.days div{flex:1;min-width:0;text-align:left;white-space:nowrap;overflow:visible}
 canvas{width:100%;height:80px;display:block}
 .msg{border:1px solid var(--ln);border-left:3px solid var(--goldf);background:var(--s1);padding:8px 12px;border-radius:8px;margin:8px 0}.msg.bad{border-left-color:var(--bad)}.msg.ok{border-left-color:var(--ok)}.msg.n{border-left-color:var(--ln)}.msg.gold{border-left-color:var(--gold)}#mny,#upd{overflow-wrap:anywhere}
 .err{color:var(--bad);min-height:20px}.hide{display:none!important}
@@ -71,7 +73,11 @@ textarea{width:100%;padding:8px 12px;border-radius:8px;border:1px solid var(--ln
 #scrim{display:block;position:fixed;inset:0;z-index:20;background:rgba(0,0,0,.6);opacity:0;visibility:hidden;transition:opacity .2s,visibility 0s .2s}#scrim.open{opacity:1;visibility:visible;transition:opacity .2s}
 nav button,.sf a,.sf button{height:44px}
 header{position:sticky;top:0;z-index:10;background:var(--bg);padding:0 12px;gap:8px}header #mn{display:grid;width:44px;height:44px}header #th{width:44px;height:44px}#pt{min-width:0;overflow:hidden;text-overflow:ellipsis}
-main{padding:16px 16px 40px}footer{padding:12px 16px}.hm{display:none}}
+main{padding:16px 16px 40px}footer{padding:12px 16px}.hm{display:none}
+.grid{grid-template-columns:repeat(2,minmax(0,1fr))}button.b,a.b{min-height:40px}.per select{min-width:0}.bars,.days{gap:1px}
+#t-cli thead{display:none}#cl tr{display:grid;grid-template-columns:auto 1fr auto;gap:6px 12px;align-items:center;padding:12px 0;border-bottom:1px solid var(--ln)}#cl tr:last-child{border-bottom:0}
+#cl td{display:block;height:auto;padding:0;border:0;text-align:left}#cl td.hm{display:none}#cl td:nth-child(1){grid-column:1/3;grid-row:1}#cl td:nth-child(3){grid-column:1;grid-row:2}#cl td:nth-child(4){grid-column:2;grid-row:2}#cl td:nth-child(7){grid-column:3;grid-row:1/3}#cl td.empty{grid-column:1/-1;grid-row:auto}
+#cl td:nth-child(4)::before{content:"Time left: ";color:var(--mut)}#cl tr:hover td{background:none}}
 @media(prefers-reduced-motion:reduce){#side,#scrim{transition:none!important}}
 </style></head><body>
 <div id="login" class="hide"><img src="/mascot.png" alt=""><h1>TechNet PisoHub</h1><p class="s">Sign in with this router's password.</p>
@@ -88,14 +94,15 @@ main{padding:16px 16px 40px}footer{padding:12px 16px}.hm{display:none}}
 <div id="upd" class="msg hide" role="status"></div>
 <h2>At a glance</h2><div class="grid" id="tiles"></div>
 <h2>Internet line</h2><div class="card"><canvas id="cv" width="900" height="160"></canvas><div class="s" id="cvl"></div></div></section>
-<section id="t-cli" class="hide"><h2>Customers on PisoWiFi</h2><div class="card" style="overflow-x:auto"><table><thead><tr><th>Device</th><th class="hm">Address</th><th>Plan</th><th class="n">Time left</th><th class="n hm">Data</th><th class="n hm">Speed now</th><th></th></tr></thead><tbody id="cl"></tbody></table></div><p class="s" id="clnote"></p></section>
+<section id="t-cli" class="hide"><div class="ch"><h2>Customers on PisoWiFi</h2><span class="s" id="clc"></span></div><div class="card" style="overflow-x:auto"><table><thead><tr><th>Device</th><th class="hm">Address</th><th>Plan</th><th class="n">Time left</th><th class="n hm">Data</th><th class="n hm">Speed now</th><th></th></tr></thead><tbody id="cl"></tbody></table></div><p class="s" id="clnote"></p></section>
 <section id="t-ph" class="hide"><p class="msg hide" id="phnote"></p><iframe id="boxf" title="@PHTAB@: the coin box" allow=""></iframe><p class="s">This is the coin box's own page, brought in through the router. <a id="boxdirect" href="#">Open it on its own</a></p></section>
-<section id="t-sales" class="hide"><h2>Sales</h2><div class="f" style="max-width:260px"><div><label for="rng">Period</label><select id="rng"><option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="90">Last 90 days</option></select></div></div>
+<section id="t-sales" class="hide"><div class="ch"><h2>Sales</h2><div class="per"><label for="rng">Period</label><select id="rng"><option value="7">Last 7 days</option><option value="30" selected>Last 30 days</option><option value="90">Last 90 days</option></select></div></div>
 <div class="grid" id="st" style="margin-top:12px"></div>
 <h2>Per day</h2><div class="card"><div class="bars" id="sb"></div><div class="days" id="sd"></div><p class="s" id="ssum"></p></div>
-<div class="card" style="margin-top:12px;max-height:420px;overflow:auto"><table><thead id="shd"></thead><tbody id="sl"></tbody></table></div>
+<div class="ch" style="margin-top:24px"><h2>Day by day</h2><button class="b" id="csv">Download as CSV</button></div>
+<div class="card" style="max-height:420px;overflow:auto"><table><thead id="shd"></thead><tbody id="sl"></tbody></table></div>
 <p class="s" id="vnote"></p>
-<p><button class="b" id="csv" style="margin-top:12px">Download as CSV</button></p></section>
+</section>
 <section id="t-vch" class="hide"><h2>Voucher codes</h2><p class="s">A customer who chooses "Get a voucher code" when paying gets one code worth the minutes the coins bought, valid for 30 days. It works once. The money is in your sales as soon as the coins are counted; using the code adds no income. Codes are not kept on the router, only a fingerprint. You can cancel a code that was not used.</p>
 <div class="card" style="overflow-x:auto"><table><thead><tr><th>Voucher</th><th>Worth</th><th>Status</th><th>Valid until</th><th></th></tr></thead><tbody id="vl2"></tbody></table></div></section>
 <section id="t-brand" class="hide"><h2>Branding</h2><p class="s">Make the customer page yours: your shop's name, colours, words and logo. What you type is saved as a draft and shown in the preview. Customers see nothing new until you press <b>Publish</b>.</p>

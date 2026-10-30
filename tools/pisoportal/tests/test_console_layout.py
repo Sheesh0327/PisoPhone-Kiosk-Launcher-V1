@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 
 try:
     from playwright.sync_api import sync_playwright
@@ -57,6 +58,14 @@ def sign_in(br, w, h, scheme="light"):
     pg.wait_for_selector("#app:not(.hide)", timeout=8000)
     return ctx, pg
 
+
+now = int(time.time())
+rows = ""
+for d in range(30):
+    for i, (plan, p, m, k) in enumerate([("hyper", 5, 30, "new"), ("hyper", 10, 60, "new"), ("endurance", 20, 1440, "new"), ("hyper", 10, 60, "vbuy")][: 2 + d % 3]):
+        rows += f"{now - d * 86400 - i * 3600},{plan},{p},{m},{k},x\n"
+open(f"{env.data}/revenue.csv", "w").write(rows)
+env.set_box(wifi_counter=True, lifetime_base=1247)
 
 try:
     check(env.start(), "the portal starts")
@@ -127,6 +136,60 @@ try:
                 pg.click(f'#tabs button[data-t="{t}"]')
                 pg.wait_for_timeout(500)
                 check(sideways(pg) <= 0, f"{w} px: {label}: no sideways scrolling")
+            ctx.close()
+
+        # ---- the Overview, Customers and Sales screens (group 2) -----------------------------------------------------------------------------
+        def open_screen(pg, w, t):
+            if w < 900:
+                pg.click("#mn")
+                pg.wait_for_timeout(300)
+            pg.click(f'#tabs button[data-t="{t}"]')
+            pg.wait_for_timeout(900)
+
+        for w, h in ((1280, 800), (390, 844)):
+            for f in glob.glob(f"{env.nds}/*"):
+                if len(os.path.basename(f)) == 12:  # (a customer file is the MAC without colons; calls.log is not one)
+                    os.remove(f)
+            ctx, pg = sign_in(br, w, h)
+            open_screen(pg, w, "cli")
+            e = pg.locator("#cl .empty")
+            check(e.count() == 1 and "Nobody is connected right now" in e.inner_text() and e.is_visible(), f"{w} px: Customers: with nobody connected there is a clear empty state")
+            for n, (st, left) in enumerate([("Authenticated", 1800), ("Authenticated", 5400), ("Authenticated", 240), ("Preauthenticated", 0)], start=1):
+                env.nds_client(f"aa:bb:cc:00:00:0{n}", STATE=st, SESSION_END=int(time.time()) + left, DL=2048 * n, UL=512 * n)
+            open_screen(pg, w, "over")
+            tiles = pg.locator("#tiles .card")
+            check(tiles.count() >= 5 and pg.locator("#tiles .card .k svg").count() == tiles.count(), f"{w} px: Overview: every tile has an icon ({pg.locator('#tiles .card .k svg').count()} of {tiles.count()})")
+            check(pg.locator("#tiles .card .k svg").first.bounding_box()["width"] <= 20, f"{w} px: Overview: the icons are small")
+            xs = pg.eval_on_selector_all("#tiles .card", "cs => cs.map(c => Math.round(c.getBoundingClientRect().width))")
+            check(min(xs) >= (150 if w < 900 else 190), f"{w} px: Overview: tiles are wide enough to read: {xs}")
+            hw = pg.evaluate("[document.querySelector('#t-over .hero').getBoundingClientRect().width, document.querySelector('#t-over #tiles').getBoundingClientRect().width]")
+            check(abs(hw[0] - hw[1]) <= 2, f"{w} px: Overview: the money card is as wide as the tiles: {hw}")
+            check(sideways(pg) <= 0, f"{w} px: Overview: no sideways scrolling")
+            open_screen(pg, w, "cli")
+            pg.wait_for_selector("#cl button.b", timeout=8000)
+            check(pg.locator("#cl .empty").count() == 0 and pg.locator("#cl button.b").count() == 3, f"{w} px: Customers: three customers online, each with Disconnect")
+            bb = pg.eval_on_selector_all("#cl button.b", "bs => bs.map(b => { const r=b.getBoundingClientRect(); return [Math.round(r.right), Math.round(r.height)] })")
+            check(all(r <= w for r, _ in bb) and all(hh >= (40 if w < 900 else 32) for _, hh in bb), f"{w} px: Customers: every Disconnect button is fully on the screen and tall enough: {bb}")
+            check(pg.inner_text("#clc") != "" , f"{w} px: Customers: the card says how many are online: {pg.inner_text('#clc')!r}")
+            if w < 900:
+                shown = pg.eval_on_selector_all("#cl tr:first-child td", "ts => ts.filter(t => t.offsetParent).length")
+                check(shown == 4, f"{w} px: Customers: a phone row shows the name, the plan, the time left and Disconnect, nothing else: {shown} cells")
+            check(sideways(pg) <= 0, f"{w} px: Customers: no sideways scrolling")
+            check(pg.evaluate("getComputedStyle(document.querySelector('#t-cli thead th')).position") == "sticky", f"{w} px: Customers: the table header stays in view")
+            for days in ("7", "30", "90"):
+                open_screen(pg, w, "sales")
+                pg.select_option("#rng", days)
+                pg.wait_for_timeout(900)
+                labels = pg.eval_on_selector_all("#sd div", "ds => ds.filter(d => d.textContent).map(d => { const r = d.getBoundingClientRect(), t = document.createRange(); t.selectNodeContents(d); const q = t.getBoundingClientRect(); return [Math.round(q.left), Math.round(q.right)] })")
+                card = pg.eval_on_selector(".days", "d => { const r = d.closest('.card').getBoundingClientRect(); return [Math.round(r.left), Math.round(r.right)] }")
+                inside = all(a >= card[0] and b <= card[1] for a, b in labels)
+                apart = all(labels[i][1] <= labels[i + 1][0] for i in range(len(labels) - 1))
+                check(len(labels) >= 3 and inside and apart, f"{w} px: Sales, {days} days: {len(labels)} day labels, inside the card and not touching each other")
+                check(sideways(pg) <= 0, f"{w} px: Sales, {days} days: no sideways scrolling")
+            check(pg.locator("#st .card .k svg").count() >= 3, f"{w} px: Sales: the totals have icons")
+            check(pg.evaluate("getComputedStyle(document.querySelector('#shd th')).position") == "sticky", f"{w} px: Sales: the table header stays in view")
+            hh = [pg.locator(x).bounding_box()["height"] for x in ("#rng", "#csv")]
+            check(min(hh) >= 40, f"{w} px: Sales: the period list and the CSV button are 40 px or more: {hh}")
             ctx.close()
         br.close()
 finally:

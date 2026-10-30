@@ -1,5 +1,5 @@
 // TechNet PisoHub console: the page's behaviour. PISO_UI_VERSION rises with every change that is published (scripts/sign_console_ui.py).
-window.PISO_UI_VERSION = 11;
+window.PISO_UI_VERSION = 12;
 (function(){
 var $=function(i){return document.getElementById(i)},tab='over',timer=null,last={},sales=null,TABS=['over','cli','ph','sales','vch','set'];
 if($('t-brand'))TABS.push('brand'); /* (a newer script on an older console page, which has no Branding screen, still starts) */
@@ -24,7 +24,9 @@ document.querySelectorAll('#tabs button').forEach(function(b){b.onclick=function
 /* a confirmation that names what it does; Escape closes it and focus goes back to the button that opened it */
 function ask(title,text,verb,danger,go){var d=$('dlg'),from=document.activeElement;$('dt').textContent=title;$('dp').textContent=text;var y=$('dyes');y.textContent=verb;y.className='go';if(danger)y.style.background='var(--bad)';else y.style.background='';
  $('dno').onclick=function(){d.close()};y.onclick=function(){d.close();go()};d.onclose=function(){if(from&&from.focus)from.focus()};if(d.showModal)d.showModal();else if(confirm(title+'\n'+text))go()}
-function tile(k,v,s,cls){return '<div class="card"><div class="k">'+esc(k)+'</div><div class="v"'+(cls?' style="color:var(--'+cls+')"':'')+'>'+v+'</div><div class="s">'+(s||'')+'</div></div>'}
+var ICO={'Customers online':'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5c2.2.6 3.5 2.6 3.5 5.5"/>','Internet':'<path d="M3 12h4l3-8 4 16 3-8h4"/>','Coin box':'<ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/>','Records':'<path d="M6 3h9l4 4v14H6zM14 3v5h5M9 14l2 2 4-4"/>','Sales detail':'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>','Router':'<rect x="3" y="14" width="18" height="6" rx="2"/><path d="M7 17h.01M11 17h.01M8 10a6 6 0 0 1 8 0M5.5 7.5a10 10 0 0 1 13 0"/>','Alerts':'<path d="M12 3l10 18H2zM12 10v5M12 18h.01"/>','Total':'<path d="M4 20V10M10 20V4M16 20v-6M2 20h20"/>','Coins':'<circle cx="12" cy="12" r="8"/><path d="M9.5 9.5h4a1.5 1.5 0 0 1 0 3h-3a1.5 1.5 0 0 0 0 3h4M12 7.5v1.5M12 15.5V17"/>','Voucher codes':'<path d="M3 9V6a1 1 0 0 1 1-1h16a1 1 0 0 1 1 1v3a2.5 2.5 0 0 0 0 5v3a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-3a2.5 2.5 0 0 0 0-5z"/><path d="M14 5v14" stroke-dasharray="2 3"/>','Old printed slips':'<path d="M6 3h9l4 4v14H6zM14 3v5h5M9 13h6M9 17h6"/>'};
+function ico(k){return ICO[k]?'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+ICO[k]+'</svg>':''}
+function tile(k,v,s,cls){return '<div class="card"><div class="k">'+ico(k)+esc(k)+'</div><div class="v"'+(cls?' style="color:var(--'+cls+')"':'')+'>'+v+'</div><div class="s">'+(s||'')+'</div></div>'}
 function chip(t,c){return '<span class="chip '+(c||'')+'">'+esc(t)+'</span>'}
 function draw(h){var c=$('cv'),g=c.getContext('2d'),w=c.width,ht=c.height;g.clearRect(0,0,w,ht);if(!h||h.length<2){return}
  var mx=1,col=[css('--bfg'),css('--teal')];h.forEach(function(p){mx=Math.max(mx,p[1],p[2])});
@@ -63,7 +65,8 @@ function over(j){last.over=j;upd(j.versions,j.now);money(j.money);var m=j.week||
   tile('Router',Math.floor(j.uptime/3600)+' h','up; '+Math.round(j.mem_kb/1024)+' MB memory free')+
   ((j.alerts&&j.alerts.length)?tile('Alerts',j.alerts.length,j.alerts.map(esc).join('<br>'),'gold'):'');draw(j.history)}
 function cli(j){var a=j.clients||[];$('cl').innerHTML=a.map(function(c){var on=c.state==='Authenticated',nm=c.name||c.mac;
- return '<tr><td><b>'+esc(nm)+'</b><div class="s">'+esc(c.mac)+'</div></td><td class="hm">'+esc(c.ip)+'</td><td>'+(on?(c.paused?chip('paused','gold'):chip(c.plan||'online',c.plan==='endurance'?'gold':'ok')):chip('waiting'))+'</td><td class="n">'+tm(c.left)+'</td><td class="n hm">'+mb(c.dl_kb+c.ul_kb)+'</td><td class="n hm">'+(on?'&darr; '+sp(c.dl_kbps)+' &uarr; '+sp(c.ul_kbps):'-')+'</td><td>'+(on?'<button class="b" data-mac="'+esc(c.mac)+'" data-nm="'+esc(nm)+'">Disconnect</button>':'')+'</td></tr>'}).join('')||'<tr><td colspan="7" class="s">Nobody is connected right now.</td></tr>';
+ return '<tr><td><b>'+esc(nm)+'</b><div class="s">'+esc(c.mac)+'</div></td><td class="hm">'+esc(c.ip)+'</td><td>'+(on?(c.paused?chip('paused','gold'):chip(c.plan||'online',c.plan==='endurance'?'gold':'ok')):chip('waiting'))+'</td><td class="n">'+tm(c.left)+'</td><td class="n hm">'+mb(c.dl_kb+c.ul_kb)+'</td><td class="n hm">'+(on?'&darr; '+sp(c.dl_kbps)+' &uarr; '+sp(c.ul_kbps):'-')+'</td><td>'+(on?'<button class="b" data-mac="'+esc(c.mac)+'" data-nm="'+esc(nm)+'">Disconnect</button>':'')+'</td></tr>'}).join('')||'<tr><td colspan="7" class="empty">Nobody is connected right now.<div class="s">Customers show up here as soon as they join the Wi-Fi.</div></td></tr>';
+ if($('clc'))$('clc').textContent=a.length?a.filter(function(c){return c.state==='Authenticated'}).length+' online, '+a.filter(function(c){return c.state!=='Authenticated'}).length+' waiting':'';
  $('clnote').textContent='Updates every few seconds. A disconnected customer keeps the paid time and can connect again.';
  document.querySelectorAll('#cl button.b').forEach(function(b){b.onclick=function(){ask('Disconnect '+b.dataset.nm+'?','Their paid time stays; they can reconnect.','Disconnect '+b.dataset.nm,true,function(){api('/api/kick',{mac:b.dataset.mac}).then(refresh)})}})}
 /* rental phones: the coin box's own page, passed through by the router one port above the console; it follows this page's light or dark */
@@ -81,7 +84,8 @@ function sale(j){if(soldOut(j))return;sales=j;var d=j.days||[],mx=1,k=j.kinds||{
   tile('Voucher codes',vi,'issued · '+peso(vc)+' of the coins · '+vv.redeemed+' redeemed · '+vv.waiting+' waiting')+(vo?tile('Old printed slips',peso(vo),'booked when used'):'');
  $('vnote').textContent='A voucher code bought with coins is income when the coins are counted. Using the code later adds no income.';
  $('sb').innerHTML=d.map(function(x){var t=tot(x);return '<div title="'+esc(x.d)+': '+peso(t)+'" style="height:'+Math.max(2,Math.round(t/mx*104))+'px">'+(x===d[d.length-1]&&t?'<span>'+peso(t)+'</span>':'')+'</div>'}).join('');
- $('sd').innerHTML=d.map(function(x,i){return '<div>'+(d.length<=10||i%Math.ceil(d.length/10)===0?x.d.slice(5).replace('-','/'):'')+'</div>'}).join('');
+ var per=Math.max(4,Math.floor(($('sd').clientWidth||320)/46)),step=Math.max(1,Math.ceil(d.length/per));
+ $('sd').innerHTML=d.map(function(x,i){return '<div>'+(i%step===0?x.d.slice(5).replace('-','/'):'')+'</div>'}).join('');
  $('ssum').textContent=best&&best.t?'Best day: '+best.d+', '+peso(best.t)+'.':'No sales in this period.';
  $('shd').innerHTML='<tr><th>Day</th><th class="n">Use now</th><th class="n">Voucher codes</th>'+(vo?'<th class="n">Old slips</th>':'')+'<th class="n">Total</th><th class="n hm">Payments</th></tr>';
  $('sl').innerHTML=d.slice().reverse().map(function(x){return '<tr><td>'+esc(x.d)+'</td><td class="n">'+peso(x.coin)+'</td><td class="n">'+peso(x.vcoin||0)+(x.vi?' <span class="s">('+x.vi+')</span>':'')+'</td>'+(vo?'<td class="n">'+peso(x.voucher)+'</td>':'')+'<td class="n"><b>'+peso(tot(x))+'</b></td><td class="n hm">'+x.n+'</td></tr>'}).join('')}
