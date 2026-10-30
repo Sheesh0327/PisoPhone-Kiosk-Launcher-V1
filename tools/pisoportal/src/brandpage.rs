@@ -2,7 +2,12 @@
 //! `ANCHORS`: the title, the icons, the header, the welcome, and (new) a promo, the house rules, contact and hours and the credit. Every
 //! owner text goes in escaped; colours are only ever ones `Brand::theme` made, so nothing the owner typed can become markup or style.
 //! A page that has lost one of its places (someone edited `page.html`) is not decorated at all: guests get the plain page, never half of one.
+//!
+//! Two languages: a text with a Filipino version is written into the page twice (`data-e`, `data-f`) and the page's script swaps them when
+//! the customer taps the language button; the page's own English wording is turned into Filipino there too (`brand_fil.js`). The four layouts
+//! are the same page with another heading and other spacing (`brand_page.css`, chosen by the class on `<body>`); none of them touches a payment control.
 use crate::brand::{hex, Brand, Field, Lang, Theme};
+use crate::http::squeeze;
 
 const TITLE: &str = "<title>TechNet PisoWifi</title>";
 const ICON: &str = r#"<link rel="icon" href="/brand.png">"#;
@@ -11,16 +16,21 @@ const HEADER: &str = r#"<header><img src="/brand.png" alt="" width="28" height="
 const WELCOME: &str = r#"<div class="hd" id="hd"><img src="/mascot.png" alt="" width="72" height="74"><p>Buy Wi-Fi time<span class="mut" style="display:block;font-weight:400">Pick a plan, insert a coin and you are online.</span></p></div>"#;
 const GOS: &str = r#"<p class="sub" id="gos">Coins add up: every coin adds more time</p>"#;
 const FOOT: &str = r#"<p class="foot">TechNet Solutions &middot; Connect &middot; Play &middot; More Possibilities</p>"#;
-const HEAD_END: &str = "</head>";
+const HEAD_BODY: &str = "</head><body>";
+const PAGE_END: &str = "</script></body></html>";
 
 /// Every place the decorated page is found by. Each must occur exactly once in the built page.
-pub const ANCHORS: [&str; 8] = [TITLE, ICON, TOUCH, HEADER, WELCOME, GOS, FOOT, HEAD_END];
+pub const ANCHORS: [&str; 9] = [TITLE, ICON, TOUCH, HEADER, WELCOME, GOS, FOOT, HEAD_BODY, PAGE_END];
 
 /// The standard line under "Buy Wi-Fi time", kept when the owner wrote no welcome.
 const STANDARD: &str = "Pick a plan, insert a coin and you are online.";
 
 /// The credit every branded page carries, drawn here and not part of any owner text. It is small, but it is always there.
 const CREDIT: &str = r#"<p class="credit">by TechNet Solutions</p>"#;
+
+const LANG_BUTTON: &str = r#"<button class="lang" type="button">Filipino</button>"#;
+const SWITCH_JS: &str = include_str!("brand_fil.js");
+const LAYOUT_CSS: &str = include_str!("brand_page.css");
 
 fn esc(s: &str) -> String {
     let mut o = String::with_capacity(s.len() + 8);
@@ -42,9 +52,42 @@ fn lines(s: &str) -> String {
     s.lines().map(str::trim).filter(|l| !l.is_empty()).map(esc).collect::<Vec<_>>().join("<br>")
 }
 
+/// One block of owner text, in both languages. `en` and `fil` are the finished inner markup of each; nothing at all when both are empty. Where the
+/// two differ the element carries both and the page's script swaps them; where English is empty it starts hidden.
+fn slot(tag: &str, attrs: &str, en: &str, fil: &str) -> String {
+    if en.is_empty() && fil.is_empty() {
+        return String::new();
+    }
+    let both = if en == fil { String::new() } else { format!(r#" data-e="{}" data-f="{}""#, esc(en), esc(fil)) };
+    let hidden = if en.is_empty() { " hidden" } else { "" };
+    format!("<{tag}{attrs}{both}{hidden}>{en}</{tag}>")
+}
+
+/// A text in each language (English never borrows; Filipino falls back to English), shaped by `f`; "" when not set.
+fn both(b: &Brand, field: Field, f: &dyn Fn(&str) -> String) -> (String, String) {
+    let one = |l| match b.shown(field, l) {
+        "" => String::new(),
+        t => f(t),
+    };
+    (one(Lang::En), one(Lang::Fil))
+}
+
+/// Contact and hours, one under the other (or `sep` apart), per language.
+fn contact_hours(b: &Brand, sep: &str) -> (String, String) {
+    let join = |l| {
+        [b.shown(Field::Contact, l), b.shown(Field::Hours, l)]
+            .iter()
+            .filter(|s| !s.is_empty())
+            .map(|s| esc(s))
+            .collect::<Vec<_>>()
+            .join(sep)
+    };
+    (join(Lang::En), join(Lang::Fil))
+}
+
 fn style(t: &Theme) -> String {
     let mut s = format!(
-        ":root{{--bg:{};--band:{};--s1:{};--s2:{};--ln:{};--ln2:{};--brand:{};--bfg:{}}}",
+        ":root{{--bg:{};--band:{};--s1:{};--s2:{};--ln:{};--ln2:{};--brand:{};--bfg:{};--bt:{}}}",
         hex(t.bg),
         hex(t.band),
         hex(t.s1),
@@ -52,17 +95,14 @@ fn style(t: &Theme) -> String {
         hex(t.ln),
         hex(t.ln2),
         hex(t.accent),
-        hex(t.accent)
+        hex(t.accent),
+        hex(t.accent_text)
     );
     if t.accent != 0x1d63d6 {
         s.push_str(&format!(".sl{{background:{}}}", hex(t.accent)));
     }
     s.push_str(&format!(".btn:not(.alt){{color:{}}}.btn:active{{background:{}}}", hex(t.accent_text), hex(t.accent_down)));
-    s.push_str("header img,.hd img{object-fit:contain}");
-    s.push_str(".promo{margin:0 0 12px;padding:10px 12px;border:1px solid var(--brand);border-radius:10px;background:var(--s1);color:var(--tx);font-size:14px;line-height:20px;font-weight:600}");
-    s.push_str(".rules{margin:14px 0 0;padding:12px;border:1px solid var(--ln);border-radius:10px;background:var(--s1);color:var(--mut);font-size:13px;line-height:18px}");
-    s.push_str(".rules b{color:var(--tx)}.rules p{margin:6px 0 0}");
-    s.push_str(".credit{margin:6px 2px 0;color:var(--mut);font-size:12px;line-height:16px;text-align:center}");
+    s.push_str(&squeeze(LAYOUT_CSS));
     s
 }
 
@@ -76,7 +116,7 @@ pub fn decorate(page: &str, b: &Brand, logo: bool, picture: bool) -> Result<Stri
         return Err("the page has changed and no longer matches the branding");
     }
     let t = b.theme();
-    let txt = |f: Field| b.shown(f, Lang::En);
+    let layout = b.layout_id();
     let own = !b.name.is_empty(); // a shop that set no name keeps the TechNet name and pictures unless it has its own
     let mut p = page.to_string();
     let mut put = |from: &str, to: &str| p = p.replacen(from, to, 1);
@@ -102,17 +142,30 @@ pub fn decorate(page: &str, b: &Brand, logo: bool, picture: bool) -> Result<Stri
         r#"<img src="/brand.png" alt="" width="28" height="28">"#
     };
     let name = if own { esc(&b.name) } else { "TechNet".to_string() };
-    let tagline = match (txt(Field::Tagline), own) {
-        ("", true) => String::new(),
-        ("", false) => "<span>PisoWifi</span>".to_string(),
-        (t, _) => format!("<span>{}</span>", esc(t)),
+    let (tag_en, tag_fil) = both(b, Field::Tagline, &esc);
+    let tagline = match (tag_en.is_empty() && tag_fil.is_empty(), own) {
+        (true, true) => String::new(),
+        (true, false) => "<span>PisoWifi</span>".to_string(),
+        _ => slot("span", "", &tag_en, &tag_fil),
     };
-    put(HEADER, &format!("<header>{}<b>{}</b>{}</header>", img, name, tagline));
+    let poster_line = {
+        let (en, fil) = contact_hours(b, " &middot; ");
+        if layout == "poster" {
+            slot("em", "", &en, &fil)
+        } else {
+            String::new()
+        }
+    };
+    let class = match layout {
+        "banner" => r#" class="hero""#,
+        "compact" => r#" class="cmp""#,
+        "poster" => r#" class="poster""#,
+        _ => "",
+    };
+    put(HEADER, &format!("<header{}>{}<b>{}</b>{}{}{}</header>", class, img, name, tagline, poster_line, LANG_BUTTON));
 
-    let promo = match txt(Field::Promo) {
-        "" => String::new(),
-        s => format!(r#"<p class="promo">{}</p>"#, esc(s)),
-    };
+    let (promo_en, promo_fil) = both(b, Field::Promo, &esc);
+    let promo = slot("p", r#" class="promo""#, &promo_en, &promo_fil);
     let pic = if picture {
         r#"<img src="/brand/picture" alt="" onerror="this.remove()">"#
     } else if own {
@@ -120,29 +173,38 @@ pub fn decorate(page: &str, b: &Brand, logo: bool, picture: bool) -> Result<Stri
     } else {
         r#"<img src="/mascot.png" alt="" width="72" height="74">"#
     };
-    let welcome = match txt(Field::Welcome) {
-        "" => STANDARD.to_string(),
-        s => esc(s),
-    };
-    put(
-        WELCOME,
-        &format!(
-            r#"{}<div class="hd" id="hd">{}<p>Buy Wi-Fi time<span class="mut" style="display:block;font-weight:400">{}</span></p></div>"#,
-            promo, pic, welcome
-        ),
+    let (wel_en, wel_fil) = both(b, Field::Welcome, &esc);
+    let welcome = slot(
+        "span",
+        r#" class="mut" style="display:block;font-weight:400""#,
+        if wel_en.is_empty() { STANDARD } else { &wel_en },
+        if wel_fil.is_empty() { STANDARD } else { &wel_fil },
     );
+    put(WELCOME, &format!(r#"{}<div class="hd" id="hd">{}<p>Buy Wi-Fi time{}</p></div>"#, promo, pic, welcome));
 
-    let rules = match txt(Field::Rules) {
-        "" => String::new(),
-        s => format!(r#"<div class="rules"><b>House rules</b><p>{}</p></div>"#, lines(s)),
+    let (rules_en, rules_fil) = both(b, Field::Rules, &lines);
+    let (rtag, head) = if layout == "compact" { ("details", "summary") } else { ("div", "b") };
+    let mk = |title: &str, text: &str| if text.is_empty() { String::new() } else { format!("<{head}>{title}</{head}><p>{text}</p>") };
+    // (the heading is turned into Filipino by the page's script unless the Filipino text is its own)
+    let (en_html, fil_html) = if rules_en == rules_fil {
+        let x = mk("House rules", &rules_en);
+        (x.clone(), x)
+    } else {
+        (mk("House rules", &rules_en), mk("Mga patakaran", &rules_fil))
     };
+    let rules = slot(rtag, r#" class="rules""#, &en_html, &fil_html);
     put(GOS, &format!("{}{}", GOS, rules));
 
-    let foot = [txt(Field::Contact), txt(Field::Hours)].iter().filter(|s| !s.is_empty()).map(|s| esc(s)).collect::<Vec<_>>().join("<br>");
-    let foot = if foot.is_empty() { String::new() } else { format!(r#"<p class="foot">{}</p>"#, foot) };
+    let foot = if layout == "poster" {
+        String::new()
+    } else {
+        let (en, fil) = contact_hours(b, "<br>");
+        slot("p", r#" class="foot""#, &en, &fil)
+    };
     put(FOOT, &format!("{}{}", foot, CREDIT));
 
-    put(HEAD_END, &format!("<style>{}</style></head>", style(&t)));
+    put(HEAD_BODY, &format!(r#"<style>{}</style></head><body class="l-{}">"#, style(&t), layout));
+    put(PAGE_END, &format!("</script><script>{}</script></body></html>", SWITCH_JS.trim()));
     Ok(p)
 }
 
@@ -262,7 +324,7 @@ mod tests {
             assert!(!page.contains(frame), "{}", frame);
         }
         assert!(page.contains("Pick a plan, insert a coin and you are online."), "no welcome set: the standard line stays");
-        assert!(page.contains("<b>Nena</b></header>"), "no tagline: just the name");
+        assert!(page.contains("<b>Nena</b>") && !page.contains("<b>Nena</b><span>"), "no tagline: just the name");
         let hours_only = {
             let mut b = named("Nena");
             b.set_text(Field::Hours, Lang::En, "Open 8 to 10");
@@ -292,7 +354,12 @@ mod tests {
             }
             let page = decorate(&plain, &b, true, true).unwrap();
             assert!(!page.contains(payload), "the raw text {:?} reached the page", payload);
-            assert_eq!(count(&page, "<script"), count(&plain, "<script"), "{:?} added a script", payload);
+            assert_eq!(
+                count(&page, "<script"),
+                count(&plain, "<script") + 1,
+                "{:?} added a script besides the page's own and ours",
+                payload
+            );
             assert_eq!(count(&page, "</title>"), count(&plain, "</title>"), "{:?} closed the title early", payload);
             assert_eq!(count(&page, "</style>"), count(&plain, "</style>") + 1, "only our own style block was added: {:?}", payload);
             assert_eq!(count(&page, "<!--"), count(&plain, "<!--"), "{:?}", payload);
@@ -315,9 +382,11 @@ mod tests {
         b.palette = "dagat;} .credit{display:none}".into();
         b.layout = "}</style>".into();
         let page = decorate(&base(), &b, false, false).unwrap();
-        let plain = base();
-        assert_eq!(count(&page, "display:none}"), count(&plain, "display:none}"), "an unchecked palette or layout never reaches the CSS");
-        assert!(!page.contains("red;}") && !page.contains("body{display"), "nor an unchecked accent");
+        assert!(
+            !page.contains("red;}") && !page.contains("dagat;}") && !page.contains("body{display"),
+            "an unchecked accent, palette or layout never reaches the CSS"
+        );
+        assert!(page.contains(r#"<body class="l-classic">"#), "an unknown layout is the default one");
         let theme = Brand::default().theme();
         assert!(page.contains(&format!("--bg:{}", crate::brand::hex(theme.bg))), "an unknown palette means the default one");
         let ok = decorate(&base(), &full(), false, false).unwrap();
@@ -343,8 +412,94 @@ mod tests {
                 let inside_w = &page[page.find(r#"<div class="w">"#).unwrap()..];
                 assert!(inside_w.contains(CREDIT), "the credit is inside the page body, below the views");
                 let style = &page[page.rfind("<style>").unwrap()..page.rfind("</style>").unwrap()];
-                assert!(style.contains(".credit{") && !style.contains("display:none") && !style.contains("visibility:hidden"), "{}", style);
+                assert!(
+                    style.contains(".credit{") && style.matches("credit").count() == 1,
+                    "the credit has its one rule and no other rule names it"
+                );
             }
         }
+    }
+    fn with_layout(id: &str) -> Brand {
+        let mut b = full();
+        b.layout = id.into();
+        b
+    }
+
+    #[test]
+    fn f049_each_layout_has_its_own_structure_and_all_keep_the_page_whole() {
+        for id in crate::brand::LAYOUTS {
+            let page = decorate(&base(), &with_layout(id), true, true).unwrap();
+            assert!(page.contains(&format!(r#"<body class="l-{}">"#, id)), "{}", id);
+            assert_eq!(count(&page, CREDIT), 1, "{}", id);
+            assert_eq!(count(&page, r#"class="lang""#), 1, "{}: one language switch", id);
+            for kept in ["id=\"go\"", "id=\"v-idle\"", "id=\"pk\"", "%TIERS_H%", "id=\"ldone\""] {
+                assert!(page.contains(kept), "{} lost {}", id, kept);
+            }
+            assert!(
+                page.contains("Aling Nena&#39;s Net Cafe") && page.contains("0917 123 4567") && page.contains("Open 8am to 10pm"),
+                "{}: name, contact and hours show",
+                id
+            );
+        }
+        let header = |id: &str| {
+            let p = decorate(&base(), &with_layout(id), false, false).unwrap();
+            p[p.find("<header").unwrap()..p.find("</header>").unwrap()].to_string()
+        };
+        assert!(header("classic").starts_with("<header>") && header("banner").starts_with(r#"<header class="hero">"#));
+        assert!(header("compact").starts_with(r#"<header class="cmp">"#) && header("poster").starts_with(r#"<header class="poster">"#));
+        assert!(
+            header("poster").contains("<em>0917 123 4567 | fb.com/alingnena &middot; Open 8am to 10pm</em>"),
+            "the poster puts contact and hours in its heading"
+        );
+        assert!(
+            !decorate(&base(), &with_layout("poster"), false, false).unwrap().contains(r#"class="foot""#),
+            "and then has no footer line of them"
+        );
+        assert!(
+            decorate(&base(), &with_layout("compact"), false, false)
+                .unwrap()
+                .contains(r#"<details class="rules"><summary>House rules</summary><p>No illegal downloads.<br>Be kind.</p></details>"#),
+            "compact folds the rules away"
+        );
+        assert!(decorate(&base(), &with_layout("banner"), false, false).unwrap().contains(r#"<div class="rules"><b>House rules</b>"#));
+    }
+
+    #[test]
+    fn f049_a_text_with_a_filipino_version_carries_both_and_one_without_stays_plain() {
+        let mut b = named("Nena");
+        b.set_text(Field::Promo, Lang::En, "Happy hour");
+        b.set_text(Field::Promo, Lang::Fil, "Mura ngayon \"po\"");
+        b.set_text(Field::Contact, Lang::En, "0917");
+        let page = decorate(&base(), &b, false, false).unwrap();
+        assert!(
+            page.contains(r#"<p class="promo" data-e="Happy hour" data-f="Mura ngayon &amp;quot;po&amp;quot;">Happy hour</p>"#),
+            "both versions (the attribute holds markup, so it is escaped twice), English showing first"
+        );
+        assert!(page.contains(r#"<p class="foot">0917</p>"#), "no Filipino contact: the English one for both, nothing to swap");
+        let mut only_fil = named("Nena");
+        only_fil.set_text(Field::Promo, Lang::Fil, "Mura ngayon");
+        only_fil.set_text(Field::Welcome, Lang::Fil, "Maligayang pagdating");
+        let page = decorate(&base(), &only_fil, false, false).unwrap();
+        assert!(
+            page.contains(r#"<p class="promo" data-e="" data-f="Mura ngayon" hidden></p>"#),
+            "a Filipino-only block is hidden in English"
+        );
+        assert!(
+            page.contains(&format!(r#"data-e="{}" data-f="Maligayang pagdating">{}</span>"#, STANDARD, STANDARD)),
+            "a Filipino-only welcome: the standard line in English"
+        );
+    }
+
+    #[test]
+    fn f049_the_page_script_is_added_once_after_the_pages_own_and_never_to_an_unbranded_page() {
+        let plain = base();
+        let page = decorate(&plain, &named("Nena"), false, false).unwrap();
+        assert_eq!(count(&page, "<script"), count(&plain, "<script") + 1);
+        let ours = page.find("pp-lang").unwrap();
+        assert!(
+            ours > page.find("var FIRST=").unwrap() && page[ours..].contains("</script></body></html>") && count(&page, "pp-lang") >= 1
+        );
+        assert!(page.contains("Magpasok ng Barya"), "the Filipino wording travels with the page");
+        assert!(!plain.contains("pp-lang") && !plain.contains("Magpasok"));
     }
 }

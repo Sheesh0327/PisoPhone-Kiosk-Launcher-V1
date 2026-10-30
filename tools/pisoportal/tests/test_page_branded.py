@@ -85,7 +85,7 @@ try:
             check(SHOP in pg.inner_text("header") and "Mabilis. Mura. Malinis." in pg.inner_text("header"), f"{name}: the header has the shop's name and tagline")
             check(pg.title() == SHOP, f"{name}: the tab title is the shop's name")
             check(pg.is_visible(".credit") and "by TechNet Solutions" in lines, f"{name}: the credit is visible")
-            check(snap["controls"] == want["controls"], f"{name}: the same controls as the unbranded page")
+            check([c for c in snap["controls"] if c != "|Filipino"] == want["controls"] and "|Filipino" in snap["controls"], f"{name}: the same controls as the unbranded page, and the language button")
             check(all(ln in lines for ln in want["text"] if ln not in REPLACED), f"{name}: every line of the unbranded page is still there")
             check("TechNet" not in " ".join(l for l in lines if l != "by TechNet Solutions"), f"{name}: no TechNet name left besides the credit")
             check("0917 123 4567" in lines and "Open 8am to 10pm" in lines, f"{name}: contact and hours show in every state")

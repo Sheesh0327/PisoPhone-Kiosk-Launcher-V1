@@ -77,7 +77,7 @@ fn tier_rows(pr: &Pricing, plan: Plan) -> String {
 }
 
 /// Comments and indentation are dropped from the page (it is read once over the shop Wi-Fi, then cached).
-fn squeeze(src: &str) -> String {
+pub(crate) fn squeeze(src: &str) -> String {
     let mut out = String::with_capacity(src.len());
     let mut rest = src;
     while let Some(i) = rest.find("/*") {

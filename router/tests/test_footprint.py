@@ -14,6 +14,8 @@ BUDGET_KB = {
     "setup/piso-setup.sh": 1700,                      # the one-file installer / update (it is downloaded, not kept)
     "setup/piso-setup.sh.in": 150,                    # the installed command (the file without its payload)
     "tools/pisoportal/src/page.html": 28,             # the customer page (1.3.4: voucher choice and code view, speech with a fallback, heartbeat)
+    "tools/pisoportal/src/brand_fil.js": 14,          # a branded page: the Filipino wording and the language button (feature 049; page.html itself did not grow)
+    "tools/pisoportal/src/brand_page.css": 6,         # a branded page: the four layouts
 }
 bad = 0
 for path, limit in BUDGET_KB.items():
