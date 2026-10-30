@@ -1,0 +1,14 @@
+Copyright (c) 2026 TechNet Solutions. All rights reserved.
+
+This repository holds the source code, firmware, router add-on, setup program, website and documents of TechNet PisoHub
+(PisoPhone and PisoWiFi). It is proprietary software. It is not open source.
+
+No part of it may be copied, modified, published, distributed, sublicensed, sold or used, in whole or in part, without the prior
+written permission of TechNet Solutions. Nothing here grants any other right.
+
+The software is provided "as is", without warranty of any kind.
+
+Third-party components keep their own licences. The vendored browser files are listed in website/js/VENDORED.md; build
+dependencies are fetched by Gradle, PlatformIO and Cargo under their own terms.
+
+To ask for permission, contact TechNet Solutions through the owner of this repository.

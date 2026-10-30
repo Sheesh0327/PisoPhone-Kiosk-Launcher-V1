@@ -26,7 +26,7 @@ Never open: `esp32_firmware/include/WebAssets.h`, `setup/piso-setup*.sh`, `websi
 
 - [x] 0. **Baseline.** Record in `validation.md`: `git rev-parse HEAD`, `git ls-files | wc -l`, output of `python3 scripts/check_links.py`
   and `bash scripts/check_security_rules.sh` (both must pass before you start; if not, stop and tell the owner).
-- [ ] 1. **LICENSE (S1).** Proprietary text, "Copyright (c) 2026 TechNet Solutions. All rights reserved." plus a short no-use-without-
+- [x] 1. **LICENSE (S1).** Proprietary text, "Copyright (c) 2026 TechNet Solutions. All rights reserved." plus a short no-use-without-
   written-permission clause. Commit.
 - [ ] 2. **Component READMEs (S4).** Write `app/README.md`, `esp32_firmware/README.md`, `router/README.md`, `protocol/README.md`,
   `tools/README.md` in one shape:
