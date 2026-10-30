@@ -1,6 +1,6 @@
 # Feature 054: the console says whether the speed limits are really enforced
 
-Status: **draft (owner request 2026-10-30, waiting for approval)**   Branch: `feat/054-speed-limit-status`   Area: router (the portal program, the console page and script)
+Status: **parked 2026-10-30: the owner will check the router by hand first (Customers screen, "Speed now"); build only if the cap turns out not to be applied and customers keep buying Endurance**   Branch: `feat/054-speed-limit-status`   Area: router (the portal program, the console page and script)
 Backlog rows: none (owner question 2026-10-30: "is the PisoWiFi speed limit accurate?")   Release: router (raises `setup/RELEASE`; goes through `beta`, `CLAUDE.md` section 5)
 
 ## Intent
