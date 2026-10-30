@@ -9,6 +9,7 @@ import glob
 import hashlib
 import json
 import os
+import pathlib
 import shutil
 import sys
 import urllib.request
@@ -49,6 +50,19 @@ try:
             got["states"][name] = {"text": tidy(snap["text"]), "controls": snap["controls"]}
             pg.close()
         br.close()
+    # the voucher file the page saves (a small page the customer keeps) is today's too
+    with sync_playwright() as pw2:
+        chrome2 = os.environ.get("CHROME") or next((c for c in [shutil.which(x) for x in ("google-chrome", "chromium", "chromium-browser")] + glob.glob("/opt/pw-browsers/chromium-*/chrome-linux*/chrome") if c), None)
+        br2 = pw2.chromium.launch(executable_path=chrome2, args=["--no-sandbox"]) if chrome2 else pw2.chromium.launch()
+        pg2 = br2.new_context(viewport={"width": 360, "height": 740}).new_page()
+        pg2.route_web_socket("**/ws", answering(json.dumps(CASES["final_voucher"])))
+        with pg2.expect_download(timeout=8000) as dl:
+            pg2.goto(f"{base}/?fas=ABC")
+        voucher = dl.value
+        text = pathlib.Path(voucher.path()).read_text(encoding="utf-8")
+        check(voucher.suggested_filename == "TechNet-PisoWiFi-voucher-ABCDE.html" and "<b>TechNet PisoWiFi voucher</b>" in text and "<title>PisoWiFi voucher</title>" in text and "Join the PisoWiFi network" in text,
+              f"the saved voucher file is today's: {voucher.suggested_filename}")
+        br2.close()
     if UPDATE:
         os.makedirs(os.path.dirname(GOLDEN), exist_ok=True)
         with open(GOLDEN, "w") as f:

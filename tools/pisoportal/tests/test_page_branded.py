@@ -10,6 +10,8 @@ import glob
 import hashlib
 import json
 import os
+import pathlib
+import re
 import shutil
 import sys
 import urllib.request
@@ -100,6 +102,17 @@ try:
                 check("Happy hour: double time until 5pm" not in lines and "House rules" not in lines, "after paying: no promo and no rules in the way")
             pg.close()
 
+        # the voucher file a customer saves carries the shop's name, not TechNet's
+        pg = ctx.new_page()
+        pg.route_web_socket("**/ws", G.answering(json.dumps(G.CASES["final_voucher"])))
+        with pg.expect_download(timeout=8000) as dl:
+            pg.goto(page_url)
+        text = pathlib.Path(dl.value.path()).read_text(encoding="utf-8")
+        check(dl.value.suggested_filename == "Aling-Nena-s-Net-Cafe-voucher-ABCDE.html", f"the voucher file is named for the shop: {dl.value.suggested_filename}")
+        check("<b>Aling Nena's Net Cafe voucher</b>" in text and "<title>Aling Nena's Net Cafe voucher</title>" in text and "TechNet" not in text and "PisoWiFi" not in text and "ABCDE-FGHJK" in text,
+              f"and says the shop's name, with the code: {text[:300]!r}")
+        pg.close()
+
         # whatever the owner types stays text
         evil = "</title><script>window.__x=1</script><img src=x onerror=window.__x=2>"
         with open(f"{brand_dir}/published.txt", "w") as f:
@@ -115,6 +128,14 @@ try:
         check(pg.title() == name, f"the title is the typed text, as text: {pg.title()!r}")
         check(name in pg.inner_text("header") and evil in pg.inner_text("#hd") and pg.is_visible(".credit"), "the typed text shows as text and the credit is still there")
         check(pg.evaluate("document.querySelectorAll('img[src=x]').length") == 0, "typed markup made no element")
+        pg.close()
+        pg = ctx.new_page()
+        pg.route_web_socket("**/ws", G.answering(json.dumps(G.CASES["final_voucher"])))
+        with pg.expect_download(timeout=8000) as dl:
+            pg.goto(page_url)
+        text = pathlib.Path(dl.value.path()).read_text(encoding="utf-8")
+        check("<script" not in text and "<img" not in text and "&lt;/title&gt;&lt;script&gt;" in text, f"typed markup in the name is only text in the saved voucher: {text[:260]!r}")
+        check(re.fullmatch(r"[0-9A-Za-z.-]+", dl.value.suggested_filename) is not None, f"and the file name is plain: {dl.value.suggested_filename}")
         pg.close()
         br.close()
 

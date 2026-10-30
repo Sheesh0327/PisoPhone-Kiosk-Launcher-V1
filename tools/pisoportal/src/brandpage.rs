@@ -19,11 +19,20 @@ const FOOT: &str = r#"<p class="foot">TechNet Solutions &middot; Connect &middot
 /// The line shown when the page cannot reach the router for 8 seconds: today it names TechNet's Wi-Fi, which is wrong on a shop's own page.
 const CONN_LINE: &str = "Still connecting. Check you are on the TechNet Wi-Fi.";
 const CONN_LINE_SHOP: &str = "Still connecting. Check you are on the shop's Wi-Fi.";
+/// The saved voucher file (a small HTML page the customer keeps) and its file name, built by the page's script.
+const VF_FN: &str = "function vfile(c){";
+const VF_TITLE: &str = "<title>PisoWiFi voucher</title>";
+const VF_NAME: &str = "<p><b>TechNet PisoWiFi voucher</b></p>";
+const VF_JOIN: &str = "Join the PisoWiFi network, then";
+const VF_DOWNLOAD: &str = r#"a.download="TechNet-PisoWiFi-voucher-"+c.slice(0,5)+".html""#;
+/// Read the shop's name back from the page (`data-shop`), make it safe for the HTML file and for a file name.
+const VF_HELPERS: &str = r#"function shop(){return document.body.getAttribute("data-shop")||""}function hx(s){return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;")}function fname(){return shop().replace(/[^0-9A-Za-z]+/g,"-").replace(/^-+|-+$/g,"")||"Wi-Fi"}"#;
 const HEAD_BODY: &str = "</head><body>";
 const PAGE_END: &str = "</script></body></html>";
 
 /// Every place the decorated page is found by. Each must occur exactly once in the built page.
-pub const ANCHORS: [&str; 10] = [TITLE, ICON, TOUCH, HEADER, WELCOME, GOS, FOOT, HEAD_BODY, PAGE_END, CONN_LINE];
+pub const ANCHORS: [&str; 15] =
+    [TITLE, ICON, TOUCH, HEADER, WELCOME, GOS, FOOT, HEAD_BODY, PAGE_END, CONN_LINE, VF_FN, VF_TITLE, VF_NAME, VF_JOIN, VF_DOWNLOAD];
 
 /// The standard line under "Buy Wi-Fi time", kept when the owner wrote no welcome.
 const STANDARD: &str = "Pick a plan, insert a coin and you are online.";
@@ -127,6 +136,11 @@ pub fn decorate(page: &str, b: &Brand, logo: bool, picture: bool) -> Result<Stri
     if own {
         put(TITLE, &format!("<title>{}</title>", esc(&b.name)));
         put(CONN_LINE, CONN_LINE_SHOP);
+        put(VF_FN, &format!("{}{}", VF_HELPERS, VF_FN));
+        put(VF_TITLE, "<title>'+hx(shop())+' voucher</title>");
+        put(VF_NAME, "<p><b>'+hx(shop())+' voucher</b></p>");
+        put(VF_JOIN, "Join the shop&#39;s Wi-Fi, then");
+        put(VF_DOWNLOAD, r#"a.download=fname()+"-voucher-"+c.slice(0,5)+".html""#);
     }
     let icon = |from: &str, rel: &str, put: &mut dyn FnMut(&str, &str)| {
         if logo {
@@ -207,7 +221,8 @@ pub fn decorate(page: &str, b: &Brand, logo: bool, picture: bool) -> Result<Stri
     };
     put(FOOT, &format!("{}{}", foot, CREDIT));
 
-    put(HEAD_BODY, &format!(r#"<style>{}</style></head><body class="l-{}">"#, style(&t), layout));
+    let shop = if own { format!(r#" data-shop="{}""#, esc(&b.name)) } else { String::new() };
+    put(HEAD_BODY, &format!(r#"<style>{}</style></head><body class="l-{}"{}>"#, style(&t), layout, shop));
     put(PAGE_END, &format!("</script><script>{}</script></body></html>", SWITCH_JS.trim()));
     Ok(p)
 }
@@ -421,7 +436,7 @@ mod tests {
             !page.contains("red;}") && !page.contains("dagat;}") && !page.contains("body{display"),
             "an unchecked accent, palette or layout never reaches the CSS"
         );
-        assert!(page.contains(r#"<body class="l-classic">"#), "an unknown layout is the default one");
+        assert!(page.contains(r#"<body class="l-classic""#), "an unknown layout is the default one");
         let theme = Brand::default().theme();
         assert!(page.contains(&format!("--bg:{}", crate::brand::hex(theme.bg))), "an unknown palette means the default one");
         let ok = decorate(&base(), &full(), false, false).unwrap();
@@ -464,7 +479,7 @@ mod tests {
     fn f049_each_layout_has_its_own_structure_and_all_keep_the_page_whole() {
         for id in crate::brand::LAYOUTS {
             let page = decorate(&base(), &with_layout(id), true, true).unwrap();
-            assert!(page.contains(&format!(r#"<body class="l-{}">"#, id)), "{}", id);
+            assert!(page.contains(&format!(r#"<body class="l-{}""#, id)), "{}", id);
             assert_eq!(count(&page, CREDIT), 1, "{}", id);
             assert_eq!(count(&page, r#"class="lang""#), 1, "{}: one language switch", id);
             for kept in ["id=\"go\"", "id=\"v-idle\"", "id=\"pk\"", "%TIERS_H%", "id=\"ldone\""] {
@@ -594,6 +609,40 @@ mod tests {
                 "the start-up code, with its 8 second message, is gone"
             );
             assert!(v.contains(r#"show("idle");"#));
+        }
+    }
+    #[test]
+    fn f049_the_voucher_file_of_a_shop_names_the_shop_and_not_technet() {
+        let page = decorate(&base(), &full(), false, false).unwrap();
+        assert!(
+            page.contains(r#"<body class="l-classic" data-shop="Aling Nena&#39;s Net Cafe">"#),
+            "the page carries the name as an escaped attribute"
+        );
+        assert_eq!(count(&page, "data-shop="), 1);
+        for gone in
+            ["TechNet PisoWiFi voucher", "TechNet-PisoWiFi-voucher-", "<title>PisoWiFi voucher</title>", "Join the PisoWiFi network"]
+        {
+            assert!(!page.contains(gone), "the saved voucher still says {:?}", gone);
+        }
+        assert!(
+            page.contains("<title>'+hx(shop())+' voucher</title>") && page.contains("<p><b>'+hx(shop())+' voucher</b></p>"),
+            "the file's title and heading are the shop's name, escaped for HTML"
+        );
+        assert!(
+            page.contains("Join the shop&#39;s Wi-Fi, then") && page.contains(r#"a.download=fname()+"-voucher-""#),
+            "and so are its sentence and its file name"
+        );
+        let mut palette_only = Brand::default();
+        palette_only.palette = "rosas".into();
+        let kept = decorate(&base(), &palette_only, false, false).unwrap();
+        assert!(
+            !kept.contains("data-shop") && kept.contains("TechNet PisoWiFi voucher") && kept.contains("TechNet-PisoWiFi-voucher-"),
+            "a shop that kept the TechNet name keeps the TechNet file"
+        );
+        for payload in ["</script><script>1</script>", "\"><img src=x onerror=1>", "'; alert(1); '"] {
+            let p = decorate(&base(), &named(payload), false, false).unwrap();
+            assert!(!p.contains(payload), "the raw name {:?} reached the page", payload);
+            assert_eq!(count(&p, "data-shop="), 1);
         }
     }
 }
