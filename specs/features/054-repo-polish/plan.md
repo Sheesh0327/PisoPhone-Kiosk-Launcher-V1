@@ -53,7 +53,7 @@ Never open: `esp32_firmware/include/WebAssets.h`, `setup/piso-setup*.sh`, `websi
   `git add --renormalize . && git status` shows no content change to generated or signed files; if it does, drop the eol line and note
   it. `.gitignore`: build outputs (`build/`, `.gradle/`, `.pio/`, `target/`, `__pycache__/`, `node_modules/`, `.idea/`, `.vscode/`,
   `*.iml`, `local.properties`, `.DS_Store`). Check `git ls-files -ci --exclude-standard` is empty. Commit.
-- [ ] 8. **Naming audit (S8).** Script: per folder, list file names whose style differs from the folder majority (exclude generated
+- [x] 8. **Naming audit (S8).** Script: per folder, list file names whose style differs from the folder majority (exclude generated
   paths). Put the table in `validation.md` with, for each, `git grep` hit count and decision (rename / keep: read by X). Rename only
   docs-only files with zero readers, fixing links in the same commit. Expect few or none. Commit.
 - [ ] 9. **`CHANGELOG.md` header (S9) and `docs/ARCHITECTURE.md` (S10).** Header: purpose, newest first, version scheme (app build,
