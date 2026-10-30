@@ -8,10 +8,10 @@ CHROME=/path/to/chromium python3 test_console_layout.py"""
 import glob
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
-import re
 import tempfile
 import time
 import urllib.request
@@ -66,7 +66,7 @@ rows = ""
 for d in range(30):
     for i, (plan, p, m, k) in enumerate([("hyper", 5, 30, "new"), ("hyper", 10, 60, "new"), ("endurance", 20, 1440, "new"), ("hyper", 10, 60, "vbuy")][: 2 + d % 3]):
         rows += f"{now - d * 86400 - i * 3600},{plan},{p},{m},{k},x\n"
-open(f"{env.data}/revenue.csv", "w").write(rows)
+pathlib.Path(f"{env.data}/revenue.csv").write_text(rows)
 env.set_box(wifi_counter=True, lifetime_base=1247)
 
 try:
@@ -327,20 +327,22 @@ try:
         pg.wait_for_selector("#app:not(.hide)", timeout=8000)
         for t, _ in SCREENS:
             open_screen(pg, 1280, t)
-        outside = sorted({u for u in seen if not u.startswith(f"http://127.0.0.1:") and not u.startswith("data:") and not u.startswith("blob:")})
+        outside = sorted({u for u in seen if not u.startswith("http://127.0.0.1:") and not u.startswith("data:") and not u.startswith("blob:")})
         check(all(u.startswith("https://pisophone.pages.dev/console/ui.") for u in outside), f"no request leaves the router except the signed-script check: {outside}")
         ctx.close()
 
         # the new page with the earlier console script (the one the website holds), and the new script on the page of release 1.5.32
-        old_ui = open(f"{HERE}/golden/console_ui_v11.js").read()
-        old_page = open(f"{HERE}/golden/console_1_5_32.html").read()
+        old_ui = pathlib.Path(f"{HERE}/golden/console_ui_v11.js").read_text()
+        old_page = pathlib.Path(f"{HERE}/golden/console_1_5_32.html").read_text()
         served = urllib.request.urlopen(f"http://127.0.0.1:{CP}/").read().decode()
-        owner = re.search(r"OWNER='([^']*)'", served).group(1)
+        owner_match = re.search(r"OWNER='([^']*)'", served)
+        assert owner_match, "the served console page names the owner key"
+        owner = owner_match.group(1)
         for name in ("old script on the new page", "new script on the old page"):
             ctx = br.new_context(viewport={"width": 1280, "height": 800})
             pg = ctx.new_page()
-            errors = []
-            pg.on("pageerror", lambda e: errors.append(str(e)))
+            errors: list[str] = []
+            pg.on("pageerror", lambda e, errors=errors: errors.append(str(e)))
             pg.route(re.compile(r"^https://pisophone\.pages\.dev/.*"), lambda r: r.abort())
             if name.startswith("old script"):
                 pg.route(f"http://127.0.0.1:{CP}/ui.js", lambda r: r.fulfill(status=200, content_type="application/javascript", body=old_ui))

@@ -1,6 +1,6 @@
 # Feature 053: the admin console as a professional product: grouped sidebar, sleek modern look
 
-Status: **approved 2026-10-30 (owner answered the five decisions; no group started)**   Branch: `feat/053-console-layout`   Area: router (the console page is built into the portal program)
+Status: **done on a computer 2026-10-30 (criteria 1 to 10 pass, 11 is hardware check RS64, not run); not released**   Branch: `feat/053-console-layout`   Area: router (the console page is built into the portal program)
 Backlog rows: owner request after seeing a competitor's console; no findings row   Release: router (raises `setup/RELEASE`; goes through `beta`, `CLAUDE.md` section 5)
 
 ## Intent
