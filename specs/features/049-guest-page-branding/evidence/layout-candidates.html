@@ -1,0 +1,118 @@
+<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1">
+<style>
+:root{--tx:#eef3ff;--mut:#97a6c7;--gold:#ffb81c;--ok:#4be3b4}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/24px system-ui,-apple-system,Segoe UI,Roboto,sans-serif;min-height:100vh;display:flex;flex-direction:column}
+.p-technet{--bg:#050d22;--band:#0a1b45;--ac:#16c9a4}
+.p-dagat{--bg:#061a2e;--band:#0b3557;--ac:#38bdf8}
+.p-tropiko{--bg:#04161a;--band:#063a3a;--ac:#16c9a4}
+.p-ginto{--bg:#0b1530;--band:#2a2210;--ac:#ffb81c}
+.p-rosas{--bg:#2a0a1c;--band:#4a1431;--ac:#ff6fb5}
+.p-berde{--bg:#04190f;--band:#0b3a1e;--ac:#4ade80}
+body{--s1:color-mix(in srgb,var(--band) 75%,white 7%);--ln:color-mix(in srgb,var(--band) 60%,white 22%);--acfg:#06121c}
+.w{width:100%;max-width:420px;margin:0 auto;padding:12px 14px 14px;flex:1}
+.logo{width:36px;height:36px;border-radius:9px;background:var(--ac);color:var(--acfg);display:grid;place-items:center;font-weight:800;font-size:15px;flex:none}
+.mut{color:var(--mut);font-size:14px;line-height:20px;margin:0}
+.card{background:var(--s1);border:1px solid var(--ln);border-radius:10px;padding:14px}
+.promo{background:color-mix(in srgb,var(--gold) 16%,var(--bg));border:1px solid var(--gold);border-radius:10px;padding:8px 12px;font-size:14px;line-height:20px;margin:0 0 12px}
+.promo b{color:var(--gold)}
+.seg{display:flex;border-bottom:1px solid var(--ln)}
+.seg span{flex:1;text-align:center;height:42px;line-height:42px;font-weight:600;color:var(--mut)}
+.seg span.on{color:var(--tx);border-bottom:2px solid var(--ac);margin-bottom:-1px}
+.rows div{display:flex;justify-content:space-between;min-height:38px;align-items:center;border-top:1px solid var(--ln)}
+.rows div:first-child{border-top:0}
+.rows span:first-child{font-weight:700;color:var(--gold)}
+.btn{display:block;width:100%;min-height:52px;margin:12px 0 0;border:0;border-radius:10px;background:var(--ac);color:var(--acfg);font-weight:700;font-size:17px;line-height:52px;text-align:center}
+.sub{margin:6px 0 0;color:var(--mut);font-size:13px;line-height:18px;text-align:center}
+.rules{margin:12px 0 0;border:1px solid var(--ln);border-radius:10px;padding:8px 12px}
+.rules b{display:block;font-size:14px}
+.foot{margin:12px 0 0;color:var(--mut);font-size:12.5px;line-height:17px;text-align:center}
+.credit{margin:10px 0 0;text-align:center;font-size:11px;line-height:14px;color:var(--mut);opacity:.85}
+.L{display:none}
+body.l1 .L1,body.l2 .L2,body.l3 .L3,body.l4 .L4{display:flex;flex-direction:column;min-height:100vh}
+/* A classic */
+.L1 header{display:flex;align-items:center;gap:10px;height:56px;padding:0 14px;background:var(--band)}
+.L1 header b{font-size:17px;line-height:20px;display:block}.L1 header small{color:var(--mut);font-size:12.5px;line-height:15px;display:block}
+.L1 .sl{height:3px;background:var(--ac)}
+.L1 h2{margin:2px 0 12px;font-size:20px;line-height:26px}
+/* B banner */
+.L2 .hero{background:linear-gradient(180deg,var(--band),var(--bg));text-align:center;padding:26px 14px 16px;border-bottom:3px solid var(--ac)}
+.L2 .logo{width:78px;height:78px;border-radius:20px;font-size:30px;margin:0 auto 10px}
+.L2 .hero b{font-size:25px;line-height:30px;display:block}.L2 .hero small{display:block;color:var(--mut);margin-top:4px}
+.L2 .plan{margin-top:10px}
+/* C compact */
+.L3 header{display:flex;justify-content:space-between;align-items:center;height:44px;padding:0 14px;background:var(--band);font-weight:800}
+.L3 header i{font-style:normal;font-weight:500;color:var(--mut);font-size:13px}
+.L3 .two{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+.L3 .two .card{padding:10px}
+.L3 .two b{display:block;font-size:15px}.L3 .two .big{font-size:22px;color:var(--gold);font-weight:800}
+.L3 .btn{min-height:48px;line-height:48px}
+/* D poster */
+.L4 .hero{background:var(--ac);color:var(--acfg);padding:22px 16px 18px}
+.L4 .hero b{font-size:32px;line-height:34px;display:block;letter-spacing:-.5px}.L4 .hero small{display:block;font-size:15px;margin-top:6px;font-weight:600}
+.L4 .hero em{display:block;font-style:normal;font-size:13px;margin-top:10px;opacity:.85}
+.L4 .opt{display:flex;justify-content:space-between;align-items:center;margin-top:10px}
+.L4 .opt strong{font-size:18px}.L4 .opt .big{font-size:26px;font-weight:800;color:var(--gold)}
+.L4 .btn{position:sticky;bottom:10px}
+</style>
+<body>
+<script>
+var q=new URLSearchParams(location.search);document.body.className="p-"+(q.get("p")||"technet")+" l"+(q.get("l")||"1");
+if(q.get("a"))document.body.style.setProperty("--ac",q.get("a"));
+</script>
+
+<!-- A: Classic -->
+<div class="L L1">
+ <header><div class="logo">AN</div><div><b>Aling Nena's Net Cafe</b><small>Mabilis. Mura. Malinis.</small></div></header><i class="sl"></i>
+ <div class="w">
+  <h2>Welcome! Pick a plan, insert a coin and you are online.</h2>
+  <p class="promo"><b>Happy hour:</b> double time until 5pm</p>
+  <div class="seg"><span>HyperSpeed</span><span class="on">Endurance</span></div>
+  <div class="card" style="margin-top:12px"><p class="mut">Up to 5/2 Mbps &middot; much more time per peso</p><div class="rows"><div><span>&#8369;1</span><span>15 min</span></div><div><span>&#8369;5</span><span>3 hrs</span></div><div><span>&#8369;10</span><span>8 hrs</span></div><div><span>&#8369;20</span><span>24 hrs</span></div></div></div>
+  <div class="btn">Insert Coin</div><p class="sub">Coins add up: every coin adds more time</p>
+  <div class="rules"><b>House rules</b><p class="mut">No illegal downloads. Be kind to other customers.</p></div>
+  <p class="foot">0917 123 4567 &middot; fb.com/alingnenanet<br>Open 8am to 10pm</p>
+  <p class="credit">by TechNet Solutions</p>
+ </div>
+</div>
+
+<!-- B: Banner -->
+<div class="L L2">
+ <div class="hero"><div class="logo">AN</div><b>Aling Nena's Net Cafe</b><small>Mabilis. Mura. Malinis.</small></div>
+ <div class="w">
+  <p class="promo"><b>Happy hour:</b> double time until 5pm</p>
+  <div class="card plan"><b>Endurance</b><p class="mut" style="margin-bottom:6px">Up to 5/2 Mbps &middot; much more time per peso</p><div class="rows"><div><span>&#8369;1</span><span>15 min</span></div><div><span>&#8369;5</span><span>3 hrs</span></div><div><span>&#8369;10</span><span>8 hrs</span></div><div><span>&#8369;20</span><span>24 hrs</span></div></div></div>
+  <div class="card plan"><b>HyperSpeed</b><p class="mut">Full speed &middot; &#8369;5 = 30 min</p></div>
+  <div class="btn">Insert Coin</div><p class="sub">Coins add up: every coin adds more time</p>
+  <div class="rules"><b>House rules</b><p class="mut">No illegal downloads. Be kind to other customers.</p></div>
+  <p class="foot">0917 123 4567 &middot; fb.com/alingnenanet &middot; Open 8am to 10pm</p>
+  <p class="credit">by TechNet Solutions</p>
+ </div>
+</div>
+
+<!-- C: Compact -->
+<div class="L L3">
+ <header>Aling Nena's Net Cafe<i>Open 8am to 10pm</i></header>
+ <div class="w">
+  <p class="mut" style="margin-bottom:8px">Mabilis. Mura. Malinis. Insert a coin and you are online.</p>
+  <p class="promo"><b>Happy hour:</b> double time until 5pm</p>
+  <div class="two"><div class="card"><b>HyperSpeed</b><span class="mut">full speed</span><div class="big">&#8369;5</div><span class="mut">30 min</span></div><div class="card" style="border-color:var(--ac)"><b>Endurance</b><span class="mut">up to 5/2 Mbps</span><div class="big">&#8369;1</div><span class="mut">15 min</span></div></div>
+  <div class="btn">Insert Coin</div><p class="sub">Coins add up: every coin adds more time</p>
+  <div class="rules"><b>House rules &#9662;</b></div>
+  <p class="foot">0917 123 4567 &middot; fb.com/alingnenanet</p>
+  <p class="credit">by TechNet Solutions</p>
+ </div>
+</div>
+
+<!-- D: Poster -->
+<div class="L L4">
+ <div class="hero"><b>Aling Nena's Net Cafe</b><small>Mabilis. Mura. Malinis.</small><em>Open 8am to 10pm &middot; 0917 123 4567</em></div>
+ <div class="w">
+  <p class="promo"><b>Happy hour:</b> double time until 5pm</p>
+  <div class="card"><div class="opt"><div><strong>Endurance</strong><p class="mut">up to 5/2 Mbps</p></div><div class="big">&#8369;1<span class="mut"> = 15 min</span></div></div><div class="opt" style="border-top:1px solid var(--ln);padding-top:8px"><div><strong>HyperSpeed</strong><p class="mut">full speed</p></div><div class="big">&#8369;5<span class="mut"> = 30 min</span></div></div></div>
+  <div class="rules"><b>House rules</b><p class="mut">No illegal downloads. Be kind to other customers.</p></div>
+  <div class="btn">Insert Coin</div>
+  <p class="foot">fb.com/alingnenanet</p>
+  <p class="credit">by TechNet Solutions</p>
+ </div>
+</div>

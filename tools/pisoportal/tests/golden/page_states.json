@@ -1,0 +1,371 @@
+{
+ "brand.png_sha256": "71ba8764292109665660e23b0e2d63423f60a8b1581878e0ed026eb3a161e6ab",
+ "mascot.png_sha256": "1f2a8ca08df5bad785c799b0ca6c97fa8a88b1e773bf5c5bd33633cd6522e6b1",
+ "page_bytes": 26972,
+ "page_sha256": "b3e9479d9ab7f4dd6e7e0c8901936a40a74bdc266eb30a8321dc31c1c93f6d51",
+ "states": {
+  "armed_no_coin": {
+   "controls": [
+    "lcancel|Cancel"
+   ],
+   "text": [
+    "TechNet",
+    "PisoWifi",
+    "Endurance",
+    "Insert coin now",
+    "₱0",
+    "Each coin adds Wi-Fi time",
+    "Insert within 20 s",
+    "Cancel",
+    "TechNet Solutions · Connect · Play · More Possibilities"
+   ]
+  },
+  "armed_with_coins": {
+   "controls": [
+    "ldone|Done"
+   ],
+   "text": [
+    "TechNet",
+    "PisoWifi",
+    "Endurance",
+    "Insert coin now",
+    "₱5",
+    "= 3 hrs of Wi-Fi",
+    "Insert within 20 s",
+    "Coin received. Insert more, or tap Done.",
+    "Done",
+    "TechNet Solutions · Connect · Play · More Possibilities"
+   ]
+  },
+  "busy": {
+   "controls": [
+    "|Try again"
+   ],
+   "text": [
+    "TechNet",
+    "PisoWifi",
+    "Another customer is paying. Try again in about 7 s.",
+    "Try again",
+    "TechNet Solutions · Connect · Play · More Possibilities"
+   ]
+  },
+  "closing": {
+   "controls": [],
+   "text": [
+    "TechNet",
+    "PisoWifi",
+    "Endurance",
+    "Counting coins",
+    "₱5",
+    "TechNet Solutions · Connect · Play · More Possibilities"
+   ]
+  },
+  "cooldown": {
+   "controls": [
+    "|Try again"
+   ],
+   "text": [
+    "TechNet",
+    "PisoWifi",
+    "Too many empty tries. Wait about 30 s.",
+    "Try again",
+    "TechNet Solutions · Connect · Play · More Possibilities"
+   ]
+  },
+  "empty_window": {
+   "controls": [
+    "|Try again"
+   ],
+   "text": [
+    "TechNet",
+    "PisoWifi",
+    "No coins detected, you were not charged.",
+    "Try again",
+    "TechNet Solutions · Connect · Play · More Possibilities"
+   ]
+  },
+  "error": {
+   "controls": [
+    "|Try again"
+   ],
+   "text": [
+    "TechNet",
+    "PisoWifi",
+    "Coin payment is not available right now. Try again, or ask the attendant (NO_ANSWER).",
+    "Try again",
+    "TechNet Solutions · Connect · Play · More Possibilities"
+   ]
+  },
+  "final_online": {
+   "controls": [
+    "fagain|Add more time"
+   ],
+   "text": [
+    "TechNet",
+    "PisoWifi",
+    "✓ You are online",
+    "#:##",
+    "time left · ₱5 = 3 hrs bought",
+    "Add more time",
+    "TechNet Solutions · Connect · Play · More Possibilities"
+   ]
+  },
+  "final_paid_not_online_yet": {
+   "controls": [
+    "fagain|Add more time"
+   ],
+   "text": [
+    "TechNet",
+    "PisoWifi",
+    "#:##",
+    "time left · ₱5 = 3 hrs bought",
+    "Payment received. Connecting you…",
+    "Add more time",
+    "TechNet Solutions · Connect · Play · More Possibilities"
+   ]
+  },
+  "final_voucher": {
+   "controls": [
+    "vcopy|Copy code",
+    "vsave|Save voucher file",
+    "fagain|Back to start"
+   ],
+   "text": [
+    "TechNet",
+    "PisoWifi",
+    "₱5 = 3 hrs voucher",
+    "Your voucher code",
+    "ABCDE-FGHJK",
+    "Copy code",
+    "Nothing is connected yet. No time was added. To use the code: on the start page tap Have a voucher?, type or paste the code and tap Redeem. It works once, until Mar 17, 2030.",
+    "Save voucher file",
+    "Tip: take a screenshot of this code.",
+    "Back to start",
+    "TechNet Solutions · Connect · Play · More Possibilities"
+   ]
+  },
+  "idle_another_customer_paying": {
+   "controls": [
+    "rh|HyperSpeed",
+    "re|Endurance",
+    "go|Insert Coin",
+    "|Have a voucher?",
+    "vc|ABCDE-FGHJK",
+    "vb|"
+   ],
+   "text": [
+    "TechNet",
+    "PisoWifi",
+    "Buy Wi-Fi time",
+    "Pick a plan, insert a coin and you are online.",
+    "HyperSpeed",
+    "Endurance",
+    "Up to 5/2 Mbps · much more time per peso",
+    "₱1",
+    "15 min",
+    "₱5",
+    "3 hrs",
+    "₱10",
+    "8 hrs",
+    "₱20",
+    "24 hrs",
+    "Another customer is paying. Try again in a few seconds.",
+    "Insert Coin",
+    "Coins add up: every coin adds more time",
+    "Have a voucher?",
+    "TechNet Solutions · Connect · Play · More Possibilities"
+   ]
+  },
+  "idle_cooldown": {
+   "controls": [
+    "rh|HyperSpeed",
+    "re|Endurance",
+    "go|Insert Coin",
+    "|Have a voucher?",
+    "vc|ABCDE-FGHJK",
+    "vb|"
+   ],
+   "text": [
+    "TechNet",
+    "PisoWifi",
+    "Buy Wi-Fi time",
+    "Pick a plan, insert a coin and you are online.",
+    "HyperSpeed",
+    "Endurance",
+    "Up to 5/2 Mbps · much more time per peso",
+    "₱1",
+    "15 min",
+    "₱5",
+    "3 hrs",
+    "₱10",
+    "8 hrs",
+    "₱20",
+    "24 hrs",
+    "Too many empty tries. Wait about 30 s.",
+    "Insert Coin",
+    "Coins add up: every coin adds more time",
+    "Have a voucher?",
+    "TechNet Solutions · Connect · Play · More Possibilities"
+   ]
+  },
+  "idle_new_customer": {
+   "controls": [
+    "rh|HyperSpeed",
+    "re|Endurance",
+    "go|Insert Coin",
+    "|Have a voucher?",
+    "vc|ABCDE-FGHJK",
+    "vb|"
+   ],
+   "text": [
+    "TechNet",
+    "PisoWifi",
+    "Buy Wi-Fi time",
+    "Pick a plan, insert a coin and you are online.",
+    "HyperSpeed",
+    "Endurance",
+    "Up to 5/2 Mbps · much more time per peso",
+    "₱1",
+    "15 min",
+    "₱5",
+    "3 hrs",
+    "₱10",
+    "8 hrs",
+    "₱20",
+    "24 hrs",
+    "Insert Coin",
+    "Coins add up: every coin adds more time",
+    "Have a voucher?",
+    "TechNet Solutions · Connect · Play · More Possibilities"
+   ]
+  },
+  "idle_with_time_left": {
+   "controls": [
+    "pz|Pause time",
+    "rh|HyperSpeed",
+    "re|Endurance",
+    "go|Add more time",
+    "|Have a voucher?",
+    "vc|ABCDE-FGHJK",
+    "vb|"
+   ],
+   "text": [
+    "TechNet",
+    "PisoWifi",
+    "Connected Endurance",
+    "✓ You are online · time left",
+    "#:##",
+    "Use by Fri #:## AM",
+    "Pause time",
+    "2 pauses left",
+    "HyperSpeed",
+    "Endurance",
+    "Up to 5/2 Mbps · much more time per peso",
+    "₱1",
+    "15 min",
+    "₱5",
+    "3 hrs",
+    "₱10",
+    "8 hrs",
+    "₱20",
+    "24 hrs",
+    "Add more time",
+    "Have a voucher?",
+    "TechNet Solutions · Connect · Play · More Possibilities"
+   ]
+  },
+  "idle_with_voucher_choice": {
+   "controls": [
+    "rh|HyperSpeed",
+    "re|Endurance",
+    "mn|Use now",
+    "mv|Get a voucher code",
+    "go|Insert Coin",
+    "|Have a voucher?",
+    "vc|ABCDE-FGHJK",
+    "vb|"
+   ],
+   "text": [
+    "TechNet",
+    "PisoWifi",
+    "Buy Wi-Fi time",
+    "Pick a plan, insert a coin and you are online.",
+    "HyperSpeed",
+    "Endurance",
+    "Up to 5/2 Mbps · much more time per peso",
+    "₱1",
+    "15 min",
+    "₱5",
+    "3 hrs",
+    "₱10",
+    "8 hrs",
+    "₱20",
+    "24 hrs",
+    "Use now",
+    "Get a voucher code",
+    "Insert Coin",
+    "Coins add up: every coin adds more time",
+    "Have a voucher?",
+    "TechNet Solutions · Connect · Play · More Possibilities"
+   ]
+  },
+  "mismatch": {
+   "controls": [
+    "|Add HyperSpeed time",
+    "|Switch to Endurance · lose my time"
+   ],
+   "text": [
+    "TechNet",
+    "PisoWifi",
+    "You still have 10 min of HyperSpeed time. Add more HyperSpeed time, or switch to Endurance and give up the time you have left.",
+    "Add HyperSpeed time",
+    "Switch to Endurance · lose my time",
+    "TechNet Solutions · Connect · Play · More Possibilities"
+   ]
+  },
+  "paused": {
+   "controls": [
+    "rs|Resume time",
+    "rh|HyperSpeed",
+    "re|Endurance",
+    "go|Add more time"
+   ],
+   "text": [
+    "TechNet",
+    "PisoWifi",
+    "Paused Endurance",
+    "Paused, internet almost stopped · time left",
+    "#:##",
+    "Time is on hold. Resume soon; time not resumed by then is lost.",
+    "Resume time",
+    "HyperSpeed",
+    "Endurance",
+    "Up to 5/2 Mbps · much more time per peso",
+    "₱1",
+    "15 min",
+    "₱5",
+    "3 hrs",
+    "₱10",
+    "8 hrs",
+    "₱20",
+    "24 hrs",
+    "Add more time",
+    "TechNet Solutions · Connect · Play · More Possibilities"
+   ]
+  },
+  "starting": {
+   "controls": [
+    "lcancel|Cancel"
+   ],
+   "text": [
+    "TechNet",
+    "PisoWifi",
+    "HyperSpeed",
+    "Getting the coin slot ready",
+    "Please wait, do not insert coins yet",
+    "Cancel",
+    "TechNet Solutions · Connect · Play · More Possibilities"
+   ]
+  }
+ }
+}

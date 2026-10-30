@@ -1,6 +1,6 @@
 # Feature 049: branding on the guest Wi-Fi page
 
-Status: **draft: waiting for the owner to approve (Q1 to Q7 below)**   Branch: `feat/049-shop-branding` (from `main`; a router change, so it reaches `main` through `beta`, `CLAUDE.md` section 5)   Area: router
+Status: **approved 2026-10-30 (owner: "go with your recommendations, start group 0"); group 0 in progress; Q1 (layouts) waits for the owner's pick**   Branch: `feat/049-shop-branding` (from `main`; a router change, so it reaches `main` through `beta`, `CLAUDE.md` section 5)   Area: router
 Backlog rows: none (owner request 2026-10-30; decisions D1 to D11 in `specs/spec_05_shop_branding.md`)   Release: router
 
 ## Intent
@@ -60,11 +60,12 @@ logo through a signed brand pack. It serves both rules: it never touches the mon
 ## Out of scope
 Printed items (feature 050), anything on the rental phones or the coin box (feature 051), custom CSS or HTML per shop, SVG logos, a pack bound to one router, languages beyond English and Filipino, editing the built-in price list wording, removing the credit (never), clickable links in texts.
 
-## Owner decisions (answers 2026-10-30 are in the epic; these are still open)
-- **Q1 Layouts.** Which 3 or 4 layouts? Plan group 1 produces screenshots of candidates and an approval stop *before* any code. No layout is chosen by me.
-- **Q2 Header without a logo.** When a shop has branding but no logo yet, show the shop name alone (my proposal) or keep a neutral icon? 
-- **Q3 House rules.** Shown to the customer before paying (your words). Do you also want a tick box ("I agree") before the coin window opens? Not built unless you say yes (it changes the payment flow and may matter legally).
-- **Q4 Text limits** above: confirm or change.
-- **Q5 Budgets.** Raise `page.html` from 28 KB and, if needed, the program from 1200 KB (and by how much), or keep EN/FIL strings and layouts out of `page.html` by serving them as separate files?
-- **Q6 Filipino wording.** I will draft the Filipino for the page's own words; someone who reads Filipino well must check it before release. Who?
-- **Q7 Pack upload in the console.** Allow the shop owner to upload a pack you send them (safe, it is signed), or only you with `piso-setup brand-pack` over SSH?
+## Owner decisions
+The answers D1 to D11 are in the epic. Q2 to Q7 were answered on 2026-10-30 with "go with your recommendations"; **Q1 is still open** and is decided from screenshots (plan group 0).
+- **Q1 Layouts.** *Open.* Plan group 0 produced screenshots of 4 candidate layouts and stopped. No layout is built until the owner picks 3 or 4 (or asks for changes).
+- **Q2 Header without a logo.** *Answered:* show the shop name alone as text. The TechNet logo is never shown as the shop's.
+- **Q3 House rules.** *Answered:* shown before paying; **no tick box** and no change to the payment flow.
+- **Q4 Text limits.** *Answered:* as in Constraints (shop name 32, tagline 60, welcome 160, contact 80, house rules 600, opening hours 60, promo 120, per language).
+- **Q5 Budgets.** *Answered:* raise the `page.html` budget in `router/tests/test_footprint.py` from 28 to 40 KB (the program stays at 1200 KB; it holds 1027 KB today and the page is part of it); keep the setup script's 150 KB untouched by doing the pack work in the Rust program.
+- **Q6 Filipino wording.** *Answered:* I draft it; the owner reads it before the release is raised. Recorded as a gate in `validation.md`: the release stays at 0% until the owner has signed the Filipino text off.
+- **Q7 Pack upload in the console.** *Answered:* yes. The shop owner may upload a pack the owner sends them (it is signed), and the owner may use `piso-setup brand-pack` over SSH.
