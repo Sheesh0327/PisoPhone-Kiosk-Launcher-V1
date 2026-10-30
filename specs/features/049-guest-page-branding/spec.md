@@ -1,6 +1,6 @@
 # Feature 049: branding on the guest Wi-Fi page
 
-Status: **draft: waiting for the owner to approve (Q1 to Q7 below)**   Branch: `feat/049-guest-page-branding` (from `main`; a router change, so it reaches `main` through `beta`, `CLAUDE.md` section 5)   Area: router
+Status: **draft: waiting for the owner to approve (Q1 to Q7 below)**   Branch: `feat/049-shop-branding` (from `main`; a router change, so it reaches `main` through `beta`, `CLAUDE.md` section 5)   Area: router
 Backlog rows: none (owner request 2026-10-30; decisions D1 to D11 in `specs/spec_05_shop_branding.md`)   Release: router
 
 ## Intent
