@@ -597,7 +597,7 @@ delete opennds.@opennds[0].authenticated_users
 set opennds.@opennds[0].download_unrestricted_bursting='1'
 set opennds.@opennds[0].upload_unrestricted_bursting='1'
 set opennds.@opennds[0].checkinterval='15'
-set opennds.@opennds[0].ratecheckwindow='2'
+set opennds.@opennds[0].ratecheckwindow='1'
 EOT
 }
 

@@ -239,6 +239,11 @@ check("set opennds.@opennds[0].fasport='2080'" in out and "set opennds.@opennds[
       and "set opennds.@opennds[0].login_option_enabled='0'" in out and "delete opennds.@opennds[0].themespec_path" in out and "allow tcp port 2080" in out
       and "set opennds.@opennds[0].statuspath='/usr/lib/opennds/pisoportal_status.sh'" in out,
       "openNDS forwards new guests to the portal (FAS level 1) and no theme script is used")
+# feature 055: a customer bursts for about 15 seconds (one check of 15 s), not 30; bursting itself stays on
+check("set opennds.@opennds[0].ratecheckwindow='1'" in out and "set opennds.@opennds[0].checkinterval='15'" in out
+      and "set opennds.@opennds[0].download_unrestricted_bursting='1'" in out and "set opennds.@opennds[0].upload_unrestricted_bursting='1'" in out
+      and "ratecheckwindow='2'" not in out,
+      "openNDS averages a customer's speed over one 15 second check (bursting stays on)")
 check("set firewall.kiosk" not in out, "no separate kiosk firewall zone (the kiosk network is the LAN)")
 check("<kiosk password>" in out, "dry run never prints a real password")
 # once paired, the box is locked and gets its address

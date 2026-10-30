@@ -1,6 +1,6 @@
 # Feature 055: a shorter bursting window for the speed caps
 
-Status: **draft (owner decision 2026-10-30: "shorten it", about 15 seconds; waiting for approval of this spec)**   Branch: `feat/055-shorter-burst`   Area: setup (the router installer's openNDS settings)
+Status: **approved by the owner 2026-10-30 ("go, build the installer change directly on main"); applied directly on main like feature 052 (an installer setting only; main carries the correctly built programs)**   Branch: `feat/055-shorter-burst`   Area: setup (the router installer's openNDS settings)
 Backlog rows: none (owner's speed test 2026-10-30)   Release: router (raises `setup/RELEASE`; goes through `beta`, `CLAUDE.md` section 5)
 
 ## Intent
