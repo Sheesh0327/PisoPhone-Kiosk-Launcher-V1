@@ -34,14 +34,17 @@ box over USB, sets up the router and pairs them. About 15 minutes a unit, and on
 --install-service`. The setup page then starts by itself whenever the computer boots; it prints the address and PIN once, and
 `cat /var/lib/pisophone-setup/pin` shows the PIN again (`--pin 123456` chooses your own). Stop it with
 `sudo systemctl disable --now pisophone-setup`. The service runs as root so it can use the USB port and install what it needs;
-its files (the saved summaries) are in `/var/lib/pisophone-setup/saved`, and the page opens them for you.
+its files (the saved summaries) are in `/var/lib/pisophone-setup/saved`, and the page opens them for you. The service starts its own copy of the program in `/var/lib/pisophone-setup`, so moving or deleting the downloaded file does not stop it (to update the program, run `--install-service` again).
 
 ### Which network? (so the phone can reach the page)
 The page is served on the setup computer's own address, so the phone must be on a network that reaches it. A factory-reset
 router has **no Wi-Fi yet**, so the phone cannot use that one. Two ways that work:
 - **The setup computer has a second connection** besides the cable to the router (its Wi-Fi, or another Ethernet port) on your own
   network, and the phone is on that network too. Keep that connection on: the program talks to the router through the cable only
-  (192.168.1.1, then 10.0.0.1).
+  (192.168.1.1, then 10.0.0.1). **Use your phone's hotspot for it, not the shop modem's Wi-Fi.** A modem from PLDT, Converge and
+  most internet companies is at 192.168.1.1 too, like a new router: the computer would then have two networks with the same
+  addresses and cannot tell which one the router is on. The setup page stops with this advice when it sees it; turn the computer's
+  Wi-Fi onto the phone's hotspot (or off), then press *Search again*.
 - **Or use the computer's own browser** (`http://127.0.0.1:8765`), when it has a screen.
 The setup page itself needs no internet on the phone, but the *phone setup page* in step 5 is on the PisoPhone website: open that
 link on a phone or laptop that has internet.
@@ -98,13 +101,18 @@ For the next phone, choose the next slot and make the link again.
 |---|---|
 | The page does not open on the phone | The first page has a *My phone can't open this page* help. The phone and the setup computer must be on the same network (see above). Use the address printed in the terminal; a firewall may block port 8765 (`--port` changes it). |
 | "No board found" / the board does not answer | Use a USB **data** cable. Hold the board's BOOT button, tap RESET, release BOOT, tap *Try again*. Linux: you must be in the `dialout` group (or run as root). Windows: install the CH340 / CP210x driver once. Close any serial monitor that uses the port. On Ubuntu / Parrot desktops ModemManager can grab the port: `sudo systemctl stop ModemManager`. |
-| "No router found" | Cable in a **LAN** port (not WAN), router on for 2 minutes after the reset. The page keeps looking every few seconds; after a fix it finds the router by itself. |
+| "No router found" | Cable in a **LAN** port (not WAN), router on for 2 minutes after the reset. The page keeps looking every few seconds; after a fix it finds the router by itself. A router with another start address (for example 192.168.8.1) is found too, and the page names the address. |
+| "This computer is on two networks that use the same addresses" | The cable is on the router and the Wi-Fi is on a modem that is also 192.168.1.x. Put the computer's Wi-Fi on your phone's hotspot (or turn it off), then press *Search again*. |
+| "The router has a password ... Go back to the Router step" | A repeat after the password was set needs it: it is in `pisophone-router-password.txt` or the summary in the saved folder. *Try again* uses the saved one by itself. |
+| "... installs packages with apk" | The router runs OpenWrt 25.x (or a snapshot), which this setup does not support yet. Use OpenWrt 23.05 or 24.10 (`docs/ROUTERS.md`). Nothing was changed on the router. |
+| The Phones step says to plug the modem into the WAN port | A rental phone gets the app through the router, so the router needs internet. Plug the modem into the router's WAN port, wait a minute, tap *Check again*. |
 | "The router has no internet, and the first setup needs it" / "The router could not download..." | The router needs internet for the first setup. Plug the modem into the router's WAN port, wait a minute until the modem is online, then tap *Try again*: nothing was changed on the router. |
 | The coin box takes long to join, or never, while another PisoHub router is on | Another router nearby may answer the name a new box knows (`PisoCoinBox`). Switch it off for a few minutes while this one pairs, or run `piso-setup box-wifi-name` on it (see "Prefer to do it by hand?" in `MANUAL.md`). After pairing, this router gives its box a name of its own. |
 | "The coin box did not join" | Is the box powered (the USB cable does it), near the router, and written by this program (it erases the board first)? Tap *Try again*: the installation continues where it stopped. |
 | esptool or ssh "Missing" on the first page | Tap *Install what is missing*. Without root rights it shows the exact `sudo apt install ...` command to run. |
 | The phone does not ask "Allow USB debugging?" | Unlock the phone, use a data cable, unplug and replug. Or use the on-phone setting. |
-| Anything else | Tap *Try again*: it is always safe, and the router keeps what is already done. |
+| PisoPhone only: "the board could not join the Wi-Fi" (the box says the password was wrong or the network was not found) | Type the Wi-Fi details again and tap *Try again*: a box that was set up over USB but has never joined (and has no payment) takes new Wi-Fi details **without an erase** (coin box software 3.12.5 or newer; an older box still needs the ERASE route once). A box that has joined once refuses, as before. |
+| Anything else | Tap *Try again*: it is always safe, and the router keeps what is already done. If it keeps failing, send the file `pisophone-setup-log-<date>-<time>.txt` from the saved folder (the error names it). It holds the lines the page showed and this computer's network addresses; the unit's passwords are hidden. |
 
 ## After the setup
 - **Another phone:** run the program (or open the coin box's page at `http://10.0.0.10`) and use *Set up a phone* for the next slot.

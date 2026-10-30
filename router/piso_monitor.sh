@@ -73,6 +73,17 @@ alert() {
 	return 0
 }
 
+# A modem plugged in after the setup whose network overlaps the router's own (the setup only checks it while the modem is there): hourly,
+# one alert a day with the advice. An older router without the command prints something else and is ignored.
+check_wan() {
+	_f="$S/lastwan"; _n=$(now)
+	[ -r "$_f" ] && [ $((_n - $(cat "$_f"))) -lt 3600 ] && return 0
+	echo "$_n" > "$_f"
+	_o=$("$SETUP" wan-clash 2> /dev/null)
+	case "$_o" in "the modem's network"*) alert wan 86400 "$_o" ;; esac
+	return 0
+}
+
 box_ok() { "$PORTAL" box > /dev/null 2>&1; }
 
 check_box() {
@@ -189,7 +200,7 @@ $("$PORTAL" report 1 2>&1)"
 
 do_tick() {
 	[ -e "$S/booted" ] || { : > "$S/booted"; note "the router started (or this monitor did)."; tg_send "the router started (or this monitor did)."; }
-	check_portal; check_box; check_space; check_ledger; check_updates; check_grief; check_report
+	check_portal; check_box; check_space; check_wan; check_ledger; check_updates; check_grief; check_report
 	[ -n "$HEALTHCHECK_URL" ] && curl -fsS -m 10 -o /dev/null "$HEALTHCHECK_URL" 2> /dev/null
 	return 0
 }

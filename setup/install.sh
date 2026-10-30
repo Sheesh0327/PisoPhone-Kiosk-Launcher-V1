@@ -78,13 +78,30 @@ wan_ip() {
 	ubus call network.interface.wan status 2> /dev/null | jsonfilter -e '@["ipv4-address"][0].address' 2> /dev/null
 }
 
+# bounce_ports: after the address move only Windows asks for a new address by itself; Linux, macOS and a small PC running the setup keep the old one until
+# the cable is replugged. So the router's LAN ports go down for 3 seconds and up again (DSA ports lan1, lan2 ...). A router whose ports are not
+# named like that (an older switch of the swconfig kind) is left alone: the message already says to replug the cable.
+bounce_ports() {
+	_bp=""
+	for _d in "${PISO_NET_DIR:-/sys/class/net}"/lan[0-9]*; do
+		case "${_d##*/}" in *.*) continue ;; esac
+		[ -e "$_d" ] && _bp="$_bp ${_d##*/}"
+	done
+	for _d in $_bp; do ip link set "$_d" down; done
+	sleep 3
+	for _d in $_bp; do ip link set "$_d" up; done
+}
+
 # move_lan: the setup expects the router at 10.0.0.1. Changing it cuts this SSH session, so it is done last, after asking.
 move_lan() {
 	_lan="$1"
 	_wan=$(wan_ip)
-	case "$_wan" in
-		10.0.0.*) fail "the modem gives this router the address $_wan, in the 10.0.0.x range the kiosk network needs. Change the modem's own LAN address (for example to 192.168.100.1), then run this again." ;;
-	esac
+	if [ -n "$_wan" ]; then   # compared by netmask: a 10.x.x.x/8 lease overlaps the kiosk network too
+		_wm=$(ubus call network.interface.wan status 2> /dev/null | jsonfilter -e '@["ipv4-address"][0].mask' 2> /dev/null); [ "${_wm:-24}" -le 24 ] 2> /dev/null || _wm=24
+		_o=$(echo "$_wan" | tr . ' '); set -- $_o
+		[ $((($1 << 24 | $2 << 16 | $3 << 8 | $4) >> (32 - _wm))) = $((167772160 >> (32 - _wm))) ] &&
+			fail "the modem gives this router the address $_wan/$_wm, in the 10.0.0.x range the kiosk network needs. Change the modem's own LAN address (for example to 192.168.100.1), then run this again."
+	fi
 	say ""
 	say "This router is at $_lan. PisoPhone needs it at $LAN_TARGET (the kiosk network is 10.0.0.x)."
 	if [ -z "$ASSUME_YES" ]; then
@@ -104,7 +121,7 @@ move_lan() {
 		say "Moving to $LAN_TARGET in 3 seconds. Log in again with: ssh root@$LAN_TARGET   then run: sh $DIR/piso-setup.sh"
 	fi
 	# (the dropped SSH connection must not stop it half way)
-	(trap '' HUP; sleep 3; "$NETWORK_INIT" restart) > /dev/null 2>&1 &
+	(trap '' HUP; sleep 3; "$NETWORK_INIT" restart; sleep 5; bounce_ports) > /dev/null 2>&1 &
 	exit 0
 }
 
@@ -121,6 +138,7 @@ main() {
 	case "$branch" in *[!A-Za-z0-9._/-]* | "") fail "not a branch name: $branch" ;; esac
 	[ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || fail "run this as root on the router (ssh root@<router address>)"
 	command -v uci > /dev/null 2>&1 || fail "this is not an OpenWrt router (no uci command)"
+	command -v opkg > /dev/null 2>&1 || fail "this router has no opkg (OpenWrt 25.x and snapshots install packages with apk). This setup supports OpenWrt 23.05 and 24.10 (see docs/ROUTERS.md). Nothing was changed."
 
 	# a router that already has the setup updates only with what the owner's key signed (version, downgrade and staged-rollout
 	# checks included): this download's checksum comes from the same website, so it would prove nothing about who made the file

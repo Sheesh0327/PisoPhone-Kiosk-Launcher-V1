@@ -271,6 +271,19 @@ radio_band() {  # radio_band radioN -> 2g | 5g
 	case "$_c" in "" | auto) echo 2g ;; *) if [ "$_c" -le 14 ] 2> /dev/null; then echo 2g; else echo 5g; fi ;; esac
 }
 wan_ip() { ifstatus wan 2> /dev/null | jsonfilter -e '@["ipv4-address"][0].address' 2> /dev/null; }
+wan_prefix() { _p=$(ifstatus wan 2> /dev/null | jsonfilter -e '@["ipv4-address"][0].mask' 2> /dev/null); echo "${_p:-24}"; }
+# net_of <ip> <prefix>: the network number of an address, to compare ranges by their netmask
+# shellcheck disable=SC2086 # the dotted address is split into its four numbers on purpose
+net_of() { _o=$(echo "$1" | tr . ' '); set -- $_o "$2"; echo $(((($1 << 24) | ($2 << 16) | ($3 << 8) | $4) >> (32 - $5))); }
+# wan_clash: prints the router address (the LAN's or the guest network's) whose /24 the modem's network (WAN address and netmask) overlaps; fails when none
+wan_clash() {
+	_w=$(wan_ip); [ -n "$_w" ] || return 1
+	_m=$(wan_prefix); [ "$_m" -le 24 ] 2> /dev/null || _m=24   # (the router's own networks are /24: the wider of the two decides)
+	for _r in "$LAN_IP" "$GUEST_IP"; do
+		[ "$(net_of "$_w" "$_m")" = "$(net_of "$_r" "$_m")" ] && { echo "$_r"; return 0; }
+	done
+	return 1
+}
 
 preflight() {
 	step "Checking the router"
@@ -279,6 +292,7 @@ preflight() {
 		[ -f /etc/openwrt_release ] || die "this is not an OpenWrt router"
 	fi
 	command -v uci > /dev/null || die "uci not found"
+	command -v opkg > /dev/null || die "this router has no opkg (OpenWrt 25.x and snapshots install packages with apk). This setup supports OpenWrt 23.05 and 24.10 (see docs/ROUTERS.md). Nothing was changed."
 	check_arch
 	R24=""; R5=""
 	for r in $(radios); do
@@ -297,9 +311,10 @@ preflight_network() {
 	WAN=$(wan_ip)
 	[ -n "$WAN" ] || die "the router has no WAN address, and it needs internet for the first setup: plug the modem into the WAN port and wait a minute, then run this again"
 	[ "$LAN_IP" = 10.0.0.1 ] || die "the router's LAN address is $LAN_IP, but this setup expects 10.0.0.1. Run the installer, which moves it for you: wget -qO- https://pisophone.pages.dev/install.sh | sh   (or by hand: uci set network.lan.ipaddr=10.0.0.1 && uci commit network && reboot), then log in again at 10.0.0.1 and re-run. See setup/README.md."
-	case "$WAN" in
-		"${LAN_IP%.*}".*) die "the modem's network ($WAN) is in the same range as the router's LAN ($LAN_IP). Change the modem's own LAN address (for example to 192.168.100.1) and run this again" ;;
-		"${GUEST_IP%.*}".*) die "the modem's network ($WAN) uses ${GUEST_IP%.*}.x, the same as the guest network. Run with GUEST_IP=10.0.31.1 (or another free range)" ;;
+	case "$(wan_clash)" in
+		"") ;;
+		"$LAN_IP") die "the modem's network ($WAN/$(wan_prefix)) overlaps (the same range as) the router's LAN ($LAN_IP). Change the modem's own LAN address (for example to 192.168.100.1) and run this again" ;;
+		*) die "the modem's network ($WAN/$(wan_prefix)) overlaps the guest network: it uses ${GUEST_IP%.*}.x, the same as the guest network. Run with GUEST_IP=10.0.31.1 (or another free range)" ;;
 	esac
 	log "WAN address: $WAN"
 	if ! ping -c 1 -W 3 1.1.1.1 > /dev/null 2>&1 && ! ping -c 1 -W 3 8.8.8.8 > /dev/null 2>&1; then die "the router has no internet through the WAN port, and it needs internet for the first setup: check that the modem is online, then run this again"; fi
@@ -307,9 +322,18 @@ preflight_network() {
 	tip "the setup takes about 3 to 8 minutes. Keep this window open, the coin box powered on near the router, and the network cable plugged in."
 }
 
+# update_failed: opkg update failed. With a working ping the router has internet, so the release's package sources are what does not answer.
+update_failed() {
+	if ping -c 1 -W 3 1.1.1.1 > /dev/null 2>&1 || ping -c 1 -W 3 8.8.8.8 > /dev/null 2>&1; then
+		_rel=$(sed -n "s/^DISTRIB_RELEASE=['\"]\{0,1\}\([^'\"]*\).*/\1/p" "$PISO_ROOT/etc/openwrt_release" 2> /dev/null | head -n 1)
+		die "opkg update failed although the router has internet: the package sources of OpenWrt ${_rel:-this release} do not answer (an old release moved to the archive, or a vendor build). Supported releases: docs/ROUTERS.md"
+	fi
+	die "opkg update failed (no internet or DNS?)"
+}
+
 install_packages() {
 	step "Installing packages"
-	opkg update > /dev/null 2>&1 || opkg update || die "opkg update failed (no internet or DNS?)"
+	opkg update > /dev/null 2>&1 || opkg update || update_failed
 	for p in opennds curl ca-bundle jsonfilter; do
 		if ! opkg list-installed 2> /dev/null | grep -q "^$p "; then
 			log "installing $p"
@@ -746,9 +770,9 @@ box_ifname() {  # the interface of the box's hidden network (the name it has on 
 	_bs=$(uci -q get wireless.box_ap.ssid); _bs="${_bs:-$(box_net_ssid)}"
 	iwinfo 2> /dev/null | awk -v s="$_bs" '$1 != "" && /ESSID: / { gsub(/"/, "", $0); if ($0 ~ "ESSID: " s "$") print $1 }' | head -n 1
 }
-box_station() {  # MAC of a station joined to the box network
+box_station() {  # MAC of a station joined to the box network: only BOX_EXPECT_MAC when it is set (the board the setup program just wrote); "other": one that is not
 	_if=$(box_ifname); [ -n "$_if" ] || return 1
-	iwinfo "$_if" assoclist 2> /dev/null | awk 'toupper($1) ~ /^[0-9A-F][0-9A-F]:[0-9A-F:]+$/ { print toupper($1); exit }'
+	iwinfo "$_if" assoclist 2> /dev/null | awk -v w="$BOX_EXPECT_MAC" -v o="$1" 'toupper($1) ~ /^[0-9A-F][0-9A-F]:[0-9A-F:]+$/ { m = toupper($1); if (w == "" || (m == toupper(w)) != (o == "other")) { print m; exit } }'
 }
 # psk_mismatches: how often the router's Wi-Fi log says a station sent the wrong password. A box that was set up before keeps the
 # Wi-Fi password it was given; one that tries another is let in for a moment and thrown out again, which looks like "joined" if
@@ -786,12 +810,15 @@ pair_box() {
 	conf_set BOX_WIFI_ROTATED 0
 	_key="$BOX_DEFAULT_WIFI"
 	set_box_key "$_key" "$BOX_PAIR_SSID"
-	_t=0; MAC=""; _mm0=$(psk_mismatches); _refused=""; _told=""
+	_t=0; MAC=""; _mm0=$(psk_mismatches); _refused=""; _told=""; _other=""
 	while [ "$_t" -lt "$PAIR_WAIT" ]; do
 		MAC=$(box_station)
 		# a station that is listed while the log says its password is refused is not paired: it is thrown out a moment later
 		if [ -n "$MAC" ] && [ "$(psk_mismatches)" -gt "$_mm0" ]; then _refused=1; MAC=""; fi
 		[ -n "$MAC" ] && break
+		if [ -n "$BOX_EXPECT_MAC" ] && [ -z "$_other" ]; then   # a coin box that is not the one just written (another unit on the bench) is not paired
+			_other=$(box_station other); [ -z "$_other" ] || log "  another coin box ($_other) joined the box network: it is not paired. Waiting for the one this setup wrote ($BOX_EXPECT_MAC)"
+		fi
 		sleep 5; _t=$((_t + 5))
 		if [ -n "$_refused" ] && [ -z "$_told" ]; then _told=1; log "  $PSK_HINT"; fi
 		if [ $((_t % 30)) -eq 0 ]; then
@@ -820,6 +847,7 @@ pair_box() {
 		lock_box_network ""
 		[ -n "$_up" ] || die "the hidden coin box network is not on the air (check the router's 2.4 GHz radio: iwinfo), so the coin box could not join it. Then run: piso-setup pair"
 		[ -z "$_refused" ] || die "$PSK_HINT"
+		[ -z "$_other" ] || die "the coin box this setup wrote ($BOX_EXPECT_MAC) did not join the hidden $BOX_PAIR_SSID network; another one ($_other) did and was not paired. Check the power of the box that was written, then run: piso-setup pair"
 		die "the coin box did not join the hidden $BOX_PAIR_SSID network. Check that it is powered and has the current firmware (or factory reset it: it must try $BOX_PAIR_SSID), then run: piso-setup pair. Also: $PAIR_NEARBY_TIP"
 	fi
 	UNDO=""
@@ -1124,6 +1152,7 @@ check_all() {  # prints PASS/FAIL lines, returns the number of failures
 	_ck "the router looks for signed updates every hour (scheduler running)" update_timer_ok
 	_ck "the hourly update check ran within the last 3 hours" update_check_recent
 	_ck "internet through the WAN" "ping -c 1 -W 3 1.1.1.1 || ping -c 1 -W 3 8.8.8.8"
+	_ck "the modem's network does not overlap the router's own (a modem plugged in later can)" "! wan_clash"
 	agree_all
 	return $((_bad + $?))
 }
@@ -1186,7 +1215,6 @@ stage2() {
 	echo; echo "================ SUMMARY (also saved in $SUMMARY) ================"; cat "$SUMMARY"; echo "=================================================================="
 	log "A printable sheet with the passwords is in $_hp (copy it off with: scp -O root@$LAN_IP:$_hp .)"
 	finish_telegram
-	restart_router_access
 	[ "$(conf_get ROOT_PASS_SET)" = 1 ] || { log "INCOMPLETE: the router password was not set. Run: piso-setup set-password"; _f=$((_f + 1)); }
 	if [ "$_f" = 0 ]; then
 		echo "DONE all checks passed" > "$STATE"; log ""; log "SETUP COMPLETE. Read $SUMMARY (ssh root@$LAN_IP)."
@@ -1198,6 +1226,8 @@ stage2() {
 		echo "DONE with $_f failed checks (see $LOG)" > "$STATE"; log ""; log "Setup finished, but $_f check(s) failed: see above and $LOG. Run: piso-setup status"
 		tip "running the setup again is safe and continues where it stopped. If the coin box is involved, piso-setup box-diag shows where its link breaks."
 	fi
+	# SSH and LuCI pick up their addresses only after the result is out: the restart may end this session, so it runs by itself a moment later
+	(trap '' HUP; sleep 2; restart_router_access) > /dev/null 2>&1 &
 }
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -1211,6 +1241,13 @@ cmd_status() {
 	[ -x "$PORTAL_BIN" ] && "$PORTAL_BIN" ledger 2> /dev/null   # (information only: the months kept and deleted, and the lifetime total)
 	[ "$_f" = 0 ] && echo "All checks passed." || echo "$_f check(s) failed. Log: $LOG"
 	return "$_f"
+}
+
+# cmd_wan_clash: prints what overlaps and fails when the modem's network overlaps the router's own (used by the monitor and the status checks)
+cmd_wan_clash() {
+	_c=$(wan_clash) || return 0
+	echo "the modem's network ($(wan_ip)/$(wan_prefix)) overlaps the router's $_c network. Change the modem's own LAN address (for example to 192.168.100.1); until then phones, guests or the coin box may not reach the router."
+	return 1
 }
 
 cmd_wifi_name() {
@@ -2333,7 +2370,7 @@ main() {
 		case "$1" in
 			--dry-run) DRY=1 ;;
 			--yes | -y) ASSUME_YES=1 ;;
-			status | pair | summary | wifi-name | guest-port | kiosk-wifi | verify | uninstall-info | test-coin | diag | box-diag | set-password | reconcile | telegram | rotate-box-wifi | box-wifi-name | handout | console | export | import | space | forget-summary | lock-admin | lock-admin-confirm | unlock-admin | wifi-admin | update | self-update | box-update | auto-update | voucher-choice) CMD="$1"; shift; ARG="$1"; ARGS="$*"; break ;;
+			status | wan-clash | pair | summary | wifi-name | guest-port | kiosk-wifi | verify | uninstall-info | test-coin | diag | box-diag | set-password | reconcile | telegram | rotate-box-wifi | box-wifi-name | handout | console | export | import | space | forget-summary | lock-admin | lock-admin-confirm | unlock-admin | wifi-admin | update | self-update | box-update | auto-update | voucher-choice) CMD="$1"; shift; ARG="$1"; ARGS="$*"; break ;;
 			-h | --help) sed -n '2,/^# Options:/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 			*) echo "unknown option: $1 (try --help)" >&2; exit 1 ;;
 		esac
@@ -2342,6 +2379,7 @@ main() {
 	[ -z "$CMD" ] || unset SHOP_PRODUCT   # (the product is chosen by the installer only: no other command, an update included, changes it)
 	case "$CMD" in
 		status) cmd_status ;;
+		wan-clash) cmd_wan_clash ;;
 		wifi-name) cmd_wifi_name "$ARG" ;;
 		guest-port) [ "$(id -u)" = 0 ] || [ "$DRY" = 1 ] || die "run as root"; cmd_guest_port "$ARG" ;;
 		pair) cmd_pair ;;

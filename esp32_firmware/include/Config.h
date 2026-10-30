@@ -58,6 +58,7 @@ extern const char* const NVS_KEY_PORT;
 extern const char* const NVS_KEY_MINS_PER_COIN;
 extern const char* const NVS_KEY_ADMIN_PW;
 extern const char* const NVS_KEY_ADMIN_PW_CHANGED;
+extern const char* const NVS_KEY_WIFI_WAIT;
 extern const char* const NVS_KEY_SETUP_AP_PASS;
 extern const char* const NVS_KEY_SHARED_SECRET;
 extern const char* const NVS_KEY_LEGACY_KEY;
@@ -138,7 +139,12 @@ extern String kioskWifiSsid; // and the name of that network (each router has it
 extern String androidIps;
 #endif
 extern String webPassword;
-extern bool adminPwChanged;                // false until the default admin password is replaced
+extern bool adminPwChanged; // false until the default admin password is replaced
+extern bool
+    wifiWaitFirstJoin; // set by the USB setup with the Wi-Fi details, cleared when the box first gets an address (SerialProvision.h)
+extern volatile uint8_t
+    wifiLastDisconnectReason; // the last Wi-Fi disconnect reason (0 once connected): the USB hello says why the box cannot join
+void markWifiJoined();                     // the box got an address: clears the two above
 void runConfigMigrations();                // brings saved settings to this firmware's format (ConfigMigration.h)
 void loadCredentials();                    // reads the admin and setup-AP passwords (the migrations make them)
 String getSharedSecret();                  // the key box<->phone traffic uses right now

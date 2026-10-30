@@ -10,20 +10,34 @@
 #include "FirmwareVersion.h"
 #include "PaymentQueueManager.h"
 #include "SerialProvision.h"
+#include "WifiLink.h"
 #include "WebServerAuth.h"
 #include <Arduino.h>
 #include <WiFi.h>
 
+// needed / joining / done (the rule and the reason are in SerialProvision.h)
+static provision::SetupState currentSetupState() {
+    provision::BoxFacts f;
+    f.adminPasswordChanged = adminPwChanged;
+    f.wifiWait = wifiWaitFirstJoin;
+    f.lifetimeCoins = totalCoinsLifetime;
+    f.pendingPayments = getPendingPaymentCount();
+    f.unpersistedPayments = hasUnpersistedPayments();
+    return provision::setupState(f);
+}
+
 static void answerHello() {
-    bool needed = !adminPwChanged;
     bool up = WiFi.status() == WL_CONNECTED;
-    Serial.printf("PISO-BOX fw=%s mac=%s setup=%s wifi=%s ip=%s\n", PISO_FW_VERSION, macAddressStr.c_str(),
-                  needed ? "needed" : "done", up ? "up" : "down", up ? WiFi.localIP().toString().c_str() : "-");
+    Serial.printf("PISO-BOX fw=%s mac=%s setup=%s wifi=%s ip=%s why=%s\n", PISO_FW_VERSION, macAddressStr.c_str(),
+                  provision::stateName(currentSetupState()), up ? "up" : "down",
+                  up ? WiFi.localIP().toString().c_str() : "-",
+                  up ? "none" : wifilink::whyCode(wifiLastDisconnectReason));
 }
 
 // Saves the shop's Wi-Fi and the admin password, then restarts so the box joins that Wi-Fi. Box and phones share one Wi-Fi.
+// Accepted by a box that was never set up, and by one that was set up this way but never got an address and has no payment.
 static void applySetup(const String& rest) {
-    if (adminPwChanged) {
+    if (!provision::acceptsSetup(currentSetupState())) {
         Serial.println("PISO-SETUP-ERR already-set-up");
         return;
     }
@@ -52,6 +66,9 @@ static void applySetup(const String& rest) {
 #endif
                  prefs.putString(NVS_KEY_ADMIN_PW, webPassword) > 0;
     if (saved) {
+        // until the box gets an address with these details it may be given others (a mistyped password)
+        wifiWaitFirstJoin = true;
+        prefs.putBool(NVS_KEY_WIFI_WAIT, true);
         adminPwChanged = true;
         prefs.putBool(NVS_KEY_ADMIN_PW_CHANGED, true); // (last: until this is saved the box counts as not set up)
     }

@@ -53,5 +53,15 @@ router (`mipsel`) has run the program on real hardware, according to the owner's
 checked on a computer only. That is why the table marks them as it does. When you try a router, record which one it was and what `piso-setup status` said.
 A CPU that is none of the five families has no program built and is refused before anything changes; that is different from an untested family, which is allowed.
 
+**Releases and routers the setup supports (feature 046).** The setup needs **opkg**, so OpenWrt **23.05 and 24.10** (and ImmortalWrt 23.05). A router on
+OpenWrt **25.x or a snapshot** installs packages with apk: `install.sh` and the setup program stop at the start, name the release and change nothing
+(full apk support is a later feature). A release whose package sources have moved to the archive (an old 21.02 for example) gets "the package
+sources of OpenWrt <release> do not answer" instead of "no internet". **Routers someone has set up** (this list grows only when an owner reports a
+real setup with the release used; a model that is not here may still work):
+
+| Router | OpenWrt release | CPU family | Notes |
+|---|---|---|---|
+| Qihoo 360 T6M / T6GS | ImmortalWrt 23.05.0 | `mipsel_24kc` | the owner's router; the first setup in a real shop (RS17, RS36, RS61) is still to be recorded |
+
 The router's own changes are the same everywhere (setup script, console, backups, updates); only the program and its folder on the website
 differ: `mipsel` is at `https://pisophone.pages.dev/update/`, the others at `https://pisophone.pages.dev/update/<family>/`.
