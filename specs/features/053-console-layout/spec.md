@@ -17,7 +17,7 @@ and does stays the same. Serves the goal "an owner who is not a programmer can r
   icons are inline SVG).
 
 ## Constraints
-- Only the files of the page: `tools/pisoportal/src/console.html`, `console-ui.js` (version raised to 12), and the tests that name the old tab bar.
+- Only the files of the page: `tools/pisoportal/src/console.html`, `console-ui.js` (version 11 to 12, in group 2 only: tile icons, the customer count, the empty state, and day labels thinned to the chart's width; the icons carry their own width and height so the new script is safe on a page from 1.5.32), and the tests that name the old tab bar. The menu, the title and the current-screen mark live in the page's own small inline script, so any signed script, old or new, drives the layout.
   The generated router programs and setup files are rebuilt by CI on `beta`, never by hand.
 - **Every element id and every `data-t` value stays.** The page and the script are released separately (the website may hold a signed script
   older or newer than the page): the new page must work with the signed v10 script that is on the website today, and the new script must work
@@ -52,7 +52,7 @@ and does stays the same. Serves the goal "an owner who is not a programmer can r
 3. Keyboard: Tab reaches the menu, the sidebar items and the page in a sensible order; focus is visible; Esc closes the panel and puts focus back on the menu button.
 4. Light and dark: text and button contrast is at least 4.5 : 1 in both, measured by a script over the real page, not by eye.
 5. All earlier console tests pass with only selector edits for the old tab bar (`test_console`, `test_console_brand`, `test_console_frame`, `test_console_prices`: listed in `evidence/group0-findings.md`); `test_money_panel` and `test_versions_panel` (they read `#mny` and `#upd`) and `scripts/tests/test_console_ui.py` and `test_console_loader.py` pass unchanged; no behaviour assertion is weakened.
-6. Compatibility: the new page runs with the signed v10 script that is on the website today and with the built-in v11 (a loader test serves each); every screen opens and the sidebar marks the current one. If a later group has to change `console-ui.js`, the new script must also run on the page from release 1.5.32 (no sidebar).
+6. Compatibility: the new page runs with the signed v10 script that is on the website today and with the built-in v12 (a loader test serves each); every screen opens and the sidebar marks the current one. The v12 script must also run on the page from release 1.5.32 (no sidebar): it starts and every screen opens (tile icons are 16 px by their own attributes).
 7. Sign-in and session behaviour: `test_console.py`'s authentication checks pass unchanged (wrong password, no cookie, wrong origin, missing `X-Piso`).
 8. No outside request: the page loads with every host except the router itself blocked; fonts are the system fonts.
 9. Size: the page-size guard and the mipsel program budget in the plan hold, with the numbers recorded in `validation.md`.
