@@ -38,16 +38,22 @@ const CSP: &str =
     "Content-Security-Policy: default-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'; \
 img-src 'self' data:; connect-src 'self' https://pisophone.pages.dev; base-uri 'none'; form-action 'none'; frame-ancestors 'none'\r\n";
 
-/// The console page's policy: the same, and it may show the coin box's page (passed through by boxview.rs one port up) in a frame.
+/// The console page's policy: the same, and it may show the coin box's page (passed through by boxview.rs one port up) in a frame, and
+/// its own branding preview.
 fn page_csp(req: &Request, console_port: u16) -> String {
     match req.header("host").and_then(crate::boxview::host_of) {
         Some(h) => CSP.replace(
             "; frame-ancestors 'none'",
-            &format!("; frame-src http://{}:{}; frame-ancestors 'none'", h, console_port.saturating_add(1)),
+            &format!("; frame-src http://{}:{} 'self'; frame-ancestors 'none'", h, console_port.saturating_add(1)),
         ),
-        None => CSP.to_string(),
+        None => CSP.replace("; frame-ancestors 'none'", "; frame-src 'self'; frame-ancestors 'none'"),
     }
 }
+
+/// The branding preview's own policy: it may run its own script and show pictures from here, and it may not connect anywhere at all, so
+/// it cannot reach the coin box or anything else. Only the console page may frame it.
+const PREVIEW_CSP: &str = "Content-Security-Policy: default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src 'self'; \
+connect-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'self'\r\nX-Content-Type-Options: nosniff\r\nCache-Control: no-store\r\n";
 
 #[derive(Clone, Copy)]
 struct Sample {
@@ -557,8 +563,17 @@ fn pricing_json(core: &Core) -> String {
     )
 }
 
+/// The most a request body may be: the little forms 4 KB, the branding form 24 KB (twelve texts, escaped), a brand pack its own file limit.
+fn body_limit(path: &str) -> usize {
+    match path {
+        "/api/brand" => 24 * 1024,
+        "/api/brand/pack" => crate::brandpack::MAX_FILE + 1,
+        _ => 4096,
+    }
+}
+
 fn body_of(req: &Request, conn: &mut Incoming) -> String {
-    let len: usize = req.header("content-length").and_then(|v| v.parse().ok()).unwrap_or(0).min(4096);
+    let len: usize = req.header("content-length").and_then(|v| v.parse().ok()).unwrap_or(0).min(body_limit(&req.path));
     let mut buf = vec![0u8; len];
     let mut got = 0;
     while got < len {
@@ -610,6 +625,31 @@ fn handle(c: &Console, req: Request, mut conn: Incoming) {
         }
         ("GET" | "HEAD", "/mascot.png") => {
             respond_bytes(&mut conn.s, "200 OK", "image/png", BRAND_MASCOT, "Cache-Control: public, max-age=86400\r\n", !head_only)
+        }
+        ("GET" | "HEAD", "/brand/preview" | "/brand/logo" | "/brand/picture") if !c.session_ok(&req) => {
+            respond(&mut conn.s, "401 Unauthorized", "text/plain", "Sign in to the console first.", "Cache-Control: no-store\r\n")
+        }
+        ("GET" | "HEAD", "/brand/preview") => {
+            let draft = crate::brand::editing(&c.core.cfg.data_dir);
+            match crate::http::preview_page(&c.core, &draft) {
+                Ok(page) => respond_bytes(&mut conn.s, "200 OK", "text/html; charset=utf-8", page.as_bytes(), PREVIEW_CSP, !head_only),
+                Err(why) => respond(&mut conn.s, "503 Service Unavailable", "text/plain", why, "Cache-Control: no-store\r\n"),
+            }
+        }
+        ("GET" | "HEAD", p @ ("/brand/logo" | "/brand/picture")) => {
+            // (the installed pictures, whether or not the branding is published: the owner sees them before customers do)
+            let slot = if p == "/brand/logo" { crate::brandpack::Slot::Logo } else { crate::brandpack::Slot::Picture };
+            match crate::brandpack::read_image(&c.core.cfg.data_dir, slot) {
+                Some((kind, bytes)) => respond_bytes(
+                    &mut conn.s,
+                    "200 OK",
+                    kind.mime(),
+                    &bytes,
+                    "Cache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\n",
+                    !head_only,
+                ),
+                None => respond(&mut conn.s, "404 Not Found", "text/plain", "No picture", "Cache-Control: no-store\r\n"),
+            }
         }
         ("POST", "/api/login") => {
             if req.header("x-piso") != Some("1") || !same_origin(&req) {
@@ -738,6 +778,40 @@ fn handle(c: &Console, req: Request, mut conn: Incoming) {
                     let mut out = settings_json(&c.core);
                     out.insert_str(1, "\"ok\":true,");
                     json(&mut conn, "200 OK", &out, "")
+                }
+                ("GET", "/api/brand") => json(&mut conn, "200 OK", &crate::brandconsole::editor_json(&c.core.cfg.data_dir), ""),
+                ("POST", "/api/brand") => match crate::brandconsole::save_draft(&c.core.cfg.data_dir, &body) {
+                    Ok(notes) => {
+                        let notes = notes.iter().map(|n| format!("\"{}\"", json_esc(n))).collect::<Vec<_>>().join(",");
+                        json(&mut conn, "200 OK", &format!("{{\"ok\":true,\"notes\":[{}]}}", notes), "")
+                    }
+                    Err(why) => {
+                        json(&mut conn, "400 Bad Request", &format!("{{\"error\":\"BAD_FORM\",\"why\":\"{}\"}}", json_esc(&why)), "")
+                    }
+                },
+                ("POST", "/api/brand/publish") => match crate::brand::publish(&c.core.cfg.data_dir) {
+                    Ok(()) => json(&mut conn, "200 OK", "{\"ok\":true}", ""),
+                    Err(why) => {
+                        json(&mut conn, "400 Bad Request", &format!("{{\"error\":\"CANNOT_PUBLISH\",\"why\":\"{}\"}}", json_esc(&why)), "")
+                    }
+                },
+                ("POST", "/api/brand/restore") => match crate::brand::restore_default(&c.core.cfg.data_dir) {
+                    Ok(()) => json(&mut conn, "200 OK", "{\"ok\":true}", ""),
+                    Err(_) => json(&mut conn, "500 Internal Server Error", "{\"error\":\"IO\"}", ""),
+                },
+                ("POST", "/api/brand/pack") => {
+                    // (the file is checked against the owner's key: a shop owner cannot make a pack, only install one the owner signed)
+                    match crate::brandpack::install(&c.core.cfg.data_dir, &crate::update::owner_key(), body.as_bytes()) {
+                        Ok(s) => json(
+                            &mut conn,
+                            "200 OK",
+                            &format!("{{\"ok\":true,\"logo_bytes\":{},\"picture_bytes\":{}}}", s.logo_bytes, s.picture_bytes),
+                            "",
+                        ),
+                        Err(why) => {
+                            json(&mut conn, "400 Bad Request", &format!("{{\"error\":\"BAD_PACK\",\"why\":\"{}\"}}", json_esc(&why)), "")
+                        }
+                    }
                 }
                 ("GET", "/api/pricing") => json(&mut conn, "200 OK", &pricing_json(&c.core), ""),
                 ("POST", "/api/pricing") => {

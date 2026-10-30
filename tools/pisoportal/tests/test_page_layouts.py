@@ -59,7 +59,12 @@ CHECK = """() => {
   const seen = e => !!e && !!(e.offsetWidth || e.offsetHeight);
   const go = document.getElementById('go');
   const r = go.getBoundingClientRect();
-  return {w: document.documentElement.scrollWidth, go: seen(go), pk: seen(document.querySelector('#pk .tiers')), seg: seen(document.querySelector('#pk .seg')),
+  const lb = document.querySelector('.lang').getBoundingClientRect();
+  const over = [...document.querySelectorAll('header b,header span,header em,header img')].filter(seen).some(e => {
+    const rs = e.tagName === 'IMG' ? [e.getBoundingClientRect()] : (() => { const g = document.createRange(); g.selectNodeContents(e); return [...g.getClientRects()]; })();
+    return rs.some(r => r.width && r.left < lb.right && r.right > lb.left && r.top < lb.bottom && r.bottom > lb.top);
+  });
+  return {over, w: document.documentElement.scrollWidth, go: seen(go), pk: seen(document.querySelector('#pk .tiers')), seg: seen(document.querySelector('#pk .seg')),
           credit: seen(document.querySelector('.credit')), name: seen(document.querySelector('header b')), lang: seen(document.querySelector('.lang')),
           top: document.elementFromPoint(r.left + r.width / 2, Math.min(r.top + r.height / 2, innerHeight - 2))};
 }"""
@@ -126,6 +131,7 @@ try:
                     c = pg.evaluate(CHECK)
                     check(c["go"] and c["pk"] and c["seg"], f"{what}: coin button, plan tabs and price list are on the page")
                     check(c["credit"] and c["name"] and c["lang"], f"{what}: the credit, the name and the language button show")
+                    check(not c["over"], f"{what}: the language button covers none of the heading")
                     check(c["w"] <= 360, f"{what}: nothing spills sideways ({c['w']} px)")
                     pg.click("#go", timeout=3000)
                     pg.wait_for_timeout(150)

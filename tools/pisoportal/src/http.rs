@@ -104,23 +104,41 @@ pub(crate) fn raw_page() -> String {
     squeeze(include_str!("page.html")).replace("%CSS%", &squeeze(include_str!("base.css")))
 }
 
-pub fn build_page(core: &Core) -> String {
-    let cfg = &core.cfg;
-    let pr = core.pricing();
-    let mut page = raw_page();
-    if let Some(b) = brand::load(&cfg.data_dir, brand::Which::Published) {
-        let has = |s| read_image(&cfg.data_dir, s).is_some();
-        match brandpage::decorate(&page, &b, has(brandpack::Slot::Logo), has(brandpack::Slot::Picture)) {
-            Ok(branded) => page = branded,
-            Err(why) => log!("branding not shown: {}", why),
-        }
-    }
+/// Which pictures a pack installed (whether or not the branding is published).
+fn pictures(dir: &str) -> (bool, bool) {
+    (read_image(dir, brandpack::Slot::Logo).is_some(), read_image(dir, brandpack::Slot::Picture).is_some())
+}
+
+/// Prices and settings filled into the page.
+fn fill(core: &Core, page: String) -> String {
+    let (cfg, pr) = (&core.cfg, core.pricing());
     page.replace("%TIERS_H%", &tier_rows(&pr, Plan::Hyper))
         .replace("%TIERS_E%", &tier_rows(&pr, Plan::Endurance))
         .replace("%E_DOWN%", &(pr.endurance_down / 1000).to_string())
         .replace("%E_UP%", &(pr.endurance_up / 1000).to_string())
         .replace("%FAIR_GB%", &(cfg.fair_kb / 1024 / 1024).to_string())
         .replace("%FIRST%", &cfg.first_wait.to_string())
+}
+
+/// The page guests get: today's, or the shop's published branding on it.
+pub fn build_page(core: &Core) -> String {
+    let dir = &core.cfg.data_dir;
+    let mut page = raw_page();
+    if let Some(b) = brand::load(dir, brand::Which::Published) {
+        let (logo, picture) = pictures(dir);
+        match brandpage::decorate(&page, &b, logo, picture) {
+            Ok(branded) => page = branded,
+            Err(why) => log!("branding not shown: {}", why),
+        }
+    }
+    fill(core, page)
+}
+
+/// The console's preview of a branding (the draft being edited): the same page, with no way to reach the coin box.
+pub fn preview_page(core: &Core, b: &brand::Brand) -> Result<String, &'static str> {
+    let (logo, picture) = pictures(&core.cfg.data_dir);
+    let branded = brandpage::decorate(&raw_page(), b, logo, picture)?;
+    Ok(fill(core, brandpage::inert(&branded)?))
 }
 
 // ---- requests -------------------------------------------------------------------------------------------------------------------

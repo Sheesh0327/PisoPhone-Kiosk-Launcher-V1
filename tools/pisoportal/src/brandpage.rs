@@ -208,6 +208,27 @@ pub fn decorate(page: &str, b: &Brand, logo: bool, picture: bool) -> Result<Stri
     Ok(p)
 }
 
+const CONNECT_FN: &str = "function connect(){";
+const START: &str = r#"show("conn");connect();setInterval(beat,4e3);setTimeout(function(){if(!ws||ws.readyState!==1){put("conn","Still connecting. Check you are on the TechNet Wi-Fi.");el("rl").style.display="block"}},8e3);"#;
+
+/// Stops every press, tap, key and script click on the page's body before it reaches a button (the language button, in the header, still
+/// works), and takes the body out of the tab order.
+const NO_PRESS: &str = r#"document.addEventListener("click",function(e){if(e.target.closest&&e.target.closest(".w")){e.stopPropagation();e.preventDefault()}},true);document.addEventListener("DOMContentLoaded",function(){document.querySelector(".w").setAttribute("inert","")})"#;
+
+/// The page for the console's preview: the idle view only, with no way to talk to the coin box. The page never connects (the start-up call is
+/// removed and `connect` itself does nothing, because the page also asks again whenever it is shown), and nothing on it can be pressed except
+/// the language button. The console also sends it with a policy that forbids any connection. A page that has changed shape is an error.
+pub fn inert(page: &str) -> Result<String, &'static str> {
+    if [CONNECT_FN, START, "</head>"].iter().any(|a| page.matches(a).count() != 1) {
+        return Err("the page has changed and the preview can no longer be made safe");
+    }
+    Ok(page.replacen(CONNECT_FN, "function connect(){return;", 1).replacen(START, r#"show("idle");"#, 1).replacen(
+        "</head>",
+        &format!("<style>.w{{pointer-events:none}}</style><script>{}</script></head>", NO_PRESS),
+        1,
+    ))
+}
+
 #[cfg(test)]
 #[allow(clippy::field_reassign_with_default)] // the tests build a Brand field by field, as the console will
 mod tests {
@@ -501,5 +522,31 @@ mod tests {
         );
         assert!(page.contains("Magpasok ng Barya"), "the Filipino wording travels with the page");
         assert!(!plain.contains("pp-lang") && !plain.contains("Magpasok"));
+    }
+    #[test]
+    fn f049_the_preview_page_cannot_connect_or_start_a_coin_window() {
+        let branded = decorate(&base(), &full(), false, false).unwrap();
+        for page in [branded.as_str(), base().as_str()] {
+            let v = inert(page).unwrap();
+            assert!(!v.contains("connect();setInterval(beat"), "the start-up connection is gone");
+            assert!(
+                v.contains("function connect(){return;"),
+                "and so is every later one (the page asks again when it is shown or comes back online)"
+            );
+            assert!(
+                v.contains(r#"show("idle");"#) && v.contains(".w{pointer-events:none}"),
+                "it shows the idle view and nothing on it can be pressed"
+            );
+            assert!(
+                v.contains(r#"e.target.closest(".w")"#) && v.contains("stopPropagation") && v.contains(r#"setAttribute("inert","")"#),
+                "not by keyboard or script either"
+            );
+            assert!(v.contains(r#"id="go""#), "the coin button is there to look at");
+        }
+        assert!(
+            inert(&branded.replace("function connect(){", "function  connect(){")).is_err(),
+            "a page that changed shape is not shown half neutralised"
+        );
+        assert!(inert(&branded.replace("connect();setInterval(beat", "connect(); setInterval(beat")).is_err());
     }
 }

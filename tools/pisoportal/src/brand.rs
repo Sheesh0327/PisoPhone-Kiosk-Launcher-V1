@@ -422,6 +422,14 @@ pub fn load(dir: &str, w: Which) -> Option<Brand> {
     (!b.is_empty()).then_some(b)
 }
 
+/// What the console editor starts from: the draft when there is one (even an emptied one), else the live branding, else nothing.
+pub fn editing(dir: &str) -> Brand {
+    match fs::read(path(dir, Which::Draft)) {
+        Ok(bytes) => Brand::from_text(&String::from_utf8_lossy(&bytes)),
+        Err(_) => load(dir, Which::Published).unwrap_or_default(),
+    }
+}
+
 /// Saves a cleaned copy (never what was typed, unchecked).
 pub fn save(dir: &str, w: Which, b: &Brand) -> io::Result<()> {
     write_atomic(&path(dir, w), b.cleaned().0.to_text().as_bytes())
