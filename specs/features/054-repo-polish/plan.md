@@ -56,7 +56,7 @@ Never open: `esp32_firmware/include/WebAssets.h`, `setup/piso-setup*.sh`, `websi
 - [x] 8. **Naming audit (S8).** Script: per folder, list file names whose style differs from the folder majority (exclude generated
   paths). Put the table in `validation.md` with, for each, `git grep` hit count and decision (rename / keep: read by X). Rename only
   docs-only files with zero readers, fixing links in the same commit. Expect few or none. Commit.
-- [ ] 9. **`CHANGELOG.md` header (S9) and `docs/ARCHITECTURE.md` (S10).** Header: purpose, newest first, version scheme (app build,
+- [x] 9. **`CHANGELOG.md` header (S9) and `docs/ARCHITECTURE.md` (S10).** Header: purpose, newest first, version scheme (app build,
   `PISO_FW_VERSION`, `setup/RELEASE`). ARCHITECTURE: `grep -n -i "wheel\|mini-game\|minigame"`, fix stale lines; add one Mermaid
   diagram (coin box, phones, router/openNDS/pisoportal, website feeds, owner tools) if none exists. Commit.
 - [ ] 10. **Validate.** Run success criteria 1 to 9; paste evidence in `validation.md` (last lines of each command, the diff
