@@ -73,4 +73,4 @@ Run all with the commands in `CONTRIBUTING.md`; CI runs them for the parts a cha
 
 ## See also
 `CONTRIBUTING.md` (the check commands per area), `docs/KEYS.md` (the owner key), `docs/RELEASE.md` (what only the owner does),
-`tools/README.md`.
+`tools/README.md`, `docs/README.md` (the index of all documents).

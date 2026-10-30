@@ -39,5 +39,5 @@ commands, and how CI installs ktlint and detekt, are in `CONTRIBUTING.md` and `.
 `schemas/*` is written by Room during the Gradle build. Do not edit it by hand. CI fails if a committed snapshot changes (`build-apk.yml`).
 
 ## See also
-`docs/ARCHITECTURE.md` (payment flow, the phone's session), `docs/REFERENCE.md` (phone slots and licences), `protocol/README.md`
+`docs/ARCHITECTURE.md` (payment flow, the phone's session), `docs/REFERENCE.md` (phone slots and license keys), `protocol/README.md`
 (the message format shared with the coin box), `docs/design/GUI_SPEC_PISOPHONE_KIDS.md` (the kiosk screens).
