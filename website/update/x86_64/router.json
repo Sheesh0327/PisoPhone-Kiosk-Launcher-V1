@@ -2,7 +2,7 @@
   "version": "1.5.31",
   "sha256": "6f436d98fe1c39bb08a05753673889e21eef8885101c66da6edc3080e922a67a",
   "size": 1677490,
-  "rollout": 0,
-  "changelog": "Router software release 1.5.31",
-  "sig": "MEUCIQD8r7vfQ0R8a9wqBGtIBYuv/rZRgGiozI7NZev3ZRkK9gIgGS6kqh6EpWnpx7dPwq1x++djgdVHBebVn6iZq2cXioA="
+  "rollout": 100,
+  "changelog": "Customizable themes and branding.",
+  "sig": "MEUCIFs8ClE0feeyOcm2gfbT0J1nKLHfqCqKcha6SlryDo0iAiEA85e4X8kiIqU/n3mAv+Xc9n2ZWeumMGZ0QRSh8VGZTc8="
 }
