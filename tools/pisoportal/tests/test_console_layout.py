@@ -30,7 +30,7 @@ if built.returncode != 0:
     print("FAIL: the test build of the router program failed")
     sys.exit(1)
 os.environ["PISOPORTAL"] = os.path.join(target, "release", "pisoportal")
-from harness import Env, check, finish
+from harness import Env, check, finish, legacy_batch
 
 CP = 18720
 SCREENS = [("over", "Overview"), ("cli", "Customers"), ("ph", "Rental phones"), ("sales", "Sales"), ("vch", "Vouchers"), ("brand", "Branding"), ("set", "Settings")]
@@ -190,6 +190,56 @@ try:
             check(pg.evaluate("getComputedStyle(document.querySelector('#shd th')).position") == "sticky", f"{w} px: Sales: the table header stays in view")
             hh = [pg.locator(x).bounding_box()["height"] for x in ("#rng", "#csv")]
             check(min(hh) >= 40, f"{w} px: Sales: the period list and the CSV button are 40 px or more: {hh}")
+            ctx.close()
+
+        # ---- Vouchers, Settings with Prices, Rental phones and Branding (group 3) --------------------------------------------------------------
+        for w, h in ((1280, 800), (390, 844)):
+            ctx, pg = sign_in(br, w, h)
+            for f in ("voucher_batches.txt", "voucher_codes.txt"):
+                if os.path.exists(f"{env.data}/{f}"):
+                    os.remove(f"{env.data}/{f}")
+            open_screen(pg, w, "vch")
+            e = pg.locator("#vl2 .empty")
+            check(e.count() == 1 and "No vouchers yet" in e.inner_text() and e.is_visible(), f"{w} px: Vouchers: with none issued there is a clear empty state")
+            legacy_batch(env.data, 60, 10, "hyper", 4, 30)
+            open_screen(pg, w, "cli")
+            open_screen(pg, w, "vch")
+            pg.wait_for_selector("#vl2 button[data-v]", timeout=8000)
+            bb = pg.eval_on_selector_all("#vl2 button.b", "bs => bs.map(b => { const r=b.getBoundingClientRect(); return [Math.round(r.right), Math.round(r.height)] })")
+            check(bb and all(r <= w for r, _ in bb) and all(hh >= (40 if w < 900 else 32) for _, hh in bb), f"{w} px: Vouchers: the Cancel button is fully on the screen and tall enough: {bb}")
+            cells = pg.eval_on_selector_all("#vl2 tr:first-child td", "ts => ts.filter(t => t.offsetParent).map(t => Math.round(t.getBoundingClientRect().right))")
+            check(cells and max(cells) <= w, f"{w} px: Vouchers: every part of a voucher row is on the screen: {cells}")
+            check(sideways(pg) <= 0, f"{w} px: Vouchers: no sideways scrolling")
+
+            open_screen(pg, w, "set")
+            pg.wait_for_selector("#rows-h input", timeout=8000)
+            sw = [pg.locator(x).bounding_box() for x in ("#vcs", "#fss")]
+            check(all(b and b["x"] + b["width"] <= w and b["width"] >= (300 if w < 900 else 400) for b in sw), f"{w} px: Settings: the two choices are wide enough to read: {[round(b['width']) for b in sw]}")
+            pb = pg.eval_on_selector_all("#prc button, #prc input", "es => es.filter(e => e.offsetParent).map(e => { const r=e.getBoundingClientRect(); return [Math.round(r.right), Math.round(r.height), e.tagName === 'INPUT' && e.scrollWidth > e.clientWidth + 1, e.tagName] })")
+            check(all(r <= w for r, _, _, _ in pb), f"{w} px: Prices: every field and button is on the screen")
+            check(not any(c for _, _, c, _ in pb), f"{w} px: Prices: no number is cut off inside its field")
+            check(all(hh >= (36 if t == "INPUT" else 32) for _, hh, _, t in pb), f"{w} px: Prices: fields are 36 px or more and buttons 32 px or more")
+            if w < 900:
+                check(pg.locator("#prs").bounding_box()["height"] >= 40 and all(hh >= 40 for _, hh, _, _ in pb), f"{w} px: Prices: touch targets are 40 px or more")
+            check(sideways(pg) <= 0, f"{w} px: Settings: no sideways scrolling")
+
+            open_screen(pg, w, "ph")
+            fr = pg.locator("#boxf").bounding_box()
+            check(fr["x"] >= 0 and fr["x"] + fr["width"] <= w and fr["height"] >= 400, f"{w} px: Rental phones: the coin box page fits the screen: {fr}")
+            check(sideways(pg) <= 0, f"{w} px: Rental phones: no sideways scrolling")
+            ctx.close()
+        for w, h in ((1280, 900), (1000, 800), (390, 844)):
+            ctx, pg = sign_in(br, w, h)
+            open_screen(pg, w, "brand")
+            pg.wait_for_selector("#bpal button", timeout=8000)
+            fb, pv = pg.locator("#bform").bounding_box(), pg.locator("#bprev").bounding_box()
+            check(fb["width"] >= (300 if w < 500 else 480), f"{w} px: Branding: the form is wide enough: {fb['width']:.0f}")
+            check(sideways(pg) <= 0, f"{w} px: Branding: no sideways scrolling")
+            if w >= 1180:
+                check(pv["x"] >= fb["x"] + fb["width"], f"{w} px: Branding: the preview is beside the form")
+            else:
+                check(pv["y"] >= fb["y"] + fb["height"] - 1, f"{w} px: Branding: the preview is below the form (not squeezed beside it)")
+            check(pg.locator("#bpub").bounding_box()["height"] >= 40, f"{w} px: Branding: Publish is 40 px or more")
             ctx.close()
         br.close()
 finally:
