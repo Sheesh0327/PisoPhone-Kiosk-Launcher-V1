@@ -54,7 +54,7 @@ sh esp32_firmware/host_tests/run.sh                    # pure-logic tests, no bo
 (cd esp32_firmware && pio run -e esp32-c3-dev)
 
 # Router program, router add-on and setup program
-(cd tools/pisoportal && cargo test --locked --release && python3 tests/test_flow.py)
+(cd tools/pisoportal && cargo build --locked --release && cargo test --locked --release && python3 tests/test_flow.py)
 python3 router/tests/test_setup.py
 python3 tools/build_piso_setup.py --check
 

@@ -59,7 +59,7 @@ Never open: `esp32_firmware/include/WebAssets.h`, `setup/piso-setup*.sh`, `websi
 - [x] 9. **`CHANGELOG.md` header (S9) and `docs/ARCHITECTURE.md` (S10).** Header: purpose, newest first, version scheme (app build,
   `PISO_FW_VERSION`, `setup/RELEASE`). ARCHITECTURE: `grep -n -i "wheel\|mini-game\|minigame"`, fix stale lines; add one Mermaid
   diagram (coin box, phones, router/openNDS/pisoportal, website feeds, owner tools) if none exists. Commit.
-- [ ] 10. **Validate.** Run success criteria 1 to 9; paste evidence in `validation.md` (last lines of each command, the diff
+- [x] 10. **Validate.** Run success criteria 1 to 9; paste evidence in `validation.md` (last lines of each command, the diff
   name-status summary, the command list of criterion 7 with how each was checked). Note Q2 (repo rename) as a recommendation.
   Update `specs/STATUS.md` with a row for 054. Stop; the owner decides on merge (no PR unless asked).
 

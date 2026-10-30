@@ -22,7 +22,7 @@ The portal program is built by CI (`router-program.yml`); see `pisoportal/README
 python3 tools/build_piso_setup.py --check      # fails when a committed generated file is out of date
 python3 tools/checklist/test_apply.py
 python3 tools/checklist/test_page.py           # a browser; needs: pip install playwright
-cd tools/pisoportal && cargo test              # and the other commands in pisoportal/README.md
+cd tools/pisoportal && cargo test              # and the other commands in pisoportal/README.md (build first for the Python tests)
 ```
 CI runs the setup check in the `pisoportal` job of `quality.yml`, and the checklist tests in `checklist.yml` when
 `docs/REAL_WORLD_TESTING.md` or `tools/checklist/` changes.

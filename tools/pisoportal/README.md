@@ -62,6 +62,7 @@ regenerates `setup/piso-setup.sh` (which embeds that binary) and commits both to
 cargo fmt --check
 cargo clippy --locked --release --all-targets -- -D warnings
 cargo test
+cargo build --release             # the Python tests below run target/release/pisoportal
 python3 tests/test_flow.py        # whole flow against a fake box and fake ndsctl
 python3 tests/test_browser.py     # real Chromium (needs: pip install playwright)
 ```

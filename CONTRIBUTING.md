@@ -35,7 +35,7 @@ Run the checks for every area you touched:
 | ESP32 firmware | `cd esp32_firmware/host_tests && ./run.sh`, `pio run -e esp32-c3-dev && pio run -e esp32dev-dev` (from `esp32_firmware/`), `clang-format --dry-run --Werror <files>` |
 | Box <-> phone protocol | `python3 protocol/gen_vectors.py && git diff --exit-code protocol` |
 | Dashboard files (`esp32_firmware/web/`) | `python3 scripts/embed_web.py` then `python3 scripts/embed_web.py --check` |
-| Router program (`tools/pisoportal/`) | in that folder: `cargo fmt --check`, `cargo clippy --locked --release --all-targets -- -D warnings`, `cargo test --locked --release`, `python3 tests/test_flow.py` (CI runs the other `tests/test_*.py` too) |
+| Router program (`tools/pisoportal/`) | in that folder: `cargo fmt --check`, `cargo clippy --locked --release --all-targets -- -D warnings`, `cargo build --locked --release`, `cargo test --locked --release`, `python3 tests/test_flow.py` (the Python tests run the release build; CI runs the other `tests/test_*.py` too) |
 | Router add-on and setup | `python3 router/tests/test_setup.py`, `test_pisophone_setup.py`, `test_monitor.py`, `test_setup_web.py`, `test_setup_tools.py` (same folder); for the setup program also `test_setup_phone_web.py` and `test_phone_only.py`; `python3 tools/build_piso_setup.py --check` |
 | Website | `node scripts/tests/test_provisioning.js`, `python3 scripts/tests/test_site_page.py` |
 | Always | `bash scripts/check_security_rules.sh`, `python3 scripts/check_links.py` (no document may link to a file that is gone), `python3 scripts/check_vendored.py` |

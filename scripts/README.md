@@ -10,7 +10,7 @@ Run everything from the repository root. **Find yours by who runs it and when**,
 
 | I want to... | Run this |
 |---|---|
-| **Check a release before merging `beta` into `main`** | `python3 scripts/verify_release.py` (0 FAIL means the feeds are signed and installable) |
+| **Check a release before merging into `main`** | `python3 scripts/verify_release.py` (0 FAIL means the feeds are signed and installable) |
 | Check the repository's own rules | `sh scripts/check_security_rules.sh` |
 | Record results of a real-world test session | `python3 tools/checklist/build.py out.html` (the tickable page), then `python3 tools/checklist/apply.py results.json` (writes the results into `docs/REAL_WORLD_TESTING.md`) |
 | Make my signing key (once) | `python3 scripts/make_owner_keys.py` |

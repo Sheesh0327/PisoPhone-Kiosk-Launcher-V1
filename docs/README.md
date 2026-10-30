@@ -22,7 +22,7 @@ are on the website: <https://pisophone.pages.dev/start/>. What the product is an
 
 ## Releases and keys
 - [KEYS.md](KEYS.md): the owner key that signs firmware and router updates, signed firmware updates, per-box secrets.
-- [RELEASE.md](RELEASE.md): the release checklist, from `beta` to `main` to the shops.
+- [RELEASE.md](RELEASE.md): the release checklist, including the steps only the owner can take.
 - [DEPLOY.md](DEPLOY.md): first run of one box and a phone or two, the owner settings on a phone, what CI does, where APKs and firmware are published.
 - [../CHANGELOG.md](../CHANGELOG.md): what changed for people who run shops, newest first.
 - [../specs/RELEASE_STATE.md](../specs/RELEASE_STATE.md): what is live now and what has never run on real hardware.
