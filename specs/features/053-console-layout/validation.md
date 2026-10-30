@@ -23,6 +23,12 @@ Pictures: `evidence/before/` (48, group 0) and `evidence/after/` (52: the same, 
 - [x] Python: `ruff check` on the new test is clean; the older touched files have the same findings as on `main` (`test_console.py` 29); `mypy --ignore-missing-imports`: the new test is clean, the older two have the same 9 findings as on `main`. `pytest` is not installed here and these tests are scripts that print `N checks, M failures`, not pytest files
 - [x] Generated files: none touched (`tools/pisoportal/bin/*` and the setup files are rebuilt by CI on `beta`)
 
+## Beta rebuild (2026-10-30, after the layout was pushed to `beta`)
+- CI built all five router programs on `beta` (`router-program.yml`), then "ci: rebuilt the setup files around the router programs" (`3b98f5b`).
+- The mipsel program inside the committed `setup/piso-setup.sh` was decoded and compared with `tools/pisoportal/bin/pisoportal-mipsel`: identical (1,117,028 bytes, sha256 `616e37c9e22b4d4b...`). It contains the new console (`id="side"`, `id="mn"`, `PISO_UI_VERSION = 12`, no version 11 string, the dialog margin rule).
+- Real sizes replace the estimates in criterion 9: **mipsel program 1,117,028 bytes (1,091 KB), unchanged** (the binary rounds up to a page boundary, so the +8.9 KB of text did not change its size; x86_64 grew from 1,110,896 to 1,119,088); **installers**: mipsel 1,686,330 bytes (1,647 KB), x86_64 1,689,115 (1,650 KB), both under the 1,700 KB budget.
+- Code quality on `beta`: run 706 failed `cargo fmt --check` (a test I had not formatted); run 707 failed one layout check on the CI machine's wider font (the confirmation dialog took the whole phone width); both fixed and logged in the ledger. The final run is on the head that is merged.
+
 ## Not tested
 - **Everything on a real router, phone and browser** (RS64). The pictures come from desktop Chromium; iPhone Safari and Android Chrome have not seen the page.
 - **Visible keyboard focus** on the new items (not measured, see criterion 3).
