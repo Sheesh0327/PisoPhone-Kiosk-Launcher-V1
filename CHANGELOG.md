@@ -4,7 +4,7 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: the CI build number, shown as hundreds.tens.ones, build 466 is 4.6.6; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
-- Router (next release, not yet raised), **a new look for the router console: a menu down the left, in groups (feature 053).** Not tried on a real router or phone yet (hardware check RS64).
+- Router 1.5.33, **a new look for the router console: a menu down the left, in groups (feature 053).** Not tried on a real router or phone yet (hardware check RS64).
   - **The screens are in a list on the left**, in three groups: Overview (Overview, Sales), Management (Customers, Rental phones or Coin box, Vouchers) and System (Branding, Settings). Advanced and Sign out are at the bottom of the list. The top bar names the screen you are on and has the light/dark button. Before, seven tabs sat in one row.
   - **On a phone** the list opens from a menu button at the top left and closes when you pick a screen, tap outside or press Esc. Buttons are at least 40 px tall.
   - **Customers, Vouchers and Prices fit a phone.** Each customer or voucher is one row with its button on the screen (the Disconnect button used to be cut off at the right edge); a price line no longer cuts a number off; the Sales day labels and 90-day chart no longer make the page scroll sideways.
