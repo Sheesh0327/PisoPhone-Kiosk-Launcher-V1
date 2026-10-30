@@ -1,6 +1,6 @@
 # Feature 053: the admin console as a professional product: grouped sidebar, sleek modern look
 
-Status: **draft (owner request 2026-10-30, waiting for approval)**   Branch: `feat/053-console-layout`   Area: router (the console page is built into the portal program)
+Status: **approved 2026-10-30 (owner answered the five decisions; no group started)**   Branch: `feat/053-console-layout`   Area: router (the console page is built into the portal program)
 Backlog rows: owner request after seeing a competitor's console; no findings row   Release: router (raises `setup/RELEASE`; goes through `beta`, `CLAUDE.md` section 5)
 
 ## Intent
@@ -67,8 +67,9 @@ and does stays the same. Serves the goal "an owner who is not a programmer can r
 - Raising the router release above 0% (the owner's step, `CLAUDE.md` section 5).
 
 ## Owner decisions
-1. **Groups and names.** My proposal: Overview (Overview, Sales), Management (Customers, Rental phones / Coin box, Vouchers), System (Branding, Settings). The competitor also has "Network"; there is nothing to put there today, so I leave it out until a feature gives it content. Agree, or other names or grouping?
-2. **Phone navigation.** Menu button with a side panel (my recommendation: scales to more screens, never clips), or a bottom bar with the four most used and a "More" item?
-3. **Look.** Keep the calm black-and-white look that is there now (my recommendation, with better spacing and icons), or add one brand colour (the teal already in the page) for the current screen, links and the Overview tiles?
-4. **Prices.** Keep Prices under Settings for now (this spec), or make Prices its own screen later?
-5. **Light or dark by default.** Keep following the device with the toggle (as today)?
+Answered by the owner on 2026-10-30; the proposal above stands unchanged.
+1. **Groups and names:** Overview (Overview, Sales), Management (Customers, Rental phones / Coin box, Vouchers), System (Branding, Settings). No Network group until a feature gives it content.
+2. **Phone navigation:** a menu button that opens a side panel.
+3. **Look:** keep the calm black-and-white look; better spacing, cards and icons, no new colour.
+4. **Prices:** stay under Settings for now.
+5. **Light or dark:** follows the device, with the toggle, as today.
