@@ -1,6 +1,6 @@
 # Feature 054: the console says whether the speed limits are really enforced
 
-Status: **parked 2026-10-30: the owner will check the router by hand first (Customers screen, "Speed now"); build only if the cap turns out not to be applied and customers keep buying Endurance**   Branch: `feat/054-speed-limit-status`   Area: router (the portal program, the console page and script)
+Status: **closed, not built (2026-10-30): the owner tested a phone on Endurance: the first Ookla test showed 50 Mbps (the bursting window), the second 3 to 4 Mbps against a 5 Mbps cap, so the cap is enforced on the owner's router even though it has no `tc` (openNDS 10.3.1, no sqm or ifb packages). The status line would have said "Working"; build it only if a router shows the cap is not applied**   Branch: `feat/054-speed-limit-status`   Area: router (the portal program, the console page and script)
 Backlog rows: none (owner question 2026-10-30: "is the PisoWiFi speed limit accurate?")   Release: router (raises `setup/RELEASE`; goes through `beta`, `CLAUDE.md` section 5)
 
 ## Intent
