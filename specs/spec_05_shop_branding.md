@@ -31,4 +31,4 @@ Both project rules hold: branding is data, never code, and nothing here touches 
 | 050 printed items | the Wi-Fi poster, QR cards and voucher file read the shop's branding from the router (`/brand.json`) instead of typed values | none (owner tools) |
 | 051 phones | the existing phone fields (palette, shop name, title) join the Branding screen (router to box), contact and promo texts and a box-held logo on phones (needs a decision then on the logo) | firmware + app |
 
-Specs 050 and 051 are written only when the owner starts them.
+**Features 050 and 051 are skipped (owner, 2026-10-30: "not that necessary").** They are not planned and no spec is written; the owner may start either later. The guest page and the router console (feature 049) are the whole of this epic for now. `/brand.json` stays in place for a later print tool.
