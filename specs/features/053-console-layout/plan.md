@@ -13,7 +13,7 @@ Context manifest (constitution rule 1): unresolved ledger entries loaded: none r
 ## Task groups
 Small, ordered, each finished and checkable on its own. Test first. The owner says "go" for each group.
 
-- [ ] 0. Record today's console: screenshots of the seven screens at 1280, 768 and 390 px, light and dark, into `evidence/before/`; list every selector the tests use for the tab bar (files: none changed; test: none; red result logged: n/a)
+- [x] 0. Record today's console: screenshots of the seven screens at 1280, 768 and 390 px, light and dark, into `evidence/before/`; list every selector the tests use for the tab bar (files: none changed; test: none; red result logged: n/a). Done: 48 pictures in `evidence/before/`, findings and selector list in `evidence/group0-findings.md`
 - [ ] 1. The shell: tokens, sidebar with groups, top bar, phone panel, `aria-current`, Esc and focus return; script v12 handles the panel (files: `console.html`, `console-ui.js`; test: new `test_console_layout.py` (widths, groups, panel, keyboard, no sideways scroll); red result logged: yes)
 - [ ] 2. Overview, Customers and Sales screens: card title rows, tiles with icons, tables with sticky header, empty states, 40 px buttons (files: `console.html`; test: layout test per screen, existing money panel and versions panel tests; red result logged: yes)
 - [ ] 3. Vouchers, Settings (with Prices), Rental phones frame and Branding screen fitted into the new shell width (files: `console.html`; test: `test_console_brand` (390 px, DejaVu), `test_console_prices`, `test_console_frame`; red result logged: yes)
