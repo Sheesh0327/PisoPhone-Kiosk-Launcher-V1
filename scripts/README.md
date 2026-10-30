@@ -24,6 +24,7 @@ Run everything from the repository root. **Find yours by who runs it and when**,
 | `embed_web.py` | Packs the dashboard files in `esp32_firmware/web/` into `include/WebAssets.h`. After editing anything in `web/`, run it and commit the header; `--check` fails when it is out of date. | `quality.yml` |
 | `publish_firmware_ota.py` | Copies the built box firmware into `website/update/`, signs it, and writes `firmware.json` (version, build, checksums, signatures). `--json-only` rewrites only `firmware.json` after you signed by hand. Warns when the firmware changed but `PISO_FW_VERSION` did not. | `firmware-images.yml` (on `main`) |
 | `sign_router.py` | Signs the router setup file so every router installs it: writes `router.json` and `router-setup.sh`. | `publish-router.yml` |
+| `make_brand_pack.py` | Makes a shop's brand pack: the shop's logo (and one optional picture) signed with your owner key, the only way a picture reaches that shop's guest Wi-Fi page. Refuses SVG, oversize pictures, a key kept in the repository and a key the routers do not hold. |
 | `check_published_apk.py` | Checks that the APK on the website is the one `app.json` describes (size, checksum, signing certificate). | `quality.yml`, `verify_release.py` |
 | `make_firmware_bundles.py` | Packs the coin box firmware into the two owner zips (development and release layouts, no keys inside). | `firmware-images.yml` (manual run with "bundle") |
 | `sign_console_ui.py` | Signs the router console's page script so routers can take a newer one from the website. | `publish-router.yml` |

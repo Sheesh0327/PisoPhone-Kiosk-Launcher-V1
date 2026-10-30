@@ -253,6 +253,7 @@ jobs:
           python3 scripts/tests/test_recovery_code.py
           python3 scripts/tests/test_make_cards.py
           python3 scripts/tests/test_publish_firmware.py
+          python3 scripts/tests/test_make_brand_pack.py
 
   firmware-build:
     name: Firmware build (${{ matrix.env }})
@@ -361,6 +362,7 @@ jobs:
       - name: Check router updates from the website (signed releases only, staged rollout, undo of a release that does not run)
         run: |
           PISO_TEST_TARGET_DIR=$HOME/test-target python3 router/tests/test_selfupdate.py
+          PISO_TEST_TARGET_DIR=$HOME/test-target python3 tools/pisoportal/tests/test_brand_pack.py
           # not an error while the owner has not made the keys (docs/KEYS.md), but never silent: routers install no update until then
           if [ ! -s tools/pisoportal/owner_key.b64 ]; then echo "::warning file=tools/pisoportal/owner_key.b64::no owner key built into the router program: routers will install no update from the website (docs/RELEASE.md)"; fi
       - name: Check the coin box's firmware updates through the router (against a fake website and a fake box)

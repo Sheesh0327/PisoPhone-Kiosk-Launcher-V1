@@ -32,7 +32,6 @@ use std::io::Read;
 const MAGIC: &str = "pisophone-brand-v1";
 pub const MAX_FILE: usize = 300 * 1024;
 pub const MAX_IMAGE: usize = 64 * 1024;
-pub const MAX_TOTAL: usize = 192 * 1024;
 pub const MAX_SIDE: u32 = 512;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -246,9 +245,6 @@ pub fn verify(key_b64: &str, pack: &[u8]) -> Result<Pack, String> {
     }
     if logo_size > MAX_IMAGE || pic_size > MAX_IMAGE {
         return Err("a picture may be at most 64 KB".into());
-    }
-    if logo_size + pic_size > MAX_TOTAL {
-        return Err("a pack may carry at most 192 KB of pictures".into());
     }
     let sig = lines[3].strip_prefix("sig ").ok_or_else(|| bad("the sig line is missing"))?;
     check_signature(key_b64, &format!("{}|{}|{}|{}|{}", MAGIC, logo_sha, logo_size, pic_sha, pic_size), sig)?;
