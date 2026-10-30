@@ -4,10 +4,10 @@
 - **Today's page is recorded** in `tools/pisoportal/tests/golden/page_states.json` and checked by `tools/pisoportal/tests/test_page_golden.py`: the sha256 and size of the page the portal serves (26,972 bytes), of `brand.png` and `mascot.png`, and for 18 states (new customer, voucher choice, time left, another customer paying, cooldown, paused, starting, armed with and without coins, counting, online, paid but not online yet, voucher code, empty, busy, cooldown, plan mismatch, error) the visible text and the visible controls at 360 by 740. **24 checks, 0 failures** on today's code.
 - **The test can fail:** with one golden entry altered on purpose (a text and the page hash) it reported 5 failures (`ledger/negative-constraints.md`). `--update` rewrites the file and is only for a change the owner asked for.
 - **Size budgets** (`router/tests/test_footprint.py`): program 1027 of 1200 KB (mipsel and mips), 901 (aarch64), 859 (armv7), 997 (x86_64); `setup/piso-setup.sh` 1560 of 1700 KB; `setup/piso-setup.sh.in` 148 of 150 KB; `page.html` 25 of 28 KB (to be raised to 40 KB, Q5).
-- **Layout candidates:** four layouts and the six palettes were drawn as one static mock-up (`evidence/layout-candidates.html`, open it with `?l=1..4&p=technet|dagat|tropiko|ginto|rosas|berde&a=%23rrggbb`) and shown to the owner. **The owner's pick (Q1) is recorded below.**
+- **Layout candidates:** four layouts and the six palettes were drawn as one static mock-up (`evidence/layout-candidates.html`, open it with `?l=1..4&p=technet|dagat|tropiko|ginto|rosas|berde&a=%23rrggbb`) and shown to the owner. The owner's pick (Q1) is recorded below.
 
 ## Owner's pick (Q1)
-(not chosen yet)
+**All four layouts: A Classic, B Banner, C Compact, D Poster; default A Classic** (2026-10-30). Q2 to Q7 answered the same day (see `spec.md`).
 
 ## Results
 | # | Success criterion | Check | Result | Evidence |

@@ -1,6 +1,6 @@
 # Feature 049: branding on the guest Wi-Fi page
 
-Status: **approved 2026-10-30 (owner: "go with your recommendations, start group 0"); group 0 in progress; Q1 (layouts) waits for the owner's pick**   Branch: `feat/049-shop-branding` (from `main`; a router change, so it reaches `main` through `beta`, `CLAUDE.md` section 5)   Area: router
+Status: **approved 2026-10-30 (owner: "go with your recommendations, start group 0"); group 0 in progress; Q1 answered (all four layouts); group 0 done, groups 1 to 8 wait for the owner's go**   Branch: `feat/049-shop-branding` (from `main`; a router change, so it reaches `main` through `beta`, `CLAUDE.md` section 5)   Area: router
 Backlog rows: none (owner request 2026-10-30; decisions D1 to D11 in `specs/spec_05_shop_branding.md`)   Release: router
 
 ## Intent
@@ -61,8 +61,8 @@ logo through a signed brand pack. It serves both rules: it never touches the mon
 Printed items (feature 050), anything on the rental phones or the coin box (feature 051), custom CSS or HTML per shop, SVG logos, a pack bound to one router, languages beyond English and Filipino, editing the built-in price list wording, removing the credit (never), clickable links in texts.
 
 ## Owner decisions
-The answers D1 to D11 are in the epic. Q2 to Q7 were answered on 2026-10-30 with "go with your recommendations"; **Q1 is still open** and is decided from screenshots (plan group 0).
-- **Q1 Layouts.** *Open.* Plan group 0 produced screenshots of 4 candidate layouts and stopped. No layout is built until the owner picks 3 or 4 (or asks for changes).
+The answers D1 to D11 are in the epic. Q2 to Q7 were answered on 2026-10-30 with "go with your recommendations"; Q1 was decided from screenshots (plan group 0).
+- **Q1 Layouts.** *Answered 2026-10-30 from the screenshots:* **all four**: A Classic, B Banner, C Compact, D Poster. **Default: A Classic.** The candidates are drawn in `evidence/layout-candidates.html`; the built layouts must match them in structure, not necessarily in every pixel.
 - **Q2 Header without a logo.** *Answered:* show the shop name alone as text. The TechNet logo is never shown as the shop's.
 - **Q3 House rules.** *Answered:* shown before paying; **no tick box** and no change to the payment flow.
 - **Q4 Text limits.** *Answered:* as in Constraints (shop name 32, tagline 60, welcome 160, contact 80, house rules 600, opening hours 60, promo 120, per language).

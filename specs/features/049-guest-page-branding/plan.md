@@ -18,7 +18,7 @@ Context manifest (constitution rule 1): `file | purpose | lines | est_tokens`. U
 Small, ordered, each finished and checkable on its own. Test first; the red result goes in `ledger/negative-constraints.md`.
 
 - [x] 0a. **Baseline recorded.** Today's page, 18 states and the size numbers are in `validation.md`; `test_page_golden.py` (24 checks) passes and fails when the golden file is altered (red result logged).
-- [ ] 0b. **STOP for the owner's layout pick (Q1).** Four candidate layouts and the six palettes are drawn (`evidence/layout-candidates.html`); the owner picks 3 or 4 layouts. No product code until then. Q2 to Q7 are answered (see `spec.md`).
+- [x] 0b. **Layout pick (Q1): done.** The owner chose all four layouts (A Classic, B Banner, C Compact, D Poster), default A. Q2 to Q7 are answered (see `spec.md`). Group 0 is finished; group 1 starts when the owner says go.
 - [ ] 1. **Brand data model** `tools/pisoportal/src/brand.rs`: fields, per-language texts, limits, control-character stripping, palette ids, accent contrast maths, draft and published files with `write_atomic`, defaults = none. (test: `cargo test brand`; red first.)
 - [ ] 2. **`GET /brand.json`** (public, fixed shape, only what guests see) and **the brand-pack check**: format `pisophone-brand-v1`, P-256 verify with the owner key, size, magic-number and dimension checks, SVG refused; `pisoportal brand-verify` and `brand-install`. (test: unit tests with a test key, tampered-byte and wrong-key cases, red first.)
 - [ ] 3. **The owner tool** `scripts/make_brand_pack.py` (+ test): builds and signs a pack with the owner key given by path; the key is never read from the repository. (test: round trip with the router check from group 2.)
