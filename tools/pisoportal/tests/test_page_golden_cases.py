@@ -40,6 +40,16 @@ SNAP = """() => {
 }"""
 
 
+# The page shows "Use by <day> <time>" two hours after the moment it is opened, so what it says depends on when a test runs (AM or PM, the
+# weekday). The golden file was recorded at this moment; the browsers of the tests that compare with it are set to it.
+FIXED_NOW = "2026-10-30T03:14:00Z"
+
+
+def at_fixed_time(ctx):
+    ctx.clock.set_fixed_time(FIXED_NOW)
+    return ctx
+
+
 def tidy(text):
     text = re.sub(r"\d{1,2}:\d{2}(:\d{2})?", "#:##", text)          # running clocks
     return [ln.strip() for ln in text.splitlines() if ln.strip()]

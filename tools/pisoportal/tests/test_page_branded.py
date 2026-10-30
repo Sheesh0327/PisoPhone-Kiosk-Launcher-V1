@@ -72,7 +72,7 @@ try:
     with sync_playwright() as pw:
         chrome = os.environ.get("CHROME") or next((c for c in [shutil.which(x) for x in ("google-chrome", "chromium", "chromium-browser")] + glob.glob("/opt/pw-browsers/chromium-*/chrome-linux*/chrome") if c), None)
         br = pw.chromium.launch(executable_path=chrome, args=["--no-sandbox"]) if chrome else pw.chromium.launch()
-        ctx = br.new_context(viewport={"width": 360, "height": 740}, locale="en-US", timezone_id="UTC")
+        ctx = G.at_fixed_time(br.new_context(viewport={"width": 360, "height": 740}, locale="en-US", timezone_id="UTC"))
         for name, state in G.CASES.items():
             print("  state", name, flush=True)
             pg = ctx.new_page()
