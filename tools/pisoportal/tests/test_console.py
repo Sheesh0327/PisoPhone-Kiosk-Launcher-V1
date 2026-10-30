@@ -79,7 +79,7 @@ try:
     check(wait_until(lambda: call("/")[0] == 200, 5), "the console page is served")
     code, body, h = call("/")
     check(b"TechNet PisoHub" in body and "default-src 'none'" in h.get("Content-Security-Policy", ""), "the page is the TechNet console, with a strict content security policy")
-    check(len(body) < 24000, f"the page is small ({len(body)} bytes)")  # (20000 until the Branding screen, feature 049)
+    check(len(body) < 28000, f"the page is small ({len(body)} bytes)")  # (20000 until the Branding screen, feature 049; 24000 until the sidebar, feature 053)
     check(call("/api/overview")[0] == 401 and call("/api/clients")[0] == 401 and call("/api/phones")[0] == 401, "no session, no data")
     check(call("/brand.png")[0] == 200 and call("/mascot.png")[0] == 200, "the logo and the mascot are served")
     check(call("/api/login", {"password": "router-pass"}, headers={"X-Piso": "0"})[0] == 403, "a login without the page's header is refused")

@@ -914,9 +914,9 @@ mod tests {
     #[test]
     fn the_coin_box_tab_is_named_for_the_product() {
         let wifi = page_html("wifi");
-        assert!(wifi.contains(r#"<button data-t="ph">Coin box</button>"#) && !wifi.contains("Rental phones"));
+        assert!(wifi.contains(r#"<button data-t="ph"><svg"#) && wifi.contains("</svg>Coin box</button>") && !wifi.contains("Rental phones"));
         let both = page_html("both");
-        assert!(both.contains(r#"<button data-t="ph">Rental phones</button>"#) && !both.contains("Coin box</button>"));
+        assert!(both.contains(r#"<button data-t="ph"><svg"#) && both.contains("</svg>Rental phones</button>") && !both.contains("Coin box</button>"));
         assert!(!wifi.contains("@PHTAB@") && !both.contains("@PHTAB@"));
         assert!(wifi.contains(r#"id="t-ph""#) && wifi.contains(r#"id="boxf""#), "the tab id and the page inside it do not change");
     }

@@ -31,8 +31,8 @@ and does stays the same. Serves the goal "an owner who is not a programmer can r
 ## What changes (proposal; the owner decides in "Owner decisions")
 - **Computer and tablet (900 px and wider):** a fixed left sidebar with the shop product name at the top and the screens in groups:
   **Overview** (Overview, Sales) · **Management** (Customers, Rental phones or Coin box, Vouchers) · **System** (Branding, Settings, which still holds Prices).
-  A group appears only if it has screens. The current screen is marked. The top bar keeps the page title, the light/dark button and the two links that are there today (Advanced, the router's own LuCI page, and Sign out)
-  and shows the router's address or the shop name.
+  A group appears only if it has screens. The current screen is marked. The top bar has the name of the current screen and the light/dark button. **Advanced** (the router's own LuCI page) and **Sign out** sit at the bottom of the sidebar
+  (they were in the top bar; on a phone the top bar had no room for them next to the menu button).
 - **Phone** (today a scrolling bottom bar of seven small labels; the Customers table also cuts off its Disconnect button, see `evidence/group0-findings.md`): the top bar has a menu button that opens the same sidebar as a panel from the left; it closes when a screen is chosen, on a tap outside, or on Esc.
   No row of tabs, so nothing is clipped whatever the font.
 - **Look:** one set of design tokens (spacing 4/8/12/16/24, one radius scale, one type scale), calmer cards with a title row, small inline icons beside
@@ -44,7 +44,7 @@ and does stays the same. Serves the goal "an owner who is not a programmer can r
 - Not signed in: only the sign-in card, as today. No sidebar, no screen names, nothing of the shop.
 - A shop with PisoWiFi only: the phone screen is called "Coin box" (as today, `@PHTAB@`); the sidebar uses the same word.
 - An older router that does not know a call (the "run piso-setup update" message): the screen still opens and shows that message inside the new layout.
-- The website's older signed script (v10): the sidebar works and every screen opens; it just lacks the v11 and v12 extras (Branding wiring is in v11).
+- The website's older signed script (v10): the sidebar works and every screen opens; it just lacks the v11 extras (Branding wiring is in v11).
 
 ## Success criteria
 1. At 1280 px the console has a left sidebar with the groups above; every existing screen opens with one click; the current screen is marked (`aria-current`).
@@ -52,7 +52,7 @@ and does stays the same. Serves the goal "an owner who is not a programmer can r
 3. Keyboard: Tab reaches the menu, the sidebar items and the page in a sensible order; focus is visible; Esc closes the panel and puts focus back on the menu button.
 4. Light and dark: text and button contrast is at least 4.5 : 1 in both, measured by a script over the real page, not by eye.
 5. All earlier console tests pass with only selector edits for the old tab bar (`test_console`, `test_console_brand`, `test_console_frame`, `test_console_prices`: listed in `evidence/group0-findings.md`); `test_money_panel` and `test_versions_panel` (they read `#mny` and `#upd`) and `scripts/tests/test_console_ui.py` and `test_console_loader.py` pass unchanged; no behaviour assertion is weakened.
-6. Compatibility both ways: the new page runs with the signed v10 script from the website; the new script (v12) runs on the page from release 1.5.32 (no sidebar); a new loader test covers both.
+6. Compatibility: the new page runs with the signed v10 script that is on the website today and with the built-in v11 (a loader test serves each); every screen opens and the sidebar marks the current one. If a later group has to change `console-ui.js`, the new script must also run on the page from release 1.5.32 (no sidebar).
 7. Sign-in and session behaviour: `test_console.py`'s authentication checks pass unchanged (wrong password, no cookie, wrong origin, missing `X-Piso`).
 8. No outside request: the page loads with every host except the router itself blocked; fonts are the system fonts.
 9. Size: the page-size guard and the mipsel program budget in the plan hold, with the numbers recorded in `validation.md`.
