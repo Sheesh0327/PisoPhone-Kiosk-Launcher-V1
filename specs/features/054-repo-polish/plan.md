@@ -36,7 +36,7 @@ Never open: `esp32_firmware/include/WebAssets.h`, `setup/piso-setup*.sh`, `websi
   trim duplication with `docs/`). Run `check_links.py`. Commit.
 - [x] 3. **`docs/README.md` (S3).** Index grouped by reader (Owner / Developer / Releases and keys / Hardware testing / Design and API).
   One line per document: link and what it answers. Check: `for f in $(git ls-files 'docs/*.md' | grep -v docs/README.md); do grep -q "$(basename $f)" docs/README.md || echo MISSING $f; done` prints nothing. Commit.
-- [ ] 4. **`CONTRIBUTING.md` + `specs/README.md` (S5).** Branch section per `CLAUDE.md` section 5 (D34); add Development setup
+- [x] 4. **`CONTRIBUTING.md` + `specs/README.md` (S5).** Branch section per `CLAUDE.md` section 5 (D34); add Development setup
   (tool versions from `gradle/`, `platformio.ini`, `rust-toolchain` or `Cargo.toml`, CI setup steps), Commit messages, Code style.
   Keep the checks table; add the router program row from `CLAUDE.md` section 3 (`cargo test`, `python3 tests/test_flow.py`). In
   `specs/README.md` change only the lines that say `beta` for every feature. Commit.

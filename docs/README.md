@@ -11,7 +11,7 @@ are on the website: <https://pisophone.pages.dev/start/>. What the product is an
 
 ## Developer
 - [ARCHITECTURE.md](ARCHITECTURE.md): the five parts, a coin payment step by step, the phone's session, who talks to whom, guest Wi-Fi payments.
-- [../CONTRIBUTING.md](../CONTRIBUTING.md): branches, the checks to run for each area, the rules that are easy to break.
+- [../CONTRIBUTING.md](../CONTRIBUTING.md): development setup, branches, the checks to run for each area, code style, commit messages, the rules that are easy to break.
 - Each part has its own README with layout, build and test commands:
   [app](../app/README.md), [esp32_firmware](../esp32_firmware/README.md) (and its [dashboard files](../esp32_firmware/web/README.md)),
   [router](../router/README.md), [protocol](../protocol/README.md), [tools](../tools/README.md) (and [pisoportal](../tools/pisoportal/README.md)),
