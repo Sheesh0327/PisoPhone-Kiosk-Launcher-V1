@@ -273,6 +273,7 @@ radio_band() {  # radio_band radioN -> 2g | 5g
 wan_ip() { ifstatus wan 2> /dev/null | jsonfilter -e '@["ipv4-address"][0].address' 2> /dev/null; }
 wan_prefix() { _p=$(ifstatus wan 2> /dev/null | jsonfilter -e '@["ipv4-address"][0].mask' 2> /dev/null); echo "${_p:-24}"; }
 # net_of <ip> <prefix>: the network number of an address, to compare ranges by their netmask
+# shellcheck disable=SC2086 # the dotted address is split into its four numbers on purpose
 net_of() { _o=$(echo "$1" | tr . ' '); set -- $_o "$2"; echo $(((($1 << 24) | ($2 << 16) | ($3 << 8) | $4) >> (32 - $5))); }
 # wan_clash: prints the router address (the LAN's or the guest network's) whose /24 the modem's network (WAN address and netmask) overlaps; fails when none
 wan_clash() {
