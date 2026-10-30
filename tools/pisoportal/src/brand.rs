@@ -8,7 +8,7 @@
 //! Two files per shop in `DATA_DIR/brand/`: `draft.txt` (what the owner is editing) and `published.txt` (what customers see). A
 //! router with no `published.txt` shows today's page unchanged. Both are written with `util::write_atomic`.
 //! The images (logo) are not here: they come only from a signed brand pack (group 2).
-#![allow(dead_code)] // used from group 2 on (brand.json, the pack check) up to the console in group 6; removed once the page serves it
+#![allow(dead_code)] // the console (group 6) and the language switch (group 5) use the rest; removed when they do
 use crate::util::{json_esc, write_atomic};
 use std::fs;
 use std::io;
@@ -386,11 +386,11 @@ pub fn button_text(accent: u32) -> u32 {
     }
 }
 
-/// An accent must show (3 to 1) against the page, the band and the cards of its palette. One that does not is lightened step by step
+/// An accent must show (3 to 1) against the page, the band and the cards (both kinds) of its palette. One that does not is lightened step by step
 /// until it does. Returns the colour to use and whether it had to change.
 pub fn fit_accent(accent: u32, palette_id: &str) -> (u32, bool) {
     let p = palette(palette_id).unwrap_or(&PALETTES[0]);
-    let shows = |c: u32| [p.bg, p.band, p.panel].iter().all(|&bg| contrast(c, bg) >= 3.0);
+    let shows = |c: u32| [p.bg, p.band, p.panel, raised(p)].iter().all(|&bg| contrast(c, bg) >= 3.0);
     if shows(accent) {
         return (accent, false);
     }
@@ -444,6 +444,83 @@ pub fn restore_default(dir: &str) -> io::Result<()> {
     match fs::remove_file(path(dir, Which::Published)) {
         Err(e) if e.kind() != io::ErrorKind::NotFound => Err(e),
         _ => Ok(()),
+    }
+}
+
+/// The colours the page is drawn with. Everything on it is one of these, so the contrast tests cover the whole page.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Theme {
+    pub bg: u32,
+    pub band: u32,
+    pub s1: u32,
+    pub s2: u32,
+    pub ln: u32,
+    pub ln2: u32,
+    pub accent: u32,
+    pub accent_text: u32,
+    pub accent_down: u32,
+}
+
+/// Today's page, in the names above: the default palette with no accent chosen draws exactly these (the blue button, not the teal accent).
+const TODAY: Theme = Theme {
+    bg: 0x050d22,
+    band: 0x0a1b45,
+    s1: 0x0c1a3a,
+    s2: 0x132552,
+    ln: 0x1f3361,
+    ln2: 0x5a70a3,
+    accent: 0x1d63d6,
+    accent_text: 0xffffff,
+    accent_down: 0x164fa8,
+};
+
+/// The raised card (the page's `--s2`) of a palette: its card colour a little lighter. "technet" keeps today's.
+fn raised(p: &Palette) -> u32 {
+    if p.id == "technet" {
+        TODAY.s2
+    } else {
+        mix(p.panel, 0xffffff, 0.04)
+    }
+}
+
+impl Brand {
+    /// The palette and accent as the page uses them. The accent is the one `cleaned` made visible; every colour is derived here so a
+    /// layout cannot pick one that was not tested.
+    pub fn theme(&self) -> Theme {
+        let p = palette(self.palette_id()).unwrap_or(&PALETTES[0]);
+        let (s2, ln, ln2) = if p.id == "technet" {
+            (TODAY.s2, TODAY.ln, TODAY.ln2)
+        } else {
+            (raised(p), mix(p.band, 0xffffff, 0.18), mix(p.band, 0xffffff, 0.40))
+        };
+        let mut t = Theme { bg: p.bg, band: p.band, s1: p.panel, s2, ln, ln2, ..TODAY };
+        if p.id == "technet" && self.accent.is_empty() {
+            return t;
+        }
+        t.accent = fit_accent(self.accent_rgb(), p.id).0;
+        t.accent_text = button_text(t.accent);
+        t.accent_down = mix(t.accent, if t.accent_text == 0 { 0xffffff } else { 0 }, 0.18);
+        t
+    }
+}
+
+/// Changes whenever the published branding or its set of pictures changes (the page is built again then), and is the same for the same
+/// files. The draft is not part of it. Nothing published and no pictures give 0.
+pub fn stamp(dir: &str) -> u64 {
+    let mut h: u64 = 0xcbf29ce484222325;
+    let mut any = false;
+    for f in ["published.txt", "images.txt"] {
+        if let Ok(bytes) = fs::read(format!("{}/{}/{}", dir, BRAND_DIR, f)) {
+            any = true;
+            for b in f.bytes().chain(bytes) {
+                h = (h ^ b as u64).wrapping_mul(0x100000001b3);
+            }
+        }
+    }
+    if any {
+        h
+    } else {
+        0
     }
 }
 
@@ -789,5 +866,70 @@ mod tests {
         assert_eq!(public_json(&dir2), r#"{"v":1,"branded":false}"#);
         assert!(served_image(&dir2, crate::brandpack::Slot::Logo).is_none(), "no logo is served on an unbranded router");
         assert!(crate::brandpack::installed(&dir2).0.is_some(), "but it stays installed");
+    }
+
+    #[test]
+    fn f049_the_theme_of_every_palette_and_accent_keeps_every_text_readable() {
+        for p in PALETTES {
+            for accent in ["", "#ff7a1a", "#101010", "#ffffff", "#0b3557", "#ff0000"] {
+                let mut b = Brand::default();
+                b.palette = p.id.into();
+                b.accent = accent.into();
+                let t = b.cleaned().0.theme();
+                for (name, fg) in [("text", TEXT), ("muted", MUTED), ("gold", GOLD)] {
+                    for (what, bg) in [("page", t.bg), ("band", t.band), ("card", t.s1), ("raised card", t.s2)] {
+                        let c = contrast(fg, bg);
+                        assert!(c >= 4.5, "{} on the {} of {} with accent {:?} is only {:.2}:1", name, what, p.id, accent, c);
+                    }
+                }
+                if !(p.id == "technet" && accent.is_empty()) {
+                    // (today's blue button is the one colour that stays as it is; it is below 3:1 on the raised card)
+                    for (what, bg) in [("page", t.bg), ("band", t.band), ("card", t.s1), ("raised card", t.s2)] {
+                        assert!(contrast(t.accent, bg) >= 3.0, "accent {} on the {} of {}", hex(t.accent), what, p.id);
+                    }
+                }
+                assert!(contrast(t.accent_text, t.accent) >= 4.5, "button text on {}", hex(t.accent));
+                assert!(contrast(t.accent_text, t.accent_down) >= 4.5, "button text on the pressed {}", hex(t.accent_down));
+                assert!(contrast(t.ln2, t.bg) >= 3.0, "control borders show on the page of {}", p.id);
+            }
+        }
+    }
+
+    #[test]
+    fn f049_a_shop_that_only_sets_a_name_keeps_todays_colours_exactly() {
+        let t = Brand::default().theme();
+        assert_eq!((t.bg, t.band, t.s1, t.s2, t.ln, t.ln2), (0x050d22, 0x0a1b45, 0x0c1a3a, 0x132552, 0x1f3361, 0x5a70a3));
+        assert_eq!((t.accent, t.accent_text, t.accent_down), (0x1d63d6, 0xffffff, 0x164fa8), "today's blue button");
+        let mut teal = Brand::default();
+        teal.accent = "#16c9a4".into();
+        assert_eq!(teal.theme().accent, 0x16c9a4, "an accent the owner picked is used, even on the default palette");
+        let mut other = Brand::default();
+        other.palette = "ginto".into();
+        assert_eq!(other.theme().accent, 0xffb81c, "another palette brings its own accent");
+    }
+
+    #[test]
+    fn f049_the_stamp_changes_with_the_published_branding_and_its_pictures_and_nothing_else() {
+        let dir = tmp("stamp");
+        let none = stamp(&dir);
+        assert_eq!(none, stamp(&dir), "same files, same stamp");
+        let mut b = Brand::default();
+        b.name = "Nena".into();
+        save(&dir, Which::Draft, &b).unwrap();
+        assert_eq!(stamp(&dir), none, "a draft is not the page");
+        publish(&dir).unwrap();
+        let one = stamp(&dir);
+        assert_ne!(one, none);
+        b.name = "Nena 2".into();
+        save(&dir, Which::Draft, &b).unwrap();
+        assert_eq!(stamp(&dir), one, "editing the draft changes nothing yet");
+        publish(&dir).unwrap();
+        let two = stamp(&dir);
+        assert_ne!(two, one);
+        std::fs::write(format!("{}/{}/images.txt", dir, BRAND_DIR), "logo-abcdef012345.png\n").unwrap();
+        assert_ne!(stamp(&dir), two, "a new picture set shows at once");
+        restore_default(&dir).unwrap();
+        std::fs::remove_file(format!("{}/{}/images.txt", dir, BRAND_DIR)).unwrap();
+        assert_eq!(stamp(&dir), none, "back to today's look is back to the unbranded stamp");
     }
 }

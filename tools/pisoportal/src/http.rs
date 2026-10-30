@@ -1,9 +1,11 @@
 //! HTTP and WebSocket. The splash page is built once at start and served from memory; the page opens one WebSocket and
 //! everything else (Insert Coin, coins, Done, the result) travels over it. A device is the MAC address the router itself
 //! sees behind its connection (ARP), never what the page says.
+use crate::brandpack::{self, read_image};
 use crate::core::{log, Core};
 use crate::pricing::{fmt_min, Plan, Pricing};
 use crate::util::{b64_decode, b64_encode, jget, json_esc, query_get, sha256_hex, url_decode, valid_mac};
+use crate::{brand, brandpage};
 use std::collections::HashMap;
 use std::fs;
 use std::hash::Hash;
@@ -97,10 +99,22 @@ pub fn send_page(max_mb: u64) -> String {
     squeeze(include_str!("send.html")).replace("%MAXB%", &(max_mb * 1024 * 1024).to_string()).replace("%MAX%", &max_mb.to_string())
 }
 
+/// The page with its style sheet in, before prices and settings are filled in (`brandpage.rs` finds its places in it).
+pub(crate) fn raw_page() -> String {
+    squeeze(include_str!("page.html")).replace("%CSS%", &squeeze(include_str!("base.css")))
+}
+
 pub fn build_page(core: &Core) -> String {
     let cfg = &core.cfg;
     let pr = core.pricing();
-    let page = squeeze(include_str!("page.html")).replace("%CSS%", &squeeze(include_str!("base.css")));
+    let mut page = raw_page();
+    if let Some(b) = brand::load(&cfg.data_dir, brand::Which::Published) {
+        let has = |s| read_image(&cfg.data_dir, s).is_some();
+        match brandpage::decorate(&page, &b, has(brandpack::Slot::Logo), has(brandpack::Slot::Picture)) {
+            Ok(branded) => page = branded,
+            Err(why) => log!("branding not shown: {}", why),
+        }
+    }
     page.replace("%TIERS_H%", &tier_rows(&pr, Plan::Hyper))
         .replace("%TIERS_E%", &tier_rows(&pr, Plan::Endurance))
         .replace("%E_DOWN%", &(pr.endurance_down / 1000).to_string())
@@ -555,16 +569,19 @@ fn handle_send_upload(p: &Portal, req: Request, mut conn: Incoming, peer: Socket
     }
 }
 
+/// What the cached page was built at: the price counter and the branding stamp.
+type PageStamp = (u64, u64);
+
 struct Portal {
     core: Arc<Core>,
-    /// the page and its ETag, and the price counter it was built at (built again when the owner changes a price)
-    page: RwLock<(u64, Arc<(String, String)>)>,
+    /// the page and its ETag, and what it was built at: the price counter and the branding stamp (built again when either moves)
+    page: RwLock<(PageStamp, Arc<(String, String)>)>,
     pages: Arc<Limits<String>>,
 }
 
 impl Portal {
     fn page(&self) -> Arc<(String, String)> {
-        let stamp = self.core.pricing_stamp();
+        let stamp = (self.core.pricing_stamp(), brand::stamp(&self.core.cfg.data_dir));
         {
             let g = self.page.read().unwrap();
             if g.0 == stamp {
@@ -693,7 +710,7 @@ pub fn bind_retry(addr: &str, what: &str) -> TcpListener {
 pub fn serve(core: Arc<Core>) {
     let page = build_page(&core);
     let tag = sha256_hex(page.as_bytes())[..16].to_string();
-    let stamp = core.pricing_stamp();
+    let stamp = (core.pricing_stamp(), brand::stamp(&core.cfg.data_dir));
     let max = core.cfg.max_clients.max(1);
     let p = Arc::new(Portal { core, page: RwLock::new((stamp, Arc::new((page, tag)))), pages: Limits::new(max, WS_PER_DEVICE) });
     let conns: Arc<Limits<IpAddr>> = Limits::new(max * 4, CONN_PER_IP);

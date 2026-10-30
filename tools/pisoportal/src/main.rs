@@ -16,6 +16,7 @@ mod boxlink;
 mod boxview;
 mod brand;
 mod brandpack;
+mod brandpage;
 mod config;
 mod console;
 mod core;

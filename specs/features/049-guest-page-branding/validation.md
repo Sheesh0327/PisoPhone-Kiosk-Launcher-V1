@@ -27,6 +27,17 @@
 - **CI:** both tests run in Code quality (the tool's own test with the other script tests; the round trip with the router-update tests, sharing `$HOME/test-target`).
 - **Cleaned up:** the pack's "192 KB in all" ceiling could never be reached (two pictures of at most 64 KB are 128 KB), so the router no longer carries that dead check and the spec now says 128 KB; the 300 KB file limit still stops anything bigger. `cargo test --release` **169 passed**, fmt and clippy clean.
 
+## Group 4: the branded guest page
+- **Red first:** `cargo test --release f049_` against stubs: 11 failed, 29 passed (ledger). **Green:** 40 `f049_*` tests, 181 router tests in all; `cargo fmt --check` and `clippy -D warnings` clean.
+- **How it works:** `brandpage.rs` `decorate()` takes the page the program always builds and changes only eight named places (title, two icons, header, welcome block, the line under the coin button, footer, end of head). If one of them is missing or occurs twice (someone edited `page.html`), nothing is decorated and the log says why: guests get the plain page, never half of one. `page.html` and `base.css` are untouched, so the unbranded page is byte for byte today's (golden hash, 24 checks, 0 failures).
+- **What a shop sees (English, Classic only; layouts and Filipino are group 5):** the shop's name in the tab title and header (tagline next to it), the logo only if installed, the welcome text in place of the standard line, the promo above the welcome (idle page only), the house rules under the coin button (idle page only), contact and hours in the footer (every state), colours from the palette and accent, and always the program's own `by TechNet Solutions` line. The TechNet logo and mascot never appear on a branded page; a shop that set no name keeps the TechNet name and pictures and only changes colours and texts.
+- **Colours:** every colour on the page comes from `Brand::theme()`, so a test covers them all: for all six palettes and six accents (none, orange, near-black, white, the band colour, red) text, grey text and gold are at least 4.5:1 on the page, band, card and raised card; the accent is at least 3:1 on all four; button text is at least 4.5:1 on the accent and on the pressed accent. `fit_accent` now also checks the raised card. The one exception is today's blue button on the default look (below 3:1 on the raised card), kept on purpose: the owner chose "exactly today's TechNet look".
+- **Escaping:** `decorate` escapes `& < > " '` in every text, in every field, with seven adversarial strings (script, quote break-out, `</title>`, `</style>`, `<!--`, entities). Counts of `<script`, `</title>`, `</style>` (plus our own one), `<!--` and event attributes are unchanged from the plain page, and the credit appears once. Unknown palette, layout or accent text never reaches the style block. In a real browser (`test_page_branded.py`), a name and every text set to `</title><script>window.__x=1</script><img src=x onerror=window.__x=2>` shows as plain text: no script ran, no dialog, no element made. (The shop name is limited to 32 characters and the tagline to 60 by the data model, so the page shows the kept part.)
+- **Rebuild:** the cached page is built again when the price counter or the new branding stamp (hash of `published.txt` and `images.txt`; the draft is not part of it) changes, so Publish and Restore take effect on the next page load without a restart (browser test: publishing changes the page and its ETag; deleting `published.txt` gives today's page hash again).
+- **Browser test** `test_page_branded.py` (Env offset 165, **177 checks, 0 failures**) runs all 18 page states at 360 by 740 with a published branding: shop name and tagline in the header, tab title, credit visible, **the same controls as the unbranded page in every state**, every line of the unbranded page still present except the four replaced ones, no TechNet name besides the credit, contact and hours visible, the logo loads, no request for a TechNet picture, idle shows promo, welcome, rules, accent button and palette colour, and the page after paying shows no promo or rules. The states and helpers are shared with `test_page_golden.py` through `test_page_golden_cases.py`. CI runs it next to `test_brand_public.py`.
+- **Nothing else moved:** `test_flow.py` 216 checks, 0 failures; `test_brand_public.py` 20/0 (its "page is still today's" check became "the page is the branded one now"); `test_brand_pack.py` 19/0. `bash scripts/check_security_rules.sh` passes. `page.html` is still 25,575 bytes (the budget change to 40 KB is for group 5). Money path untouched: no change to `core.rs`, `roll.rs`, `ledger.rs`, `boxlink.rs`, `voucher.rs`, `reconcile.rs`; the only change in `http.rs` is how the page is built and when it is built again.
+- **Not tested here:** a real phone, the Android and iPhone captive-portal sheet, and the size of the cross-compiled router program (the footprint test measures the committed binaries; this code is built by CI on `beta`).
+
 ## Owner's pick (Q1)
 **All four layouts: A Classic, B Banner, C Compact, D Poster; default A Classic** (2026-10-30). Q2 to Q7 answered the same day (see `spec.md`).
 
@@ -35,12 +46,12 @@
 |---|---|---|---|---|
 | 1 | no branding set: today's page in every state | `test_page_golden.py` | baseline recorded | 24 checks, 0 failures |
 | 2 | EN and FIL texts, switch, per-text fallback | | not run | |
-| 3 | no script or HTML in any field runs | | not run | |
+| 3 | no script or HTML in any field runs | `cargo test f049_no_text_can_become_markup...`, `test_page_branded.py` | page: passes; console and print paths not built yet | group 4 |
 | 4 | contrast of every palette, layout and accent | | not run | |
 | 5 | payment controls present and clickable in every layout and palette | | not run | |
 | 6 | pack: good installs; tampered, wrong key, SVG, oversize, bad signature refused | | not run | |
 | 7 | draft vs publish, restore default, preview cannot start a window | | not run | |
-| 8 | the locked credit in every state and layout | | not run | |
+| 8 | the locked credit in every state and layout | `test_page_branded.py` | Classic, 18 states: passes; other layouts group 5 | group 4 |
 | 9 | branding survives `piso-setup update` and reboot | | not run | |
 | 10 | no money-path file changed; all router gates pass | | not run | |
 | 11 | hardware: Android and iPhone captive-portal sheet, icon, voucher file, console pack upload | | not run (owner's checks) | |

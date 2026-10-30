@@ -65,7 +65,7 @@ try:
     check(s == 200 and b == TINY_PNG and h["Content-Type"] == "image/png", "the logo is served as it was installed")
     check(h["X-Content-Type-Options"] == "nosniff" and "default-src 'none'" in h["Content-Security-Policy"], "with nosniff and a CSP that lets it do nothing but be a picture")
     check(get(base, "/brand/picture")[0] == 404, "no picture was installed")
-    check(page_is_todays(), "the page itself is still today's (group 4 changes that)")
+    check(not page_is_todays() and b"Aling &quot;Nena&quot; Net Cafe" in get(base, "/?fas=ABC")[2], "the guest page is the branded one now (test_page_branded.py looks at it)")
 
     # a damaged picture file is never served
     with open(f"{brand_dir}/{name}", "wb") as f:
