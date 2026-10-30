@@ -1,6 +1,6 @@
 # Spec 04: the setup in a real shop (backlog epic)
 
-Status: **draft: owner answers D1 to D8 in (2026-10-28); waiting for the owner to approve this epic; no feature started**   Written: 2026-10-28 against `ccr-ecc45ac1-xsa1o8` at `2591448` (= `main`, router 1.5.23)   Related: `setup/README.md`, `specs/features/011-offline-setup/`, `docs/REAL_WORLD_TESTING.md` (RS17, RS20, RS21, RS36), spec 01 rows ST-2, ST-5, ST-7
+Status: **draft: owner answers D1 to D8 in (2026-10-28); waiting for the owner to approve this epic; no feature started**   Written: 2026-10-28 against `ccr-ecc45ac1-xsa1o8` at `2591448` (= `main`, router 1.5.23)   Related: `setup/README.md`, `specs/features/ARCHIVE.md` (011-offline-setup), `docs/REAL_WORLD_TESTING.md` (RS17, RS20, RS21, RS36), spec 01 rows ST-2, ST-5, ST-7
 
 ## 0. Renumbered on 2026-10-29 (read this if an older note says 032, 033, 034 or spec 03)
 This epic and its three features were written on 2026-10-28 as **spec 03** and **features 032, 033 and 034**. The same day, a different spec 03 (`specs/spec_03_overhaul.md`) and different features 032 (ledger size cap), 033 (remove the wheel) and 034 (remove the mini-game) were written and released, so the numbers collided. On the owner's order (2026-10-29) this work keeps its content and gets new numbers. Nothing about what it does changed.

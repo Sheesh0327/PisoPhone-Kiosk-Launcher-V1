@@ -36,7 +36,7 @@ Run everything from the repository root. **Find yours by who runs it and when**,
 | `make_owner_keys.py` | Creates the one key that signs firmware and router updates, and prints what to commit (`--github-secret` for the CI secret). |
 | `sign_firmware.py` | Signs one firmware image by hand (CI does this for you on `main`; use this for a manual update). |
 | `sign_router.py` | Same as above for a router release, with `--private` and `--rollout` for a staged rollout. |
-| `make_admin_qr.py` | Makes the owner's admin QR code (and the key behind it the first time): scan it on a box's login page to be super admin. No password to publish (`docs/api/superadmin-qr.md`). |
+| `make_admin_qr.py` | Makes the owner's admin QR code (and the key behind it the first time): scan it on a box's login page to be super admin. No password to publish (`docs/REFERENCE.md`). |
 | `make_card_key.py`, `make_cards.py` | The separate card key, and printing a batch of QR time cards for one box. |
 | `make_recovery_code.py` | A recovery QR: scanned on a phone's lock screen it removes PisoPhone from that phone. |
 | `make_slot_licenses.py` | Makes slot license keys: each opens ONE more phone slot on ONE coin box (its MAC address), once; the box checks it with the same owner key. Also in the setup program's Owner tools. |

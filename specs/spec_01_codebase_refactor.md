@@ -2,7 +2,7 @@
 
 Status: **backlog epic.** Its work packages are done one feature at a time (`specs/features/`). Row status is in `specs/spec_01_findings.json`; the board is `specs/STATUS.md`. The text below is the original draft and is not rewritten.
 Written: 2026-10-21, against `beta` at `7adbd17`.
-Related: `specs/mission.md`, `specs/roadmap.md`, `docs/maintainers/HARDENING_PLAN.md` (items there are referred to as **H1–H17**).
+Related: `specs/mission.md`, `specs/roadmap.md`, `docs/HARDENING.md` (items there are referred to as **H1–H17**).
 
 ## 1. Goal
 
