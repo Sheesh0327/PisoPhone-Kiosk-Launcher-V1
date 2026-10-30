@@ -33,20 +33,20 @@ Updated: 2026-10-29 (replan, `specs/replans/2026-10-29.md`). `main` = `origin/ma
 | 002 | Restore firmware 3.11.0 (product images, USB Wi-Fi setup, coin-counter hardening) + ST-1 | **released with firmware 3.11.1** (PR #94) | Not tried on a box. |
 | 001 | Router money and time (RT-01 to 07, 14) | **released: router 1.5.13, now inside 1.5.14** | Not tried on a router: RS32. |
 
-## Backlog: Spec 01 (`specs/spec_01_findings.json`, 107 rows: 15 `fixed`, 87 `open`, 5 `owner-decision`)
+## Backlog: Spec 01 (`specs/spec_01_findings.json`, 107 rows: 23 `fixed`, 79 `open`, 5 `owner-decision`; updated 2026-10-30)
 
-Earlier work exists on branch `claude/sleepy-gauss-rn31gl` (tip `748add9`) with tests that failed first. It is **not on `beta`**. 38 rows carry `prior_work`; bring each back through its own feature spec by cherry-picking, not rewriting. Nothing from it has run on real hardware.
+Earlier work exists on branch `claude/sleepy-gauss-rn31gl` (tip `748add9`) with tests that failed first. Part of it is now on `main`: the firmware rows (feature 004), the router rows RT-01 to 07 and 14, and **the app's eight money rows APP-01, 02, 03, 05, 06, 08, 09, 10, brought back by feature 018 (merged 2026-10-24; CI `build-apk` runs 544 and 546 on `main` compiled them and ran the unit tests green; this list said "open" until 2026-10-30 by mistake)**. APP-03, 05 and 09 have no unit test that names them. The other rows with `prior_work` are still to be brought back through their own feature spec by cherry-picking, not rewriting. None of it has run on real hardware (RS28 to RS31, F8, RS46 are the owner's checks).
 
 | Package | What is on that branch | Rows |
 |---|---|---|
-| R1 money and time | Firmware 3.11.1 (FW-01, 02, 03, 05, 06: **brought back in feature 004**); app (APP-01, 02, 03, 05, 06, 08, 09, 10, not compiled); router (RT-01 to 07, 14: **done on `beta`**) | 21 |
+| R1 money and time | Firmware 3.11.1 (FW-01, 02, 03, 05, 06: **brought back in feature 004**); app (APP-01, 02, 03, 05, 06, 08, 09, 10: **on `main` since feature 018, CI unit tests green, not run on a phone**); router (RT-01 to 07, 14: **done on `beta`**) | 21 |
 | R2 signing and release | CI-1, 2, 4, 7, 9; ST-1, 3, 4; SC-1, 2, 3, 7; ktlint hash | 12 |
 | R3 reliability | RT-08, 10, 18, 22, 26 (router 1.5.15) | 5 |
 | R3 to R6 rest | not started | the remaining open rows |
 
 ## Ready to plan (suggested order: money first, then safety)
 
-1. R1 app: APP-01 to 10 (needs a machine with the Android SDK).
+1. ~~R1 app: APP-01 to 10~~ done (feature 018); APP-04 is the owner's decision.
 2. R2 signing and CI fixes.
 
 ## Owner decisions open

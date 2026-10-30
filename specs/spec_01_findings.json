@@ -107,14 +107,14 @@
   "severity": "high",
   "money_or_signing": true,
   "confidence": "confirmed",
-  "status": "open",
-  "fix": "missing amount counts 0 (unit tests written; NOT compiled or run: no Android SDK)",
+  "status": "fixed",
+  "fix": "a missing amount counts 0 (complimentary time), not a 1 peso coin (KioskHttpServer.kt); unit test KioskHttpServerUnitTest",
   "test": {
    "kind": "unit",
    "where": "app/src/test (PaymentRepositoryUnitTest and others)"
   },
   "release": "app",
-  "prior_work": "implemented and tested on claude/sleepy-gauss-rn31gl@748add9; not on beta. Bring back through a feature spec."
+  "prior_work": "brought back to main by feature 018 (cherry-picked, merged 2026-10-24, PRs 108 to 114); CI build-apk runs 544 and 546 on main compiled it and ran the unit tests green"
  },
  {
   "id": "APP-01",
@@ -126,14 +126,14 @@
   "severity": "high",
   "money_or_signing": true,
   "confidence": "reported",
-  "status": "open",
-  "fix": "lock when unlocked with nothing left (unit tests written; NOT compiled or run: no Android SDK)",
+  "status": "fixed",
+  "fix": "an unlocked phone with nothing left now locks (SessionRules.kt, KioskSessionSupervisor.kt); unit test SessionRulesTest",
   "test": {
    "kind": "unit",
    "where": "app/src/test (PaymentRepositoryUnitTest and others)"
   },
   "release": "app",
-  "prior_work": "implemented and tested on claude/sleepy-gauss-rn31gl@748add9; not on beta. Bring back through a feature spec."
+  "prior_work": "brought back to main by feature 018 (cherry-picked, merged 2026-10-24, PRs 108 to 114); CI build-apk runs 544 and 546 on main compiled it and ran the unit tests green"
  },
  {
   "id": "APP-02",
@@ -145,14 +145,14 @@
   "severity": "high",
   "money_or_signing": true,
   "confidence": "reported",
-  "status": "open",
-  "fix": "remove orphan-to-receipt recovery (unit tests written; NOT compiled or run: no Android SDK)",
+  "status": "fixed",
+  "fix": "the recovery that turned an orphan coin event into a receipt is removed; unit test PaymentRepositoryUnitTest",
   "test": {
    "kind": "unit",
    "where": "app/src/test (PaymentRepositoryUnitTest and others)"
   },
   "release": "app",
-  "prior_work": "implemented and tested on claude/sleepy-gauss-rn31gl@748add9; not on beta. Bring back through a feature spec."
+  "prior_work": "brought back to main by feature 018 (cherry-picked, merged 2026-10-24, PRs 108 to 114); CI build-apk runs 544 and 546 on main compiled it and ran the unit tests green"
  },
  {
   "id": "APP-08",
@@ -164,14 +164,14 @@
   "severity": "high",
   "money_or_signing": true,
   "confidence": "reported",
-  "status": "open",
-  "fix": "remove orphan-to-receipt recovery (unit tests written; NOT compiled or run: no Android SDK)",
+  "status": "fixed",
+  "fix": "the recovery that turned an orphan coin event into a receipt is removed (same change as APP-02); unit test PaymentRepositoryUnitTest",
   "test": {
    "kind": "unit",
    "where": "app/src/test (PaymentRepositoryUnitTest and others)"
   },
   "release": "app",
-  "prior_work": "implemented and tested on claude/sleepy-gauss-rn31gl@748add9; not on beta. Bring back through a feature spec."
+  "prior_work": "brought back to main by feature 018 (cherry-picked, merged 2026-10-24, PRs 108 to 114); CI build-apk runs 544 and 546 on main compiled it and ran the unit tests green"
  },
  {
   "id": "APP-05",
@@ -183,14 +183,14 @@
   "severity": "high",
   "money_or_signing": true,
   "confidence": "reported",
-  "status": "open",
-  "fix": "mark tx only after ack (unit tests written; NOT compiled or run: no Android SDK)",
+  "status": "fixed",
+  "fix": "a failed ack releases the transaction id so the next poll offers the coin again and acks it (Esp32ConnectionManager.kt, releaseAfterFailedAck); no unit test names this row, CI compiles it",
   "test": {
    "kind": "unit",
    "where": "app/src/test (PaymentRepositoryUnitTest and others)"
   },
   "release": "app",
-  "prior_work": "implemented and tested on claude/sleepy-gauss-rn31gl@748add9; not on beta. Bring back through a feature spec."
+  "prior_work": "brought back to main by feature 018 (cherry-picked, merged 2026-10-24, PRs 108 to 114); CI build-apk runs 544 and 546 on main compiled it and ran the unit tests green"
  },
  {
   "id": "APP-10",
@@ -203,14 +203,14 @@
   "severity": "high",
   "money_or_signing": true,
   "confidence": "reported",
-  "status": "open",
-  "fix": "callback errors cannot turn APPLIED into FAILED (unit tests written; NOT compiled or run: no Android SDK)",
+  "status": "fixed",
+  "fix": "a callback that throws after the commit can no longer turn APPLIED into FAILED (PaymentRepository.kt); unit test PaymentRepositoryUnitTest",
   "test": {
    "kind": "unit",
    "where": "app/src/test (PaymentRepositoryUnitTest and others)"
   },
   "release": "app",
-  "prior_work": "implemented and tested on claude/sleepy-gauss-rn31gl@748add9; not on beta. Bring back through a feature spec."
+  "prior_work": "brought back to main by feature 018 (cherry-picked, merged 2026-10-24, PRs 108 to 114); CI build-apk runs 544 and 546 on main compiled it and ran the unit tests green"
  },
  {
   "id": "APP-03",
@@ -222,14 +222,14 @@
   "severity": "high",
   "money_or_signing": true,
   "confidence": "reported",
-  "status": "open",
-  "fix": "health check has its own lock (unit tests written; NOT compiled or run: no Android SDK)",
+  "status": "fixed",
+  "fix": "the box health check has its own lock (KioskEngine.kt); no unit test names this row, CI compiles it",
   "test": {
    "kind": "unit",
    "where": "app/src/test (PaymentRepositoryUnitTest and others)"
   },
   "release": "app",
-  "prior_work": "implemented and tested on claude/sleepy-gauss-rn31gl@748add9; not on beta. Bring back through a feature spec."
+  "prior_work": "brought back to main by feature 018 (cherry-picked, merged 2026-10-24, PRs 108 to 114); CI build-apk runs 544 and 546 on main compiled it and ran the unit tests green"
  },
  {
   "id": "APP-09",
@@ -241,14 +241,14 @@
   "severity": "high",
   "money_or_signing": true,
   "confidence": "reported",
-  "status": "open",
-  "fix": "atomic timeout update (unit tests written; NOT compiled or run: no Android SDK)",
+  "status": "fixed",
+  "fix": "the payment timeout is updated atomically (KioskSessionSupervisor.kt); no unit test names this row, CI compiles it",
   "test": {
    "kind": "unit",
    "where": "app/src/test (PaymentRepositoryUnitTest and others)"
   },
   "release": "app",
-  "prior_work": "implemented and tested on claude/sleepy-gauss-rn31gl@748add9; not on beta. Bring back through a feature spec."
+  "prior_work": "brought back to main by feature 018 (cherry-picked, merged 2026-10-24, PRs 108 to 114); CI build-apk runs 544 and 546 on main compiled it and ran the unit tests green"
  },
  {
   "id": "APP-04",
