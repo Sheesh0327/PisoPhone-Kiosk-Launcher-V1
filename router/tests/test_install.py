@@ -98,7 +98,8 @@ def run(*args, lan="10.0.0.1", wan="192.168.1.50", mask=24, answer="y", stdin_sc
     # as on the router: the installer arrives on sh's standard input
     body = stdin_script if stdin_script is not None else open(INSTALL).read()
     if SH != "sh":
-        body = f'wget() {{ {bindir}/wget "$@"; }}\n' + body   # (BusyBox runs its own wget applet before PATH)
+        # (BusyBox runs its own wget and ip applets before PATH: the test's stubs are called by name instead)
+        body = f'wget() {{ {bindir}/wget "$@"; }}\nip() {{ {bindir}/ip "$@"; }}\n' + body
     r = subprocess.run([SH, "-s", *args], input=body, env=env, capture_output=True, text=True, timeout=120)
     time.sleep(0.2)
     return r
