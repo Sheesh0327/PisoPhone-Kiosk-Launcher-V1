@@ -153,6 +153,19 @@ try:
         pg.close()
         ctx2.close()
 
+        # ---- the line that says the page cannot reach the router (after 8 seconds without a connection) -----------------------------------
+        never = "window.WebSocket = function () { this.readyState = 0; this.send = function () {}; this.close = function () {}; };"  # (a connection that never opens)
+        for fil in (False, True):
+            c3 = new_context(fil)
+            c3.add_init_script(never)
+            pg = c3.new_page()
+            pg.goto(page_url)
+            text = pg.wait_for_function("(() => { const t = document.getElementById('conn').textContent; return /Wi-Fi/.test(t) && t; })()", timeout=14000).json_value()
+            want = "Kumokonekta pa rin. Tiyaking nasa Wi-Fi ng shop ka." if fil else "Still connecting. Check you are on the shop's Wi-Fi."
+            check(text == want and "TechNet" not in text, f"{'Filipino' if fil else 'English'}, the page cannot reach the router: {text!r}")
+            pg.close()
+            c3.close()
+
         # ---- the answers the page gets to a voucher code, and to a pause ------------------------------------------------------------------
         for r in REPLIES:
             pg = ctx.new_page()

@@ -16,11 +16,14 @@ const HEADER: &str = r#"<header><img src="/brand.png" alt="" width="28" height="
 const WELCOME: &str = r#"<div class="hd" id="hd"><img src="/mascot.png" alt="" width="72" height="74"><p>Buy Wi-Fi time<span class="mut" style="display:block;font-weight:400">Pick a plan, insert a coin and you are online.</span></p></div>"#;
 const GOS: &str = r#"<p class="sub" id="gos">Coins add up: every coin adds more time</p>"#;
 const FOOT: &str = r#"<p class="foot">TechNet Solutions &middot; Connect &middot; Play &middot; More Possibilities</p>"#;
+/// The line shown when the page cannot reach the router for 8 seconds: today it names TechNet's Wi-Fi, which is wrong on a shop's own page.
+const CONN_LINE: &str = "Still connecting. Check you are on the TechNet Wi-Fi.";
+const CONN_LINE_SHOP: &str = "Still connecting. Check you are on the shop's Wi-Fi.";
 const HEAD_BODY: &str = "</head><body>";
 const PAGE_END: &str = "</script></body></html>";
 
 /// Every place the decorated page is found by. Each must occur exactly once in the built page.
-pub const ANCHORS: [&str; 9] = [TITLE, ICON, TOUCH, HEADER, WELCOME, GOS, FOOT, HEAD_BODY, PAGE_END];
+pub const ANCHORS: [&str; 10] = [TITLE, ICON, TOUCH, HEADER, WELCOME, GOS, FOOT, HEAD_BODY, PAGE_END, CONN_LINE];
 
 /// The standard line under "Buy Wi-Fi time", kept when the owner wrote no welcome.
 const STANDARD: &str = "Pick a plan, insert a coin and you are online.";
@@ -123,6 +126,7 @@ pub fn decorate(page: &str, b: &Brand, logo: bool, picture: bool) -> Result<Stri
 
     if own {
         put(TITLE, &format!("<title>{}</title>", esc(&b.name)));
+        put(CONN_LINE, CONN_LINE_SHOP);
     }
     let icon = |from: &str, rel: &str, put: &mut dyn FnMut(&str, &str)| {
         if logo {
@@ -209,7 +213,9 @@ pub fn decorate(page: &str, b: &Brand, logo: bool, picture: bool) -> Result<Stri
 }
 
 const CONNECT_FN: &str = "function connect(){";
-const START: &str = r#"show("conn");connect();setInterval(beat,4e3);setTimeout(function(){if(!ws||ws.readyState!==1){put("conn","Still connecting. Check you are on the TechNet Wi-Fi.");el("rl").style.display="block"}},8e3);"#;
+/// The page's start-up call, found by its two ends (the message between them, shown after 8 seconds, differs from page to page).
+const START_HEAD: &str = r#"show("conn");connect();setInterval(beat,4e3);setTimeout(function(){"#;
+const START_TAIL: &str = "},8e3);";
 
 /// Stops every press, tap, key and script click on the page's body before it reaches a button (the language button, in the header, still
 /// works), and takes the body out of the tab order.
@@ -219,10 +225,18 @@ const NO_PRESS: &str = r#"document.addEventListener("click",function(e){if(e.tar
 /// removed and `connect` itself does nothing, because the page also asks again whenever it is shown), and nothing on it can be pressed except
 /// the language button. The console also sends it with a policy that forbids any connection. A page that has changed shape is an error.
 pub fn inert(page: &str) -> Result<String, &'static str> {
-    if [CONNECT_FN, START, "</head>"].iter().any(|a| page.matches(a).count() != 1) {
-        return Err("the page has changed and the preview can no longer be made safe");
+    let shape = "the page has changed and the preview can no longer be made safe";
+    if [CONNECT_FN, START_HEAD, START_TAIL, "</head>"].iter().any(|a| page.matches(a).count() != 1) {
+        return Err(shape);
     }
-    Ok(page.replacen(CONNECT_FN, "function connect(){return;", 1).replacen(START, r#"show("idle");"#, 1).replacen(
+    let from = page.find(START_HEAD).ok_or(shape)?;
+    let to = from + page[from..].find(START_TAIL).ok_or(shape)? + START_TAIL.len();
+    let cut = &page[from..to];
+    if cut.matches("setInterval").count() != 1 || cut.matches("setTimeout").count() != 1 {
+        return Err(shape);
+    }
+    let page = format!("{}{}{}", &page[..from], r#"show("idle");"#, &page[to..]);
+    Ok(page.replacen(CONNECT_FN, "function connect(){return;", 1).replacen(
         "</head>",
         &format!("<style>.w{{pointer-events:none}}</style><script>{}</script></head>", NO_PRESS),
         1,
@@ -548,5 +562,38 @@ mod tests {
             "a page that changed shape is not shown half neutralised"
         );
         assert!(inert(&branded.replace("connect();setInterval(beat", "connect(); setInterval(beat")).is_err());
+    }
+    #[test]
+    fn f049_a_page_with_the_shops_name_never_tells_a_customer_to_look_for_a_technet_wifi() {
+        let old = "Check you are on the TechNet Wi-Fi.";
+        assert_eq!(count(&base(), old), 1, "today's page says it, once (and must go on saying it: it is the golden page)");
+        for l in crate::brand::LAYOUTS {
+            let page = decorate(&base(), &with_layout(l), true, true).unwrap();
+            assert!(
+                !page.contains(r#"put("conn","Still connecting. Check you are on the TechNet"#),
+                "{}: the shop's own page named TechNet's Wi-Fi",
+                l
+            );
+            assert_eq!(count(&page, r#"put("conn","Still connecting. Check you are on the shop's Wi-Fi.")"#), 1, "{}", l);
+        }
+        let mut palette_only = Brand::default();
+        palette_only.palette = "rosas".into();
+        assert!(
+            decorate(&base(), &palette_only, false, false).unwrap().contains(old),
+            "a shop that kept the TechNet name keeps the TechNet line"
+        );
+    }
+
+    #[test]
+    fn f049_the_preview_still_cuts_the_start_up_out_whatever_the_connection_line_says() {
+        for page in [decorate(&base(), &full(), false, false).unwrap(), decorate(&base(), &Brand::default(), false, false).unwrap(), base()]
+        {
+            let v = inert(&page).unwrap();
+            assert!(
+                !v.contains(r#"put("conn","Still connecting"#) && !v.contains("},8e3);") && !v.contains("connect();setInterval(beat"),
+                "the start-up code, with its 8 second message, is gone"
+            );
+            assert!(v.contains(r#"show("idle");"#));
+        }
     }
 }

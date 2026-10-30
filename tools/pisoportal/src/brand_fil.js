@@ -77,6 +77,7 @@ var X={
 "This phone's browser cannot run the coin page.":"Hindi mapatakbo ng browser ng phone na ito ang coin page.",
 "Connection lost. Reconnecting…":"Nawala ang koneksyon. Kumokonekta ulit…",
 "Still connecting. Check you are on the TechNet Wi-Fi.":"Kumokonekta pa rin. Tiyaking nasa Wi-Fi ng shop ka.",
+"Still connecting. Check you are on the shop's Wi-Fi.":"Kumokonekta pa rin. Tiyaking nasa Wi-Fi ng shop ka.",
 "House rules":"Mga patakaran"
 };
 var P="(Endurance|HyperSpeed)";

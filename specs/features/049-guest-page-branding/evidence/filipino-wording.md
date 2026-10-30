@@ -82,7 +82,8 @@ What it covers: the words the guest page writes by itself when the customer taps
 | 72 | Another customer is paying. Try again in a few seconds. | May ibang customer na nagbabayad. Subukan ulit sa loob ng ilang segundo. | |
 | 73 | This phone's browser cannot run the coin page. | Hindi mapatakbo ng browser ng phone na ito ang coin page. | |
 | 74 | Connection lost. Reconnecting… | Nawala ang koneksyon. Kumokonekta ulit… | |
-| 75 | Still connecting. Check you are on the TechNet Wi-Fi. | Kumokonekta pa rin. Tiyaking nasa Wi-Fi ng shop ka. | |
+| 75 | Still connecting. Check you are on the shop's Wi-Fi. | Kumokonekta pa rin. Tiyaking nasa Wi-Fi ng shop ka. | |
+| 75b | Still connecting. Check you are on the TechNet Wi-Fi. (only on a page whose shop kept the TechNet name) | Kumokonekta pa rin. Tiyaking nasa Wi-Fi ng shop ka. | |
 | 76 | House rules | Mga patakaran | |
 
 (␣ marks a space at the start or end: these are pieces of one longer sentence on the page.)
