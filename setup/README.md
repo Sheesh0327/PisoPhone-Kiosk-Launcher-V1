@@ -5,6 +5,8 @@ computer, with **no screen needed**: it serves its setup as a web page, so a sma
 open the page on your **phone**. It asks only for the shop's name and Wi-Fi name and does the rest by itself: it writes the coin
 box over USB, sets up the router and pairs them. About 15 minutes a unit, and one tap for the next.
 
+This page is written for the shop owner. The folder's layout, build and tests, for developers, are under **For developers** at the end.
+
 ## What you need
 - The **ESP32 coin box board** and a USB data cable (a charge-only cable does not work), plugged into the setup computer
 - An **OpenWrt router** (for example the 360T6M), factory reset
@@ -360,10 +362,38 @@ The setup asks you to choose the router password (or shows a generated one and a
 The setup prints `TIP:` lines at the moments people usually get stuck: what the coin box's light means, what to check when the box has not joined after one, two and five minutes (the advice depends on whether the router's `PisoCoinBox` network is on the air), what happens next when the box is found, and what to do when it is finished or a check failed. The setup page shows the latest tip above the log. `PISO_TIPS=0` turns them off.
 
 ### For developers
-The setup file is written in parts: **edit the files in `setup/src/`** (`00-header` settings and helpers, `20-preflight`,
-`10-settings` stored settings and this router's Wi-Fi names, `30-router-settings` the uci batch, `40-files`, `50-coin-box` pairing and provisioning, `60-summary`, `70-agreement` the
-`verify` checks, `75-checks-stage2` the status checks and the second stage, `80-commands`, `90-updates` signed updates, `91-box-update` coin box firmware updates, `96-space-backup` free space, export and import, `97-console` the router console as front page,
-`95-owner-tools` Telegram, handout, admin lock, `98-setup-flow` pairing, questions and `main`). `setup/piso-setup.sh.in` is
-those parts joined, and `setup/piso-setup.sh` is that plus the portal files. After changing any of them run
-`python3 tools/build_piso_setup.py` (CI fails if a committed generated file is out of date). Tests: `python3 router/tests/test_setup.py`.
+This folder holds the setup program (`pisophone_setup.py`, run on a computer) and the router installer (`install.sh`, then `piso-setup.sh`).
+
+#### Layout
+- `pisophone_setup.py`: the setup program. `website/pisophone_setup.py` is a copy, kept equal by `tools/build_piso_setup.py`.
+- `install.sh`: the one-line router installer. `RELEASE`: the router release number; a router installs only a newer one.
+- `src/`: the router setup file, written in parts. **Edit these:** `00-header` settings and helpers, `10-settings` stored settings and this
+  router's Wi-Fi names, `15-flash` which chip holds the writable data and how much room is left, `20-preflight`, `30-router-settings` the
+  uci batch, `40-files`, `50-coin-box` pairing and provisioning, `60-summary`, `70-agreement` the `verify` checks, `75-checks-stage2` the
+  status checks and the second stage, `80-commands`, `90-updates` signed updates, `91-box-update` coin box firmware updates,
+  `95-owner-tools` Telegram, handout, admin lock, `96-space-backup` free space, export and import, `97-console` the router console as front
+  page, `98-setup-flow` pairing, questions and `main`.
+- `piso-setup.sh.in` is those parts joined. `piso-setup.sh` is that plus the portal files (the `mipsel` build), and `piso-setup-<family>.sh`
+  is the same for the other router families, each with a `.sha256`.
+
+#### Build
+```
+python3 tools/build_piso_setup.py
+```
+CI fails if a committed generated file is out of date (`python3 tools/build_piso_setup.py --check`). A change under `setup/src/` changes
+what routers install: it goes through `beta` and raises `setup/RELEASE` (`CLAUDE.md` section 5).
 `./piso-setup.sh --dry-run` prints the router settings without applying anything.
+
+#### Test
+```
+python3 router/tests/test_setup.py             # the router setup file, with a fake uci
+python3 router/tests/test_pisophone_setup.py   # the setup program, with a fake ssh and router
+```
+`router/tests/` holds the rest (`router/README.md`).
+
+#### Generated files
+`piso-setup.sh`, `piso-setup-<family>.sh` and their `.sha256` are written by `tools/build_piso_setup.py`; never edit them by hand, and do not
+open them. `website/setup/*` and `website/install.sh` are written by the same script.
+
+#### See also
+`tools/README.md`, `router/README.md`, `tools/pisoportal/README.md`, `docs/ROUTERS.md`, `docs/RELEASE.md`.

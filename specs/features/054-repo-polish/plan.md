@@ -28,7 +28,7 @@ Never open: `esp32_firmware/include/WebAssets.h`, `setup/piso-setup*.sh`, `websi
   and `bash scripts/check_security_rules.sh` (both must pass before you start; if not, stop and tell the owner).
 - [x] 1. **LICENSE (S1).** Proprietary text, "Copyright (c) 2026 TechNet Solutions. All rights reserved." plus a short no-use-without-
   written-permission clause. Commit.
-- [ ] 2. **Component READMEs (S4).** Write `app/README.md`, `esp32_firmware/README.md`, `router/README.md`, `protocol/README.md`,
+- [x] 2. **Component READMEs (S4).** Write `app/README.md`, `esp32_firmware/README.md`, `router/README.md`, `protocol/README.md`,
   `tools/README.md` in one shape:
   `# Name` / one-paragraph purpose / `## Layout` (subfolders, one line each) / `## Build` / `## Test` / `## Generated files` (if any,
   from `CLAUDE.md` section 4) / `## See also`. Facts come from `ls`, `CONTRIBUTING.md`, `quality.yml` run lines, `platformio.ini`

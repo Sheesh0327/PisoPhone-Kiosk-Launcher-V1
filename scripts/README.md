@@ -5,8 +5,7 @@ your key files are all in the setup program (`python3 pisophone_setup.py`, the *
 [the Start page](https://pisophone.pages.dev/start/). Everything below is for the **maintainer**: signing, releases, checks. The scripts
 still work from a terminal and use the same key files and ledgers as the setup program.
 
-# Scripts: what each one is for
-
+## Find a script
 Run everything from the repository root. **Find yours by who runs it and when**, not by name.
 
 | I want to... | Run this |
@@ -24,7 +23,6 @@ Run everything from the repository root. **Find yours by who runs it and when**,
 | `embed_web.py` | Packs the dashboard files in `esp32_firmware/web/` into `include/WebAssets.h`. After editing anything in `web/`, run it and commit the header; `--check` fails when it is out of date. | `quality.yml` |
 | `publish_firmware_ota.py` | Copies the built box firmware into `website/update/`, signs it, and writes `firmware.json` (version, build, checksums, signatures). `--json-only` rewrites only `firmware.json` after you signed by hand. Warns when the firmware changed but `PISO_FW_VERSION` did not. | `firmware-images.yml` (on `main`) |
 | `sign_router.py` | Signs the router setup file so every router installs it: writes `router.json` and `router-setup.sh`. | `publish-router.yml` |
-| `make_brand_pack.py` | Makes a shop's brand pack: the shop's logo (and one optional picture) signed with your owner key, the only way a picture reaches that shop's guest Wi-Fi page. Refuses SVG, oversize pictures, a key kept in the repository and a key the routers do not hold. |
 | `check_published_apk.py` | Checks that the APK on the website is the one `app.json` describes (size, checksum, signing certificate). | `quality.yml`, `verify_release.py` |
 | `make_firmware_bundles.py` | Packs the coin box firmware into the two owner zips (development and release layouts, no keys inside). | `firmware-images.yml` (manual run with "bundle") |
 | `sign_console_ui.py` | Signs the router console's page script so routers can take a newer one from the website. | `publish-router.yml` |
@@ -42,6 +40,7 @@ Run everything from the repository root. **Find yours by who runs it and when**,
 | `make_recovery_code.py` | A recovery QR: scanned on a phone's lock screen it removes PisoPhone from that phone. |
 | `make_slot_licenses.py` | Makes slot license keys: each opens ONE more phone slot on ONE coin box (its MAC address), once; the box checks it with the same owner key. Also in the setup program's Owner tools. |
 | `make_wifi_poster.py` | Prints the PisoWiFi poster: a QR code that joins the customer Wi-Fi and one that opens the coin page. |
+| `make_brand_pack.py` | Makes a shop's brand pack: the shop's logo (and one optional picture) signed with your owner key, the only way a picture reaches that shop's guest Wi-Fi page. Refuses SVG, oversize pictures, a key kept in the repository and a key the routers do not hold. |
 
 Not run directly: `owner_key.py` (shared key loading for the signing tools) and `card_format.py` (the QR card format).
 
@@ -51,6 +50,9 @@ Not run directly: `owner_key.py` (shared key loading for the signing tools) and 
 | `verify_release.py` | Before a release: same owner key in firmware and router; every firmware image, the router file and the app feed match their checksums and verify; and **a box installs firmware only if `PISO_FW_VERSION` is higher** (same for `setup/RELEASE` on routers). |
 | `check_security_rules.sh` | The repository's security rules: no private key or factory password committed, TLS certificate checks never switched off without a stated reason, the coin-slot API keeps requiring signed calls, a capped number of `runBlocking`, and the router setup keeps verifying what it downloads. CI runs it. |
 | `check_vendored.py` | Fails if a vendored third-party file changed without its record in `website/js/VENDORED.md`. |
+| `check_links.py` | Lists the links in the documents (markdown links and backticked paths that start with one of the repository's folders) that point to a file that is gone. Exit status 1 on a dead link. CI runs it. |
+| `check_product_strip.py` | Checks that each single-product coin box image (PisoPhone only, PisoWiFi only) holds no word of the other product. CI runs it. |
+| `cache_report.py` | How much of a Claude Code chat was read from the prompt cache, from the chat's transcript file (`specs/README.md`). |
 | `sold_unit_check.py` | For hardened boxes you sell: shows the security eFuses and tells whether a flash dump is encrypted (`docs/PROVISIONING_SOLD_UNIT.md`). |
 | `gateway_client.py` | Talks to a box's router API from a PC (`arm`, `status`, `release`, `ack`, `run`): for testing, and the model for the router side. |
 
@@ -68,3 +70,7 @@ Run all with the commands in `CONTRIBUTING.md`; CI runs them for the parts a cha
 | `tools/build_piso_setup.py` | Builds `setup/piso-setup.sh`, the single file copied to a router, from `setup/src/` and the router program. |
 | `setup/` | The setup program (`pisophone_setup.py`, also served from `website/`: a test keeps both copies identical) and the router installer. |
 | `.github/scripts/sync_test_issues.py` | Turns Issue log rows into GitHub issues (the "Real-world test issues" workflow). |
+
+## See also
+`CONTRIBUTING.md` (the check commands per area), `docs/KEYS.md` (the owner key), `docs/RELEASE.md` (what only the owner does),
+`tools/README.md`.
