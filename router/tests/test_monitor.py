@@ -270,5 +270,61 @@ os.remove(f"{tmp}/setup.conf")
 t_, a_ = upd_tick()
 check(not t_, "044: no setup conf at all: nothing happens")
 
+# ---- the monitor asks the portal where the portal really listens (feature 052) ------------------------------------------------------------
+# The installer binds the portal to the guest network's address only (PORTAL_BIND), so asking 127.0.0.1 never gets an answer: the monitor used
+# to restart a healthy portal every ten minutes and its alert counted failed minutes without end. These runs leave PING_URL unset, as a router does.
+def listening(host):
+    sv = ThreadingHTTPServer((host, 0), H)
+    threading.Thread(target=sv.serve_forever, daemon=True).start()
+    return sv, sv.server_address[1]
+
+
+def own_run(name, conf_lines):
+    d = os.path.join(tmp, name); os.makedirs(d, exist_ok=True)
+    cc = os.path.join(d, "coinslot.conf"); open(cc, "w").write("".join(l + "\n" for l in conf_lines))
+    svc = os.path.join(d, "svc.sh"); open(svc, "w").write(f"#!/bin/sh\necho \"$1\" >> {d}/service.log\n"); os.chmod(svc, 0o755)
+    e2 = {k: v for k, v in env.items() if k not in ("PING_URL", "PORTAL_PORT")}
+    e2.update(COINSLOT_CONF=cc, MON_STATE=f"{d}/state", ALERTS_FILE=f"{d}/alerts.txt", PORTAL_SERVICE=svc, PISO_MONITOR_CONF=os.path.join(d, "none.conf"))
+
+    def run(n=1):
+        for _ in range(n):
+            subprocess.run(["sh", MON, "tick"], env=e2, capture_output=True, text=True, timeout=60)
+
+    def count(): return open(f"{d}/service.log").read().count("restart") if os.path.exists(f"{d}/service.log") else 0
+    def al(): return open(f"{d}/alerts.txt").read() if os.path.exists(f"{d}/alerts.txt") else ""
+    def fails(): return open(f"{d}/state/pingfails").read().strip() if os.path.exists(f"{d}/state/pingfails") else "?"
+    return run, count, al, fails
+
+
+sv2, port2 = listening("127.0.0.2")
+run, count, al, fails = own_run("guestbind", [f"PORTAL_BIND='127.0.0.2'", f"PORTAL_PORT='{port2}'"])
+run(5)
+check(count() == 0 and "did not answer" not in al() and fails() == "0", f"052: a portal bound to the guest address only is pinged there, and is healthy: restarts={count()} fails={fails()} {al()!r}")
+sv2.shutdown()
+
+sv3, port3 = listening("127.0.0.1")
+for label, lines in (("bound to every address", [f"PORTAL_BIND='0.0.0.0'", f"PORTAL_PORT='{port3}'"]), ("no bind set (an older setup)", [f"PORTAL_PORT='{port3}'"]),
+                     ("bind set to the loopback address", [f"PORTAL_BIND='127.0.0.1'", f"PORTAL_PORT='{port3}'"])):
+    run, count, al, fails = own_run("loop" + str(abs(hash(label)) % 1000), lines)
+    run(5)
+    check(count() == 0 and fails() == "0", f"052: {label}: pinged on 127.0.0.1 and healthy: restarts={count()} fails={fails()}")
+
+# a portal that really hangs is still restarted, and the count of failed minutes starts again after a restart
+sv4, port4 = listening("127.0.0.2")
+run, count, al, fails = own_run("hang", [f"PORTAL_BIND='127.0.0.2'", f"PORTAL_PORT='{port4}'"])
+run(2)
+open(f"{tmp}/pinghang", "w").close()
+run(2)
+check(count() == 0, "052: two failed pings are still not enough")
+run(1)
+check(count() == 1 and "did not answer for 3 minutes" in al(), f"052: the third failed ping restarts it once, as before: {count()} {al()!r}")
+check(fails() == "0", f"052: and the count of failed minutes starts again after the restart: {fails()}")
+run(3)
+check(count() == 1 and "did not answer" in al() and al().count("did not answer") == 1, "052: the next ticks restart nothing and say nothing new")
+os.remove(f"{tmp}/pinghang")
+run(1)
+check("answers again" in al() and fails() == "0", f"052: and it is noted when the portal answers again: {al()!r}")
+sv4.shutdown(); sv3.shutdown()
+
 print(f"{checks} checks, {failures} failures")
 sys.exit(1 if failures else 0)

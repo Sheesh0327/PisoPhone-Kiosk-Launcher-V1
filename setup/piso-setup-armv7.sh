@@ -29,7 +29,7 @@
 
 VERSION="dev"
 # the release of this file (setup/RELEASE): routers install only a higher release that the owner signed
-PISO_RELEASE='1.5.31'
+PISO_RELEASE='1.5.32'
 # the CPU family the portal program in this file is built for (router_family below names the family of the router it runs on)
 PISO_ARCH='armv7'
 
@@ -2478,7 +2478,11 @@ COINSLOT_CONF="${COINSLOT_CONF:-/etc/coinslot.conf}"
 SETUP_CONF="${PISO_SETUP_CONF:-/etc/piso-setup.conf}"
 UPDATE_GRACE="${UPDATE_GRACE:-86400}"                  # seconds an update may wait before it is a warning
 [ -n "$PORTAL_PORT" ] || PORTAL_PORT=$(sed -n "s/^PORTAL_PORT=['\"]\{0,1\}\([0-9]*\).*/\1/p" "$COINSLOT_CONF" 2> /dev/null | head -n 1)
-PING_URL="${PING_URL:-http://127.0.0.1:${PORTAL_PORT:-2080}/ping}"
+# Where the portal listens: the installer binds it to the guest network's address only (PORTAL_BIND), where 127.0.0.1 never answers. Asking
+# there restarted a healthy portal every ten minutes. An older setup with no bind, or a bind to every address, is asked on 127.0.0.1.
+_pb=$(sed -n "s/^PORTAL_BIND=['\"]\{0,1\}\([0-9.]*\).*/\1/p" "$COINSLOT_CONF" 2> /dev/null | head -n 1)
+case "$_pb" in "" | 0.0.0.0) _pb=127.0.0.1 ;; esac
+PING_URL="${PING_URL:-http://$_pb:${PORTAL_PORT:-2080}/ping}"
 PING_TIMEOUT="${PING_TIMEOUT:-5}"
 PING_FAILS_TO_RESTART="${PING_FAILS_TO_RESTART:-3}"   # failed pings, a minute apart, before the portal is restarted
 RESTART_GAP="${RESTART_GAP:-600}"                      # seconds: the portal is restarted at most once in this time
@@ -2556,6 +2560,7 @@ check_portal() {
 		now > "$S/portal.restarted"; : > "$S/portal.down"
 		"$PORTAL_SERVICE" restart > /dev/null 2>&1
 		alert portal 3600 "the portal program did not answer for $_fails minutes and was restarted (a coin window that was open is settled from its record)."
+		echo 0 > "$S/pingfails"   # the minutes count from the restart, so a portal that keeps failing does not report ever larger numbers
 	fi
 }
 
