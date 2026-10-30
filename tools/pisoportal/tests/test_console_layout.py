@@ -256,6 +256,7 @@ try:
             check(sideways(pg) <= 0, f"{w} px: sign-in: no sideways scrolling")
             ctx.close()
         ctx, pg = sign_in(br, 390, 844)
+        pg.add_style_tag(content="*{font-family:'DejaVu Sans',sans-serif !important}")  # (a wide font is the hard case, and the CI machine's font is wider than this one's)
         open_screen(pg, 390, "cli")
         env.nds_client("aa:bb:cc:00:00:01", STATE="Authenticated", SESSION_END=int(time.time()) + 900, DL=1, UL=1)
         open_screen(pg, 390, "cli")
