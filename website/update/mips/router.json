@@ -2,7 +2,7 @@
   "version": "1.5.33",
   "sha256": "b3597b4ba52f24b3076e019bbf0cf3b6fad72d2a779be81005249b0eb1979024",
   "size": 1686328,
-  "rollout": 0,
-  "changelog": "Router software release 1.5.33",
-  "sig": "MEQCIE5+UqZWOFCwe3GF47PCYbiFYebJi5ZK+C1Oeek0Ftq4AiAUGnBAhV1eUcQ6DI3bROAf/wnMqFkCXGILamJzuOwEjQ=="
+  "rollout": 100,
+  "changelog": "Admin console layout update. ",
+  "sig": "MEYCIQCnYtDxormiOXsEI2TN4dFvBHR6DAEzEADYLY/Kw0yFNwIhAIejhS73W5/FPKHASS3xgjYc3MwrGaOcEKMx/4MLEAJK"
 }
