@@ -1,8 +1,8 @@
 {
-  "version": "1.5.32",
-  "sha256": "9c2901edbfb141ceec37a52ab1508cf550afc144d934e31714cbc8a3e4855bfc",
+  "version": "1.5.33",
+  "sha256": "b8f1acad48073315e2e50c8fb14c6c3cfcdd22bb166f4df5a0f04f99475a8699",
   "size": 1686330,
-  "rollout": 100,
-  "changelog": "Fix false monitor alarms.",
-  "sig": "MEUCIQCvdlH8GGG7SwFtb6Yxbhu473CJd3rGM3ktmNWJVcFZCgIgJdnCUKemohFmEZkVmmeO8UgvAULsqfVRg8eOT4NoOMw="
+  "rollout": 0,
+  "changelog": "Router software release 1.5.33",
+  "sig": "MEUCIEEWA+DB+xPMfRtqqyP61kWItttXP4MBSrMWMCFwwyyxAiEAhj95Vp7/NmFLeMqRPyo78GaQ+vFE1liJduad8j2aN5I="
 }
