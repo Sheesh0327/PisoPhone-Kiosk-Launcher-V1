@@ -110,6 +110,9 @@ def reset(extra_conf=""):
     os.chmod(inst, 0o755)
     os.makedirs(f"{root}/etc/crontabs", exist_ok=True)
     open(f"{root}/etc/crontabs/root", "w").write("0 3 * * * /usr/bin/other-job\n")
+    os.makedirs(f"{root}/etc/coinslot.d/brand", exist_ok=True)  # (feature 049: the shop's branding, which no update may touch)
+    for _n, _b in BRAND_FILES.items():
+        open(f"{root}/etc/coinslot.d/brand/{_n}", "wb").write(_b)
     open(conf, "w").write("GW_KEY='" + "ab" * 32 + f"'\nUPDATE_URL='{url}'\nGUEST_NAME='Shop WiFi'\nBOX_MAC='AA:BB:CC:DD:EE:09'\n" + extra_conf)
     open(msgs, "w").close()
     if os.path.exists(f"{tmp}/guests"):
@@ -129,6 +132,14 @@ def self_update(*args, **extra):
     return subprocess.run(["sh", inst, "self-update", *args], env=env(**extra), capture_output=True, text=True, timeout=120)
 
 
+BRAND_FILES = {"published.txt": b"name=Aling Nena\n", "draft.txt": b"name=Aling Nena 2\n", "images.txt": b"logo logo-0123456789ab.png " + b"a" * 64 + b"\n", "logo-0123456789ab.png": b"\x89PNG\r\n\x1a\nlogo"}
+
+
+def brand_state():
+    d = f"{root}/etc/coinslot.d/brand"
+    return {n: open(f"{d}/{n}", "rb").read() for n in os.listdir(d)} if os.path.isdir(d) else None
+
+
 def state():
     return {rel: open(f"{root}/{rel}", "rb").read() for rel in INSTALLED_FILES}
 
@@ -141,8 +152,13 @@ def telegram():
     return open(msgs).read()
 
 
+def brand_kept(why):
+    check(brand_state() == BRAND_FILES, "the shop's branding, its pictures and its draft are untouched: " + why)
+
+
 def unchanged(why):
     check(state() == INSTALLED_FILES and release_of_installed() == "1.0.0", "nothing on the router changed: " + why)
+    brand_kept(why)
 
 
 reset()
@@ -194,6 +210,7 @@ check(r.returncode == 0 and new_prog == real_prog, "the signed release installs 
 check(open(f"{root}/usr/bin/piso-monitor.sh").read() == open(f"{ROOT}/router/piso_monitor.sh").read(), "and the monitor")
 check(release_of_installed() == "1.1.0" and not any(ln.startswith(b"#@@") for ln in open(inst, "rb")) and os.path.getsize(inst) < 200_000,
       "the installed command is now release 1.1.0, without the payload")
+brand_kept("after an update")
 check(not os.path.exists(f"{tmp}/backup"), "the backup of the earlier release is deleted once the new one has proven itself (it was needed to go back until then)")
 check("release 1.1.0 installed and running" in telegram(), "the owner is told: " + telegram())
 cron = open(f"{root}/etc/crontabs/root").read()
@@ -222,6 +239,7 @@ publish(release("1.2.0"))
 self_update("auto")
 cron = open(f"{root}/etc/crontabs/root").read()
 check(release_of_installed() == "1.2.0" and len([ln for ln in cron.splitlines() if "self-update" in ln]) == 1, "a second update leaves one timer line: " + cron)
+brand_kept("after a second update")
 
 # ---- what is refused ---------------------------------------------------------------------------------------------------------------
 reset()

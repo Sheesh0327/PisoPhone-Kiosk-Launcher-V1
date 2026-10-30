@@ -303,10 +303,20 @@ ol.steps>li::before{content:counter(s);position:absolute;left:0;top:2px;width:30
 <li><b>Money:</b> today, this week, all time and the last seven days.</li>
 <li><b>Sales:</b> per day: coins that bought time, coins that bought voucher codes (with how many were issued, redeemed and are waiting), and a CSV download.</li>
 <li><b>Vouchers:</b> the codes customers bought: issued time, minutes, plan, used or not, expiry. <b>Cancel</b> an unused one.</li>
+<li><b>Branding:</b> make the customer page yours: your shop name, colours, layout, texts in English and Filipino, and your logo (see "Your shop's own look" below).</li>
 <li><b>Settings:</b> the voucher choice at payment, on or off, and the <b>Prices</b>: the price list of HyperSpeed and Endurance (pesos to minutes, up to eight lines each), the minutes each extra HyperSpeed peso adds, and the Endurance speed limits. A change applies at once to the next payment (one already started keeps the prices it began with) and the customer page shows the new list. Each plan needs a 1-peso line so every coin counts. <b>Go back to the settings file</b> forgets the console prices.</li>
 </ul>
 <p>To make it the front page at <code>http://10.0.0.1</code>, run <code>piso-setup console on</code> on the router. The router's own settings page (LuCI) then moves to <code>http://10.0.0.1:8080</code> and stays reachable as <b>Advanced</b>; <code>piso-setup console off</code> puts everything back. If the console does not come up, <code>console on</code> puts everything back by itself.</p>
 <div class="note"><b>Privacy</b>The console shows device names and addresses of your customers, and keeps no history of what they browse. Its speed graph lives in the router's memory only. Put a notice on your login page if your customers' data is covered by privacy rules.</div>
+<h3 id="branding">Your shop's own look (Branding)</h3>
+<p>In the console choose <b>Branding</b>. Type your <b>shop name</b>, pick a <b>palette</b> and, if you like, your own <b>accent colour</b> (the colour of buttons and highlights; a colour that would be hard to see is made lighter for you), choose a <b>layout</b>, and write your texts: a tagline, a welcome line, a promo banner (shown before a customer pays), house rules, a contact line and opening hours. Each text can be written in English and in Filipino; where there is no Filipino text, customers who choose Filipino see your English one. A small preview shows the page as customers see it, and it follows what you type.</p>
+<ul>
+<li>What you type is saved as a <b>draft</b>. <b>Customers see nothing new until you press Publish.</b> Press <b>Restore the standard TechNet look</b> to go back to the usual page; your draft is kept.</li>
+<li>The coin button, the plans and the prices look the same in every layout and colour, and texts are shown exactly as you type them (no links or formatting). A small "by TechNet Solutions" line always stays at the bottom.</li>
+<li><b>Your logo</b> comes as a <b>brand pack</b>: one small file that TechNet makes for you and signs. In <b>Branding</b> choose the file under <b>Logo and picture</b>; or, from your computer, <code>scp</code> it to the router and run <code>piso-setup brand-pack &lt;file&gt;</code>. A file that is not a genuine pack is refused and nothing changes. Then press <b>Publish</b>.</li>
+<li>Customers get a language button at the top of the page. The choice stays on their phone.</li>
+<li>Your branding is kept when the router software updates, when the router's firmware is upgraded, and in <code>piso-setup export</code> backups.</li>
+</ul>
 <h3>Backups and small routers</h3>
 <ul>
 <li><code>piso-setup export</code> writes a private backup (settings, keys, revenue ledger) to copy to your computer; <code>piso-setup import &lt;file&gt;</code> restores it after a reset or on a replaced router. A firmware upgrade of the router now keeps these by itself.</li>
@@ -325,6 +335,7 @@ ol.steps>li::before{content:counter(s);position:absolute;left:0;top:2px;width:30
 <tr><td><code>piso-setup telegram</code></td><td>Set up Telegram alerts</td></tr>
 <tr><td><code>piso-setup wifi-name</code> / <code>guest-port</code></td><td>Change public Wi-Fi name / guest port</td></tr>
 <tr><td><code>piso-setup voucher-choice</code></td><td>Turn "Get a voucher code" at payment on or off</td></tr>
+<tr><td><code>piso-setup brand-pack &lt;file&gt;</code></td><td>Install the logo pack TechNet signed for your shop (then press Publish in the console, Branding)</td></tr>
 <tr><td><code>piso-setup pair</code></td><td>Pair a coin box</td></tr>
 <tr><td><code>piso-setup summary</code> / <code>handout</code></td><td>Reprint the passwords sheet / customer handout</td></tr>
 <tr><td><code>piso-setup diag</code> / <code>box-diag</code></td><td>Diagnostics for you or for support</td></tr>

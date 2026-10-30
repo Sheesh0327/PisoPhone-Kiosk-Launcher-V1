@@ -1230,12 +1230,17 @@ for d in ("etc/coinslot.d",):
     os.makedirs(f"{root}/{d}", exist_ok=True)
 open(f"{root}/etc/piso-setup.conf", "w").write("GW_KEY='abc'\n")
 open(f"{root}/etc/coinslot.d/revenue.csv", "w").write("1,2,3\n")
+BRAND_FILES = {"published.txt": b"name=Aling Nena\n", "draft.txt": b"name=Aling Nena 2\n", "images.txt": b"logo logo-0123456789ab.png " + b"a" * 64 + b"\n", "logo-0123456789ab.png": b"\x89PNG\r\n\x1a\nlogo"}
+os.makedirs(f"{root}/etc/coinslot.d/brand", exist_ok=True)
+for _n, _b in BRAND_FILES.items():
+    open(f"{root}/etc/coinslot.d/brand/{_n}", "wb").write(_b)
 bk = f"{tmp}/backup.tar.gz"
 r = lib(f"cmd_export {bk}", env={"PISO_ROOT": root, "PISO_TEST_NONROOT": "1"})
 check(os.path.isfile(bk) and oct(os.stat(bk).st_mode & 0o777) == "0o600" and "Backup written" in r.stdout, "export writes a private backup: " + r.stdout + r.stderr)
-os.remove(f"{root}/etc/piso-setup.conf"); os.remove(f"{root}/etc/coinslot.d/revenue.csv")
+os.remove(f"{root}/etc/piso-setup.conf"); os.remove(f"{root}/etc/coinslot.d/revenue.csv"); shutil.rmtree(f"{root}/etc/coinslot.d/brand")
 r = lib(f"ASSUME_YES=1; cmd_import {bk}", env={"PISO_ROOT": root, "PISO_TEST_NONROOT": "1"})
 check(open(f"{root}/etc/piso-setup.conf").read() == "GW_KEY='abc'\n" and os.path.isfile(f"{root}/etc/coinslot.d/revenue.csv") and "Restored" in r.stdout, "import puts the settings and the ledger back: " + r.stdout + r.stderr)
+check({n: open(f"{root}/etc/coinslot.d/brand/{n}", "rb").read() for n in os.listdir(f"{root}/etc/coinslot.d/brand")} == BRAND_FILES, "feature 049: a backup and its restore keep the shop's branding, its pictures and its draft")
 import subprocess as _sp
 evil = f"{tmp}/evil.tar.gz"
 _sp.run(["tar", "-C", root, "-czf", evil, "etc/piso-setup.conf", "etc/coinslot.d/revenue.csv"])
@@ -1301,6 +1306,29 @@ check("OTHER=1" in r.stdout.split("SETTINGS")[1].split("STATUS")[0] and "VOUCHER
       "a choice the owner made in the console is replaced (other console settings stay): " + r.stdout)
 check("voucher choice is off" in r.stdout and "VOUCHER_CHOICE='on'" in r.stdout and "usage: piso-setup voucher-choice" in r.stderr and "rc=1" in r.stdout,
       "voucher-choice shows its state, turns on again, and refuses anything else: " + r.stdout + r.stderr)
+
+# ---- brand-pack: a logo pack the owner signed, installed by the portal program (feature 049, group 7) --------------------------------
+fbp = f"{tmp}/fake_portal_brand"
+open(fbp, "w").write('#!/bin/sh\necho "$@" > "$FAKE_LOG"\nif [ -n "$FAKE_FAIL" ]; then echo "REFUSED the signature is not the owner\'s"; exit 1; fi\necho "INSTALLED logo 120 bytes, no picture"\n')
+os.chmod(fbp, 0o755)
+pack = f"{tmp}/shop.brand"
+open(pack, "w").write("pisophone-brand-v1\n")
+benv = {"PISO_PORTAL_BIN": fbp, "PISO_TEST_NONROOT": "1", "FAKE_LOG": f"{tmp}/brand.log"}
+r = run("brand-pack", env=benv)
+check(r.returncode == 1 and "usage: piso-setup brand-pack <brand pack file>" in r.stderr and not os.path.exists(f"{tmp}/brand.log"), "brand-pack with no file: says how to use it and runs nothing: " + r.stdout + r.stderr)
+r = run("brand-pack", f"{tmp}/no_such_file", env=benv)
+check(r.returncode == 1 and "usage: piso-setup brand-pack" in r.stderr and not os.path.exists(f"{tmp}/brand.log"), "brand-pack with a file that is not there: the same: " + r.stdout + r.stderr)
+r = run("brand-pack", pack, env=benv)
+check(r.returncode == 0 and open(f"{tmp}/brand.log").read().strip() == f"brand-install {pack}" and "INSTALLED logo" in r.stdout and "Publish" in r.stdout,
+      "brand-pack hands the file to the portal program's brand-install and says to Publish in the console: " + r.stdout + r.stderr)
+os.remove(f"{tmp}/brand.log")
+if os.path.exists(f"{tmp}/state"):
+    os.remove(f"{tmp}/state")
+r = run("brand-pack", pack, env=dict(benv, FAKE_FAIL="1"))
+check(r.returncode == 1 and "REFUSED the signature is not the owner's" in r.stdout + r.stderr and "nothing was changed" in r.stdout + r.stderr and "Publish" not in r.stdout,
+      "a refused pack: the reason is shown, it says nothing changed, and it does not say to Publish: " + r.stdout + r.stderr)
+check("FAILED" not in (open(f"{tmp}/state").read() if os.path.exists(f"{tmp}/state") else ""), "a refused pack does not mark the router's setup as failed")
+check("brand-pack" in subprocess.run(["sh", SCRIPT, "--help"], capture_output=True, text=True).stdout, "--help lists brand-pack")
 # ---- feature 010: no installer copy is left behind after a good install ------------------------------------------------------------
 croot = f"{tmp}/copyroot"
 for d in ("tmp", "root", "other"):
@@ -1440,12 +1468,17 @@ os.makedirs(f"{sroot}/etc/coinslot.d")
 for name, body in (("sessions.csv", "aa:bb,paid,1800\n"), ("revenue.csv", "2026-10-22,5\n"), ("ledger.txt", "coin 1\ncoin 2\n"), ("vouchers.txt", "CODE1 30 unused\n"), ("sales.log", "sale 5\n")):
     open(f"{sroot}/etc/coinslot.d/{name}", "w").write(body)
 open(f"{sroot}/etc/coinslot.conf", "w").write("GW_BOX='10.0.0.10'\nPRICE_NOTE='mine'\nSEND_HOST='owner.example'\n")
+os.makedirs(f"{sroot}/etc/coinslot.d/brand")  # (feature 049: the shop's branding is in the data folder too, in a folder of its own)
+for _n, _b in (("published.txt", b"name=Aling Nena\n"), ("images.txt", b"logo logo-0123456789ab.png " + b"a" * 64 + b"\n"), ("logo-0123456789ab.png", b"\x89PNG\r\n\x1a\nlogo")):
+    open(f"{sroot}/etc/coinslot.d/brand/{_n}", "wb").write(_b)
 
 
 def data_hash():
     h = hashlib.sha256()
-    for n in sorted(os.listdir(f"{sroot}/etc/coinslot.d")):
-        h.update(n.encode() + open(f"{sroot}/etc/coinslot.d/{n}", "rb").read())
+    for dirpath, dirs, files in sorted(os.walk(f"{sroot}/etc/coinslot.d")):
+        dirs.sort()
+        for n in sorted(files):
+            h.update(os.path.relpath(f"{dirpath}/{n}", sroot).encode() + open(f"{dirpath}/{n}", "rb").read())
     return h.hexdigest()
 
 

@@ -21,7 +21,7 @@
 # Everything is generated here (Wi-Fi password, box admin password, gateway key) and printed once at the end and saved in
 # /root/piso-setup-summary.txt. Running the file again is safe: it keeps what it already made.
 #
-# Other commands (after setup): piso-setup status | wifi-name "<name>" | guest-port [lanN|off] | voucher-choice [on|off] | pair | summary | test-coin | diag | box-diag | set-password | box-wifi-name | reconcile [rebase] | telegram | rotate-box-wifi | export [file] | import <file> | space | forget-summary | kiosk-wifi | verify | handout | lock-admin | unlock-admin | wifi-admin [on|off] | update [check] (installs the newest release from the website; same as self-update) | self-update [check] | box-update [check] (installs the coin box's newest firmware) | auto-update on|off
+# Other commands (after setup): piso-setup status | wifi-name "<name>" | guest-port [lanN|off] | voucher-choice [on|off] | brand-pack <file> | pair | summary | test-coin | diag | box-diag | set-password | box-wifi-name | reconcile [rebase] | telegram | rotate-box-wifi | export [file] | import <file> | space | forget-summary | kiosk-wifi | verify | handout | lock-admin | unlock-admin | wifi-admin [on|off] | update [check] (installs the newest release from the website; same as self-update) | self-update [check] | box-update [check] (installs the coin box's newest firmware) | auto-update on|off
 #
 # Options:  --dry-run  print the router settings instead of applying them (needs nothing but the uci command)
 #           --yes      do not ask for confirmation
@@ -29,7 +29,7 @@
 
 VERSION="dev"
 # the release of this file (setup/RELEASE): routers install only a higher release that the owner signed
-PISO_RELEASE='1.5.30'
+PISO_RELEASE='1.5.31'
 # the CPU family the portal program in this file is built for (router_family below names the family of the router it runs on)
 PISO_ARCH='x86_64'
 
@@ -1289,6 +1289,15 @@ cmd_voucher_choice() {
 	esac
 }
 
+# piso-setup brand-pack <file>: install the logo pack TechNet signed for this shop (the console's Branding screen does the same). Customers
+# see the pictures once the branding is published there. The portal program checks the owner's signature; a pack it refuses changes nothing.
+cmd_brand_pack() {
+	[ -f "$1" ] || { echo "usage: piso-setup brand-pack <brand pack file>" >&2; return 1; }
+	[ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"
+	"$PORTAL_BIN" brand-install "$1" || { echo "The pack was not installed: nothing was changed."; return 1; }
+	echo "Now open the console, go to Branding and press Publish to show it to your customers."
+}
+
 # net_section <bridge name>: the uci section of a bridge device ("network.cfg030f15"), empty when there is none.
 net_section() { uci -q show network | sed -n "s/^\\(network\\.[^.=]*\\)\\.name='$1'\$/\\1/p" | head -n 1; }
 
@@ -2370,7 +2379,7 @@ main() {
 		case "$1" in
 			--dry-run) DRY=1 ;;
 			--yes | -y) ASSUME_YES=1 ;;
-			status | wan-clash | pair | summary | wifi-name | guest-port | kiosk-wifi | verify | uninstall-info | test-coin | diag | box-diag | set-password | reconcile | telegram | rotate-box-wifi | box-wifi-name | handout | console | export | import | space | forget-summary | lock-admin | lock-admin-confirm | unlock-admin | wifi-admin | update | self-update | box-update | auto-update | voucher-choice) CMD="$1"; shift; ARG="$1"; ARGS="$*"; break ;;
+			status | wan-clash | pair | summary | wifi-name | guest-port | kiosk-wifi | verify | uninstall-info | test-coin | diag | box-diag | set-password | reconcile | telegram | rotate-box-wifi | box-wifi-name | handout | console | export | import | space | forget-summary | lock-admin | lock-admin-confirm | unlock-admin | wifi-admin | update | self-update | box-update | auto-update | voucher-choice | brand-pack) CMD="$1"; shift; ARG="$1"; ARGS="$*"; break ;;
 			-h | --help) sed -n '2,/^# Options:/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 			*) echo "unknown option: $1 (try --help)" >&2; exit 1 ;;
 		esac
@@ -2401,6 +2410,7 @@ main() {
 		box-update) cmd_box_update "$ARG" ;;
 		auto-update) cmd_auto_update "$ARG" ;;
 		voucher-choice) cmd_voucher_choice "$ARG" ;;
+		brand-pack) cmd_brand_pack "$ARG" ;;
 		lock-admin)
 			# shellcheck disable=SC2086 # one argument per MAC address
 			cmd_lock_admin $ARGS ;;

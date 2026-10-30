@@ -8,7 +8,6 @@
 //! Two files per shop in `DATA_DIR/brand/`: `draft.txt` (what the owner is editing) and `published.txt` (what customers see). A
 //! router with no `published.txt` shows today's page unchanged. Both are written with `util::write_atomic`.
 //! The images (logo) are not here: they come only from a signed brand pack (group 2).
-#![allow(dead_code)] // the console (group 6) and the language switch (group 5) use the rest; removed when they do
 use crate::util::{json_esc, write_atomic};
 use std::fs;
 use std::io;
@@ -20,8 +19,11 @@ const DEFAULT_LAYOUT: &str = "classic";
 pub(crate) const BRAND_DIR: &str = "brand";
 
 /// The page's own colours, the same on every palette (they are what the palettes are checked against).
+#[cfg(test)]
 pub const TEXT: u32 = 0xeef3ff;
+#[cfg(test)]
 pub const MUTED: u32 = 0x97a6c7;
+#[cfg(test)]
 pub const GOLD: u32 = 0xffb81c;
 
 /// An owner text; each exists once per language.

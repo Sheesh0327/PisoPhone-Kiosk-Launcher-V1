@@ -57,6 +57,15 @@ cmd_voucher_choice() {
 	esac
 }
 
+# piso-setup brand-pack <file>: install the logo pack TechNet signed for this shop (the console's Branding screen does the same). Customers
+# see the pictures once the branding is published there. The portal program checks the owner's signature; a pack it refuses changes nothing.
+cmd_brand_pack() {
+	[ -f "$1" ] || { echo "usage: piso-setup brand-pack <brand pack file>" >&2; return 1; }
+	[ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"
+	"$PORTAL_BIN" brand-install "$1" || { echo "The pack was not installed: nothing was changed."; return 1; }
+	echo "Now open the console, go to Branding and press Publish to show it to your customers."
+}
+
 # net_section <bridge name>: the uci section of a bridge device ("network.cfg030f15"), empty when there is none.
 net_section() { uci -q show network | sed -n "s/^\\(network\\.[^.=]*\\)\\.name='$1'\$/\\1/p" | head -n 1; }
 
