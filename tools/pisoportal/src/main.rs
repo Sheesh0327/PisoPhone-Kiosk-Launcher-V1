@@ -13,6 +13,7 @@
 //!   pisoportal selftest       checks that this build works on this machine
 mod boxlink;
 mod boxview;
+mod brand;
 mod config;
 mod console;
 mod core;
