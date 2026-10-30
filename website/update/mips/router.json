@@ -2,7 +2,7 @@
   "version": "1.5.32",
   "sha256": "4c500e9478983981af7818730487e22e3141fce3b8b150b740732d6bbbc2a066",
   "size": 1686328,
-  "rollout": 0,
-  "changelog": "Router software release 1.5.32",
-  "sig": "MEUCIDZqgtwhesF2h1VbqFO7NW4Iqd0P+lwOl/He6YvBLvrpAiEAs7fKdgXQWz3wIOTVwDS4vifRpNT4MU1KWTYWc6CYdjU="
+  "rollout": 100,
+  "changelog": "Fix false monitor alarms.",
+  "sig": "MEQCIHZASY+/tMCvWNocf1Dsu8CYRvl169F5djCOinHWYricAiAsP9XZ6tPxDNBE1Q7HgFuhBFVlVfg1OgRkJFr3wrCsHA=="
 }
