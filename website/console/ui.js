@@ -1,7 +1,8 @@
 // TechNet PisoHub console: the page's behaviour. PISO_UI_VERSION rises with every change that is published (scripts/sign_console_ui.py).
-window.PISO_UI_VERSION = 10;
+window.PISO_UI_VERSION = 11;
 (function(){
 var $=function(i){return document.getElementById(i)},tab='over',timer=null,last={},sales=null,TABS=['over','cli','ph','sales','vch','set'];
+if($('t-brand'))TABS.push('brand'); /* (a newer script on an older console page, which has no Branding screen, still starts) */
 function esc(t){return String(t).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 function api(path,body){var o=body===undefined?{}:{method:'POST',headers:{'X-Piso':'1','Content-Type':'application/json'},body:JSON.stringify(body)};
  return fetch(path,o).then(function(r){if(r.status===401&&path!=='/api/login'){showLogin();throw new Error('login')}return r.json().then(function(j){j._code=r.status;return j})})}
@@ -112,6 +113,47 @@ $('add-e').onclick=function(){$('rows-e').insertAdjacentHTML('beforeend',prow(''
 $('prs').onclick=function(){pmsg('');var body={hyper:pcollect('rows-h'),endurance:pcollect('rows-e'),prorata:String(Math.round(+$('pro').value||0)),down:String(Math.round((+$('edn').value||0)*1000)),up:String(Math.round((+$('eup').value||0)*1000))};
  api('/api/pricing',body).then(function(j){if(j.ok){pdirty=false;prices(j,true);pmsg('Saved. New payments use these prices.')}else pmsg(j.why?'Not saved: '+j.why+'.':'Not saved.',true)}).catch(function(){})};
 $('prr').onclick=function(){ask('Go back to the settings file?','The prices you changed here are forgotten; the router\'s settings file applies again.','Go back',true,function(){api('/api/pricing',{reset:'1'}).then(function(j){pdirty=false;if(j.ok){prices(j,true);pmsg('Done. The settings file\'s prices apply.')}}).catch(function(){})})};
-function refresh(){if(tab==='ph'){ph();return}var p={over:'/api/overview',cli:'/api/clients',sales:'/api/sales?days='+($('rng').value||30),vch:'/api/vouchers',set:'/api/settings'}[tab],f={over:over,cli:cli,sales:sale,vch:vch,set:sets}[tab];api(p).then(f).catch(function(){});if(tab==='set'){api('/api/pricing').then(prices).catch(function(){})}}
+/* Branding (feature 049): a draft the owner edits, a preview of it, and Publish. The draft is saved on the router as it is typed; customers see
+   nothing until Publish. */
+var bm=null,bst=null,blang='en',bsave=null,bbusy=false,bload=false;
+var BNAME={technet:'TechNet',dagat:'Dagat (sea)',tropiko:'Tropiko',ginto:'Ginto (gold)',rosas:'Rosas (rose)',berde:'Berde (green)'};
+var BLAY={classic:['Classic','A bar with your name across the top. The standard layout.'],banner:['Banner','Your logo and name large and centred at the top.'],compact:['Compact','Smaller, with the house rules folded away: more fits on the screen.'],poster:['Poster','A big heading in your colour; the coin button always stays in reach.']};
+var BKEYS=['name','palette','accent','layout'];
+function bmsg(t,bad){var e=$('bmsg');e.textContent=t||'';e.style.color=bad?'var(--bad)':'var(--mut)'}
+function bform(){var o={};BKEYS.forEach(function(k){o[k]=bm[k]||''});['tagline','welcome','contact','rules','hours','promo'].forEach(function(f){['en','fil'].forEach(function(l){o[f+'_'+l]=bm[f+'_'+l]||''})});return o}
+function bprev(){$('bprev').src='/brand/preview?v='+Date.now()}
+function bcount(k,n,max){var e=$('c-'+k);if(e)e.textContent=n+' of '+max+' characters'}
+function bacc(){var p=bst.palettes.filter(function(x){return x.id===(bm.palette||'technet')})[0];return !bm.palette||bm.palette==='technet'?'#1d63d6':p?p.accent:'#1d63d6'}
+function bshow(){var L=bst.limits;$('bn').value=bm.name||'';bcount('name',Array.from(bm.name||'').length,L.name);
+ document.querySelectorAll('#bform [data-k]').forEach(function(i){var k=i.dataset.k;i.value=bm[k+'_'+blang]||'';bcount(k,Array.from(i.value).length,L[k])});
+ $('bpal').innerHTML=bst.palettes.map(function(p){var on=(bm.palette||'technet')===p.id;return '<button type="button" data-p="'+p.id+'" aria-pressed="'+on+'"><i><b style="background:'+p.bg+'"></b><b style="background:'+p.band+'"></b><b style="background:'+p.accent+'"></b></i>'+esc(BNAME[p.id]||p.id)+'</button>'}).join('');
+ $('blay').innerHTML=bst.layouts.map(function(l){var on=(bm.layout||'classic')===l,t=BLAY[l]||[l,''];return '<label><input type="radio" name="bl" value="'+l+'"'+(on?' checked':'')+'><div>'+esc(t[0])+'<span>'+esc(t[1])+'</span></div></label>'}).join('');
+ $('bac').value=bm.accent||bacc();$('bacn').textContent=bm.accent?'':'Using the palette\'s own accent.';
+ $('bpics').innerHTML=(bst.logo?'<img src="/brand/logo?v='+Date.now()+'" alt="Your logo"><span class="s">Logo installed</span>':'<span class="s">No logo installed yet.</span>')+(bst.picture?'<img src="/brand/picture?v='+Date.now()+'" alt="Your welcome picture"><span class="s">Welcome picture installed</span>':'');
+ $('bchips').innerHTML=chip(bst.live==='branded'?'Live: your branding':'Live: the standard TechNet look',bst.live==='branded'?'ok':'')+' '+(bst.dirty?chip('Changes not published yet','gold'):'');
+ $('brest').disabled=bst.live!=='branded';$('bpub').disabled=!bst.dirty}
+function brand(force){if(bload||bbusy||(!force&&bm&&($('bform').contains(document.activeElement)||bsave)))return;bload=true;
+ api('/api/brand').then(function(j){bload=false;if(!j||j.error)return;bst=j;bm=Object.assign({},j.draft);bshow();if(force||!$('bprev').src)bprev()}).catch(function(){bload=false})}
+function bdirty(){bst.dirty=true;$('bpub').disabled=false;bmsg('');clearTimeout(bsave);bsave=setTimeout(bflush,700)}
+function bflush(){clearTimeout(bsave);bsave=null;if(!bm)return Promise.resolve(false);bbusy=true;
+ return api('/api/brand',bform()).then(function(j){bbusy=false;if(!j.ok){bmsg(j.why?'Not saved: '+j.why+'.':'Not saved.',true);return false}
+  bmsg(j.notes&&j.notes.length?'Saved as a draft. Note: '+j.notes.join('; ')+'.':'Saved as a draft.');bprev();return true}).catch(function(){bbusy=false;return false})}
+$('bn').oninput=function(){bm.name=this.value;bcount('name',Array.from(this.value).length,bst.limits.name);bdirty()};
+$('bform').addEventListener('input',function(e){var k=e.target.dataset&&e.target.dataset.k;if(!k)return;bm[k+'_'+blang]=e.target.value;bcount(k,Array.from(e.target.value).length,bst.limits[k]);bdirty()});
+$('bpal').addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;bm.palette=b.dataset.p;bdirty();bshow()});
+$('blay').addEventListener('change',function(e){bm.layout=e.target.value;bdirty();bshow()});
+$('bac').oninput=function(){bm.accent=this.value;$('bacn').textContent='';bdirty()};
+$('bac0').onclick=function(){bm.accent='';bdirty();bshow()};
+$('blang').addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;blang=b.dataset.l;document.querySelectorAll('#blang button').forEach(function(x){x.className=x===b?'on':''});$('bfilnote').style.display=blang==='fil'?'':'none';bshow()});
+$('bpub').onclick=function(){bflush().then(function(ok){if(!ok)return;ask('Publish your branding?','Customers will see this the next time they open the page.','Publish',false,function(){api('/api/brand/publish',{}).then(function(j){if(j.ok){bmsg('Published. Customers see it the next time they open the page.');brand(true)}else bmsg(j.why?'Not published: '+j.why+'.':'Not published.',true)}).catch(function(){})})})};
+$('brest').onclick=function(){ask('Go back to the standard TechNet look?','Customers see the standard page again. Your draft is kept, so you can publish it again.','Restore',true,function(){api('/api/brand/restore',{}).then(function(j){if(j.ok){bmsg('The standard page is live again. Your draft is kept.');brand(true)}else bmsg('Could not restore.',true)}).catch(function(){})})};
+$('bpk').onchange=function(){var f=this.files[0],inp=this;if(!f)return;var m=$('bpkm');m.style.color='var(--mut)';
+ if(f.size>300*1024){m.textContent='That file is too big to be a brand pack.';m.style.color='var(--bad)';inp.value='';return}
+ var r=new FileReader();r.onload=function(){m.textContent='Checking the pack...';
+  fetch('/api/brand/pack',{method:'POST',headers:{'X-Piso':'1','Content-Type':'text/plain'},body:r.result}).then(function(x){return x.json()}).then(function(j){
+   if(j.ok){m.textContent='Installed. Your logo'+(j.picture_bytes?' and welcome picture are':' is')+' ready; press Publish to show '+(j.picture_bytes?'them':'it')+' to customers.';brand(true)}
+   else{m.textContent='Not installed: '+(j.why||'the file was refused')+'.';m.style.color='var(--bad)'}inp.value=''}).catch(function(){m.textContent='Could not send the file.';m.style.color='var(--bad)';inp.value=''})};
+ r.readAsText(f)};
+function refresh(){if(tab==='brand'){brand();return}if(tab==='ph'){ph();return}var p={over:'/api/overview',cli:'/api/clients',sales:'/api/sales?days='+($('rng').value||30),vch:'/api/vouchers',set:'/api/settings'}[tab],f={over:over,cli:cli,sales:sale,vch:vch,set:sets}[tab];api(p).then(f).catch(function(){});if(tab==='set'){api('/api/pricing').then(prices).catch(function(){})}}
 api('/api/overview').then(function(j){if(j.version)showApp();else showLogin()}).catch(showLogin);
 })();
