@@ -78,27 +78,42 @@
 ## Results
 | # | Success criterion | Check | Result | Evidence |
 |---|---|---|---|---|
-| 1 | no branding set: today's page in every state | `test_page_golden.py` | baseline recorded | 24 checks, 0 failures |
+| 1 | no branding set: today's page in every state | `test_page_golden.py` (the page's hash and all 18 states), also re-checked by every console and branding test | **passes** | final run on `b940029`: 24 checks, 0 failures; restoring the default look gives the golden hash again (`test_console_brand.py`, `test_page_branded.py`) |
 | 2 | EN and FIL texts, switch, per-text fallback | `test_page_languages.py`, `f049_a_text_with_a_filipino_version...` | passes (102 checks; wording awaits your sign-off) | group 5 |
-| 3 | no script or HTML in any field runs | `cargo test f049_no_text_can_become_markup...`, `test_page_branded.py` | page: passes; console and print paths not built yet | group 4 |
+| 3 | no script or HTML in any field runs | `f049_no_text_can_become_markup...` (seven payloads, every field, both languages), `test_page_branded.py` (script typed into every field does not run), `test_page_languages.py` | **passes** for the guest page and the console editor (counters and fields show typed text as text; the preview shows it as text) | groups 4, 5 and 6. Printed items (feature 050) are not built yet |
 | 4 | contrast of every palette, layout and accent | `f049_the_theme_of_every_palette...`, `test_page_layouts.py` | passes (computed for every palette and accent; measured in the browser in every layout) | groups 4 and 5 |
 | 5 | payment controls present and clickable in every layout and palette | `test_page_layouts.py` | passes (385 checks; coin button starts a window in all 48 combinations) | group 5 |
 | 6 | pack: good installs; tampered, wrong key, SVG, oversize, bad signature refused | `test_brand_pack.py`, `test_console_brand.py` | passes from the command line and from the console | groups 2, 3 and 6 |
 | 7 | draft vs publish, restore default, preview cannot start a window | `f049_brandconsole`, `f049_the_preview...`, `test_console_brand.py` | passes (74 checks) | group 6 |
 | 8 | the locked credit in every state and layout | `test_page_branded.py`, `test_page_layouts.py`, `test_page_languages.py` | passes (every layout, 18 states, both languages) | groups 4 and 5 |
 | 9 | branding survives `piso-setup update` and reboot | `test_selfupdate.py`, `test_setup.py` | passes for update, export/import and the product switch; a real reboot and firmware upgrade are RS63 | group 7 |
-| 10 | no money-path file changed; all router gates pass | | not run | |
-| 11 | hardware: Android and iPhone captive-portal sheet, icon, voucher file, console pack upload | | not run (owner's checks) | |
+| 10 | no money-path file changed; all router gates pass | `git diff --stat origin/main` on the money-path files; the gates below | **passes** | no change to `core.rs`, `roll.rs`, `ledger.rs`, `boxlink.rs`, `voucher.rs`, `reconcile.rs` (empty diff); every gate below green in one final run on `b940029` |
+| 11 | hardware: Android and iPhone captive-portal sheet, icon, voucher file, console pack upload | RS63 in `docs/REAL_WORLD_TESTING.md` | **not run** (only a real router and phones can show it) | the owner's check |
 
 ## Gates (constitution rule 7)
-- [ ] Area checks from `CONTRIBUTING.md` (router rows)
-- [ ] `bash scripts/check_security_rules.sh`, `python3 scripts/check_links.py`
-- [ ] Python: `ruff check` on the new tools and tests
-- [ ] Generated files regenerated, `--check` passes
-- [ ] **Filipino wording read and signed off by the owner (Q6): the release stays at 0% until then**
+One final run on the last commit (`b940029`), every command from `CLAUDE.md` section 3 and the CI list for what this feature touches. Last lines of output:
+- [x] `cargo fmt --check` clean; `cargo clippy --locked --release --all-targets -- -D warnings` "Finished"; `cargo build --locked --release` no warnings; `cargo test --locked --release`: `test result: ok. 190 passed; 0 failed`.
+- [x] Portal tests: `test_flow` 216/0, `test_console` 110/0, `test_pricing_flow` 9/0, `test_link_loss` 16/0, `test_money_panel` 69/0, `test_versions_panel` 13/0, `test_browser` 65/0, `test_page_golden` 24/0, `test_brand_public` 20/0, `test_page_branded` 177/0, `test_page_layouts` 433/0, `test_page_languages` 102/0, `test_console_loader` 8/0, `test_console_prices` 13/0, `test_console_frame` 7/0, `test_send` 24/0, `test_brand_pack` 19/0, `test_console_brand` 74/0.
+- [x] Router and setup tests: `test_monitor` 51/0, `test_pisophone_setup` 259/0, `test_setup` 480/0, `test_setup_web` 165/0, `test_setup_tools` 87/0, `test_setup_phone_web` 47/0, `test_phone_only` 51/0, `test_install` 47/0 (BusyBox ash), `test_selfupdate` 89/0, `test_footprint` 10 budgets, 0 failures.
+- [x] The owner's pack tool: `scripts/tests/test_make_brand_pack.py` 34/0.
+- [x] `bash scripts/check_security_rules.sh`: "security rules: all passed". `python3 scripts/check_links.py`: "0 dead link(s)".
+- [x] `shellcheck -s sh setup/piso-setup.sh.in router/piso_monitor.sh router/piso_isolation.sh` (CI's command, info level): no output.
+- [x] Python: `ruff check` on the new tool and every new or changed test: "All checks passed!". `mypy --ignore-missing-imports scripts/make_brand_pack.py`: "Success: no issues found". (Plain `mypy` reports only that it cannot find the `cryptography` package in its own environment; the same two messages appear for the existing `sign_router.py` and `sign_console_ui.py`, which share `owner_key.py`.) `pytest` has nothing to run: these tests are scripts with their own checks, run above.
+- [x] Generated files: `python3 tools/build_piso_setup.py --check`: "up to date".
+- [ ] **Filipino wording read and signed off by the owner (Q6): the release stays at 0% until then.** Open: `evidence/filipino-wording.md`.
+- [ ] **On `beta`:** Code quality green and "ci: built the router program" and "ci: rebuilt the setup files" commits made by CI; the program inside the signed release decoded and checked for the new text (below, after the build).
 
 ## Not tested
-(to fill at the end)
+Everything here needs a real router, phone or the owner:
+- **Hardware (RS63):** the captive-portal sheet on a real Android phone and iPhone; the icon on a phone's home screen; the sticky Poster button on a short phone; the console on a real phone; the file pickers on iOS and Android; a real reboot and a firmware upgrade with the keep-settings box (the installer's keep list and the update, export and import paths are tested).
+- **The program built for the router:** this is tested as a host build; the mipsel and other router programs are built by CI on `beta`. The program's size against its 1200 KB budget is measured then.
+- **`piso-setup brand-pack` run as a non-root user** (the test machine is root).
+- **Printed items** (feature 050) and **the phones** (feature 051) do not exist yet; the data they will read is `/brand.json`, tested.
+- **Filipino wording:** the tests check that no English is left, not that the Filipino reads naturally. That is the owner's sign-off.
+- **Spoken coin sounds** stay English, and the saved voucher file stays English (decisions recorded under group 5).
 
 ## Money and time
-Not touched: no change to `core.rs`, `roll.rs`, `ledger.rs`, `boxlink.rs`, `voucher.rs`, `reconcile.rs` (checked with `git diff --stat` at the end).
+**Not touched.** `git diff --stat origin/main -- tools/pisoportal/src/{core,roll,ledger,boxlink,voucher,reconcile}.rs` is empty (checked against the remote `main`). The only change in `http.rs` is how the guest page is built and when it is built again; the WebSocket, the coin window, the credit and the grant path are not in it. The branded page has the same payment buttons and controls as today's in every layout and language (checked state by state against the golden file), the preview has no connection at all, and `test_flow` (the payment, pause, voucher and ledger flows) is 216/0 on the final code.
+
+## Summary for the owner
+Spec, criteria and evidence are above. Of the 11 success criteria, 1 to 10 **pass**; 11 (the real router and phones) is **not run** and is row RS63. Two things are open before this can go beyond 0%: your read of the Filipino wording, and RS63. The spec's status is therefore **validated, waiting for the owner**, not done.

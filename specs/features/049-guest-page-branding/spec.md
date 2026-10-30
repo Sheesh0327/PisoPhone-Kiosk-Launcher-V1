@@ -1,6 +1,6 @@
 # Feature 049: branding on the guest Wi-Fi page
 
-Status: **approved 2026-10-30 (owner: "go with your recommendations, start group 0"); group 0 in progress; Q1 answered (all four layouts); group 0 done, groups 1 to 8 wait for the owner's go**   Branch: `feat/049-shop-branding` (from `main`; a router change, so it reaches `main` through `beta`, `CLAUDE.md` section 5)   Area: router
+Status: **validated 2026-10-30 (criteria 1 to 10 pass; 11 is hardware, RS63); not done until the owner signs off the Filipino wording and RS63 passes; waiting for the `beta` build**   Branch: `feat/049-shop-branding` (from `main`; a router change, so it reaches `main` through `beta`, `CLAUDE.md` section 5)   Area: router
 Backlog rows: none (owner request 2026-10-30; decisions D1 to D11 in `specs/spec_05_shop_branding.md`)   Release: router
 
 ## Intent
