@@ -1,8 +1,8 @@
 {
-  "version": "1.5.29",
-  "sha256": "b161b7be54319ca757820ddb5110b85752086c5c5695ec7b589d03b4a7440b77",
-  "size": 1592657,
-  "rollout": 100,
-  "changelog": "Router 1.5.29: the console shows whether the money agrees and whether updates are waiting; wheel and mini-game removed; first setup needs internet",
-  "sig": "MEUCIQD6Hdr+Iu2YKXSypGidjLejeXN46agdoLurh6Cb9EYAVAIgDOarC4e+fktO9slpLxllrisaTatONBiIJx9x8JC7sjU="
+  "version": "1.5.30",
+  "sha256": "cd034a5ad281a589f118622973ce6a70b02cc4b541b89166c822d4bc75933420",
+  "size": 1596505,
+  "rollout": 0,
+  "changelog": "Router software release 1.5.30",
+  "sig": "MEYCIQDzTq3jDHRGEdXKtXoYENgUWowZS/9mu5htC4jAzr9brQIhAJCpFT/oUX30+U6Y5K7tI1Cnr7G1X3+44ZfbWP1Y/xa/"
 }
