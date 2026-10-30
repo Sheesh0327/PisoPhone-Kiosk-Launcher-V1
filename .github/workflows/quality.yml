@@ -333,6 +333,7 @@ jobs:
           python3 tests/test_versions_panel.py
           CHROME=$(ls ~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome | head -1) python3 tests/test_browser.py
           CHROME=$(ls ~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome | head -1) python3 tests/test_page_golden.py
+          python3 tests/test_brand_public.py
           CHROME=$(ls ~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome | head -1) python3 tests/test_console_loader.py
           CHROME=$(ls ~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome | head -1) python3 tests/test_console_prices.py
           CHROME=$(ls ~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome | head -1) python3 tests/test_console_frame.py

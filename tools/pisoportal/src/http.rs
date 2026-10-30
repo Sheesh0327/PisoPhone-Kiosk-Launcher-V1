@@ -615,6 +615,31 @@ fn handle(p: Arc<Portal>, stream: TcpStream, peer: SocketAddr) {
             let html = send_page(p.core.send.max_mb());
             respond_bytes(&mut conn.s, "200 OK", "text/html; charset=utf-8", html.as_bytes(), "Cache-Control: no-store\r\n", !head_only)
         }
+        "/brand.json" => {
+            let body = crate::brand::public_json(&p.core.cfg.data_dir);
+            respond_bytes(
+                &mut conn.s,
+                "200 OK",
+                "application/json; charset=utf-8",
+                body.as_bytes(),
+                "Cache-Control: no-cache\r\n",
+                !head_only,
+            )
+        }
+        "/brand/logo" | "/brand/picture" => {
+            let slot = if req.path == "/brand/logo" { crate::brandpack::Slot::Logo } else { crate::brandpack::Slot::Picture };
+            match crate::brand::served_image(&p.core.cfg.data_dir, slot) {
+                Some((kind, bytes)) => respond_bytes(
+                    &mut conn.s,
+                    "200 OK",
+                    kind.mime(),
+                    &bytes,
+                    "Cache-Control: no-cache\r\nContent-Security-Policy: default-src 'none'; sandbox\r\n",
+                    !head_only,
+                ),
+                None => respond(&mut conn.s, "404 Not Found", "text/plain", "not found", ""),
+            }
+        }
         "/brand.png" => {
             respond_bytes(&mut conn.s, "200 OK", "image/png", BRAND_LOGO, "Cache-Control: public, max-age=86400\r\n", !head_only)
         }

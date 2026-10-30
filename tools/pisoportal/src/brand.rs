@@ -9,7 +9,7 @@
 //! router with no `published.txt` shows today's page unchanged. Both are written with `util::write_atomic`.
 //! The images (logo) are not here: they come only from a signed brand pack (group 2).
 #![allow(dead_code)] // used from group 2 on (brand.json, the pack check) up to the console in group 6; removed once the page serves it
-use crate::util::write_atomic;
+use crate::util::{json_esc, write_atomic};
 use std::fs;
 use std::io;
 
@@ -17,7 +17,7 @@ pub const NAME_MAX: usize = 32;
 pub const LAYOUTS: [&str; 4] = ["classic", "banner", "compact", "poster"];
 const DEFAULT_PALETTE: &str = "technet";
 const DEFAULT_LAYOUT: &str = "classic";
-const BRAND_DIR: &str = "brand";
+pub(crate) const BRAND_DIR: &str = "brand";
 
 /// The page's own colours, the same on every palette (they are what the palettes are checked against).
 pub const TEXT: u32 = 0xeef3ff;
@@ -447,6 +447,40 @@ pub fn restore_default(dir: &str) -> io::Result<()> {
     }
 }
 
+// ---- what guests (and the owner's print tools) may read ----------------------------------------------------------------------------
+
+/// What the portal publishes at /brand.json: no sign-in, only what any guest already sees on the page (never the draft, never a file
+/// path). With nothing published it is exactly `{"v":1,"branded":false}`. The shape is fixed: the owner's print tools read it (feature 050).
+/// `logo` and `picture` say whether that picture can be fetched at /brand/logo and /brand/picture.
+pub fn public_json(dir: &str) -> String {
+    use crate::brandpack::{read_image, Slot};
+    let Some(b) = load(dir, Which::Published) else { return r#"{"v":1,"branded":false}"#.to_string() };
+    let mut s = format!(
+        r#"{{"v":1,"branded":true,"name":"{}","palette":"{}","accent":"{}","layout":"{}","logo":{},"picture":{},"texts":{{"#,
+        json_esc(&b.name),
+        b.palette_id(),
+        hex(b.accent_rgb()),
+        b.layout_id(),
+        read_image(dir, Slot::Logo).is_some(),
+        read_image(dir, Slot::Picture).is_some()
+    );
+    for (i, f) in Field::ALL.iter().enumerate() {
+        if i > 0 {
+            s.push(',');
+        }
+        s.push_str(&format!(r#""{}":{{"en":"{}","fil":"{}"}}"#, f.key(), json_esc(b.text(*f, Lang::En)), json_esc(b.text(*f, Lang::Fil))));
+    }
+    s.push_str("}}");
+    s
+}
+
+/// An installed picture for a guest: only while branding is published (an unbranded router serves none), and only if its file still
+/// matches its checksum.
+pub fn served_image(dir: &str, slot: crate::brandpack::Slot) -> Option<(crate::brandpack::Kind, Vec<u8>)> {
+    load(dir, Which::Published)?;
+    crate::brandpack::read_image(dir, slot)
+}
+
 #[cfg(test)]
 #[allow(clippy::field_reassign_with_default)] // the tests build a Brand field by field, as the console will
 mod tests {
@@ -678,5 +712,82 @@ mod tests {
         assert!(load(&dir, Which::Published).is_none());
         std::fs::write(format!("{}/brand/published.txt", dir), b"").unwrap();
         assert!(load(&dir, Which::Published).is_none(), "an empty file is no branding");
+    }
+    // a 1 by 1 PNG made by Python (the same one the pack tests use)
+    const TINY_PNG: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC";
+
+    fn put_logo(dir: &str) {
+        let bytes = crate::util::b64_decode(TINY_PNG).unwrap();
+        let sha = crate::util::sha256_hex(&bytes);
+        let name = format!("logo-{}.png", &sha[..12]);
+        std::fs::create_dir_all(format!("{}/brand", dir)).unwrap();
+        std::fs::write(format!("{}/brand/{}", dir, name), &bytes).unwrap();
+        std::fs::write(format!("{}/brand/images.txt", dir), format!("logo {} {}\n", name, sha)).unwrap();
+    }
+
+    fn publish_name(dir: &str, name: &str) {
+        let mut b = Brand::default();
+        b.name = name.into();
+        b.palette = "dagat".into();
+        b.layout = "banner".into();
+        b.set_text(Field::Contact, Lang::En, "0917 123 4567");
+        b.set_text(Field::Rules, Lang::En, "No downloads\nBe \"kind\" \\ ok");
+        b.set_text(Field::Promo, Lang::Fil, "Happy hour na!");
+        save(dir, Which::Draft, &b).unwrap();
+        publish(dir).unwrap();
+    }
+
+    #[test]
+    fn f049_the_public_page_data_says_unbranded_until_something_is_published() {
+        let dir = tmp("pub-none");
+        assert_eq!(public_json(&dir), r#"{"v":1,"branded":false}"#);
+        put_logo(&dir);
+        assert_eq!(public_json(&dir), r#"{"v":1,"branded":false}"#, "an installed logo alone changes nothing");
+        let mut d = Brand::default();
+        d.name = "Draft only".into();
+        save(&dir, Which::Draft, &d).unwrap();
+        assert_eq!(public_json(&dir), r#"{"v":1,"branded":false}"#, "a draft is never public");
+    }
+
+    #[test]
+    fn f049_the_public_page_data_has_a_fixed_shape_and_escapes_every_text() {
+        let dir = tmp("pub-shape");
+        publish_name(&dir, "Aling \"Nena\" <b>");
+        let j = public_json(&dir);
+        assert!(j.starts_with(r##"{"v":1,"branded":true,"name":"Aling \"Nena\" <b>","palette":"dagat","accent":"#38bdf8","layout":"banner","logo":false,"picture":false,"texts":{"##), "{}", j);
+        assert!(j.contains(r#""contact":{"en":"0917 123 4567","fil":""}"#), "{}", j);
+        assert!(j.contains(r#""rules":{"en":"No downloads\nBe \"kind\" \\ ok","fil":""}"#), "{}", j);
+        assert!(j.contains(r#""promo":{"en":"","fil":"Happy hour na!"}"#), "{}", j);
+        assert!(j.ends_with("}}"), "{}", j);
+        assert!(!j.chars().any(|c| (c as u32) < 0x20), "no raw control character or line break in the JSON");
+        let order: Vec<usize> = ["tagline", "welcome", "contact", "rules", "hours", "promo"]
+            .iter()
+            .map(|k| j.find(&format!("\"{}\":{{", k)).unwrap())
+            .collect();
+        assert!(order.windows(2).all(|w| w[0] < w[1]), "the texts always come in the same order");
+    }
+
+    #[test]
+    fn f049_the_logo_is_offered_only_when_branded_and_really_installed() {
+        let dir = tmp("pub-logo");
+        publish_name(&dir, "Nena");
+        assert!(public_json(&dir).contains(r#""logo":false"#));
+        put_logo(&dir);
+        assert!(public_json(&dir).contains(r#""logo":true,"picture":false"#));
+        assert!(served_image(&dir, crate::brandpack::Slot::Logo).is_some());
+        assert!(served_image(&dir, crate::brandpack::Slot::Picture).is_none());
+        // a damaged image file is not offered
+        let stored = crate::brandpack::installed(&dir).0.unwrap();
+        std::fs::write(format!("{}/brand/{}", dir, stored.file), b"changed").unwrap();
+        assert!(public_json(&dir).contains(r#""logo":false"#));
+        assert!(served_image(&dir, crate::brandpack::Slot::Logo).is_none());
+        // restoring the default look hides the logo again, though it stays installed
+        let dir2 = tmp("pub-restore");
+        publish_name(&dir2, "Nena");
+        put_logo(&dir2);
+        restore_default(&dir2).unwrap();
+        assert_eq!(public_json(&dir2), r#"{"v":1,"branded":false}"#);
+        assert!(served_image(&dir2, crate::brandpack::Slot::Logo).is_none(), "no logo is served on an unbranded router");
+        assert!(crate::brandpack::installed(&dir2).0.is_some(), "but it stays installed");
     }
 }

@@ -10,10 +10,12 @@
 //!   pisoportal report [days]  revenue per day and plan
 //!   pisoportal update-check <router.json> <installed version> <router id>   a verified router update from the website? (update.rs)
 //!   pisoportal update-verify <router.json> <router-setup.sh>                 is the downloaded file the signed one?
+//!   pisoportal brand-verify <pack>  /  brand-install <pack>                   a shop's logo, only from a pack the owner signed (brandpack.rs)
 //!   pisoportal selftest       checks that this build works on this machine
 mod boxlink;
 mod boxview;
 mod brand;
+mod brandpack;
 mod config;
 mod console;
 mod core;
@@ -214,10 +216,12 @@ fn main() {
         "reconcile" => cmd_reconcile(&config::Config::load(), args.get(2).map(|a| a.as_str()) == Some("rebase")),
         "update-check" => update::cmd_check(&args[2..]),
         "update-verify" => update::cmd_verify(&args[2..]),
+        "brand-verify" => brandpack::cmd_verify(&args[2..]),
+        "brand-install" => brandpack::cmd_install(&args[2..], &config::Config::load().data_dir),
         "report" => cmd_report(&config::Config::load(), args.get(2).and_then(|d| d.parse().ok()).unwrap_or(7)),
         _ => {
             eprintln!(
-                "usage: pisoportal [serve|box|reconcile [rebase]|verify|ledger|report [days]|update-check|update-verify|selftest|version]"
+                "usage: pisoportal [serve|box|reconcile [rebase]|verify|ledger|report [days]|update-check|update-verify|brand-verify|brand-install|selftest|version]"
             );
             2
         }
