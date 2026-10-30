@@ -63,5 +63,11 @@ Never open: `esp32_firmware/include/WebAssets.h`, `setup/piso-setup*.sh`, `websi
   name-status summary, the command list of criterion 7 with how each was checked). Note Q2 (repo rename) as a recommendation.
   Update `specs/STATUS.md` with a row for 054. Stop; the owner decides on merge (no PR unless asked).
 
+- [ ] 11. **Merge gate (S11, added at the merge).** `verify_release.py` reads `router/README.md` and `esp32_firmware/web/README.md` as
+  router and firmware changes (2 FAIL). Test first: `scripts/tests/test_verify_release.py` (see it fail, ledger row), then two small
+  helpers in `verify_release.py` that ignore `*.md`. Re-run `verify_release.py` (0 FAIL). Update `validation.md` (criteria 6 and 10) and
+  `specs/STATUS.md`. Then: pull request for Code quality, merge in a worktree taking `main`'s `website/update`, `website/flash` and
+  generated router files, push (`CLAUDE.md` section 5).
+
 ## Release
 None. Docs, licence and repo metadata only. `setup/RELEASE`, `PISO_FW_VERSION` and the app build are not raised; nothing is regenerated.

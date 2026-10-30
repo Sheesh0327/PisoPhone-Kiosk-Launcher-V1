@@ -1,6 +1,6 @@
 # Feature 054: a professional-looking repository (structure, naming, documentation)
 
-Status: **approved 2026-10-30**   Branch: `feat/054-repo-polish` (from `main`)   Area: docs, repo hygiene (no running code)
+Status: **approved 2026-10-30; amended at the merge (S11, owner answer in the session)**   Branch: `feat/054-repo-polish` (from `main`)   Area: docs, repo hygiene (no running code)
 Backlog rows: none (owner request 2026-10-30: "make the repo look as professional as possible: file organization, correct naming, well crafted but clean documentation; adapt to a professional developer's repo structure")   Release: **none**
 
 ## Intent
@@ -22,6 +22,8 @@ the owner's branch rule (D34). Feature 048 already cut files; this feature adds 
 - Money and time: **not touched.** No file under `app/src/`, `esp32_firmware/src|include|web/`, `tools/pisoportal/src/`, `setup/src/`,
   `setup/pisophone_setup.py`, `router/*.sh|*.init`, `protocol/` changes, except comment-only link fixes listed in the plan (none expected).
 - Only owner-signed software: **not touched.** No generated, signed or published file changes.
+- Release checks: S11 changes `scripts/verify_release.py` (read-only; it signs and publishes nothing) so it stops reading a document as a
+  firmware or router change. This is the one code change in the feature.
 
 ## Constraints
 1. **Frozen paths** (never moved, renamed or deleted): everything in `CLAUDE.md` section 4's table; `docs/RELEASE.md`, `docs/KEYS.md`,
@@ -69,6 +71,11 @@ the owner's branch rule (D34). Feature 048 already cut files; this feature adds 
 - **S10 `docs/ARCHITECTURE.md`**: check it matches today's code (048 removed wheel and mini-game); add one diagram (Mermaid, renders on
   GitHub) of box, phone, router, website feeds if none exists. Fix stale statements only; no rewrite.
 
+- **S11 `scripts/verify_release.py` (added at the merge, owner-approved)**: the pre-merge check said "box firmware changed" and "router
+  software changed" (2 FAIL) for `esp32_firmware/web/README.md` and `router/README.md`, which change nothing a box or a router installs.
+  A `*.md` file under the watched folders no longer counts. Test first: `scripts/tests/test_verify_release.py`. Nothing else in the
+  script changes. The test is not added to `quality.yml` (workflows are not edited here); the owner may add the one line.
+
 ## Success criteria
 1. `LICENSE` exists; README links it.
 2. Every top-level folder that holds code (`app`, `esp32_firmware`, `router`, `protocol`, `scripts`, `setup`, `tools`, `tools/pisoportal`,
@@ -80,7 +87,9 @@ the owner's branch rule (D34). Feature 048 already cut files; this feature adds 
 6. `git diff --name-status origin/main..HEAD` shows only `A`/`M` of `*.md`, `LICENSE`, `.editorconfig`, `.gitattributes`, `.gitignore`,
    `.github/**` (templates, CODEOWNERS, README) and `R` only for files cleared in S8; **no** path under `app/src`, `esp32_firmware/src`,
    `esp32_firmware/include`, `tools/pisoportal/src`, `tools/pisoportal/bin`, `setup/src`, `setup/piso-setup*`, `website/update`,
-   `website/flash`, `website/setup`, `.github/workflows` (comments only allowed, show the diff).
+   `website/flash`, `website/setup`, `.github/workflows` (comments only allowed, show the diff). S11 adds exactly two paths:
+   `scripts/verify_release.py` (M) and `scripts/tests/test_verify_release.py` (A).
+10. `python3 scripts/verify_release.py` says 0 FAIL on the branch, and `python3 scripts/tests/test_verify_release.py` passes (S11).
 7. Every command written in README, CONTRIBUTING and component READMEs exists (the executor lists each and how it checked it).
 8. `CONTRIBUTING.md` and `specs/README.md` no longer contradict `CLAUDE.md` section 5 (D34).
 9. Root README is at most about 150 lines and has the sections in S2, in that order.
