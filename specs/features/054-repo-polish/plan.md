@@ -47,7 +47,7 @@ Never open: `esp32_firmware/include/WebAssets.h`, `setup/piso-setup*.sh`, `websi
 - [x] 6. **`.github/` (S6).** Align PR template checklist with CONTRIBUTING; check issue template front matter (`name`, `about`,
   `labels`); CODEOWNERS covers every top-level folder (owner handle as already used there). Optional `.github/README.md`: table of the
   eight workflows (name, trigger from `on:`, purpose from the file's header comment). No workflow edits. Commit.
-- [ ] 7. **Root tidiness (S7).** Extend `.editorconfig` (indent per language as the code already uses: Kotlin 4, C++ per
+- [x] 7. **Root tidiness (S7).** Extend `.editorconfig` (indent per language as the code already uses: Kotlin 4, C++ per
   `.clang-format`, Rust 4, Python 4, shell as existing files, YAML/JSON/MD 2) and `.gitattributes` (`* text=auto eol=lf`, binary
   types, `*.bat eol=crlf`, generated files `linguist-generated=true`: the paths of `CLAUDE.md` section 4). **Check first** that
   `git add --renormalize . && git status` shows no content change to generated or signed files; if it does, drop the eol line and note

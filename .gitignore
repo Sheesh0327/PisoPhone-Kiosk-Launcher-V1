@@ -41,3 +41,17 @@ __pycache__/
 *.pem
 __pycache__/
 *.pyc
+
+# Build outputs of every part
+build/
+target/
+node_modules/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Editors and operating systems
+.idea/
+.vscode/
+*.swp
+Thumbs.db

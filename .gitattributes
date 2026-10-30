@@ -1,27 +1,42 @@
-# Binaries must never go through text or line-ending conversion: a mangled firmware image fails
-# the ESP32 bootloader's magic-byte check and breaks every OTA update.
+# Text files are stored and checked out with LF. The router, the firmware and the signed files depend on exact bytes.
+* text=auto eol=lf
+# Windows batch files are left exactly as they are (the Gradle wrapper's gradlew.bat is stored with CRLF).
+*.bat -text
+
+# Binary files are never converted: a mangled firmware image fails the ESP32 bootloader's magic-byte check and breaks every OTA update.
 *.bin binary
 *.apk binary
+*.jar binary
+*.p12 binary
+*.png binary
+*.jpg binary
+*.webp binary
+*.mp4 binary
 
-# Router scripts must keep Unix line endings: a carriage return in a shebang line or a script breaks it on OpenWrt.
-router/*.sh text eol=lf
-router/*.init text eol=lf
-router/*.conf text eol=lf
-scripts/*.sh text eol=lf
-router/tests/*.sh text eol=lf
-
-# Router scripts must keep LF line endings or the router cannot run them (CRLF gives ": not found" errors)
+# Router scripts must keep Unix line endings: a carriage return in a shebang line or a script breaks it on OpenWrt (": not found" errors).
 *.sh text eol=lf
 *.init text eol=lf
 *.sh.in text eol=lf
-setup/piso-setup.sh text eol=lf
+router/*.conf text eol=lf
 
 # The router's update file is signed over its exact bytes: never converted.
 website/update/router-setup.sh -text
 
-# Web assets embedded in the box firmware must maintain exact LF byte representation everywhere
+# Web assets embedded in the box firmware must keep the exact LF byte representation everywhere.
 esp32_firmware/include/WebAssets.h text eol=lf
 esp32_firmware/web/*.js text eol=lf
 esp32_firmware/web/*.css text eol=lf
 esp32_firmware/web/*.md text eol=lf
 
+# Generated and published files (CLAUDE.md section 4): GitHub folds their diffs. Never edit them by hand; change the source and regenerate.
+esp32_firmware/include/WebAssets.h linguist-generated=true
+setup/piso-setup*.sh linguist-generated=true
+setup/piso-setup*.sh.sha256 linguist-generated=true
+website/setup/** linguist-generated=true
+website/install.sh linguist-generated=true
+website/pisophone_setup.py linguist-generated=true
+website/update/** linguist-generated=true
+website/flash/** linguist-generated=true
+tools/pisoportal/bin/** linguist-generated=true
+app/schemas/** linguist-generated=true
+website/js/*-bundle.js linguist-vendored=true
