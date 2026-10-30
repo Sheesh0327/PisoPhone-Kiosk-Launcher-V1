@@ -132,6 +132,8 @@ jobs:
         run: sh scripts/check_security_rules.sh
       - name: Check vendored files match their record
         run: python3 scripts/check_vendored.py
+      - name: Check that no document links to a file that is gone
+        run: python3 scripts/tests/test_check_links.py && python3 scripts/check_links.py
 
   website:
     name: Provisioning website

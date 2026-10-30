@@ -49,5 +49,5 @@ A row with `prior_work` has a tested solution on another branch; bring it back t
 ## Files
 
 `constitution.md` agent rules (frozen) · `specs/mission.md`, `techstack.md`, `roadmap.md` direction · `specs/spec_NN_*` epics and trackers ·
-`specs/features/` active and finished features · `specs/STATUS.md` the board · `specs/REPLAN.md` + `specs/replans/` replanning ·
+`specs/features/` active features, and `specs/features/ARCHIVE.md` the finished ones (intent and success criteria; the rest is in git history) · `specs/STATUS.md` the board · `specs/REPLAN.md` + `specs/replans/` replanning ·
 `specs/RELEASE_STATE.md` what is live · `specs/GUIDE.md` the guide · `specs/templates/` templates · `scripts/cache_report.py` cache hit rate · `specs/notes/` handoffs · `ledger/negative-constraints.md` failures · `.claude/skills/sdd-*` the workflow as skills.

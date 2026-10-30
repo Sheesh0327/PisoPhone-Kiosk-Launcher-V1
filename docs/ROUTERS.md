@@ -44,7 +44,7 @@ What else the router needs:
   **16 MB flash and 128 MB RAM or more** should be comfortable (reports say 6 to 8 MB writable after OpenWrt with LuCI; some boards about 4 MB, which is
   tight). Routers with 4 or 8 MB flash have too little room left after OpenWrt and openNDS (not tried on one).
 - **Which product:** *PisoWiFi only* (`SHOP_PRODUCT=wifi`) leaves out the rental phones' hidden Wi-Fi and its password; the coin box and its Wi-Fi, the
-  guest Wi-Fi, the isolation tables and the console are the same. *Both* is the full system. See `setup/MANUAL.md`.
+  guest Wi-Fi, the isolation tables and the console are the same. *Both* is the full system. See the advanced part of `setup/README.md`.
 - **Wi-Fi 5 or 6 dual band** is better for customers (the 5 GHz band carries more people), but only 2.4 GHz is required.
 
 What is checked: every family's program runs its self-test, and the portal's own test suite passes, in a software copy of a router (QEMU) on a computer in CI and here, including the

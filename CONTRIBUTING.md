@@ -22,7 +22,7 @@ Run the checks for every area you touched (`CLAUDE.md` section 3 adds the router
 | Dashboard files (`esp32_firmware/web/`) | `python3 scripts/embed_web.py` then `python3 scripts/embed_web.py --check` |
 | Router / setup | `python3 router/tests/test_monitor.py`, `python3 router/tests/test_pisophone_setup.py`, `python3 tools/build_piso_setup.py --check` |
 | Website | `node scripts/tests/test_provisioning.js`, `python3 scripts/tests/test_site_page.py` |
-| Always | `bash scripts/check_security_rules.sh` |
+| Always | `bash scripts/check_security_rules.sh`, `python3 scripts/check_links.py` (no document may link to a file that is gone) |
 
 ## Rules that are easy to break
 - **Generated and published files are never edited by hand**: `esp32_firmware/include/WebAssets.h`, `setup/piso-setup.sh`,

@@ -22,7 +22,7 @@ Pick the job you need. Each page is a short, step-by-step guide.
 
 The pages are in [`website/start/`](website/start). Setting up a shop and its phones does not require copying or typing any
 keys. The optional print server is the exception: its send key is still copied by hand until pairing is built
-([`docs/api/print-pairing.md`](docs/api/print-pairing.md) is the specification).
+([`docs/REFERENCE.md`](docs/REFERENCE.md) is the specification).
 
 ## Status
 - PisoPhone and PisoWiFi run in real shops. Each release is signed and published only after its checks pass.
@@ -56,7 +56,7 @@ coins -> ESP32 coin box <-- Wi-Fi (signed and encrypted) --> phone kiosk app
 One program does the whole setup, from bare boards to working phones:
 [`pisophone_setup.py`](https://pisophone.pages.dev/pisophone_setup.py) (also in `setup/pisophone_setup.py`). The short steps are on the
 [Start page](https://pisophone.pages.dev/start/shop.html). The full guide is [`setup/README.md`](setup/README.md). Doing it by hand, for
-advanced users, is in [`setup/MANUAL.md`](setup/MANUAL.md).
+advanced users, is in [the advanced part of `setup/README.md`](setup/README.md#advanced-setting-up-by-hand).
 
 ## How it stays safe
 - **Money and time.** The box records a coin before anything else. Payments wait in a flash queue on the box until the phone
@@ -100,7 +100,6 @@ of checks is in [`CONTRIBUTING.md`](CONTRIBUTING.md).
 | [Start here](https://pisophone.pages.dev/start/) | Set up a shop, add a phone, add a print server: one page each |
 | [`website/manual.html`](website/manual.html) | The owner's manual: setup, daily use, features, revenue and troubleshooting (print-ready) |
 | [`setup/README.md`](setup/README.md) | The setup program in full: coin box, router, phones, owner tools and fixes |
-| [`setup/MANUAL.md`](setup/MANUAL.md) | The advanced version: the same steps by hand, router commands and repair tools |
 | [`docs/ROUTERS.md`](docs/ROUTERS.md) | Which routers work, the CPU families, and what each one needs |
 
 **For maintainers** (keys, releases, CI, hardware tests)
@@ -110,14 +109,13 @@ of checks is in [`CONTRIBUTING.md`](CONTRIBUTING.md).
 | [`docs/DEPLOY.md`](docs/DEPLOY.md) | First run, CI, and where APKs and firmware are published |
 | [`docs/RELEASE.md`](docs/RELEASE.md) | The release checklist, including the steps only the owner can take |
 | [`docs/KEYS.md`](docs/KEYS.md) | The owner key, signed firmware, and per-box secrets |
-| [`docs/LICENSING.md`](docs/LICENSING.md) | Phone slot licensing: how keys are made, sold and checked |
+| [`docs/REFERENCE.md`](docs/REFERENCE.md) | Phone slot licensing: how keys are made, sold and checked |
 | [`scripts/README.md`](scripts/README.md) | What each script is for, grouped by who runs it and when |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | How a coin becomes time, which part talks to which, and where the code lives |
 | [`docs/REAL_WORLD_TESTING.md`](docs/REAL_WORLD_TESTING.md) | The hardware test checklist and issue log |
 | [`docs/PROVISIONING_SOLD_UNIT.md`](docs/PROVISIONING_SOLD_UNIT.md) | Secure boot and flash encryption for boxes you sell |
 | [`docs/api/`](docs/api) | The router gateway API, the super-admin QR login and print server pairing |
-| [`docs/maintainers/AUDIT_REPORT.md`](docs/maintainers/AUDIT_REPORT.md) | The security audit and what was done about each finding |
-| [`docs/maintainers/HARDENING_PLAN.md`](docs/maintainers/HARDENING_PLAN.md) | The hardening pass: findings, fixes, confidence, hardware checks and release order |
+| [`docs/HARDENING.md`](docs/HARDENING.md) | What is still open after the security audit and hardening pass |
 
 ## Branches
 | Branch | Contains | Purpose |
