@@ -301,6 +301,8 @@ try:
         # a small phone: the screen still works
         pg.set_viewport_size({"width": 390, "height": 800})
         check(pg.evaluate("document.documentElement.scrollWidth") <= 390, "the screen fits a phone")
+        clipped = pg.evaluate("[...document.querySelectorAll('#tabs button')].filter(b => b.scrollWidth > b.clientWidth + 1).map(b => b.textContent)")
+        check(not clipped and pg.evaluate("document.querySelector('#tabs').scrollWidth <= document.querySelector('#tabs').clientWidth"), f"every tab name fits in the phone's bottom bar: {clipped}")
         br.close()
 finally:
     env.stop()
