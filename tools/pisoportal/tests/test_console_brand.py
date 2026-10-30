@@ -300,9 +300,16 @@ try:
 
         # a small phone: the screen still works
         pg.set_viewport_size({"width": 390, "height": 800})
-        check(pg.evaluate("document.documentElement.scrollWidth") <= 390, "the screen fits a phone")
+        # (a wide font is the hard case: the router's console is opened on all kinds of phones, and the CI machine's font is wider than this one's)
+        pg.add_style_tag(content="*{font-family:'DejaVu Sans',sans-serif !important}")
+        pg.wait_for_timeout(300)
+        wide = pg.evaluate("[...document.querySelectorAll('body *')].filter(e => e.offsetWidth && e.getBoundingClientRect().right > 391).slice(0, 8).map(e => e.tagName + '#' + e.id + '.' + e.className + ' right=' + Math.round(e.getBoundingClientRect().right))")
+        check(pg.evaluate("document.documentElement.scrollWidth") <= 390, f"the screen fits a phone, even in a wide font: {wide}")
         clipped = pg.evaluate("[...document.querySelectorAll('#tabs button')].filter(b => b.scrollWidth > b.clientWidth + 1).map(b => b.textContent)")
-        check(not clipped and pg.evaluate("document.querySelector('#tabs').scrollWidth <= document.querySelector('#tabs').clientWidth"), f"every tab name fits in the phone's bottom bar: {clipped}")
+        check(not clipped, f"no tab name is cut off in the phone's bottom bar: {clipped}")
+        pg.locator('#tabs button[data-t="set"]').scroll_into_view_if_needed()
+        box = pg.locator('#tabs button[data-t="set"]').bounding_box()
+        check(box and box["x"] >= 0 and box["x"] + box["width"] <= 391, f"and every tab can be reached (Settings, the last, can be brought into view): {box}")
         br.close()
 finally:
     env.stop()
