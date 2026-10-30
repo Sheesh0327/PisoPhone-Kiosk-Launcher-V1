@@ -1,6 +1,6 @@
 # Feature 054: a professional-looking repository (structure, naming, documentation)
 
-Status: **draft**   Branch: `feat/054-repo-polish` (from `main`)   Area: docs, repo hygiene (no running code)
+Status: **approved 2026-10-30**   Branch: `feat/054-repo-polish` (from `main`)   Area: docs, repo hygiene (no running code)
 Backlog rows: none (owner request 2026-10-30: "make the repo look as professional as possible: file organization, correct naming, well crafted but clean documentation; adapt to a professional developer's repo structure")   Release: **none**
 
 ## Intent
@@ -89,7 +89,7 @@ the owner's branch rule (D34). Feature 048 already cut files; this feature adds 
 Moving or renaming code, build, test, generated or published paths; a monorepo re-layout; renaming the GitHub repository (owner action,
 see Q2); deleting branches; rewriting `CHANGELOG.md` history or archived specs; editing the constitution; code refactors; any release.
 
-## Owner decisions (open, can be answered during review; defaults in bold)
+## Owner decisions (answered 2026-10-30: the defaults in bold, Q1 to Q4)
 - **Q1** CI badge in the README for `quality.yml`? **Yes.**
 - **Q2** The GitHub repository is named `PisoPhone-Kiosk-Launcher-V1` but the product is "TechNet PisoHub". Renaming it (e.g.
   `technet-pisohub`) is a GitHub setting, outside this feature; GitHub redirects old URLs, but check `website/`, workflows and app
