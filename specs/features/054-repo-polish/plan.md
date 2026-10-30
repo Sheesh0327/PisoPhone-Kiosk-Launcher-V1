@@ -40,7 +40,7 @@ Never open: `esp32_firmware/include/WebAssets.h`, `setup/piso-setup*.sh`, `websi
   (tool versions from `gradle/`, `platformio.ini`, `rust-toolchain` or `Cargo.toml`, CI setup steps), Commit messages, Code style.
   Keep the checks table; add the router program row from `CLAUDE.md` section 3 (`cargo test`, `python3 tests/test_flow.py`). In
   `specs/README.md` change only the lines that say `beta` for every feature. Commit.
-- [ ] 5. **Root README (S2).** Rewrite in the section order of S2, <= ~150 lines. Move long owner/how-it-is-built text out only if a
+- [x] 5. **Root README (S2).** Rewrite in the section order of S2, <= ~150 lines. Move long owner/how-it-is-built text out only if a
   doc already holds it (link instead). Badge: `![Code quality](https://github.com/Sheesh0327/PisoPhone-Kiosk-Launcher-V1/actions/workflows/quality.yml/badge.svg)`.
   Layout table lists: `.github/ app/ docs/ esp32_firmware/ gradle/ ledger/ protocol/ router/ scripts/ setup/ specs/ tools/ website/`
   and root files `CLAUDE.md constitution.md CHANGELOG.md CONTRIBUTING.md SECURITY.md LICENSE`. Run `check_links.py`. Commit.

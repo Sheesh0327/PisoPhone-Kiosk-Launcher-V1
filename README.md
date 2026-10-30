@@ -2,14 +2,12 @@
 
 # TechNet PisoHub
 
-**Coin-operated Wi-Fi and phone rental**, from TechNet Solutions.
+[![Code quality](https://github.com/Sheesh0327/PisoPhone-Kiosk-Launcher-V1/actions/workflows/quality.yml/badge.svg)](https://github.com/Sheesh0327/PisoPhone-Kiosk-Launcher-V1/actions/workflows/quality.yml)
 
-One coin box serves a whole shop with two services:
-
-- **PisoWiFi**: customer Wi-Fi sold by the coin, through an OpenWrt router running openNDS.
-- **PisoPhone**: rental Android phones that lock and unlock by the minute, with prepaid QR time cards for regular players.
-
-Both are run from the box's owner dashboard and one setup program.
+**Coin-operated Wi-Fi and phone rental**, from TechNet Solutions. One ESP32 coin box serves a whole shop with two services:
+**PisoWiFi**, customer Wi-Fi sold by the coin through an OpenWrt router running openNDS, and **PisoPhone**, rental Android phones that lock and
+unlock by the minute, with prepaid QR time cards. Both are run from the box's owner dashboard and one setup program. Time is sold in
+real shops every day, so two rules decide every change: money and time are never wrong, and only software the owner signed is installed.
 
 ## Start here
 Pick the job you need. Each page is a short, step-by-step guide.
@@ -22,106 +20,85 @@ Pick the job you need. Each page is a short, step-by-step guide.
 
 The pages are in [`website/start/`](website/start). Setting up a shop and its phones does not require copying or typing any
 keys. The optional print server is the exception: its send key is still copied by hand until pairing is built
-([`docs/REFERENCE.md`](docs/REFERENCE.md) is the specification).
+([`docs/REFERENCE.md`](docs/REFERENCE.md) is the specification). The full setup guide is [`setup/README.md`](setup/README.md).
+
+## Repository layout
+| Path | What it is |
+|---|---|
+| [`app/`](app) | The Android kiosk app (Kotlin, Compose, Room): locks the phone, counts paid time down, talks to the coin box. |
+| [`esp32_firmware/`](esp32_firmware) | The coin box firmware (Arduino on PlatformIO, ESP32-C3 and ESP32): coin pulses, a durable payment queue, the owner dashboard, signed updates. |
+| [`router/`](router) | Shell scripts and tests for the router add-on: the monitor, the firewall isolation, the services. |
+| [`tools/`](tools) | `pisoportal` (the router's coin portal, Rust), the router setup builder and the test checklist tools. |
+| [`setup/`](setup) | The setup program (`pisophone_setup.py`, run on a computer) and the router installer it drives. |
+| [`protocol/`](protocol) | Test vectors for the box-to-phone messages. |
+| [`scripts/`](scripts) | Owner and maintainer tools: keys, cards, signing, release checks. |
+| [`website/`](website) | The public site: setup pages, the router installer and the signed update feeds. |
+| [`docs/`](docs) | Architecture, releases and keys, hardware testing, design. Start at [`docs/README.md`](docs/README.md). |
+| [`specs/`](specs), [`ledger/`](ledger), [`.claude/`](.claude) | How work is planned and checked (see "Development process"). |
+| [`.github/`](.github) | CI workflows, issue and pull request templates, code owners. |
+| [`gradle/`](gradle), `build.gradle.kts`, `settings.gradle.kts`, `gradle.properties`, `gradlew`, `detekt.yml`, `detekt-baseline.xml` | The Gradle build of the app and its static analysis; Gradle and CI read them at the root. |
+| `.editorconfig`, `.gitattributes`, `.gitignore` | Editor settings, line endings and binary files, files git leaves out. |
+| `CLAUDE.md`, `constitution.md`, `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md`, `LICENSE` | Project rules, agent rules, changes for owners, how to contribute, how to report a vulnerability, the licence. |
+
+How the parts fit, and where a coin goes: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
+## Quick start for developers
+You need the tools of the part you change: JDK 17 and the Android SDK (app), PlatformIO and `g++` with `libmbedtls-dev` (firmware), Rust
+(router program), Python 3 (everything else) and Node.js (one website test). Versions and install lines: [`CONTRIBUTING.md`](CONTRIBUTING.md).
+```bash
+# Android app
+./gradlew :app:testDebugUnitTest :app:lintDebug assembleDebug
+
+# Coin box firmware
+sh esp32_firmware/host_tests/run.sh                    # pure-logic tests, no board needed
+(cd esp32_firmware && pio run -e esp32-c3-dev)
+
+# Router program, router add-on and setup program
+(cd tools/pisoportal && cargo test --locked --release && python3 tests/test_flow.py)
+python3 router/tests/test_setup.py
+python3 tools/build_piso_setup.py --check
+
+# Website
+node scripts/tests/test_provisioning.js
+
+# Always
+bash scripts/check_security_rules.sh
+python3 scripts/check_links.py
+```
+The checks for each area, and how the parts are built, are in each folder's README. CI (`.github/workflows/`) runs on pushes and pull
+requests to `main` and `beta` and runs only the checks for the parts a change touches.
 
 ## Status
 - PisoPhone and PisoWiFi run in real shops. Each release is signed and published only after its checks pass.
 - Not every feature has been tested on real hardware yet. The current release, and which checks are still waiting for hardware, is in
   [`specs/RELEASE_STATE.md`](specs/RELEASE_STATE.md). The hardware test log is [`docs/REAL_WORLD_TESTING.md`](docs/REAL_WORLD_TESTING.md).
-- Router support depends on the router's CPU. [`docs/ROUTERS.md`](docs/ROUTERS.md) lists the five CPU families and says which
-  ones have been run on real hardware.
+- Router support depends on the router's CPU. [`docs/ROUTERS.md`](docs/ROUTERS.md) lists the CPU families and which routers work.
 - What changed for owners, release by release: [`CHANGELOG.md`](CHANGELOG.md).
-- There is no license file in this repository yet. Ask the owner before reusing or redistributing the code.
 
-## How it is built
-Customers insert coins into an ESP32 coin box. The box credits time to a locked-down Android phone (the kiosk app), and can also
-sell Wi-Fi time through an OpenWrt router.
-
-| Folder | What it is |
-|---|---|
-| `app/` | The Android kiosk app (Kotlin, Compose, Room). It locks the phone, counts paid time down, and talks to the coin box. |
-| `esp32_firmware/` | The coin box firmware (Arduino/PlatformIO, ESP32-C3 and ESP32). It handles coin pulses, a durable payment queue, the owner dashboard and signed over-the-air updates. |
-| `website/` | The public website: the setup pages, the router installer, and the signed update feeds (`website/update`). |
-| `router/` and `tools/pisoportal/` | The router add-on. `pisoportal` is a small Rust program that serves the guest coin page and the owner console. A monitor sends optional Telegram alerts. The router add-on is installed by `setup/piso-setup.sh`. |
-| `setup/` | The setup program (`pisophone_setup.py`, run on a computer) and the router installer it drives. |
-| `protocol/`, `scripts/` | Shared test vectors for the box-to-phone messages; owner and maintainer tools. |
-
-```
-coins -> ESP32 coin box <-- Wi-Fi (signed and encrypted) --> phone kiosk app
-              |                                                  |
-     owner dashboard                              locks and unlocks the phone
-```
-
-## Setting up a site
-One program does the whole setup, from bare boards to working phones:
-[`pisophone_setup.py`](https://pisophone.pages.dev/pisophone_setup.py) (also in `setup/pisophone_setup.py`). The short steps are on the
-[Start page](https://pisophone.pages.dev/start/shop.html). The full guide is [`setup/README.md`](setup/README.md). Doing it by hand, for
-advanced users, is in [the advanced part of `setup/README.md`](setup/README.md#advanced-setting-up-by-hand).
-
-## How it stays safe
+## Security model
 - **Money and time.** The box records a coin before anything else. Payments wait in a flash queue on the box until the phone
   confirms them, and the phone credits each transaction once. The router credits each coin window once.
-- **Per-box secret.** Each box makes its own random secret on first start and gives it to its phones during setup. The phone keeps
-  the secret encrypted with the Android Keystore. Where the Keystore is unavailable, the phone falls back to plain storage. See
-  [`docs/DEPLOY.md`](docs/DEPLOY.md).
-- **Legacy mode.** A box upgraded from older firmware that already had Wi-Fi saved keeps its old key until the owner migrates it.
-  The dashboard shows an orange banner until then. See [`docs/KEYS.md`](docs/KEYS.md).
-- **Signed updates.** Firmware, router and app updates are installed only if the owner signed them. The signing key is the owner's.
-  Where it is kept is the owner's choice: offline, or in GitHub's protected `production-signing` environment for one-tap publishing.
-  The trade-off of the second option is in [`docs/KEYS.md`](docs/KEYS.md).
-- **Factory defaults.** A new box uses published default passwords so it can be set up. It takes no coins until its admin password
-  is changed.
-- **Scope.** What the design protects against, and what it does not, is in [`SECURITY.md`](SECURITY.md).
-
-## Build and test
-```bash
-# Android (JDK 17)
-./gradlew :app:testDebugUnitTest :app:assembleRelease      # a release build needs the signing secrets: docs/DEPLOY.md
-
-# Coin box firmware (PlatformIO)
-cd esp32_firmware
-sh host_tests/run.sh                                        # pure-logic tests; no board needed
-pio run -e esp32-c3-dev                                     # also esp32dev-dev and the *-production-encrypted environments
-pio run -e esp32-c3-dev -t upload
-
-# Router add-on
-(cd tools/pisoportal && cargo test && python3 tests/test_flow.py)
-python3 router/tests/test_setup.py
-```
-CI (GitHub Actions, `.github/workflows/`) runs on pushes to `main` and `beta` and on pull requests into them. It runs only the
-checks for the parts a change touches. Style is ktlint (Kotlin) and clang-format (`esp32_firmware/.clang-format`). The full list
-of checks is in [`CONTRIBUTING.md`](CONTRIBUTING.md).
+- **Signed updates.** Firmware, router and app updates are installed only if the owner signed them. The signing keys are never in this
+  repository, in a cloud session or in CI outside the protected `production-signing` environment ([`docs/KEYS.md`](docs/KEYS.md)).
+- **Per-box secrets.** Each box makes its own secret on first start and gives it to its phones during setup. A new box uses a published
+  default password and takes no coins until the admin password is changed ([`docs/DEPLOY.md`](docs/DEPLOY.md), [`docs/KEYS.md`](docs/KEYS.md)).
+- **Scope.** What the design protects against, and what it does not, and how to report a vulnerability: [`SECURITY.md`](SECURITY.md).
 
 ## Documentation
-**For owners and operators**
+[`docs/README.md`](docs/README.md) lists every document, grouped by reader: owner, developer, releases and keys, hardware testing, design.
+The owner's manual is [`website/manual.html`](website/manual.html) (print-ready). Each part has a README with its layout, build and test
+commands: [`app`](app/README.md), [`esp32_firmware`](esp32_firmware/README.md), [`router`](router/README.md), [`protocol`](protocol/README.md),
+[`tools`](tools/README.md), [`setup`](setup/README.md), [`scripts`](scripts/README.md), [`website`](website/README.md).
 
-| Document | For |
-|---|---|
-| [Start here](https://pisophone.pages.dev/start/) | Set up a shop, add a phone, add a print server: one page each |
-| [`website/manual.html`](website/manual.html) | The owner's manual: setup, daily use, features, revenue and troubleshooting (print-ready) |
-| [`setup/README.md`](setup/README.md) | The setup program in full: coin box, router, phones, owner tools and fixes |
-| [`docs/ROUTERS.md`](docs/ROUTERS.md) | Which routers work, the CPU families, and what each one needs |
+## Development process
+Work is spec-driven: no code without an approved feature spec in `specs/features/NNN-name/` (`spec.md`, `plan.md`, `validation.md`).
+[`CLAUDE.md`](CLAUDE.md) is the entry point for people and Claude Code sessions: what the project is for, the rules, the checks. [`constitution.md`](constitution.md)
+holds the agent rules. [`specs/`](specs/README.md) has the status board (`STATUS.md`), the release state, the templates and the loop (plan, implement,
+validate). [`ledger/`](ledger) records failures. `.claude/skills/` holds the loop as skills (`sdd-plan`, `sdd-implement`, `sdd-validate`).
 
-**For maintainers** (keys, releases, CI, hardware tests)
+## Contributing
+One feature, one branch from `main`; a green feature branch is merged into `main` when the owner asks; a router change goes through `beta`
+first. Setup, checks, code style and commit messages: [`CONTRIBUTING.md`](CONTRIBUTING.md). Security problems: [`SECURITY.md`](SECURITY.md).
 
-| Document | For |
-|---|---|
-| [`docs/DEPLOY.md`](docs/DEPLOY.md) | First run, CI, and where APKs and firmware are published |
-| [`docs/RELEASE.md`](docs/RELEASE.md) | The release checklist, including the steps only the owner can take |
-| [`docs/KEYS.md`](docs/KEYS.md) | The owner key, signed firmware, and per-box secrets |
-| [`docs/REFERENCE.md`](docs/REFERENCE.md) | Phone slot licensing: how keys are made, sold and checked |
-| [`scripts/README.md`](scripts/README.md) | What each script is for, grouped by who runs it and when |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | How a coin becomes time, which part talks to which, and where the code lives |
-| [`docs/REAL_WORLD_TESTING.md`](docs/REAL_WORLD_TESTING.md) | The hardware test checklist and issue log |
-| [`docs/PROVISIONING_SOLD_UNIT.md`](docs/PROVISIONING_SOLD_UNIT.md) | Secure boot and flash encryption for boxes you sell |
-| [`docs/api/`](docs/api) | The router gateway API, the super-admin QR login and print server pairing |
-| [`docs/HARDENING.md`](docs/HARDENING.md) | What is still open after the security audit and hardening pass |
-
-## Branches
-| Branch | Contains | Purpose |
-|---|---|---|
-| `main` | Everything: PisoPhone and PisoWiFi (openNDS) | Production. A feature branch is merged into it when the owner asks and Code quality is green. |
-| `beta` | Everything | Where CI builds the router programs. A router change goes through it before it is released; keep it up to date with `main`. |
-
-Flow: a feature is a branch from `main`, merged when it is green and the owner asks (hardware checklist: `docs/REAL_WORLD_TESTING.md`). A router change goes through `beta` first: bring `main` into `beta`, raise `setup/RELEASE`, let CI build the programs, then merge `beta` into `main` (`docs/RELEASE.md`).
-The coin box firmware is shared by both products and includes both features.
+## Licence
+Proprietary. Copyright (c) 2026 TechNet Solutions. All rights reserved. See [`LICENSE`](LICENSE).

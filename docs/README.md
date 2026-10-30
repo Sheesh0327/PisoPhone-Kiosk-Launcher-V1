@@ -5,6 +5,7 @@ are on the website: <https://pisophone.pages.dev/start/>. What the product is an
 
 ## Owner (runs a shop)
 - [setup/README.md](../setup/README.md): what the setup program does, step by step, and how to set up by hand.
+- [website/manual.html](../website/manual.html): the owner's manual: setup, daily use, features, revenue and troubleshooting (print-ready).
 - [ROUTERS.md](ROUTERS.md): which routers work, and which CPU families are built.
 - [REFERENCE.md](REFERENCE.md): protecting the coin slot against fake pulses, phone slot licensing, print server pairing, the super-admin QR code.
 - [PROVISIONING_SOLD_UNIT.md](PROVISIONING_SOLD_UNIT.md): hardening a coin box you sell (Secure Boot V2 and flash encryption).
