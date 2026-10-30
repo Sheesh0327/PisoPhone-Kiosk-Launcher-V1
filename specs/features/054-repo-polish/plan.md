@@ -44,7 +44,7 @@ Never open: `esp32_firmware/include/WebAssets.h`, `setup/piso-setup*.sh`, `websi
   doc already holds it (link instead). Badge: `![Code quality](https://github.com/Sheesh0327/PisoPhone-Kiosk-Launcher-V1/actions/workflows/quality.yml/badge.svg)`.
   Layout table lists: `.github/ app/ docs/ esp32_firmware/ gradle/ ledger/ protocol/ router/ scripts/ setup/ specs/ tools/ website/`
   and root files `CLAUDE.md constitution.md CHANGELOG.md CONTRIBUTING.md SECURITY.md LICENSE`. Run `check_links.py`. Commit.
-- [ ] 6. **`.github/` (S6).** Align PR template checklist with CONTRIBUTING; check issue template front matter (`name`, `about`,
+- [x] 6. **`.github/` (S6).** Align PR template checklist with CONTRIBUTING; check issue template front matter (`name`, `about`,
   `labels`); CODEOWNERS covers every top-level folder (owner handle as already used there). Optional `.github/README.md`: table of the
   eight workflows (name, trigger from `on:`, purpose from the file's header comment). No workflow edits. Commit.
 - [ ] 7. **Root tidiness (S7).** Extend `.editorconfig` (indent per language as the code already uses: Kotlin 4, C++ per
