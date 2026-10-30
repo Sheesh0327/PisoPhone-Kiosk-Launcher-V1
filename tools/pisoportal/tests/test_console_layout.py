@@ -11,8 +11,10 @@ import pathlib
 import shutil
 import subprocess
 import sys
+import re
 import tempfile
 import time
+import urllib.request
 
 try:
     from playwright.sync_api import sync_playwright
@@ -240,6 +242,130 @@ try:
             else:
                 check(pv["y"] >= fb["y"] + fb["height"] - 1, f"{w} px: Branding: the preview is below the form (not squeezed beside it)")
             check(pg.locator("#bpub").bounding_box()["height"] >= 40, f"{w} px: Branding: Publish is 40 px or more")
+            ctx.close()
+
+        # ---- the sign-in card, a dialog, contrast in both themes, outside requests, and old and new parts together (group 4) ------------------
+        for w, h in ((1280, 800), (390, 844)):
+            ctx = br.new_context(viewport={"width": w, "height": h})
+            pg = ctx.new_page()
+            pg.goto(f"http://127.0.0.1:{CP}/")
+            pg.wait_for_selector("#login:not(.hide)", timeout=8000)
+            card, field, btn = pg.locator("#login").bounding_box(), pg.locator("#pw").bounding_box(), pg.locator("#gobtn").bounding_box()
+            check(abs(card["x"] + card["width"] / 2 - w / 2) <= 2, f"{w} px: sign-in: the card is centred")
+            check(field["height"] >= 40 and btn["height"] >= 40 and btn["width"] >= card["width"] - 60, f"{w} px: sign-in: the field is 40 px or more and the button spans the card: {field['height']:.0f} {btn['width']:.0f} of {card['width']:.0f}")
+            check(sideways(pg) <= 0, f"{w} px: sign-in: no sideways scrolling")
+            ctx.close()
+        ctx, pg = sign_in(br, 390, 844)
+        open_screen(pg, 390, "cli")
+        env.nds_client("aa:bb:cc:00:00:01", STATE="Authenticated", SESSION_END=int(time.time()) + 900, DL=1, UL=1)
+        open_screen(pg, 390, "cli")
+        pg.wait_for_selector("#cl button.b", timeout=8000)
+        pg.click("#cl button.b")
+        pg.wait_for_selector("dialog[open]", timeout=3000)
+        d = pg.locator("dialog").bounding_box()
+        bs = pg.eval_on_selector_all("dialog button", "bs => bs.map(b => Math.round(b.getBoundingClientRect().height))")
+        check(d["x"] >= 8 and d["x"] + d["width"] <= 390 - 8, f"390 px: the confirmation dialog fits the phone with a margin: {d}")
+        check(min(bs) >= 40, f"390 px: the dialog's buttons are 40 px or more: {bs}")
+        pg.keyboard.press("Escape")
+        pg.wait_for_timeout(200)
+        check(pg.locator("dialog[open]").count() == 0 and pg.evaluate("document.activeElement.className") == "b", "390 px: Esc closes the dialog and focus goes back to the button")
+        ctx.close()
+
+        CONTRAST = """() => {
+          const px = (c) => { const m = c.match(/[\\d.]+/g).map(Number); return { r: m[0], g: m[1], b: m[2], a: m.length > 3 ? m[3] : 1 } };
+          const lin = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4) };
+          const lum = (c) => 0.2126 * lin(c.r) + 0.7152 * lin(c.g) + 0.0722 * lin(c.b);
+          const mix = (f, b) => ({ r: f.r * f.a + b.r * (1 - f.a), g: f.g * f.a + b.g * (1 - f.a), b: f.b * f.a + b.b * (1 - f.a), a: 1 });
+          const bgOf = (e) => { const stack = []; for (let n = e; n; n = n.parentElement) { const c = px(getComputedStyle(n).backgroundColor); if (c.a > 0) { stack.push(c); if (c.a >= 1) break } } let b = { r: 255, g: 255, b: 255, a: 1 }; if (!stack.length || stack[stack.length - 1].a < 1) b = px(getComputedStyle(document.body).backgroundColor); for (const c of stack.reverse()) b = mix(c, b); return b };
+          const bad = [];
+          for (const e of document.querySelectorAll('body *')) {
+            if (!e.offsetParent && getComputedStyle(e).position !== 'fixed') continue;
+            if (e.closest('canvas, svg, iframe, option, dialog:not([open]), #bprev') || e.disabled) continue;
+            const own = [...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim());
+            if (!own || !/[A-Za-z0-9\\u20b1]/.test(e.textContent)) continue;  // (a legend square is a picture, not text)
+            const cs = getComputedStyle(e); if (cs.visibility === 'hidden' || +cs.opacity === 0) continue;
+            const bg = bgOf(e), fg = mix(px(cs.color), bg), l1 = lum(fg), l2 = lum(bg), r = (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+            if (r < 4.5) bad.push((e.id || e.className || e.tagName) + ' ' + e.textContent.trim().slice(0, 24) + ' ' + r.toFixed(2));
+          }
+          return bad.slice(0, 6) } """
+        for scheme in ("light", "dark"):
+            for w, h in ((1280, 800), (390, 844)):
+                ctx = br.new_context(viewport={"width": w, "height": h}, color_scheme=scheme)
+                pg = ctx.new_page()
+                pg.goto(f"http://127.0.0.1:{CP}/")
+                pg.wait_for_selector("#login:not(.hide)", timeout=8000)
+                bad = pg.evaluate(CONTRAST)
+                check(not bad, f"{scheme}, {w} px: sign-in: text contrast is 4.5 : 1 or better {bad}")
+                pg.fill("#pw", "router-pass")
+                pg.click("#gobtn")
+                pg.wait_for_selector("#app:not(.hide)", timeout=8000)
+                for t, label in SCREENS:
+                    open_screen(pg, w, t)
+                    bad = pg.evaluate(CONTRAST)
+                    check(not bad, f"{scheme}, {w} px: {label}: text contrast is 4.5 : 1 or better {bad}")
+                    if w >= 900 and t in ("cli", "sales", "vch") and pg.locator(f"#t-{t} tbody tr").count():
+                        pg.hover(f"#t-{t} tbody tr")
+                        bad = pg.evaluate(CONTRAST)
+                        check(not bad, f"{scheme}, {w} px: {label}: text contrast is still 4.5 : 1 or better under the mouse {bad}")
+                if w < 900:
+                    pg.click("#mn")
+                    pg.wait_for_timeout(300)
+                    bad = pg.evaluate(CONTRAST)
+                    check(not bad, f"{scheme}, {w} px: the menu panel: text contrast is 4.5 : 1 or better {bad}")
+                ctx.close()
+
+        # nothing is fetched from outside the router, except the signed-script check the page has always made (pisophone.pages.dev/console/)
+        ctx = br.new_context(viewport={"width": 1280, "height": 800})
+        pg = ctx.new_page()
+        seen = []
+        pg.on("request", lambda r: seen.append(r.url))
+        pg.route(re.compile(r"^https://(?!pisophone\.pages\.dev/console/).*"), lambda r: r.abort())
+        pg.goto(f"http://127.0.0.1:{CP}/")
+        pg.wait_for_selector("#login:not(.hide)", timeout=8000)
+        pg.fill("#pw", "router-pass")
+        pg.click("#gobtn")
+        pg.wait_for_selector("#app:not(.hide)", timeout=8000)
+        for t, _ in SCREENS:
+            open_screen(pg, 1280, t)
+        outside = sorted({u for u in seen if not u.startswith(f"http://127.0.0.1:") and not u.startswith("data:") and not u.startswith("blob:")})
+        check(all(u.startswith("https://pisophone.pages.dev/console/ui.") for u in outside), f"no request leaves the router except the signed-script check: {outside}")
+        ctx.close()
+
+        # the new page with the earlier console script (the one the website holds), and the new script on the page of release 1.5.32
+        old_ui = open(f"{HERE}/golden/console_ui_v11.js").read()
+        old_page = open(f"{HERE}/golden/console_1_5_32.html").read()
+        served = urllib.request.urlopen(f"http://127.0.0.1:{CP}/").read().decode()
+        owner = re.search(r"OWNER='([^']*)'", served).group(1)
+        for name in ("old script on the new page", "new script on the old page"):
+            ctx = br.new_context(viewport={"width": 1280, "height": 800})
+            pg = ctx.new_page()
+            errors = []
+            pg.on("pageerror", lambda e: errors.append(str(e)))
+            pg.route(re.compile(r"^https://pisophone\.pages\.dev/.*"), lambda r: r.abort())
+            if name.startswith("old script"):
+                pg.route(f"http://127.0.0.1:{CP}/ui.js", lambda r: r.fulfill(status=200, content_type="application/javascript", body=old_ui))
+            else:
+                def old(r):
+                    got = r.fetch()
+                    r.fulfill(response=got, body=old_page.replace("@PHTAB@", "Rental phones").replace("@OWNER_KEY@", owner))
+                pg.route(f"http://127.0.0.1:{CP}/", old)
+            pg.goto(f"http://127.0.0.1:{CP}/")
+            pg.wait_for_selector("#login:not(.hide)", timeout=8000)
+            pg.fill("#pw", "router-pass")
+            pg.click("#gobtn")
+            pg.wait_for_selector("#app:not(.hide)", timeout=8000)
+            pg.wait_for_timeout(800)
+            check(pg.evaluate("window.PISO_UI_VERSION") == (11 if name.startswith("old script") else 12), f"{name}: the script that runs is the one chosen: {pg.evaluate('window.PISO_UI_VERSION')}")
+            for t, label in SCREENS:
+                pg.click(f'#tabs button[data-t="{t}"]')
+                pg.wait_for_timeout(500)
+                shown = pg.eval_on_selector_all("main section", "ss => ss.filter(s => !s.classList.contains('hide')).map(s => s.id)")
+                check(shown == [f"t-{t}"], f"{name}: {label} opens: {shown}")
+                if name.startswith("old script"):
+                    check(pg.get_attribute(f'#tabs button[data-t="{t}"]', "aria-current") == "page" and pg.inner_text("#pt") == pg.inner_text(f'#tabs button[data-t="{t}"]').strip(), f"{name}: {label}: the sidebar marks it and the title names it")
+            open_screen(pg, 1280, "over")
+            check(pg.locator("#tiles .card").count() >= 5 and pg.inner_text("#hm") != "", f"{name}: the Overview shows its tiles and the money")
+            check(not errors, f"{name}: no script error: {errors}")
             ctx.close()
         br.close()
 finally:
