@@ -42,10 +42,11 @@ Run on the final branch head; `origin/main` is `74ae3f5`.
 | 3 | `docs/README.md` lists every file under `docs/` | `for f in $(git ls-files 'docs/*.md' 'docs/**/*.md' ...); do grep -q "$(basename $f)" docs/README.md \|\| echo MISSING $f; done` | pass | prints nothing; 12 documents indexed (the 12 files under `docs/` besides the index itself) |
 | 4 | `check_links.py` 0 dead links; its test passes | `python3 scripts/check_links.py`; `python3 scripts/tests/test_check_links.py` | pass | `0 dead link(s)`; `check_links: OK` |
 | 5 | The four repository checks pass as before | `bash scripts/check_security_rules.sh`; `python3 tools/build_piso_setup.py --check`; `python3 scripts/check_vendored.py`; `python3 scripts/embed_web.py --check` | pass | `security rules: all passed`; `... website's copies ... are up to date`; `vendored files match their record`; `WebAssets.h is up to date.` None of them changed a file (`git status` clean after) |
-| 6 | The diff against `origin/main` touches only docs and metadata | `git diff --name-status origin/main..HEAD` | pass | 29 entries: 11 `A`, 18 `M`, no `R`, no `D`. Every path is `*.md` (that includes `ledger/negative-constraints.md`, one row added), `LICENSE`, `.editorconfig`, `.gitattributes`, `.gitignore`, `.github/ISSUE_TEMPLATE/*`, `.github/CODEOWNERS`, `.github/pull_request_template.md` or `.github/README.md`. A grep for `app/src`, `esp32_firmware/src\|include`, `tools/pisoportal/src\|bin`, `setup/src`, `setup/piso-setup*`, `website/update\|flash\|setup`, `.github/workflows` finds nothing. No workflow comment was changed either |
+| 6 | The diff against `origin/main` touches only docs and metadata | `git diff --name-status origin/main..HEAD` | pass | 31 entries: 12 `A`, 19 `M`, no `R`, no `D`. Every path is `*.md` (that includes `ledger/negative-constraints.md`, rows added), `LICENSE`, `.editorconfig`, `.gitattributes`, `.gitignore`, `.github/ISSUE_TEMPLATE/*`, `.github/CODEOWNERS`, `.github/pull_request_template.md` or `.github/README.md`, plus the two paths S11 allows: `scripts/verify_release.py` (M) and `scripts/tests/test_verify_release.py` (A). A grep for `app/src`, `esp32_firmware/src\|include`, `tools/pisoportal/src\|bin`, `setup/src`, `setup/piso-setup*`, `website/update\|flash\|setup`, `.github/workflows` finds nothing. No workflow comment was changed either |
 | 7 | Every command written exists | the table "Commands" below | pass, with the limits stated there | 24 commands run here and pass; the rest are copied from CI or `CONTRIBUTING.md` and their files and task names were checked; each is marked |
 | 8 | `CONTRIBUTING.md` and `specs/README.md` do not contradict `CLAUDE.md` section 5 | read side by side | pass | `CLAUDE.md` section 5: one feature, one branch `feat/NNN-name`; a green feature branch may merge straight into `main`; no PR, merge or release unless the owner asks; a router change goes through `beta`. `CONTRIBUTING.md` "Branches" says the same, four bullets. `specs/README.md` lines 22, 27 and 28 already say features start from `main` and only router changes use `beta`: no edit needed. See "For the owner" for documents that still say otherwise |
 | 9 | Root README at most about 150 lines, sections in S2 order | `wc -l README.md`; `grep -n '^## ' README.md` | pass | 104 lines. Banner, summary, then `## Start here`, `## Repository layout`, `## Quick start for developers`, `## Status`, `## Security model`, `## Documentation`, `## Development process`, `## Contributing`, `## Licence` (S2 order). The Code quality badge for `quality.yml` is under the title (owner answer Q1). No non-ASCII character in the file, so no emoji |
+| 10 | `verify_release.py` says 0 FAIL; its new test passes (S11, added at the merge) | `python3 scripts/verify_release.py`; `python3 scripts/tests/test_verify_release.py` | pass | Before the change: `2 FAIL`, from `router/README.md` (read as a router change) and `esp32_firmware/web/README.md` (read as a firmware change). After: `0 FAIL, 0 WARN, 12 PASS`; the test is 15 checks, 0 failures (it was red first: `AttributeError: ... no attribute 'firmware_changed'`, ledger row). The gate still bites: in a scratch worktree a changed `esp32_firmware/src/main.cpp` gave `1 FAIL ... (1 files)` (the README not counted) and a changed `router/piso_monitor.sh` then gave the router FAIL as well |
 
 ## Commands (criterion 7)
 Every command written in `README.md`, `CONTRIBUTING.md`, `.github/README.md` and the component READMEs. Backticked file paths in the nine
@@ -65,6 +66,7 @@ part of `setup/README.md` was not re-verified line by line.
 | `python3 router/tests/test_setup.py` | 479 checks, 0 failures (the BusyBox-only test was skipped: busybox is not installed) |
 | `python3 router/tests/test_monitor.py`, `test_install.py`, `test_footprint.py`, `test_boxupdate.py`, `test_phone_only.py` | 60, 47, 12 budgets, 47, 51 checks; 0 failures |
 | `python3 tools/checklist/test_apply.py`; `python3 tools/checklist/build.py out.html` | 31 checks, 0 failures; the page was written |
+| `python3 scripts/tests/test_verify_release.py`; `python3 scripts/verify_release.py` | 15 checks, 0 failures; `0 FAIL, 0 WARN, 12 PASS` (criterion 10) |
 | in `tools/pisoportal`: `cargo fmt --check`; `cargo clippy --locked --release --all-targets -- -D warnings`; `cargo build --locked --release`; `cargo test --locked --release`; `python3 tests/test_flow.py` | exit 0 each; 193 tests passed; 216 checks, 0 failures |
 
 Running them found one mistake in the docs, now fixed: `tests/test_flow.py` runs `target/release/pisoportal`, which `cargo test` does not
@@ -95,7 +97,10 @@ ledger from 2026-10-23 (the container's shell writes that line); a new ledger ro
   security rules, the three `--check` commands); the area tests above were run where the tools exist. App, firmware build and host tests,
   browser tests and style tools: not run, see "Not tested".
 - [x] `bash scripts/check_security_rules.sh`: `security rules: all passed`
-- [x] Python `ruff check`, `mypy`, `pytest -x`: not applicable, no Python file was changed.
+- [x] Python `ruff check`, `mypy`, `pytest -x` (S11 touched two Python files): `scripts/tests/test_verify_release.py`: ruff `All checks passed!`, mypy
+  `no issues found`. `scripts/verify_release.py`: ruff 44 findings before and 44 after, mypy 1 finding (`results` needs a type) before and after,
+  none in the two helpers I added. `pytest -x` cannot run it: like every test in `scripts/tests/`, it is a plain script that exits at the end
+  (`INTERNALERROR> SystemExit: 0`); it is run as `python3 scripts/tests/test_verify_release.py`.
 - [x] Generated files: none changed; the `--check` commands pass.
 
 ## Not tested
@@ -111,9 +116,19 @@ ledger from 2026-10-23 (the container's shell writes that line); a new ledger ro
 
 ## Money and time
 Not touched. No file under `app/src`, `esp32_firmware/src|include`, `tools/pisoportal/src|bin`, `setup/src`, `protocol` code or any generated
-or signed file changed (criterion 6). No release: `setup/RELEASE`, `PISO_FW_VERSION` and the app build are as they were.
+or signed file changed (criterion 6). The one script change (S11) is `scripts/verify_release.py`, which only reads: it signs and publishes nothing,
+and its checks of the feeds, signatures and version numbers are unchanged. No release: `setup/RELEASE`, `PISO_FW_VERSION` and the app build are as they were.
 
 ## For the owner (found while working; nothing below was changed unless it says so)
+0. **Added at the merge (S11, you chose "fix the check").** `scripts/verify_release.py` read a README in `router/` or `esp32_firmware/web/` as a
+   router or firmware change and said 2 FAIL. It now ignores `*.md` files (two small functions, tested). Two things for you:
+   - `scripts/tests/test_verify_release.py` is not run by CI. Workflows are not edited in this feature. One line in the `security-rules` job
+     of `quality.yml` (`python3 scripts/tests/test_verify_release.py`) would run it.
+   - The new READMEs sit in folders that workflows watch: `app/README.md` and `protocol/README.md` start `build-apk.yml`, `esp32_firmware/README.md`
+     starts `firmware-images.yml`, and `app/README.md` starts `emulator-tests.yml`. On a branch, `build-apk.yml` signs with the public test key
+     and publishes only to the branch's own feed (run #549 did that for this branch). On `main`, the sign and publish jobs use the
+     `production-signing` environment, which waits for your approval, so a merge shows you approval requests for an unchanged app and
+     firmware. Do not approve them unless you want a new build number published; nothing here changes the code.
 1. **Q2, renaming the repository (recommendation only, nothing done).** The product is TechNet PisoHub, the repository is
    `PisoPhone-Kiosk-Launcher-V1`. If you rename it (for example `technet-pisohub`), first look at what uses the name: the footer links in
    `website/start/*.html` (4 files), `.github/ISSUE_TEMPLATE/config.yml` (the private security form), the README badge,
