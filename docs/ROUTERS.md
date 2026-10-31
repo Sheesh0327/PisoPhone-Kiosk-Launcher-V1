@@ -33,7 +33,7 @@ file by themselves; a file for another CPU refuses to run before changing anythi
 
 What else the router needs:
 - **Internet during the first setup.** The router downloads the installer (over https, checked against its published checksum) and its packages (`opkg`, against the router's own signed feeds) itself, so the modem must be plugged into its WAN port and online. A router with no internet cannot be set up: the setup stops before it changes anything and says so. (Until router 1.5.25 the setup program could copy the packages from the computer instead; that was removed by feature 041.)
-- **OpenWrt 23.05 or newer** with the `opennds` package (ImmortalWrt 23.05, an OpenWrt fork, is what the owner's 360T6M runs: `DISTRIB_DESCRIPTION` reads `ImmortalWrt 23.05.0`; other forks are not checked), a **2.4 GHz** Wi-Fi radio (the coin box is 2.4 GHz only) and a LAN you can run SSH on.
+- **OpenWrt 23.05 or newer** (opkg or apk) with the `opennds` package (ImmortalWrt 23.05, an OpenWrt fork, is what the owner's 360T6M runs: `DISTRIB_DESCRIPTION` reads `ImmortalWrt 23.05.0`; other forks are not checked), a **2.4 GHz** Wi-Fi radio (the coin box is 2.4 GHz only) and a LAN you can run SSH on.
 - **Room (sizes from the builds; flash use is an estimate, not a reading from a router):** the portal program is 0.7 to 1.1 MB (about 0.57 MB on
   flash once compressed), the installed `piso-setup` command about 0.1 MB (about 0.05 MB), and an update keeps a backup of the old program (another
   ~0.9 MB) until the new one proves itself; the update file itself (1.1 to 1.7 MB) is held in memory, or in flash on a router with little free
@@ -53,10 +53,18 @@ router (`mipsel`) has run the program on real hardware, according to the owner's
 checked on a computer only. That is why the table marks them as it does. When you try a router, record which one it was and what `piso-setup status` said.
 A CPU that is none of the five families has no program built and is refused before anything changes; that is different from an untested family, which is allowed.
 
-**Releases and routers the setup supports (feature 046).** The setup needs **opkg**, so OpenWrt **23.05 and 24.10** (and ImmortalWrt 23.05). A router on
-OpenWrt **25.x or a snapshot** installs packages with apk: `install.sh` and the setup program stop at the start, name the release and change nothing
-(full apk support is a later feature). A release whose package sources have moved to the archive (an old 21.02 for example) gets "the package
-sources of OpenWrt <release> do not answer" instead of "no internet". **Routers someone has set up** (this list grows only when an owner reports a
+**Releases and routers the setup supports (features 046 and 057).** The setup installs packages with **opkg** (OpenWrt **23.05 and 24.10**, and ImmortalWrt 23.05) or with **apk**
+(OpenWrt **25.x** and snapshots), whichever the router has; a router with **no package manager at all** is set up too when **openNDS is already installed** (a custom image with the
+packages built in). Only a router with neither a package manager nor openNDS is refused, before anything changes, with a message that says what to install first.
+**What has been tried:** the opkg path has run on the owner's router. The **apk path and the no-package-manager path have been tried only against fake commands and against the
+official OpenWrt 25.12.1 / 23.05.5 / 24.10.8 images in a container (no network, no kernel of their own): no real apk router has run the setup, so treat apk as untested** until one has
+(check RS67 in `docs/REAL_WORLD_TESTING.md`). A release whose package sources have moved to the archive (an old 21.02 for example) gets "the package
+sources of OpenWrt <release> do not answer" instead of "no internet".
+
+**What kind of image it is.** After the package lists are fresh, the setup works out whether the image is `official` OpenWrt, a `fork` it knows (ImmortalWrt, with its own feed) or a `custom`
+image, from facts on the router only: the distribution id in `/etc/openwrt_release`, the hosts of the configured package feeds, and a dry run of one kernel module package
+(`kmod-ifb`) that shows whether the feed fits the image's kernel. The result and its reason are in the setup summary and in `piso-setup status` ("Image: ... (known fork: feeds from
+immortalwrt.org, kernel fit ok)"). It is a label for how careful the installer is, **not a promise of support**: the table below still lists only routers someone has set up. **Routers someone has set up** (this list grows only when an owner reports a
 real setup with the release used; a model that is not here may still work):
 
 | Router | OpenWrt release | CPU family | Notes |

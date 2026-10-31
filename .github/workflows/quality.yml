@@ -348,6 +348,10 @@ jobs:
           shellcheck -s sh -e SC2034 router/*.init
       - name: Check the one-file router setup (settings, payload, box provisioning)
         run: python3 router/tests/test_setup.py
+      - name: Check the package-manager layer (opkg, apk or none; official, fork or custom image) and the flags it must never use
+        run: |
+          python3 router/tests/test_pkgmgr.py
+          python3 scripts/tests/test_package_flags.py
       - name: Footprint budget (a small router must fit)
         run: python3 router/tests/test_footprint.py
       - name: Check the one-line installer (download check, moving the router to 10.0.0.1; also under BusyBox ash)

@@ -1,6 +1,9 @@
 """Tests of the package-manager layer in setup/piso-setup.sh (feature 057): opkg, apk or none, and the image type, with fake package managers.
 Run with:  python3 router/tests/test_pkgmgr.py"""
-import os, subprocess, sys, tempfile
+import os
+import subprocess
+import sys
+import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SCRIPT = f"{ROOT}/setup/piso-setup.sh"

@@ -19,8 +19,8 @@ Never opened: `setup/piso-setup*.sh`, `website/install.sh` (generated).
 - [x] 1. **The layer** (`setup/src/` new piece, sourced before preflight): detect, update, is_installed, available, dry_run, install, remove, free_space, name map, and `image_type` (official / fork / custom, with the reason) from the facts in the spec. (test: new `router/tests/test_pkgmgr.py` with fake `opkg`, fake `apk`, neither, and the image-type fixtures of criterion 7; red result logged: yes)
 - [x] 2. **Use it in the router installer** (done with the image type saved at install and shown in `piso-setup status` and the summary). `20-preflight.sh` `install_packages` and `update_failed` call the layer; the "no opkg" refusal becomes "no package manager and no openNDS". (test: `test_setup.py` unchanged results with fake opkg; plus apk and neither cases; red: yes)
 - [x] 3. **`install.sh` and the setup program.** Stop refusing apk; keep refusing an unknown release. (test: `test_install.py`, `test_setup_phone_web.py`, `test_phone_only.py`; red: yes)
-- [ ] 4. **Security rule.** Forbidden flags in `check_security_rules.sh` with a failing and a passing test. (red: yes)
-- [ ] 5. **Documents** (criterion 6). No code.
+- [x] 4. **Security rule.** Forbidden flags in `check_security_rules.sh` with a failing and a passing test. (red: yes)
+- [x] 5. **Documents** (criterion 6): `docs/ROUTERS.md`, `setup/README.md`, `CHANGELOG.md`, RS67, and the new tests in `.github/workflows/quality.yml`. No code.
 - [ ] 6. **Gates and hardware.** `bash scripts/check_security_rules.sh`; `cargo test` and `python3 tests/test_flow.py` in `tools/pisoportal` (nothing there changes, they must still pass); the four router test files; `test_setup_phone_web.py`, `test_phone_only.py`; `python3 tools/build_piso_setup.py --check`; ruff/mypy on touched Python. Then the run on the owner's image (criterion 7) and `validation.md`.
 
 ## Release

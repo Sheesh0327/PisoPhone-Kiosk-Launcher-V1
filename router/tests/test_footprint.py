@@ -12,7 +12,7 @@ BUDGET_KB = {
     "tools/pisoportal/bin/pisoportal-armv7": 1200,
     "tools/pisoportal/bin/pisoportal-x86_64": 1200,
     "setup/piso-setup.sh": 1700,                      # the one-file installer / update (it is downloaded, not kept)
-    "setup/piso-setup.sh.in": 150,                    # the installed command (the file without its payload)
+    "setup/piso-setup.sh.in": 160,                    # the installed command (the file without its payload; 148 KB before feature 057 added the package-manager layer, 155 KB after)
     "tools/pisoportal/src/page.html": 28,             # the customer page (1.3.4: voucher choice and code view, speech with a fallback, heartbeat)
     "tools/pisoportal/src/brand_fil.js": 14,          # a branded page: the Filipino wording and the language button (feature 049; page.html itself did not grow)
     "tools/pisoportal/src/brand_page.css": 6,         # a branded page: the four layouts
