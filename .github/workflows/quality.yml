@@ -334,6 +334,8 @@ jobs:
           cargo test --locked --release
           python3 tests/test_flow.py
           python3 tests/test_console.py
+          python3 tests/test_console_sqm.py
+          python3 tests/test_console_speedtest.py
           python3 tests/test_pricing_flow.py
           python3 tests/test_link_loss.py
           python3 tests/test_money_panel.py
@@ -346,6 +348,7 @@ jobs:
           CHROME=$(ls ~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome | head -1) python3 tests/test_page_languages.py
           CHROME=$(ls ~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome | head -1) python3 tests/test_console_loader.py
           CHROME=$(ls ~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome | head -1) python3 tests/test_console_prices.py
+          CHROME=$(ls ~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome | head -1) python3 tests/test_console_sqm_card.py
           CHROME=$(ls ~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome | head -1) python3 tests/test_console_frame.py
           CHROME=$(ls ~/.cache/ms-playwright/chromium-*/chrome-linux*/chrome | head -1) python3 tests/test_send.py
       - name: Shell scripts (shellcheck)
@@ -354,6 +357,13 @@ jobs:
           shellcheck -s sh -e SC2034 router/*.init
       - name: Check the one-file router setup (settings, payload, box provisioning)
         run: python3 router/tests/test_setup.py
+      - name: Check the package-manager layer (opkg, apk or none; official, fork or custom image) and the flags it must never use
+        run: |
+          python3 router/tests/test_pkgmgr.py
+          python3 router/tests/test_optional.py
+          python3 router/tests/test_sqm.py
+          python3 router/tests/test_sqm_test.py
+          python3 scripts/tests/test_package_flags.py
       - name: Footprint budget (a small router must fit)
         run: python3 router/tests/test_footprint.py
       - name: Check the one-line installer (download check, moving the router to 10.0.0.1; also under BusyBox ash)

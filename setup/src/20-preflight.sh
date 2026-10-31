@@ -24,6 +24,13 @@ wan_clash() {
 	return 1
 }
 
+# preflight_packages: the router has opkg or apk, or no package manager at all but openNDS already installed (a custom image with the packages built in).
+preflight_packages() {
+	[ "$(pkg_manager)" != none ] && return 0
+	pkg_opennds_ready || die "this router has no package manager (opkg or apk) and openNDS is not installed, so the setup has nothing to install it with. Install openNDS on the router first, then run this again (see docs/ROUTERS.md). Nothing was changed."
+	tip "this router has no package manager: the setup uses the packages already on it, and anything optional is skipped."
+}
+
 preflight() {
 	step "Checking the router"
 	if [ "$DRY" != 1 ]; then
@@ -31,7 +38,7 @@ preflight() {
 		[ -f /etc/openwrt_release ] || die "this is not an OpenWrt router"
 	fi
 	command -v uci > /dev/null || die "uci not found"
-	command -v opkg > /dev/null || die "this router has no opkg (OpenWrt 25.x and snapshots install packages with apk). This setup supports OpenWrt 23.05 and 24.10 (see docs/ROUTERS.md). Nothing was changed."
+	preflight_packages
 	check_arch
 	R24=""; R5=""
 	for r in $(radios); do
@@ -45,7 +52,7 @@ preflight() {
 }
 
 # preflight_network: the router's WAN address and internet, and that its LAN and WAN ranges do not clash. The router needs internet for
-# the first setup: it downloads its packages itself (opkg, against its own signed feeds).
+# the first setup: it downloads its packages itself (opkg or apk, against the router's own signed feeds).
 preflight_network() {
 	WAN=$(wan_ip)
 	[ -n "$WAN" ] || die "the router has no WAN address, and it needs internet for the first setup: plug the modem into the WAN port and wait a minute, then run this again"
@@ -61,27 +68,35 @@ preflight_network() {
 	tip "the setup takes about 3 to 8 minutes. Keep this window open, the coin box powered on near the router, and the network cable plugged in."
 }
 
-# update_failed: opkg update failed. With a working ping the router has internet, so the release's package sources are what does not answer.
+# update_failed: the package update failed. With a working ping the router has internet, so the release's package sources are what does not answer.
 update_failed() {
 	if ping -c 1 -W 3 1.1.1.1 > /dev/null 2>&1 || ping -c 1 -W 3 8.8.8.8 > /dev/null 2>&1; then
 		_rel=$(sed -n "s/^DISTRIB_RELEASE=['\"]\{0,1\}\([^'\"]*\).*/\1/p" "$PISO_ROOT/etc/openwrt_release" 2> /dev/null | head -n 1)
-		die "opkg update failed although the router has internet: the package sources of OpenWrt ${_rel:-this release} do not answer (an old release moved to the archive, or a vendor build). Supported releases: docs/ROUTERS.md"
+		die "$(pkg_manager) update failed although the router has internet: the package sources of OpenWrt ${_rel:-this release} do not answer (an old release moved to the archive, or a vendor build). Supported releases: docs/ROUTERS.md"
 	fi
-	die "opkg update failed (no internet or DNS?)"
+	die "$(pkg_manager) update failed (no internet or DNS?)"
 }
 
 install_packages() {
 	step "Installing packages"
-	opkg update > /dev/null 2>&1 || opkg update || update_failed
+	if [ "$(pkg_manager)" = none ]; then
+		log "no package manager: using the packages already on the router"
+		pkg_image_record
+		stop_opennds
+		return 0
+	fi
+	pkg_update > /dev/null 2>&1 || pkg_update || update_failed
 	for p in opennds curl ca-bundle jsonfilter; do
-		if ! opkg list-installed 2> /dev/null | grep -q "^$p "; then
+		if ! pkg_installed "$p"; then
 			log "installing $p"
-			opkg install "$p" > /dev/null 2>&1 || opkg install "$p" || die "could not install $p"
+			pkg_install "$p" > /dev/null 2>&1 || pkg_install "$p" || die "could not install $p"
 		fi
 		# Installing opennds starts it at once with its default settings, which gate the LAN (the kiosk network) and
 		# would reject the coin box and the phones: stop it before anything else can fail. It is started at the end.
 		[ "$p" = opennds ] && stop_opennds
 	done
-	opkg list-installed 2> /dev/null | grep -qi '^libmicrohttpd' || opkg install libmicrohttpd-no-ssl > /dev/null 2>&1
+	pkg_installed_prefix libmicrohttpd || pkg_install libmicrohttpd-no-ssl > /dev/null 2>&1
+	pkg_image_record
+	log "$(pkg_image_report | sed -n 2p)"
 }
 

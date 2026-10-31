@@ -138,7 +138,10 @@ main() {
 	case "$branch" in *[!A-Za-z0-9._/-]* | "") fail "not a branch name: $branch" ;; esac
 	[ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || fail "run this as root on the router (ssh root@<router address>)"
 	command -v uci > /dev/null 2>&1 || fail "this is not an OpenWrt router (no uci command)"
-	command -v opkg > /dev/null 2>&1 || fail "this router has no opkg (OpenWrt 25.x and snapshots install packages with apk). This setup supports OpenWrt 23.05 and 24.10 (see docs/ROUTERS.md). Nothing was changed."
+	# opkg (OpenWrt up to 24.10), apk (25.x) or no package manager at all, which is fine only when openNDS is already on the router
+	if ! command -v opkg > /dev/null 2>&1 && ! command -v apk > /dev/null 2>&1 && ! { [ -x "${PISO_ROOT:-}/etc/init.d/opennds" ] && command -v ndsctl > /dev/null 2>&1; }; then
+		fail "this router has no package manager (opkg or apk) and openNDS is not installed, so the setup has nothing to install it with. Install openNDS on the router first, then run this again (see docs/ROUTERS.md). Nothing was changed."
+	fi
 
 	# a router that already has the setup updates only with what the owner's key signed (version, downgrade and staged-rollout
 	# checks included): this download's checksum comes from the same website, so it would prove nothing about who made the file

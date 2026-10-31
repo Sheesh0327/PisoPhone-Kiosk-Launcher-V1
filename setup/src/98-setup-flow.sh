@@ -133,6 +133,7 @@ stage1() {
 
 	: > "$LOG"
 	install_packages
+	install_optional_packages
 	extract_payload "$0"
 	step "Writing the router settings"
 	[ -n "$(conf_get CONSOLE_MODE)" ] || conf_set CONSOLE_MODE front   # (the console is the front page, http://admin.hub; LuCI is on 8080)
@@ -148,7 +149,7 @@ main() {
 		case "$1" in
 			--dry-run) DRY=1 ;;
 			--yes | -y) ASSUME_YES=1 ;;
-			status | wan-clash | pair | summary | wifi-name | guest-port | kiosk-wifi | verify | uninstall-info | test-coin | diag | box-diag | set-password | reconcile | telegram | rotate-box-wifi | box-wifi-name | handout | console | export | import | space | forget-summary | lock-admin | lock-admin-confirm | unlock-admin | wifi-admin | update | self-update | box-update | auto-update | voucher-choice | brand-pack) CMD="$1"; shift; ARG="$1"; ARGS="$*"; break ;;
+			status | wan-clash | pair | summary | wifi-name | guest-port | kiosk-wifi | verify | uninstall-info | test-coin | diag | box-diag | set-password | reconcile | telegram | rotate-box-wifi | box-wifi-name | handout | console | export | import | space | forget-summary | lock-admin | lock-admin-confirm | unlock-admin | wifi-admin | update | self-update | box-update | auto-update | voucher-choice | brand-pack | sqm) CMD="$1"; shift; ARG="$1"; ARGS="$*"; break ;;
 			-h | --help) sed -n '2,/^# Options:/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 			*) echo "unknown option: $1 (try --help)" >&2; exit 1 ;;
 		esac
@@ -179,6 +180,7 @@ main() {
 		box-update) cmd_box_update "$ARG" ;;
 		auto-update) cmd_auto_update "$ARG" ;;
 		voucher-choice) cmd_voucher_choice "$ARG" ;;
+		sqm) cmd_sqm "$ARG" ;;
 		brand-pack) cmd_brand_pack "$ARG" ;;
 		lock-admin)
 			# shellcheck disable=SC2086 # one argument per MAC address

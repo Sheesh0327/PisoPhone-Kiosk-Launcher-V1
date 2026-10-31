@@ -29,6 +29,7 @@ mod pricing;
 mod reconcile;
 mod roll;
 mod send;
+mod sqmconsole;
 mod update;
 mod util;
 mod voucher;

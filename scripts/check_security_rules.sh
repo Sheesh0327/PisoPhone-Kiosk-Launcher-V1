@@ -91,5 +91,14 @@ if ! python3 scripts/tests/test_workflow_signing.py; then
     bad "a workflow runs a signing script after git reset --hard (lines above)"
 fi
 
+# 11. The router setup installs only from the router's own signed package feeds (feature 057). A package manager flag that skips a signature,
+#     a checksum, a certificate or a dependency check must not appear in the installer or the setup program. (Tests may name them.)
+# (the matches are kept in a variable: grep exits 2 when one of the paths is missing, even after it found a match)
+PKG_FLAGS=$(grep -rnE $EXCLUDE --exclude-dir=tests -e '--force-signature|--force-checksum|--allow-untrusted|--no-check-certificate|--force-depends|--force-overwrite' setup/src setup/install.sh setup/pisophone_setup.py router 2>/dev/null)
+if [ -n "$PKG_FLAGS" ]; then
+    echo "$PKG_FLAGS"
+    bad "a package manager flag that skips a signature or other check is used (lines above)"
+fi
+
 [ "$fail" -eq 0 ] && echo "security rules: all passed"
 exit "$fail"

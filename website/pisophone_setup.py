@@ -1987,24 +1987,25 @@ def setup_command(branch):
 # signed feeds. Without internet there is nothing to install from, so the setup says so before it changes anything.
 
 
-class ApkRouter(SetupError):
-    """A router that installs packages with apk (OpenWrt 25.x or a snapshot) or has no opkg: the setup installs with opkg, so it
-    stops before anything is changed."""
+class NoPackageManager(SetupError):
+    """A router with neither opkg nor apk and no openNDS: the setup has nothing to install openNDS with, so it stops before
+    anything is changed. (A router with apk, or with openNDS already built in, goes on: feature 057.)"""
 
     def __init__(self, release):
-        super().__init__(f"this router runs OpenWrt {release or '(release unknown)'}, which has no opkg (OpenWrt 25.x and snapshots install "
-                         "packages with apk), and this setup only supports routers with opkg (OpenWrt 23.05 and 24.10; the list is in "
-                         "docs/ROUTERS.md). Nothing was changed on the router.")
+        super().__init__(f"this router (OpenWrt {release or 'release unknown'}) has no package manager (opkg or apk) and openNDS is not "
+                         "installed, so the setup has nothing to install it with. Install openNDS on the router first, then run this "
+                         "again (the list of routers is in docs/ROUTERS.md). Nothing was changed on the router.")
 
 
-# one ssh command that prints the router's release, whether it has apk and whether it has opkg
+# one ssh command that prints the router's release, whether it has apk, whether it has opkg and whether openNDS is already installed
 READ_PACKAGER_COMMAND = ("echo @@RELEASE; cat /etc/openwrt_release 2>/dev/null; "
                          "echo @@APK; if command -v apk >/dev/null 2>&1; then echo yes; else echo no; fi; "
-                         "echo @@OPKG; if command -v opkg >/dev/null 2>&1; then echo yes; else echo no; fi")
+                         "echo @@OPKG; if command -v opkg >/dev/null 2>&1; then echo yes; else echo no; fi; "
+                         "echo @@NDS; if [ -x /etc/init.d/opennds ] && command -v ndsctl >/dev/null 2>&1; then echo yes; else echo no; fi")
 
 
 def check_router_packager(ssh, host):
-    """Raises ApkRouter when the router installs packages with apk (or has no opkg): decided before the router is changed."""
+    """Raises NoPackageManager when the router has neither opkg nor apk and no openNDS: decided before the router is changed."""
     lines = []
     if run_remote(ssh, host, READ_PACKAGER_COMMAND, lines.append)["exit"] == 255 and login_refused(ssh, host):
         raise SetupError(login_refused_message(ssh))
@@ -2021,8 +2022,8 @@ def check_router_packager(ssh, host):
         if m:
             release = m.group(1)
     word = lambda name: (parts.get(name) or [""])[0].strip()
-    if word("APK") == "yes" or word("OPKG") == "no":
-        raise ApkRouter(release)
+    if word("APK") != "yes" and word("OPKG") == "no" and word("NDS") != "yes":
+        raise NoPackageManager(release)
 
 
 def router_has_internet(ssh, host):
