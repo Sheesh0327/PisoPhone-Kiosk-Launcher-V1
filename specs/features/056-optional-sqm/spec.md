@@ -57,7 +57,7 @@ line (from an ordinary speed test) so SQM is set just under it. Serves the goal 
   - **Honest number:** the router reads its CPU use during the test. If the CPU was near full, the result is shown with "this router may be the limit: confirm with a phone speed test" and is not
     presented as the line speed. A test that cannot reach any host reports that, and prefills nothing.
   - **Safety:** one test at a time, at most one per minute, behind the console password and its same-origin check, with no input from the page in the command that runs. The portal hands the work to
-    `piso-setup sqm-test` (root) and reads the result from a small status file; it does not run curl in a request thread.
+    `piso-setup sqm test` (root) and reads the result from a small status file; it does not run curl in a request thread.
   - **Shown:** measured down and up, the value SQM would use at the margin, the host used, and how old the test is.
 - Qdisc: **cake** when `kmod-sched-cake` is present, else **fq_codel**, and the console says which one is in use. cake options: `nat`, `dual-dsthost`
   (download), `dual-srchost` (upload), `wash`, `diffserv3`; the exact strings are fixed in the plan after the bench test.

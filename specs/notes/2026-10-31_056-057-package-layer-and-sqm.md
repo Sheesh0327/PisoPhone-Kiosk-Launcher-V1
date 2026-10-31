@@ -22,7 +22,7 @@ Branch `ccr-e31098f5-7k2rgz` (the session branch; not pushed to `beta` or `main`
 - Taking 1.5.35 through `beta` (needs the owner's go-ahead; `CLAUDE.md` section 5).
 
 ## Next step (056, in this order, test first, one commit each)
-1. Group 5b: `piso-setup sqm-test` (refuses `BUSY` with customers online; stops the sqm service for the test and always restarts it; parallel `curl` to Cloudflare with a data cap; CPU from `/proc/stat`; writes `/tmp/piso-speedtest.json`).
+1. Group 5b: `piso-setup sqm test` (refuses `BUSY` with customers online; stops the sqm service for the test and always restarts it; parallel `curl` to Cloudflare with a data cap; CPU from `/proc/stat`; writes `/tmp/piso-speedtest.json`).
 2. Group 4 and 5c: portal `GET/POST /api/settings` with the `sqm` fields (validation 0.1 to 10000 Mbps, margin 50 to 100) saved with `override_set`, `POST /api/speedtest` (one at a time, one a minute, refused while a coin window is open), hand-over to `piso-setup sqm apply` / `sqm-test` outside the request thread.
 3. Groups 5 and 5d: the console card and the Test my line button (greyed out with a reason when SQM is missing or customers are online).
 4. Groups 6 to 8: openNDS/firewall unchanged check (flow offloading 0), documents (RS71), gates. Group 9 and group 0 need the owner's router.
