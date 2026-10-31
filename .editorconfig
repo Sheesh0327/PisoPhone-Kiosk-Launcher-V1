@@ -33,5 +33,22 @@ ktlint_standard_try-catch-finally-spacing = disabled
 [*.{cpp,h,ino}]
 indent_size = 4
 
+[*.rs]
+indent_size = 4
+
+[*.py]
+indent_size = 4
+
+[*.{js,css}]
+indent_size = 4
+
+# The router scripts and the setup file's parts are indented with tabs. Other shell scripts use spaces. HTML is not set: the pages mix 2 and 4.
+[{router,setup}/**.{sh,init,in}]
+indent_style = tab
+
+# Windows batch files keep CRLF (see .gitattributes).
+[*.bat]
+end_of_line = crlf
+
 [*.{yml,yaml,json,md}]
 indent_size = 2

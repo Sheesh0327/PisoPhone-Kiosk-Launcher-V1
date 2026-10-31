@@ -1,7 +1,18 @@
 # Changelog
 
-What changed for people who run PisoPhone sites. The phone app, the coin-box firmware and the router software are versioned
-separately (app: the CI build number, shown as hundreds.tens.ones, build 466 is 4.6.6; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
+What changed for people who run PisoPhone sites, newest first. An entry starts with the part and its version, then says what changed
+for an owner and whether it has run on real hardware. Old entries are not rewritten.
+
+The phone app, the coin-box firmware and the router software are versioned separately:
+
+| Part | Version | Where the live version is published |
+|---|---|---|
+| Phone app | The CI build number, shown as hundreds.tens.ones (build 466 is 4.6.6) | `website/update/app.json` |
+| Coin box firmware | `PISO_FW_VERSION` in `esp32_firmware/include/FirmwareVersion.h` | `website/update/firmware.json` |
+| Router software | `setup/RELEASE` | `website/update/router.json` |
+
+A box or a router installs only a newer version. Entries under *Unreleased* are everything since the section below it; which release
+is signed, how far it is rolled out and what has never run on real hardware is in `specs/RELEASE_STATE.md`.
 
 ## Unreleased
 - Firmware and app, **voice messages from the box page to a rental phone (feature 056).** Not tried on a real box, phone or browser yet (hardware checks RS66 to RS69); needs a new firmware **and** a new app.

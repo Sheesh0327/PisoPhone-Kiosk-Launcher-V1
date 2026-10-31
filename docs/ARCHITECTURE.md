@@ -117,6 +117,7 @@ openNDS is only the doorman: it blocks a guest phone from the internet until tol
 | `console.rs`, `console-ui.js` | the owner's console page (signed in with the router's root password); its *Rental phones* tab shows the coin box's own page in a frame |
 | `boxview.rs` | passes the coin box's own admin page through on the console port + 1 (same paths as on the box, so the page works unchanged): needs a console session, adds the box's admin login from `BOX_ADMIN_PASS`, answers 401/403/502/503 plainly, lets only the console frame it, and copies bytes without changing them |
 | `update.rs` | self-update from the website, signed releases only |
+| `brand.rs`, `brandpack.rs`, `brandpage.rs`, `brandconsole.rs`, `brand_fil.js`, `brand_page.css` | shop branding of the guest page: the owner's texts, palette and layout (cleaned, never run as code); a logo only from a brand pack the owner signed; the branded page; the console's Branding screen; the Filipino wording |
 
 The customer's page moves through the states `idle`, `starting`, `armed`, `closing` ("Counting coins"), then a final result (online, empty, error, busy, cooldown, mismatch)
 or `paused`. Everything travels over the WebSocket; the page re-asks the router after 3 s in `closing` and pings every 4 s, so a lost message heals by itself.
@@ -173,7 +174,7 @@ The owner makes cards on their own computer with `scripts/make_cards.py` (the ca
 | Wi-Fi poster, owner key tools | `scripts/make_wifi_poster.py`, `scripts/make_owner_keys.py`, `scripts/make_admin_qr.py` |
 
 ## 10. Quality checks
-- `.github/workflows/quality.yml` ("Code quality") runs on every push: ktlint for Kotlin, clang-format and the firmware host tests, the security-rule and vendored-file checks, the website and provisioning tests,
+- `.github/workflows/quality.yml` ("Code quality") runs on pushes and pull requests to `main` and `beta`, for the parts a change touches: ktlint for Kotlin, clang-format and the firmware host tests, the security-rule and vendored-file checks, the website and provisioning tests,
   the owner's admin QR login and signed console script tests, the generated web assets check, the dashboard's scripts in a browser, and the portal and router tests (flow, console, browser, installer, self-update, box update).
 - `quality.yml` also runs **detekt** (static analysis; `detekt.yml` is the rules, `detekt-baseline.xml` the findings that existed when it was added, and anything new fails).
 - `emulator-tests.yml` runs the **emulator tests** (`scripts/ci_emulator_tests.sh`, in an Android emulator with `reactivecircus/android-emulator-runner`) on pushes to `main`, nightly, and by hand. `build-apk.yml` runs the Android unit tests (Robolectric, no device) with a per-package **coverage** check, **Android Lint** (`app/lint-baseline.xml`; anything new fails and lint must pass before the APK is built),
