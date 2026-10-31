@@ -2,6 +2,7 @@
 them, and installing the packages waits for a quiet moment. Fake uci, fake sqm init script, stand-ins for the package layer.
 Run with:  python3 router/tests/test_sqm.py"""
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -9,6 +10,7 @@ import tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SCRIPT = f"{ROOT}/setup/piso-setup.sh"
 failures = checks = 0
+ALL_UCI = []   # every uci call (and batch line) any run below made
 
 
 def check(cond, msg):
@@ -58,6 +60,7 @@ def run(code, settings=None, sqm_installed=True, **env):
              PISO_ROUTER_ID="a1b2", PISO_ROOT=root, T_LOG=log, T_KERNEL="", T_INSTALLED="")
     e.update(env)
     r = subprocess.run(["sh", "-c", f". {SCRIPT}; {STUBS}\n{code}"], env=e, capture_output=True, text=True, timeout=60)
+    ALL_UCI.extend(l for l in open(log).read().splitlines() if l.startswith("uci ") or l.startswith("set ") or l.startswith("delete "))
     status = ""
     if os.path.exists(f"{root}/etc/coinslot.d/sqm.txt"):
         status = open(f"{root}/etc/coinslot.d/sqm.txt").read()
@@ -113,5 +116,13 @@ check("rc=0" not in r.stdout and "usage" in r.stdout + r.stderr, "an unknown sqm
 flow = open(f"{ROOT}/setup/src/98-setup-flow.sh").read()
 check("cmd_sqm \"$ARG\"" in flow and "brand-pack | sqm)" in flow, "piso-setup knows the sqm command")
 
+# ---- feature 056, criterion 8: nothing of openNDS, the firewall, the network or the speed caps is touched ---------------------------------
+check(len(ALL_UCI) > 20, "the runs above made uci calls to look at: " + str(len(ALL_UCI)))
+WRITES = [l for l in ALL_UCI if l != "uci batch" and not re.match(r"uci (-q )?(get|show|export)\b", l)]   # ("uci batch" is followed by its lines, which are in the list)
+check(len(WRITES) > 10 and all("sqm" in l for l in WRITES), "every uci change of apply, off, install and status names the sqm config and nothing else (reads aside): " + str([l for l in WRITES if "sqm" not in l][:3]))
+src = "".join(open(f"{ROOT}/setup/src/{f}").read() for f in ("13-optional.sh", "14-sqm.sh"))
+uci_lines = [l for l in src.splitlines() if re.search(r"\buci\b", l) and not l.lstrip().startswith("#")]
+check(uci_lines and not any(re.search(r"opennds|firewall|network|dhcp|wireless|flow_offloading|ratecheck|checkinterval", l) for l in uci_lines),
+      "and the source of the optional-package step and the sqm commands has no uci line for openNDS, the firewall, the network, DHCP, Wi-Fi or the speed caps: " + str(uci_lines[:4]))
 print(f"{checks} checks, {failures} failures")
 sys.exit(1 if failures else 0)
