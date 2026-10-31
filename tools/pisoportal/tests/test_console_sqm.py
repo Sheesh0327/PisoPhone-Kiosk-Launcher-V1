@@ -93,6 +93,7 @@ try:
     st = settings()
     check("SQM_DOWN_MBPS=50\n" in st and "SQM_UP_MBPS=20\n" in st and "SQM_ON=1\n" in st and "GAME_MINUTES=10\n" in st and "VOUCHER_CHOICE=on\n" in st, f"kept in the data folder next to the other lines: {st!r}")
     check(wait_until(lambda: calls() != "", 5) and calls() == "sqm apply\n", f"piso-setup was called with fixed arguments only: {calls()!r}")
+    wait_until(lambda: os.path.exists(f"{tmp}/settings-at-call"), 3)   # (the fake writes its call down first, then copies the settings)
     at = open(f"{tmp}/settings-at-call").read() if os.path.exists(f"{tmp}/settings-at-call") else ""
     check("SQM_ON=1\n" in at and "SQM_DOWN_MBPS=50\n" in at, "and it found the new speeds already saved")
     check(idle(cookie), "the apply ends and the console is told")
@@ -126,7 +127,7 @@ try:
         call("/api/settings", {"sqm_down": v}, cookie=cookie)
     check(idle(cookie), "all applies end")
     check("SQM_DOWN_MBPS=42\n" in settings() and calls().count("sqm apply") in (2, 3), f"changes made while one apply runs are applied once more, after it: {calls()!r}")
-    check(open(f"{tmp}/settings-at-call").read().count("SQM_DOWN_MBPS=42") == 1, "the last call saw the last value")
+    check(wait_until(lambda: open(f"{tmp}/settings-at-call").read().count("SQM_DOWN_MBPS=42") == 1, 3), "the last call saw the last value")
 finally:
     env.close()
 finish()

@@ -1,9 +1,11 @@
 //! The console's smooth-line (SQM) settings (feature 056, group 4): what the Settings page is told about SQM, which values it may save, and the hand-over to
 //! `piso-setup sqm apply`. The router's speeds and margin are kept in DATA_DIR/settings.txt next to the other console settings; `piso-setup` reads them from
 //! there and writes DATA_DIR/sqm.txt ("key|value" lines) to say what it did. The portal never touches the router's SQM files itself.
+use crate::core::Core;
 use crate::util::{jget, json_esc};
 use std::process::{Command, Stdio};
 use std::sync::Mutex;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 const DEFAULT_PERCENT: u32 = 95;
 
@@ -126,8 +128,10 @@ fn status_value(text: &str, key: &str) -> String {
         .unwrap_or_default()
 }
 
-/// The block the Settings page draws: whether SQM can work on this router and why not, what the owner typed, and what the router did with it.
-pub fn json(dd: &str) -> String {
+/// The block the Settings page draws: whether SQM can work on this router and why not, what the owner typed, what the router did with it, and the
+/// speed test (its state, its result and whether it may start now).
+pub fn json(core: &Core) -> String {
+    let dd = &core.cfg.data_dir;
     let text = std::fs::read_to_string(format!("{}/sqm.txt", dd)).unwrap_or_default();
     let available = status_value(&text, "installed") == "1";
     let mut reason = status_value(&text, "reason");
@@ -142,7 +146,7 @@ pub fn json(dd: &str) -> String {
     let pc =
         crate::config::override_get(dd, "SQM_PERCENT").parse::<u32>().ok().filter(|p| (50..=100).contains(p)).unwrap_or(DEFAULT_PERCENT);
     format!(
-        "{{\"available\":{},\"reason\":\"{}\",\"on\":{},\"down\":\"{}\",\"up\":\"{}\",\"percent\":{},\"qdisc\":\"{}\",\"active\":{},\"limit_down\":{},\"limit_up\":{},\"applying\":{}}}",
+        "{{\"available\":{},\"reason\":\"{}\",\"on\":{},\"down\":\"{}\",\"up\":\"{}\",\"percent\":{},\"qdisc\":\"{}\",\"active\":{},\"limit_down\":{},\"limit_up\":{},\"applying\":{},\"speedtest\":{}}}",
         available,
         json_esc(&reason),
         crate::config::override_get(dd, "SQM_ON") == "1",
@@ -153,8 +157,140 @@ pub fn json(dd: &str) -> String {
         status_value(&text, "active") == "1",
         kbps("limit_down_kbps"),
         kbps("limit_up_kbps"),
-        APPLY.lock().unwrap().0
+        APPLY.lock().unwrap().0,
+        speedtest_json(core, available)
     )
+}
+
+// ---- "Test my line" (group 5c): the portal only starts `piso-setup sqm test` and reads the file it leaves; it never measures anything itself -----------
+
+/// (a test is running, when the last one was started, why the last one ended without a result).
+struct TestRun {
+    running: bool,
+    last_start: Option<Instant>,
+    note: String,
+}
+
+static TEST: Mutex<TestRun> = Mutex::new(TestRun { running: false, last_start: None, note: String::new() });
+
+/// Why a test may not start now: (code, words for the owner). Nothing here depends on what the page sent.
+fn blocked(
+    available: bool,
+    online: usize,
+    window_open: bool,
+    running: bool,
+    since_last: Option<u64>,
+    gap: u64,
+) -> Option<(&'static str, String)> {
+    if running {
+        return Some(("RUNNING", "A speed test is running. It takes about a minute.".to_string()));
+    }
+    if !available {
+        return Some(("NO_SQM", "The smooth line (SQM) is not installed on this router, so there is nothing to set yet.".to_string()));
+    }
+    if online > 0 {
+        return Some((
+            "BUSY",
+            "Customers are online right now, and the test would slow them down. Test when the shop is quiet.".to_string(),
+        ));
+    }
+    if window_open {
+        return Some(("BUSY", "A customer is paying right now. Test again in a moment.".to_string()));
+    }
+    match since_last {
+        Some(s) if s < gap => Some(("TOO_SOON", format!("Please wait {} seconds before testing again.", gap - s))),
+        _ => None,
+    }
+}
+
+fn why_blocked(core: &Core, available: bool) -> Option<(&'static str, String)> {
+    let run = TEST.lock().unwrap();
+    let (running, since) = (run.running, run.last_start.map(|t| t.elapsed().as_secs()));
+    drop(run);
+    // (ndsctl is asked only when nothing else already says no)
+    let online = if available && !running { core.nds.clients().iter().filter(|c| c.1 == "Authenticated").count() } else { 0 };
+    blocked(available, online, core.window_open(), running, since, core.cfg.speedtest_gap)
+}
+
+fn number(v: &str) -> String {
+    v.parse::<f64>().map(|n| format!("{:.1}", n)).unwrap_or_else(|_| "null".to_string())
+}
+
+fn speedtest_json(core: &Core, available: bool) -> String {
+    let file = std::fs::read_to_string(&core.cfg.speedtest_file).unwrap_or_default();
+    let (running, note) = {
+        let r = TEST.lock().unwrap();
+        (r.running, r.note.clone())
+    };
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let time = jget(&file, "time").parse::<u64>().unwrap_or(0);
+    let mut state = jget(&file, "state");
+    let mut reason = jget(&file, "reason");
+    if running {
+        state = "running".to_string();
+    } else if file.is_empty() {
+        state = if note.is_empty() { "idle" } else { "failed" }.to_string();
+        reason = note;
+    } else if state == "running" {
+        // a test that was killed leaves this behind; no test of ours is running
+        state = "failed".to_string();
+        reason = "The last test was interrupted.".to_string();
+    } else if state != "done" && state != "failed" {
+        state = "idle".to_string();
+    }
+    let usable = !running && state == "done";
+    let (down, up) =
+        if usable { (number(&jget(&file, "down")), number(&jget(&file, "up"))) } else { ("null".to_string(), "null".to_string()) };
+    let age = if time > 0 && !running && state != "idle" { now.saturating_sub(time).to_string() } else { "null".to_string() };
+    let block = why_blocked(core, available);
+    format!(
+        "{{\"state\":\"{}\",\"down\":{},\"up\":{},\"host\":\"{}\",\"cpu\":{},\"cpu_limited\":{},\"age\":{},\"reason\":\"{}\",\"can_start\":{},\"blocked\":\"{}\"}}",
+        state,
+        down,
+        up,
+        json_esc(&jget(&file, "host")),
+        jget(&file, "cpu").parse::<u32>().unwrap_or(0),
+        usable && jget(&file, "cpu_limited") == "true",
+        age,
+        json_esc(&reason),
+        block.is_none(),
+        json_esc(&block.map(|b| b.1).unwrap_or_default())
+    )
+}
+
+/// Starts a test from its own thread. Err((code, words)): it may not start now, and nothing was started.
+pub fn start_speedtest(core: &Core) -> Result<(), (String, String)> {
+    let available =
+        status_value(&std::fs::read_to_string(format!("{}/sqm.txt", core.cfg.data_dir)).unwrap_or_default(), "installed") == "1";
+    if let Some((code, why)) = why_blocked(core, available) {
+        return Err((code.to_string(), why));
+    }
+    {
+        let mut run = TEST.lock().unwrap();
+        if run.running {
+            return Err(("RUNNING".to_string(), "A speed test is running. It takes about a minute.".to_string()));
+        }
+        *run = TestRun { running: true, last_start: Some(Instant::now()), note: String::new() };
+    }
+    std::fs::remove_file(&core.cfg.speedtest_file).ok(); // (an earlier result must not pass for this one if the start fails)
+    let (bin, file) = (core.cfg.setup_bin.clone(), core.cfg.speedtest_file.clone());
+    let started = std::thread::Builder::new().spawn(move || {
+        let note = match Command::new(&bin).args(["sqm", "test"]).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status()
+        {
+            Ok(st) if st.code() == Some(3) => "Customers are online, so the test did not start.".to_string(),
+            Ok(st) if !st.success() && !std::path::Path::new(&file).exists() => format!("The router could not run the test ({}).", st),
+            Ok(_) => String::new(),
+            Err(e) => format!("The router could not run the test ({}).", e),
+        };
+        let mut run = TEST.lock().unwrap();
+        run.running = false;
+        run.note = note;
+    });
+    if started.is_err() {
+        *TEST.lock().unwrap() = TestRun { running: false, last_start: None, note: "The router could not start the test.".to_string() };
+        return Err(("NO_THREAD".to_string(), "The router could not start the test.".to_string()));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -192,5 +328,27 @@ mod tests {
         let ok = parse(dd, "{\"sqm_on\":\"on\",\"sqm_down\":\"50\",\"sqm_up\":\"20\"}").unwrap().unwrap();
         assert_eq!(ok.0, vec![("SQM_ON", "1".to_string()), ("SQM_DOWN_MBPS", "50".to_string()), ("SQM_UP_MBPS", "20".to_string())]);
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_test_starts_only_on_a_quiet_router_one_at_a_time_and_not_too_often() {
+        let why = |a, o, w, r, s| blocked(a, o, w, r, s, 60).map(|b| b.0);
+        assert_eq!(why(true, 0, false, false, None), None);
+        assert_eq!(why(true, 0, false, false, Some(61)), None);
+        assert_eq!(why(true, 0, false, true, None), Some("RUNNING"));
+        assert_eq!(why(false, 0, false, false, None), Some("NO_SQM"));
+        assert_eq!(why(true, 1, false, false, None), Some("BUSY"));
+        assert_eq!(why(true, 0, true, false, None), Some("BUSY"), "a coin window or payment in progress is as busy as a customer online");
+        assert_eq!(why(true, 0, false, false, Some(59)), Some("TOO_SOON"));
+        assert_eq!(
+            blocked(true, 0, false, false, Some(20), 60).map(|b| b.1),
+            Some("Please wait 40 seconds before testing again.".to_string())
+        );
+    }
+
+    #[test]
+    fn a_number_from_the_result_file_is_shown_with_one_decimal_or_not_at_all() {
+        assert_eq!((number("87.4"), number("312.5"), number("88")), ("87.4".to_string(), "312.5".to_string(), "88.0".to_string()));
+        assert_eq!((number("null"), number("")), ("null".to_string(), "null".to_string()));
     }
 }

@@ -785,6 +785,11 @@ impl Core {
         View::Starting { plan, voucher }
     }
 
+    /// Some device has a coin window open (a payment is in progress).
+    pub fn window_open(&self) -> bool {
+        self.st.lock().unwrap().window.is_some()
+    }
+
     /// This device has a coin window open now (one whose result is known already is over for the customer: only the box is
     /// still being acknowledged).
     pub fn window_open_for(&self, mac: &str) -> bool {

@@ -335,6 +335,7 @@ jobs:
           python3 tests/test_flow.py
           python3 tests/test_console.py
           python3 tests/test_console_sqm.py
+          python3 tests/test_console_speedtest.py
           python3 tests/test_pricing_flow.py
           python3 tests/test_link_loss.py
           python3 tests/test_money_panel.py
