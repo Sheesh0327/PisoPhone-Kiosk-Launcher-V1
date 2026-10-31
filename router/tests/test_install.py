@@ -73,20 +73,26 @@ def publish(branch, data, sha=None):
     open(f"{d}/piso-setup.sh.sha256", "w").write((sha or hashlib.sha256(data).hexdigest()) + "  piso-setup.sh\n")
 
 
-def run(*args, lan="10.0.0.1", wan="192.168.1.50", mask=24, answer="y", stdin_script=None, self_path=None, mem=None, install_dir=True, opkg=True, net_dir=None):
+def run(*args, lan="10.0.0.1", wan="192.168.1.50", mask=24, answer="y", stdin_script=None, self_path=None, mem=None, install_dir=True, opkg=True, apk=False, nds=False, net_dir=None):
     for f in ("wget.log", "uci.log", "network.log", "ip.log"):
         if os.path.exists(f"{tmp}/{f}"):
             os.remove(f"{tmp}/{f}")
     open(f"{tmp}/tty", "w").write(answer + "\n")
     net_dir = net_dir or netdir
     path_dir = bindir
-    if not opkg:   # the same fake commands without opkg (OpenWrt 25.x uses apk)
+    if not opkg:   # the same fake commands without opkg (OpenWrt 25.x uses apk, or the image has no package manager)
         path_dir = f"{tmp}/bin-no-opkg"
         shutil.rmtree(path_dir, ignore_errors=True)
         os.makedirs(path_dir)
         for name in os.listdir(bindir):
             if name != "opkg":
                 os.symlink(f"{bindir}/{name}", f"{path_dir}/{name}")
+        if apk:
+            open(f"{path_dir}/apk", "w").write("#!/bin/sh\nexit 0\n")
+            os.chmod(f"{path_dir}/apk", 0o755)
+        if nds:   # openNDS built into the image: its init script (under PISO_ROOT) and ndsctl
+            open(f"{path_dir}/ndsctl", "w").write("#!/bin/sh\nexit 0\n")
+            os.chmod(f"{path_dir}/ndsctl", 0o755)
     env = dict(os.environ, PATH=f"{path_dir}:" + os.environ["PATH"], PISO_SITE_HOST="fake.test", PISO_INSTALL_DIR=home,
                PISO_TTY=f"{tmp}/tty", PISO_TEST_NONROOT="1", PISO_NETWORK_INIT=f"{bindir}/netinit", PISO_NET_DIR=net_dir, FAKE_LAN=lan, FAKE_WAN=wan, FAKE_MASK=str(mask),
                PISO_SELF_PATH=self_path or f"{tmp}/no-such-piso-setup")
@@ -94,6 +100,8 @@ def run(*args, lan="10.0.0.1", wan="192.168.1.50", mask=24, answer="y", stdin_sc
         env["PISO_MEM_KB"] = str(mem)
     if not install_dir:   # the default places /tmp and /root, under a fake root
         del env["PISO_INSTALL_DIR"]
+        env["PISO_ROOT"] = fakeroot
+    if nds:
         env["PISO_ROOT"] = fakeroot
     # as on the router: the installer arrives on sh's standard input
     body = stdin_script if stdin_script is not None else open(INSTALL).read()
@@ -200,12 +208,23 @@ time.sleep(3.6)
 check(r.returncode == 0 and "set network.lan.ipaddr=10.0.0.1" in log("uci.log"), "and 10.9.9.9/24 is another network: the router is moved: " + r.stdout)
 r = run("update", lan="192.168.1.1")
 check("SETUP-RAN args=[update]" in r.stdout and "set network.lan.ipaddr" not in log("uci.log"), "update never moves the router")
-# feature 046 (SU-06b): a router without opkg (OpenWrt 25.x, apk) is refused before anything is downloaded, moved or run
+publish("main", FAKE_SETUP.encode())
+# feature 057: a router with apk and no opkg (OpenWrt 25.x) is no longer refused: the setup goes on
+r = run(lan="192.168.1.1", answer="y", opkg=False, apk=True)
+check(r.returncode == 0 and "Saved " in r.stdout and "set network.lan.ipaddr=10.0.0.1" in log("uci.log"), "apk and no opkg: the installer goes on and moves the router: " + r.stdout + r.stderr)
+# feature 057 (was 046 SU-06b): no package manager at all and no openNDS is refused before anything is downloaded, moved or run
 r = run(lan="192.168.1.1", answer="y", opkg=False)
-check(r.returncode != 0 and "opkg" in r.stdout + r.stderr and "ROUTERS.md" in r.stdout + r.stderr and "Nothing was changed" in r.stdout + r.stderr,
-      "no opkg: it stops and says which routers are supported: " + r.stdout + r.stderr)
+check(r.returncode != 0 and "package manager" in r.stdout + r.stderr and "openNDS" in r.stdout + r.stderr and "ROUTERS.md" in r.stdout + r.stderr and "Nothing was changed" in r.stdout + r.stderr,
+      "no package manager and no openNDS: it stops and says what to do: " + r.stdout + r.stderr)
 check(log("wget.log") == "" and "network.lan.ipaddr" not in log("uci.log") and "SETUP-RAN" not in r.stdout and log("network.log") == "",
       "and nothing was downloaded, moved, restarted or run")
+# ... but a custom image with openNDS built in and no package manager goes on
+os.makedirs(f"{fakeroot}/etc/init.d", exist_ok=True)
+open(f"{fakeroot}/etc/init.d/opennds", "w").write("#!/bin/sh\n")
+os.chmod(f"{fakeroot}/etc/init.d/opennds", 0o755)
+r = run(opkg=False, nds=True)
+check(r.returncode == 0 and "SETUP-RAN" in r.stdout, "no package manager but openNDS built in: the installer goes on: " + r.stdout + r.stderr)
+os.remove(f"{fakeroot}/etc/init.d/opennds")
 
 # ---- feature 010: the installer copy lives in RAM (/tmp) unless memory is short (then /root); PISO_INSTALL_DIR overrides both ---------
 publish("main", FAKE_SETUP.encode())

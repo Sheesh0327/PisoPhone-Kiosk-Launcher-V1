@@ -3,6 +3,8 @@
 # ---------------------------------------------------------------------------------------------------------------------
 cmd_status() {
 	[ -r "$STATE" ] && echo "setup: $(cat "$STATE")"
+	pkg_image_report
+	optional_report
 	DRY=1; check_all; _f=$?
 	box_name_notice   # (information only: it does not count as a failed check)
 	[ -s "$PISO_ROOT/etc/coinslot.d/alerts.txt" ] && { echo "Recent alerts (the router's monitor wrote them to /etc/coinslot.d/alerts.txt):"; tail -n 5 "$PISO_ROOT/etc/coinslot.d/alerts.txt" | sed 's/^/  /'; }
