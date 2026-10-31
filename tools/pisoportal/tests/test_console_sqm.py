@@ -128,6 +128,40 @@ try:
     check(idle(cookie), "all applies end")
     check("SQM_DOWN_MBPS=42\n" in settings() and calls().count("sqm apply") in (2, 3), f"changes made while one apply runs are applied once more, after it: {calls()!r}")
     check(wait_until(lambda: open(f"{tmp}/settings-at-call").read().count("SQM_DOWN_MBPS=42") == 1, 3), "the last call saw the last value")
+
+    # ---- Install now (group 5): only where trying again could work, only on a quiet router, handed over with fixed arguments -------------------------------------------
+    os.remove(f"{env.data}/sqm.txt")
+    open(f"{tmp}/setup-calls", "w").close()
+    i = sqm(cookie)["install"]
+    check(i["can"] is True and i["why"] == "", f"never tried: Install now is offered: {i}")
+    open(f"{env.data}/packages.txt", "w").write("image|official|OpenWrt 23.05|\npkg|sqm-scripts|skipped|not in the package feed\npkg|kmod-ifb|skipped|not in the package feed\n")
+    i = sqm(cookie)["install"]
+    check(i["can"] is False and "package feed" in i["why"], f"not in the package feed: trying again cannot help, and it says why: {i}")
+    code, body, _h = call("/api/sqm/install", {}, cookie=cookie)
+    check(code == 409 and b"NOT_POSSIBLE" in body and calls() == "", f"and a direct call is refused: {code} {body}")
+    for why in ("no package manager on this router", "the package manager's trial install (dry run) failed: it does not fit this image"):
+        open(f"{env.data}/packages.txt", "w").write(f"pkg|sqm-scripts|skipped|{why}\n")
+        check(sqm(cookie)["install"]["can"] is False, f"no retry for: {why}")
+    for st, why in (("failed", "the install did not finish, so it was taken out again"), ("skipped", "only 1500 KB of flash is free, and this step needs 2048 KB")):
+        open(f"{env.data}/packages.txt", "w").write(f"pkg|sqm-scripts|{st}|{why}\n")
+        check(sqm(cookie)["install"]["can"] is True, f"a retry can help: {st}, {why}")
+    env.nds_client("aa:bb:cc:00:00:01", STATE="Authenticated", SESSION_END=int(time.time()) + 900, DL=100, UL=10)
+    i = sqm(cookie)["install"]
+    check(i["can"] is False and "online" in i["why"].lower(), f"customers online: Install now is off: {i}")
+    code, body, _h = call("/api/sqm/install", {}, cookie=cookie)
+    check(code == 409 and b"BUSY" in body and calls() == "", f"and a direct call is refused with BUSY: {code} {body}")
+    env.nds_client("aa:bb:cc:00:00:01", STATE="Preauthenticated")
+    check(call("/api/sqm/install", {}, cookie="piso_console=x")[0] == 401 and call("/api/sqm/install", {}, cookie=cookie, headers={"X-Piso": "0"})[0] == 403, "a session and the page's header are needed")
+    t0 = time.time()
+    code, body, _h = call("/api/sqm/install", {}, cookie=cookie)
+    check(code == 200 and json.loads(body)["sqm"]["installing"] is True and time.time() - t0 < 1.5, f"started, and the answer does not wait: {body}")
+    check(wait_until(lambda: calls() == "sqm install\n", 3), f"piso-setup was called with fixed arguments only: {calls()!r}")
+    code, body, _h = call("/api/sqm/install", {}, cookie=cookie)
+    check(code == 409 and b"RUNNING" in body and calls() == "sqm install\n", "a second start while one runs is refused")
+    check(wait_until(lambda: sqm(cookie)["installing"] is False, 10), "and it ends")
+    open(f"{env.data}/sqm.txt", "w").write("installed|1\nqdisc|cake\nactive|0\nwan|eth1\nlimit_down_kbps|\nlimit_up_kbps|\nreason|switched off\n")
+    code, body, _h = call("/api/sqm/install", {}, cookie=cookie)
+    check(code == 409 and b"INSTALLED" in body, f"already installed: nothing to do: {code} {body}")
 finally:
     env.close()
 finish()

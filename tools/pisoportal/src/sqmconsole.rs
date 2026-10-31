@@ -145,8 +145,10 @@ pub fn json(core: &Core) -> String {
     let kbps = |k: &str| status_value(&text, k).parse::<u64>().unwrap_or(0);
     let pc =
         crate::config::override_get(dd, "SQM_PERCENT").parse::<u32>().ok().filter(|p| (50..=100).contains(p)).unwrap_or(DEFAULT_PERCENT);
+    // (read before format!: a guard held inside its arguments would still be held when install_json and speedtest_json lock the same flags)
+    let (applying, installing) = (APPLY.lock().unwrap().0, *INSTALLING.lock().unwrap());
     format!(
-        "{{\"available\":{},\"reason\":\"{}\",\"on\":{},\"down\":\"{}\",\"up\":\"{}\",\"percent\":{},\"qdisc\":\"{}\",\"active\":{},\"limit_down\":{},\"limit_up\":{},\"applying\":{},\"speedtest\":{}}}",
+        "{{\"available\":{},\"reason\":\"{}\",\"on\":{},\"down\":\"{}\",\"up\":\"{}\",\"percent\":{},\"qdisc\":\"{}\",\"active\":{},\"limit_down\":{},\"limit_up\":{},\"applying\":{},\"installing\":{},\"install\":{},\"speedtest\":{}}}",
         available,
         json_esc(&reason),
         crate::config::override_get(dd, "SQM_ON") == "1",
@@ -157,7 +159,9 @@ pub fn json(core: &Core) -> String {
         status_value(&text, "active") == "1",
         kbps("limit_down_kbps"),
         kbps("limit_up_kbps"),
-        APPLY.lock().unwrap().0,
+        applying,
+        installing,
+        install_json(core, available),
         speedtest_json(core, available)
     )
 }
@@ -293,6 +297,84 @@ pub fn start_speedtest(core: &Core) -> Result<(), (String, String)> {
     Ok(())
 }
 
+// ---- "Install now" (group 5): the optional packages, once, on a router that is already running --------------------------------------------------------
+
+static INSTALLING: Mutex<bool> = Mutex::new(false);
+
+/// What the setup recorded about the shaper package (etc/coinslot.d/packages.txt: "pkg|<name>|<state>|<reason>"): (state, reason).
+fn package_note(dd: &str) -> Option<(String, String)> {
+    let text = std::fs::read_to_string(format!("{}/packages.txt", dd)).ok()?;
+    text.lines().find_map(|l| {
+        let p: Vec<&str> = l.splitn(4, '|').collect();
+        (p.len() == 4 && p[0] == "pkg" && p[1] == "sqm-scripts").then(|| (p[2].to_string(), p[3].to_string()))
+    })
+}
+
+/// Trying again helps with a failed install, no internet or too little flash. It does not help when the package list has no such package, there is no
+/// package manager, or the image does not fit.
+fn retry_cannot_help(state: &str, reason: &str) -> bool {
+    state == "skipped"
+        && ["not in the package feed", "no package manager", "does not fit", "custom image"].iter().any(|k| reason.contains(k))
+}
+
+/// Why Install now may not start: (code, words for the owner).
+fn install_blocked(core: &Core, available: bool) -> Option<(&'static str, String)> {
+    if available {
+        return Some(("INSTALLED", "The smooth line is already installed.".to_string()));
+    }
+    if *INSTALLING.lock().unwrap() || TEST.lock().unwrap().running {
+        return Some(("RUNNING", "The router is busy with the smooth line right now. It takes about a minute.".to_string()));
+    }
+    if let Some((state, reason)) = package_note(&core.cfg.data_dir) {
+        if retry_cannot_help(&state, &reason) {
+            return Some(("NOT_POSSIBLE", format!("Trying again would not help: {}.", reason)));
+        }
+    }
+    if core.window_open() || core.nds.clients().iter().any(|c| c.1 == "Authenticated") {
+        return Some((
+            "BUSY",
+            "Customers are online or paying right now, and installing slows the router for a minute. Try when the shop is quiet."
+                .to_string(),
+        ));
+    }
+    None
+}
+
+fn install_json(core: &Core, available: bool) -> String {
+    let block = install_blocked(core, available);
+    format!("{{\"can\":{},\"why\":\"{}\"}}", block.is_none(), json_esc(&block.map(|b| b.1).unwrap_or_default()))
+}
+
+/// Has `piso-setup sqm install` run from its own thread (it downloads and installs, which takes a while). Fixed arguments, nothing from the page.
+pub fn start_install(core: &Core) -> Result<(), (String, String)> {
+    let available =
+        status_value(&std::fs::read_to_string(format!("{}/sqm.txt", core.cfg.data_dir)).unwrap_or_default(), "installed") == "1";
+    if let Some((code, why)) = install_blocked(core, available) {
+        return Err((code.to_string(), why));
+    }
+    {
+        let mut running = INSTALLING.lock().unwrap();
+        if *running {
+            return Err(("RUNNING".to_string(), "The router is busy with the smooth line right now. It takes about a minute.".to_string()));
+        }
+        *running = true;
+    }
+    let bin = core.cfg.setup_bin.clone();
+    let started = std::thread::Builder::new().spawn(move || {
+        match Command::new(&bin).args(["sqm", "install"]).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status() {
+            Ok(st) if st.success() => {}
+            Ok(st) => eprintln!("coinslot: piso-setup sqm install ended with {}", st),
+            Err(e) => eprintln!("coinslot: piso-setup sqm install could not start: {}", e),
+        }
+        *INSTALLING.lock().unwrap() = false;
+    });
+    if started.is_err() {
+        *INSTALLING.lock().unwrap() = false;
+        return Err(("NO_THREAD".to_string(), "The router could not start the install.".to_string()));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -350,5 +432,15 @@ mod tests {
     fn a_number_from_the_result_file_is_shown_with_one_decimal_or_not_at_all() {
         assert_eq!((number("87.4"), number("312.5"), number("88")), ("87.4".to_string(), "312.5".to_string(), "88.0".to_string()));
         assert_eq!((number("null"), number("")), ("null".to_string(), "null".to_string()));
+    }
+
+    #[test]
+    fn trying_the_install_again_helps_only_when_something_can_change() {
+        assert!(retry_cannot_help("skipped", "not in the package feed"));
+        assert!(retry_cannot_help("skipped", "no package manager on this router"));
+        assert!(retry_cannot_help("skipped", "the package manager's trial install (dry run) failed: it does not fit this image"));
+        assert!(!retry_cannot_help("failed", "the install did not finish, so it was taken out again"));
+        assert!(!retry_cannot_help("skipped", "only 1500 KB of flash is free, and this step needs 2048 KB"));
+        assert!(!retry_cannot_help("installed", "added by this setup"));
     }
 }

@@ -803,6 +803,14 @@ fn handle(c: &Console, req: Request, mut conn: Incoming) {
                         json(&mut conn, status, &format!("{{\"error\":\"{}\",\"why\":\"{}\"}}", code, why), "")
                     }
                 },
+                ("POST", "/api/sqm/install") => match crate::sqmconsole::start_install(&c.core) {
+                    Ok(()) => {
+                        let mut out = settings_json(&c.core);
+                        out.insert_str(1, "\"ok\":true,");
+                        json(&mut conn, "200 OK", &out, "")
+                    }
+                    Err((code, why)) => json(&mut conn, "409 Conflict", &format!("{{\"error\":\"{}\",\"why\":\"{}\"}}", code, why), ""),
+                },
                 ("GET", "/api/brand") => json(&mut conn, "200 OK", &crate::brandconsole::editor_json(&c.core.cfg.data_dir), ""),
                 ("POST", "/api/brand") => match crate::brandconsole::save_draft(&c.core.cfg.data_dir, &body) {
                     Ok(notes) => {
