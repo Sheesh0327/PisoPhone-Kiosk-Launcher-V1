@@ -1,5 +1,5 @@
 // TechNet PisoHub console: the page's behaviour. PISO_UI_VERSION rises with every change that is published (scripts/sign_console_ui.py).
-window.PISO_UI_VERSION = 12;
+window.PISO_UI_VERSION = 13;
 (function(){
 var $=function(i){return document.getElementById(i)},tab='over',timer=null,last={},sales=null,TABS=['over','cli','ph','sales','vch','set'];
 if($('t-brand'))TABS.push('brand'); /* (a newer script on an older console page, which has no Branding screen, still starts) */
@@ -96,11 +96,40 @@ function vch(j){if(soldOut(j))return;var a=j.batches||[];$('vl2').innerHTML=a.sl
  return '<tr><td><b>'+(b.bought===false?esc(b.label||'Printed slips'):'Bought with coins')+'</b><div class="s">'+dt(b.created)+(b.count>1?' · '+b.count+' codes':'')+' · '+(b.plan==='endurance'?'Endurance':'HyperSpeed')+'</div></td><td>'+mins(b.minutes)+' · '+peso(b.pesos)+'</td><td>'+(b.void?chip('Cancelled','bad'):!left?chip('Used','ok'):b.used?chip(b.used+' of '+b.count+' used'):chip('Not used','gold'))+'</td><td>'+(gone?chip('Expired','bad'):b.expires?dt(b.expires):'No expiry')+'</td><td>'+(b.void||!left||gone?'':'<button class="b dg" data-v="'+b.id+'" data-n="'+esc(b.bought===false?(b.label||b.id):dt(b.created))+'" data-l="'+left+'">Cancel</button>')+'</td></tr>'}).join('')||'<tr><td colspan="5" class="empty">No vouchers yet.<div class="s">Customers get one when they choose "Get a voucher code" at payment.</div></td></tr>';
  document.querySelectorAll('#vl2 button[data-v]').forEach(function(b){b.onclick=function(){ask('Cancel this voucher ('+b.dataset.n+')?',b.dataset.l+' unused code'+(b.dataset.l==='1'?'':'s')+' will stop working. The customer already paid; the money stays in the sales.','Cancel the voucher',true,function(){api('/api/vouchers/void',{batch:b.dataset.v}).then(refresh)})}})}
 /* settings */
-function sets(j){if(soldOut(j))return;if(document.activeElement!==$('vcs'))$('vcs').value=j.voucher_choice?'on':'off';if(document.activeElement!==$('fss')&&j.file_send!==undefined)$('fss').value=j.file_send?'on':'off';if(document.activeElement!==$('lkb')&&j.ledger_max_kb!==undefined)$('lkb').value=j.ledger_max_kb;if(document.activeElement!==$('lkm')&&j.ledger_keep_months!==undefined)$('lkm').value=j.ledger_keep_months;if(j.file_send_key!==undefined)$('fsk').textContent=j.file_send_key?(j.file_send?'Customers can send files now.':''):'The print server key is not installed on this router, so the button stays hidden even when this is On (see the manual: Sending a file to the owner).'}
+function sets(j){if(soldOut(j))return;sqm(j);if(document.activeElement!==$('vcs'))$('vcs').value=j.voucher_choice?'on':'off';if(document.activeElement!==$('fss')&&j.file_send!==undefined)$('fss').value=j.file_send?'on':'off';if(document.activeElement!==$('lkb')&&j.ledger_max_kb!==undefined)$('lkb').value=j.ledger_max_kb;if(document.activeElement!==$('lkm')&&j.ledger_keep_months!==undefined)$('lkm').value=j.ledger_keep_months;if(j.file_send_key!==undefined)$('fsk').textContent=j.file_send_key?(j.file_send?'Customers can send files now.':''):'The print server key is not installed on this router, so the button stays hidden even when this is On (see the manual: Sending a file to the owner).'}
 $('fss').onchange=function(){var s=$('fss');$('setm').textContent='';api('/api/settings',{file_send:s.value}).then(function(j){$('setm').textContent=j.ok?'Saved. Open customer pages follow at once.':'Could not save.';if(j.ok){s.value=j.file_send?'on':'off';sets(j)}}).catch(function(){})};
 $('lkb').onchange=function(){var m=Math.round(+$('lkb').value);if(!(m===0||(m>=256&&m<=16384))){$('setm').textContent='Use 0, or a number from 256 to 16384.';return}$('setm').textContent='';api('/api/settings',{ledger_max_kb:String(m)}).then(function(j){$('setm').textContent=j.ok?'Saved. Old months are deleted when the next month starts.':(j.why||'Could not save.');if(j.ok)sets(j)}).catch(function(){})};
 $('lkm').onchange=function(){var m=Math.round(+$('lkm').value);if(!(m>=1&&m<=60)){$('setm').textContent='Use a number from 1 to 60.';return}$('setm').textContent='';api('/api/settings',{ledger_keep_months:String(m)}).then(function(j){$('setm').textContent=j.ok?'Saved.':(j.why||'Could not save.');if(j.ok)sets(j)}).catch(function(){})};
 $('vcs').onchange=function(){var s=$('vcs');$('setm').textContent='';api('/api/settings',{voucher_choice:s.value}).then(function(j){$('setm').textContent=j.ok?'Saved. Open customer pages follow at once.':'Could not save.';if(j.ok)s.value=j.voucher_choice?'on':'off'}).catch(function(){})};
+/* smooth line (SQM) */
+var sqT=null,sqSeen='',sqDirty=false;
+function sqsay(t,bad){var m=$('sqm2');m.textContent=t||'';m.className=bad?'msg bad':'s'}
+function sqnum(v){v=String(v).trim();return /^\d+(\.\d)?$/.test(v)&&+v>=0.1&&+v<=10000?+v:null}
+function sqlim(v,p){return Math.floor(v*10*p+1e-6)/1000}
+function sqlive(){var d=sqnum($('sqd').value),u=sqnum($('squ').value),p=Math.round(+$('sqp').value);$('sql').textContent=d!==null&&u!==null&&p>=50&&p<=100?'Will limit to '+sqlim(d,p)+' Mbps down and '+sqlim(u,p)+' Mbps up ('+p+'% of the line).':'Line speed not set; smoothing is off.'}
+function sqm(j){var q=j&&j.sqm;if(!q||!$('sqc'))return;var t=q.speedtest,i=q.install,off=!q.available,s='',n;
+ $('sqc').className='card'+(off?' off':'');['sqd','squ','sqp','sqs','sqk'].forEach(function(x){$(x).disabled=off});
+ if(!sqDirty&&!$('sqc').contains(document.activeElement)){$('sqd').value=q.down;$('squ').value=q.up;$('sqp').value=q.percent;$('sqs').value=q.on?'on':'off'}
+ $('sqi').className='b'+(off?'':' hide');$('sqi').disabled=!i.can||q.installing;$('sqt').disabled=!t.can_start;
+ if(off)n=q.reason+(q.installing?' Installing now: this takes about a minute.':i.can?' You can try installing it now.':' '+i.why);
+ else if(q.applying)n='Applying...';else if(q.on&&q.active)n='Smoothing is on: the line is limited to '+q.limit_down/1000+' Mbps down and '+q.limit_up/1000+' Mbps up ('+q.qdisc+').';
+ else if(q.on)n=q.reason||'Smoothing is switched on but not working yet.';else n='Smoothing is off. Customers notice nothing.';
+ $('sqn').textContent=n;
+ if(t.state==='running')s='Testing your line. This takes about a minute; please keep the Wi-Fi quiet meanwhile.';
+ else if(t.state==='done'&&t.cpu_limited)s='This router may be the limit: with its processor at '+t.cpu+'% it measured '+t.down+' Mbps down and '+t.up+' Mbps up. Confirm with a speed test on a phone before you type these in.';
+ else if(t.state==='done'){var g=t.down+'/'+t.up;if(t.age<900&&g!==sqSeen){sqSeen=g;sqDirty=true;$('sqd').value=t.down;$('squ').value=t.up}s='Measured '+t.down+' Mbps down and '+t.up+' Mbps up. The boxes above are filled in: check them, then press Save.'}
+ else if(t.state==='failed')s='The test did not finish: '+t.reason;else if(!off&&t.blocked)s=t.blocked;
+ $('sqb').textContent=s;sqlive();
+ if(q.applying||q.installing||t.state==='running'){clearTimeout(sqT);sqT=setTimeout(function(){if(tab==='set')api('/api/settings').then(sets).catch(function(){})},1500)}}
+if($('sqc')){['sqd','squ','sqp'].forEach(function(x){$(x).oninput=function(){sqDirty=true;sqlive()}});$('sqs').onchange=function(){sqDirty=true};
+$('sqk').onclick=function(){var d=sqnum($('sqd').value),u=sqnum($('squ').value),p=Math.round(+$('sqp').value),on=$('sqs').value,b;
+ if(($('sqd').value&&d===null)||($('squ').value&&u===null)){sqsay('Speeds are numbers from 0.1 to 10000, with at most one decimal.',1);return}
+ if(!(p>=50&&p<=100)){sqsay('Leave a room of 50 to 100 percent.',1);return}
+ if(on==='on'&&(d===null||u===null)){sqsay('Type both speeds before you switch it on.',1);return}
+ b={sqm_on:on,sqm_percent:String(p)};if(d!==null)b.sqm_down=String(d);if(u!==null)b.sqm_up=String(u);sqsay('');
+ api('/api/settings',b).then(function(j){if(j.ok){sqDirty=false;sqsay('Saved. The router is applying it now.');sets(j)}else sqsay(j.why||'Could not save.',1)}).catch(function(){})};
+$('sqt').onclick=function(){sqsay('');api('/api/speedtest',{}).then(function(j){if(j.ok)sets(j);else sqsay(j.why||'Could not start the test.',1)}).catch(function(){})};
+$('sqi').onclick=function(){sqsay('');api('/api/sqm/install',{}).then(function(j){if(j.ok)sets(j);else sqsay(j.why||'Could not start the install.',1)}).catch(function(){})};}
 /* prices: the editor keeps what is typed until it is saved (the page refreshes every few seconds and must not overwrite it) */
 var pdirty=false;
 function prow(p,m){return '<div class="tr"><span class="s">&#8369;</span><input type="number" class="tp" min="1" max="1000" step="1" value="'+(+p||'')+'" aria-label="Pesos"><span class="s">buys</span><input type="number" class="tm" min="1" max="10080" step="1" value="'+(+m||'')+'" aria-label="Minutes"><span class="s tx">'+(m>=60?mins(m):'min')+'</span><button class="b rm" aria-label="Remove this line">Remove</button></div>'}
