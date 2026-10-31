@@ -1,9 +1,22 @@
 # Who must review a change. Every file has an owner; the sensitive areas are listed so a review is never skipped for them.
 *                               @Sheesh0327
+/app/                           @Sheesh0327
 /esp32_firmware/                @Sheesh0327
+/gradle/                        @Sheesh0327
+/protocol/                      @Sheesh0327
+/router/                        @Sheesh0327
+/tools/                         @Sheesh0327
 /tools/pisoportal/              @Sheesh0327
 /setup/                         @Sheesh0327
 /scripts/                       @Sheesh0327
+/website/                       @Sheesh0327
+/docs/                          @Sheesh0327
+/specs/                         @Sheesh0327
+/ledger/                        @Sheesh0327
+/.claude/                       @Sheesh0327
 /.github/                       @Sheesh0327
+/constitution.md                @Sheesh0327
+/CLAUDE.md                      @Sheesh0327
+/LICENSE                        @Sheesh0327
 /docs/KEYS.md                   @Sheesh0327
 /app/src/main/java/com/pisophone/kiosk/security/   @Sheesh0327

@@ -34,6 +34,17 @@ def git(*args):
     return p.stdout if p.returncode == 0 else None
 
 
+def firmware_changed(files):
+    """The changed files under the firmware folders that a box would install. A document (README.md) is not one, and neither is the
+    version file itself."""
+    return [l for l in files if not l.endswith(".md") and (not re.search(r"include/(WebAssets|FirmwareVersion)\.h$", l) or l.endswith("WebAssets.h"))]
+
+
+def router_changed(files):
+    """True when a changed file is part of what a router installs. A document (README.md) in those folders is not."""
+    return any(not l.endswith(".md") for l in files)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--against", default="origin/main", help="the ref that is live now (default origin/main)")
@@ -137,8 +148,7 @@ def main():
         live_fw = git("show", "%s:esp32_firmware/include/FirmwareVersion.h" % ref)
         live_ver = re.search(r'PISO_FW_VERSION "([^"]+)"', live_fw).group(1) if live_fw else None
         src = ["esp32_firmware/src", "esp32_firmware/include", "esp32_firmware/web", "esp32_firmware/platformio.ini", "esp32_firmware/envs"]
-        changed = [l for l in (git("diff", "--name-only", ref, "HEAD", "--", *src) or "").splitlines()
-                   if not re.search(r"include/(WebAssets|FirmwareVersion)\.h$", l) or l.endswith("WebAssets.h")]
+        changed = firmware_changed((git("diff", "--name-only", ref, "HEAD", "--", *src) or "").splitlines())
         if changed and live_ver == fw_version:
             report("FAIL", "box firmware changed since %s (%d files) but PISO_FW_VERSION is still %s: no box will install it. Raise it in esp32_firmware/include/FirmwareVersion.h" % (ref, len(changed), fw_version))
         elif changed:
@@ -148,8 +158,8 @@ def main():
         live_rel = (git("show", "%s:setup/RELEASE" % ref) or "").strip()
         rel = open("setup/RELEASE").read().strip()
         # only what a router installs: not the tests under router/tests or tools/pisoportal/tests
-        rchanged = bool(git("diff", "--name-only", ref, "HEAD", "--", "setup/piso-setup.sh", "setup/src", "router", "tools/pisoportal/src",
-                            ":(exclude)router/tests"))
+        rchanged = router_changed((git("diff", "--name-only", ref, "HEAD", "--", "setup/piso-setup.sh", "setup/src", "router", "tools/pisoportal/src",
+                                      ":(exclude)router/tests") or "").splitlines())
         key = lambda v: tuple(int(x) for x in re.findall(r"\d+", v))
         if rchanged and live_rel and key(rel) <= key(live_rel):
             report("FAIL", "router software changed since %s but setup/RELEASE is still %s: no router will install it" % (ref, rel))

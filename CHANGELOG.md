@@ -1,7 +1,18 @@
 # Changelog
 
-What changed for people who run PisoPhone sites. The phone app, the coin-box firmware and the router software are versioned
-separately (app: the CI build number, shown as hundreds.tens.ones, build 466 is 4.6.6; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
+What changed for people who run PisoPhone sites, newest first. An entry starts with the part and its version, then says what changed
+for an owner and whether it has run on real hardware. Old entries are not rewritten.
+
+The phone app, the coin-box firmware and the router software are versioned separately:
+
+| Part | Version | Where the live version is published |
+|---|---|---|
+| Phone app | The CI build number, shown as hundreds.tens.ones (build 466 is 4.6.6) | `website/update/app.json` |
+| Coin box firmware | `PISO_FW_VERSION` in `esp32_firmware/include/FirmwareVersion.h` | `website/update/firmware.json` |
+| Router software | `setup/RELEASE` | `website/update/router.json` |
+
+A box or a router installs only a newer version. Entries under *Unreleased* are everything since the section below it; which release
+is signed, how far it is rolled out and what has never run on real hardware is in `specs/RELEASE_STATE.md`.
 
 ## Unreleased
 - Router 1.5.34, **a shorter burst before the speed limit applies (feature 055).** Not tried on a real router yet (hardware check RS65). With bursting on, a customer on the Endurance plan could run at full speed for about 30 seconds before the cap (5 Mbps down, 2 Mbps up by default) applied, so a first speed test showed far more than the plan (50 Mbps in the owner's test; the second test showed 3 to 4 Mbps). The router now averages over one 15-second check instead of two, so a burst lasts about 15 seconds. Bursting stays on, so pages and small downloads still load quickly, and the caps are unchanged. A 10 to 20 second speed test can still show some burst: judge a long download. Routers pick it up when they update (`piso-setup update`, or the hourly automatic update once the owner raises the release); openNDS restarts then, as it does for other settings. Only an installer setting changed: no portal program, console, page, firmware or app change. Money and time: not touched.
