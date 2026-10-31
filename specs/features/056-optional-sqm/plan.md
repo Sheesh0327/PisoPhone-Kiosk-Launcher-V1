@@ -22,7 +22,7 @@ Never opened: `setup/piso-setup*.sh`, `website/*`, `tools/pisoportal/bin/*` (gen
 ## Task groups
 Small, ordered, each finished and checkable on its own. Test first; a red result is logged in `ledger/negative-constraints.md`.
 
-- [ ] 0. **Bench facts first (no code).** On the 360T6M: `opkg list-installed | grep -E 'sqm|cake|ifb|tc-|irqbalance'`, `tc qdisc show`, which opkg names exist
+- [ ] 0. **Bench facts first (no code).** Also: from the router, `curl -sS -o /dev/null -w '%{http_code} %{speed_download}\\n' 'https://speed.cloudflare.com/__down?bytes=10000000'` and a `__up` POST, to confirm the endpoints answer and what they accept (the build session could not reach them). On the 360T6M: `opkg list-installed | grep -E 'sqm|cake|ifb|tc-|irqbalance'`, `tc qdisc show`, which opkg names exist
   (`opkg info sqm-scripts kmod-sched-cake kmod-ifb tc-full tc-tiny irqbalance`, or `apk search -e`; and `uname -r`, `ls /lib/modules/$(uname -r) | grep -E 'sch_cake|ifb'`, `zcat /proc/config.gz | grep -E 'NET_SCH_CAKE|IFB'`), the flash each costs, and whether openNDS applies its caps with `tc` on an `ifb`
   (read `ndsctl status` and `/usr/lib/opennds`). Write the facts into `specs/features/056-optional-sqm/bench-facts.md`. **Stop for the owner if the openNDS
   shaper and SQM would share a device** (SQ-12). (files: none in the repo; test: n/a; red result: n/a)
@@ -41,6 +41,12 @@ Small, ordered, each finished and checkable on its own. Test first; a red result
   `tests/test_flow.py`; red: yes)
 - [ ] 5. **Console card.** The Settings page card: fields, live "will limit to" line, switch, greyed-out reason + Install now where it can work; English text in
   plain words. (files: `console.html`, `console-ui.js`; test: the console tests that exist for the Settings page, a phone-width and light/dark check; red: yes)
+- [ ] 5b. **The speed test (root script).** `piso-setup sqm-test`: refuses with `BUSY` when a customer is online or a coin window is open; stops the SQM service if it is running and always restarts it (trap, plus a 90 second limit);
+  runs the parallel `curl` downloads and uploads against the host list with a data cap; reads CPU use from `/proc/stat`; writes `/tmp/piso-speedtest.json` (state, down, up, host, cpu_limited, time). (files: new piece in `setup/src/`;
+  test: `router/tests/test_setup_tools.py` or a new test file with a fake `curl`, fake `ndsctl`, fake `sqm` init, a fake `/proc/stat`; red result logged: yes)
+- [ ] 5c. **Portal.** `POST /api/speedtest` starts it (refused within a minute of the last one, or while busy), `GET /api/settings` carries the speed test status (state, results, age, why it is greyed out). (files: `console.rs`;
+  test: `cargo test`, `tests/test_flow.py`; red: yes)
+- [ ] 5d. **Console.** The **Test my line** button, the progress text, the prefilled boxes with "measured / SQM will use", the CPU warning, the greyed-out reason. (files: `console.html`, `console-ui.js`; test: the console tests; red: yes)
 - [ ] 6. **Nothing else moved.** Add the checks of criteria 7 and 8 (openNDS/firewall uci identical, flow offloading 0; grep that no money-path file is in the diff). (files: `test_setup.py`; red: not applicable, guard test)
 - [ ] 7. **Documents.** `docs/ROUTERS.md`, `setup/README.md`, `CHANGELOG.md`, RS66 in `docs/REAL_WORLD_TESTING.md`. (no code)
 - [ ] 8. **Gates.** `bash scripts/check_security_rules.sh`; in `tools/pisoportal`: `cargo test`, `python3 tests/test_flow.py`; `python3 router/tests/test_setup.py`, `test_pisophone_setup.py`,

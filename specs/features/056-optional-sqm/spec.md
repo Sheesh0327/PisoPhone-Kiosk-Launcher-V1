@@ -45,6 +45,20 @@ line (from an ordinary speed test) so SQM is set just under it. Serves the goal 
   `ratecheckwindow` 1) and **flow offloading = off** stay exactly as they are (checked by `router/tests/test_setup.py`).
 - SQM is **off after install.** It is switched on only when the owner saves line speeds in the console. Default margin **95%** of the typed speed, which
   the owner can change (50 to 100%).
+- **Speed test on the router (owner request 2026-10-31, replaces "the owner types the speed" as the main way; typing stays possible).** The Settings card has a **Test my line**
+  button. The router runs the test itself and **prefills the two boxes; nothing changes on the line until the owner presses Save.** How it works, as answered:
+  - **Server:** Cloudflare's public speed endpoints (`speed.cloudflare.com`, `__down` and `__up`) with `curl` (the installer already installs it) over several parallel streams, a short fixed
+    list of fallback hosts kept in one place in the code. **Data only: nothing downloaded is ever run or stored.** The data is capped (about 250 MB per direction, about 10 to 15 seconds each),
+    because a fast line would otherwise use gigabytes. **I could not reach this host from the build session, so the endpoint names and what they accept are unverified (plan group 0).**
+  - **When:** only when **no customer is online** (no authenticated client in `ndsctl json`) and no coin window or payment is in progress; otherwise the button is greyed out with the reason and the
+    owner can still type a speed. If a customer connects and pays during a test, the test stops at once and the line is put back.
+  - **SQM during the test:** if SQM is on, the test **stops the SQM service for its duration** (it never edits the saved SQM settings, so a power cut or reboot brings shaping back by itself) and
+    starts it again afterwards, also after an error; the whole test has a hard limit of about 90 seconds.
+  - **Honest number:** the router reads its CPU use during the test. If the CPU was near full, the result is shown with "this router may be the limit: confirm with a phone speed test" and is not
+    presented as the line speed. A test that cannot reach any host reports that, and prefills nothing.
+  - **Safety:** one test at a time, at most one per minute, behind the console password and its same-origin check, with no input from the page in the command that runs. The portal hands the work to
+    `piso-setup sqm-test` (root) and reads the result from a small status file; it does not run curl in a request thread.
+  - **Shown:** measured down and up, the value SQM would use at the margin, the host used, and how old the test is.
 - Qdisc: **cake** when `kmod-sched-cake` is present, else **fq_codel**, and the console says which one is in use. cake options: `nat`, `dual-dsthost`
   (download), `dual-srchost` (upload), `wash`, `diffserv3`; the exact strings are fixed in the plan after the bench test.
 - The program (`pisoportal`) uses only `sha2`, `hmac` and `p256` (`CLAUDE.md` section 6): no new crates. It does not run `uci`/`opkg` itself in its
@@ -83,19 +97,25 @@ line (from an ordinary speed test) so SQM is set just under it. Serves the goal 
     measured with SQM off and on, with openNDS's own caps active. If SQM and openNDS's shaping clash (caps no longer hold, or CPU stays near 100%),
     **stop and ask the owner**; do not release.
 13. **Measured cost:** the flash used by the optional packages and the idle RAM they add are measured on the 360T6M and written in `docs/ROUTERS.md`.
-13. Documents: `docs/ROUTERS.md` (the package list and the reasons), `setup/README.md`, `CHANGELOG.md`, a new hardware check **RS66** in
+14. **Speed test, no customers online:** the test measures both directions through a fake `curl`, fills the two boxes with the results, and saves nothing. With SQM on, the service is stopped for the test and
+    started again, and still started again when the test fails or is interrupted (tested with a fake `sqm` init script).
+15. **Speed test refused while a customer is online** or a coin window is open: the button is greyed out with the reason, and a direct call is refused with `BUSY` and starts nothing. A customer who connects mid-test stops it.
+16. **CPU limit and failure:** a test run with the CPU near full shows the "this router may be the limit" warning; a test that reaches no host says so and prefills nothing; a second test within a minute is refused.
+17. **Bench (stop point):** on the 360T6M, the router's number is compared with a phone's Ookla result on the same line; both are written in `validation.md`. If the router's number is more than about 15% below the phone's, the
+    spec is changed before release (the test may then only be offered as a lower bound). Cloudflare's endpoints are reached from the router first (plan group 0).
+18. Documents: `docs/ROUTERS.md` (the package list and the reasons), `setup/README.md`, `CHANGELOG.md`, a new hardware check **RS66** in
     `docs/REAL_WORLD_TESTING.md`, `specs/RELEASE_STATE.md` when released. `bash scripts/check_security_rules.sh` and every router check in `CLAUDE.md` section 3 pass.
 
 ## Out of scope
 - Replacing or changing openNDS's per-plan speed limits, or turning cake's per-host fairness into the way plans are enforced (riskier for money and time rules).
-- A speed test run by the router itself (owner chose: the owner types the result).
+- A speed test at peak hours, a scheduled re-test, or SQM that follows the line speed by itself (`cake-autorate`): later features.
 - `luci-app-sqm`, `qos-scripts`, `nft-qos`; Wi-Fi tuning; conntrack size. (Routers with apk and routers with no package manager are no longer out of scope: feature 057 and the rule above.)
 - A feed address the owner types in (only owner-signed or the router's own signed feeds are used).
 - Raising openNDS `maxclients` (default believed 250) or the portal's `MAX_CLIENTS` (24, portal page connections): see owner decision 1.
 - Automatic installation of the packages on live shops by the hourly update.
 
 ## Owner decisions
-Answered 2026-10-31: owner types the speed; SQM off until speeds are entered; new setups plus a button for existing routers; skip with a clear message
+Answered 2026-10-31: the router runs the speed test and prefills the boxes (Cloudflare endpoints with fallbacks; only when no customer is online; the owner presses Save; SQM is paused during the test and restored; a warning when the CPU was the limit; typing a speed stays possible); SQM off until speeds are entered; new setups plus a button for existing routers; skip with a clear message
 on failure; packages sqm-scripts + kmod-ifb + tc, kmod-sched-cake, irqbalance; flash guard at the minimum (2048 KB); SQM shapes only the whole WAN;
 greyed-out card with a reason; 95% margin, changeable.
 
