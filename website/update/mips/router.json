@@ -2,7 +2,7 @@
   "version": "1.5.34",
   "sha256": "a546bd3f047ea520cb6019892051dfc8dd911e0c9613667d1070d19782ccaf49",
   "size": 1686328,
-  "rollout": 0,
-  "changelog": "Router software release 1.5.34",
-  "sig": "MEQCIH2GTuE7zxIZuBu2l8dlllG6VzkaI2Ujde9io6EBlrPZAiAjHbmd+rhTklg5A04mPihS6aw2r8yWRyoFnmSLQxKobw=="
+  "rollout": 100,
+  "changelog": "A shorter burst before the speed limit applies (router 1.5.34)",
+  "sig": "MEUCIEuitxVjQM7/i5OLxqX+XLXbXs5AosWeO++3tG4pHRJaAiEAqOcXOfCGiAJM3lSMl6wvS8t8gHOBJoylggxUJyHC+Ms="
 }
