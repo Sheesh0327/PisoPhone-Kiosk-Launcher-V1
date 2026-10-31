@@ -58,10 +58,12 @@ install_optional_packages() {
 		[ -n "$_why" ] && { _core_ok=0; break; }
 	done
 	if [ -n "$_need" ] && [ "$_core_ok" = 1 ]; then
+		# shellcheck disable=SC2086 # one argument per package
 		if ! pkg_dry_run $_need; then _core_ok=0; _why="the package manager's trial install (dry run) failed: it does not fit this image"; fi
 	fi
 	if [ -n "$_need" ] && [ "$_core_ok" = 1 ]; then
 		_t=0; _done=1
+		# shellcheck disable=SC2086 # one argument per package
 		while [ "$_t" -lt "$_tries" ]; do _t=$((_t + 1)); pkg_install $_need > /dev/null 2>&1 && { _done=0; break; }; done
 		if [ "$_done" = 0 ]; then
 			for _p in $_need; do opt_note "$_p" installed "added by this setup"; done
@@ -103,6 +105,7 @@ opt_write() {
 	_f=$(opt_status_file)
 	[ "$DRY" = 1 ] && return 0
 	mkdir -p "$(dirname "$_f")" 2> /dev/null
+	# shellcheck disable=SC2015 # the message is for a failed write or move, whichever it was
 	{ printf 'image|%s\n' "$(conf_get IMAGE_TYPE)"; printf '%s' "$OPT_LINES"; } > "$_f.tmp" 2> /dev/null && mv "$_f.tmp" "$_f" 2> /dev/null || log "could not write $_f"
 }
 

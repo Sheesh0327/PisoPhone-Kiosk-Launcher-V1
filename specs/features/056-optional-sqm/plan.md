@@ -31,7 +31,7 @@ Small, ordered, each finished and checkable on its own. Test first; a red result
   `opkg` and a fake `apk`: feed with everything / only openNDS / no cake / ifb fails / flash 1500 KB / opennds fails / module already in the kernel / dry run refuses (kernel mismatch) / no package manager with openNDS present; red result logged: yes)
 - [x] 2. **Report it.** Summary lines and `piso-setup status` show each optional package as installed / skipped (reason). (files: `setup/src/60-summary.sh`,
   `setup/src/80-commands.sh`; test: `test_setup.py`; red: yes)
-- [ ] 3. **`piso-setup sqm` commands (root, on the router):** `sqm install` (the button's job: runs group 1's step; refuses with `BUSY` while a coin window is
+- [x] 3. **`piso-setup sqm` commands (root, on the router)** (`setup/src/14-sqm.sh`, tests in `router/tests/test_sqm.py`; the shell side refuses on customers online; the coin-window check is the portal's, in group 5c): `sqm install` (the button's job: runs group 1's step; refuses with `BUSY` while a coin window is
   open or a payment is recording, reusing the checks the update uses), `sqm apply` (reads the saved speeds, finds the WAN device with
   `ifstatus wan | jsonfilter -e '@.l3_device'`, writes `/etc/config/sqm` at the chosen margin, enables and restarts sqm, or removes the shaping when off),
   `sqm status` (writes the status file the portal reads). (files: new `setup/src/` piece or `80-commands.sh`; test: `router/tests/test_setup_tools.py`
