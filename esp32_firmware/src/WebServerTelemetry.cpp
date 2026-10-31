@@ -78,6 +78,8 @@ void handleHeartbeat() {
         // the phone's restart count rides along on a signed heartbeat only
         if (isAuth && webServer.hasArg("restarts"))
             setTrackedRestarts(reqIp, deviceId, webServer.arg("restarts").toInt());
+        // whether the app can play a voice message: said on every signed heartbeat, so a phone that goes back to an old app loses it
+        if (isAuth) setTrackedVoice(reqIp, deviceId, webServer.hasArg("voice") && webServer.arg("voice") == "1");
     }
 
     if (slotIdx < 0 || !isAuth) {

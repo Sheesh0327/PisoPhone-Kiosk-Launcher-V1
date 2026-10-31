@@ -6,6 +6,7 @@
 #include "WebServerAccounts.h"
 #include "WebServerProfiles.h"
 #include "WebServerBranding.h"
+#include "WebServerVoice.h"
 #endif
 #include "CoinSlotManager.h"
 #include "PaymentQueueManager.h"
@@ -77,6 +78,8 @@ void setupWebServer() {
     webServer.on("/identify", HTTP_GET, handleIdentify);
     webServer.on("/query_time", HTTP_GET, handleQueryTime);
     webServer.on("/api/locate", HTTP_POST, handleApiLocate);
+    webServer.on("/api/voice/ready", HTTP_POST, handleApiVoiceReady);
+    webServer.on("/api/voice", HTTP_POST, handleApiVoiceDone, handleApiVoiceUpload);
     webServer.on("/heartbeat", HTTP_GET, handleHeartbeat);
     webServer.on("/get_config", HTTP_GET, handleGetConfig);
     webServer.on("/crash_report", HTTP_POST, handleCrashReport);

@@ -30,6 +30,8 @@ bool getTrackedChargingState(String ip, String devId = "");
 // How often the phone's app restarted after a crash in the last 24 hours, as the phone reports it in its signed heartbeat.
 void setTrackedRestarts(String ip, String devId, int restarts);
 int getTrackedRestarts(String ip, String devId = "");
+void setTrackedVoice(String ip, String devId, bool canPlay);
+bool getTrackedVoice(String ip, String devId = "");
 
 String getIpFromDeviceId(String id);
 String getDeviceIdFromIp(String ip);
