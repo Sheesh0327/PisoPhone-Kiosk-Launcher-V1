@@ -1,6 +1,6 @@
 # Feature 056: Optional smooth-line packages (SQM) and a console setting to match the real ISP speed
 
-Status: **draft (waiting for the owner's approval)**   Branch: `feat/056-optional-sqm` (a router change: from `beta`, see `CLAUDE.md` section 5; this session works on `ccr-e31098f5-7k2rgz`)   Area: setup + router
+Status: **draft (waiting for the owner's approval); needs feature 057 (the package-manager layer) built first**   Branch: `feat/056-optional-sqm` (a router change: from `beta`, see `CLAUDE.md` section 5; this session works on `ccr-e31098f5-7k2rgz`)   Area: setup + router
 Backlog rows: owner request 2026-10-31 (no backlog row)   Release: router (through `beta`)
 
 ## Intent
@@ -23,13 +23,20 @@ line (from an ordinary speed test) so SQM is set just under it. Serves the goal 
 - Install priority after openNDS, owner's answer 2026-10-31: (1) `sqm-scripts` with `kmod-ifb` and `tc` (the tc package that `sqm-scripts` needs; the
   installer takes `tc-full` if the feed has it, else what `sqm-scripts` pulls in), (2) `kmod-sched-cake`, (3) `irqbalance`. `luci-app-sqm` is **not**
   installed (it would duplicate the console setting). The first group is all-or-nothing: a half-installed shaper is removed again.
-- **Scan, then install:** for each optional package the installer asks opkg whether the feed has it (`opkg info`) and installs only those; it never
-  guesses by router model.
+- **Package manager: opkg or apk** (owner, 2026-10-31: the router is a custom, unofficial ImmortalWrt image, and the setup must work with either manager).
+  This feature does **not** call `opkg` or `apk` directly: it uses the layer from **feature 057** (detect, update, is-installed, dry-run install, install,
+  remove). 056 cannot start before 057 is built.
+- **Scan, then install (owner's answer 2026-10-31):** for each optional package the installer (1) first checks whether the router **already has it**: the
+  package installed, or for the kernel parts the module already built in or loadable (`sch_cake`, `ifb`, `sch_fq_codel`; read from the kernel, no guessing by router
+  model), then (2) if not, **dry-runs** the install through the layer (`opkg install --noaction` / `apk add --simulate`) and installs only if that passes.
+  A kmod package from a feed never fits a custom kernel (modules are tied to the exact kernel build): that shows as "does not fit this image's kernel" in the
+  report and is never forced (no `--force-*`, no `--allow-untrusted`).
+- **No package manager at all** (a custom image with everything baked in): the setup carries on if openNDS is already installed and working (checked by the
+  program and its init script); the optional packages show "no package manager" or "already built in".
 - **Flash guard:** optional packages are skipped, with the reason recorded, when free flash is under **2048 KB** (the installer's existing warning level,
   `setup/src/15-flash.sh`). Owner's reasoning: updates are downloaded to RAM, not flash. Caveat for the owner (not a blocker): the docs say an update keeps a
   ~0.9 MB backup of the old program on flash, and a router with little RAM keeps the update file on flash too; with 2 MB free before the packages that margin can
   be thin. The packages' real size is **not measured yet**; validation must measure it (SQ-12).
-- **OpenWrt 23.05 and 24.10 only** (opkg). On 25.x or a snapshot the setup already stops earlier (feature 046); nothing changes there.
 - SQM shapes **only the WAN link as a whole.** The per-plan speed caps (Endurance 5 Mbps by default), the openNDS settings (bursting, `checkinterval` 15,
   `ratecheckwindow` 1) and **flow offloading = off** stay exactly as they are (checked by `router/tests/test_setup.py`).
 - SQM is **off after install.** It is switched on only when the owner saves line speeds in the console. Default margin **95%** of the typed speed, which
@@ -52,6 +59,8 @@ line (from an ordinary speed test) so SQM is set just under it. Serves the goal 
 1. **openNDS first, others optional.** A test installer run (fake `opkg`) where openNDS fails stops with the same message as today; where only an optional
    package fails (not in feed, install error, flash under 2048 KB) the setup finishes and the summary lists what was skipped and why.
 2. **Scan:** with a feed that has only some packages, exactly those are installed, in the priority order above; `kmod-sched-cake` missing gives fq_codel.
+   Parts the kernel already has (module built in or loadable) are not installed again and show "already built in"; a package whose dry run fails (for example a
+   kernel mismatch) is skipped with that reason. Tested with a fake `opkg` **and** a fake `apk`, and with neither.
 3. **All-or-nothing core:** if `sqm-scripts` installs but `kmod-ifb` or `tc` fails, `sqm-scripts` is removed again and SQM is reported "not available".
 4. **Status file:** the installer writes a status of each optional package (installed / skipped / failed + reason) that `piso-setup status` and the
    console both read.
@@ -75,7 +84,8 @@ line (from an ordinary speed test) so SQM is set just under it. Serves the goal 
 ## Out of scope
 - Replacing or changing openNDS's per-plan speed limits, or turning cake's per-host fairness into the way plans are enforced (riskier for money and time rules).
 - A speed test run by the router itself (owner chose: the owner types the result).
-- `luci-app-sqm`, `qos-scripts`, `nft-qos`; Wi-Fi tuning; conntrack size; routers on OpenWrt 25.x (apk).
+- `luci-app-sqm`, `qos-scripts`, `nft-qos`; Wi-Fi tuning; conntrack size. (Routers with apk and routers with no package manager are no longer out of scope: feature 057 and the rule above.)
+- A feed address the owner types in (only owner-signed or the router's own signed feeds are used).
 - Raising openNDS `maxclients` (default believed 250) or the portal's `MAX_CLIENTS` (24, portal page connections): see owner decision 1.
 - Automatic installation of the packages on live shops by the hourly update.
 
