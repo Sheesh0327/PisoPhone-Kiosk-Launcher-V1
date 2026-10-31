@@ -4,6 +4,7 @@ SQM, Test my line fills the two boxes (and says when the router itself was the l
 page's refresh, and the card at phone width. The router side is a fake piso-setup."""
 import glob
 import os
+import pathlib
 import shutil
 import sys
 import time
@@ -20,12 +21,12 @@ CP = 18820
 env = Env(offset=240)
 tmp = env.tmp
 RESULT = f"{tmp}/piso-speedtest.json"
-open(f"{tmp}/ubus", "w").write('#!/bin/sh\ncase "$4" in *\\"password\\":\\"router-pass\\"*) echo \'{ "ubus_rpc_session": "abc" }\';; *) echo \'{}\';; esac\n')
+pathlib.Path(f"{tmp}/ubus").write_text('#!/bin/sh\ncase "$4" in *\\"password\\":\\"router-pass\\"*) echo \'{ "ubus_rpc_session": "abc" }\';; *) echo \'{}\';; esac\n')
 os.chmod(f"{tmp}/ubus", 0o755)
-open(f"{tmp}/setup.conf", "w").write("BOX_ADMIN_PASS='box-pass-123'\n")
+pathlib.Path(f"{tmp}/setup.conf").write_text("BOX_ADMIN_PASS='box-pass-123'\n")
 D = env.data
 # a fake piso-setup: apply writes the status file the way the real one does, install makes SQM "installed", test leaves the result the file "mode" asks for
-open(f"{tmp}/piso-setup", "w").write(f'''#!/bin/sh
+pathlib.Path(f"{tmp}/piso-setup").write_text(f'''#!/bin/sh
 echo "$*" >> "{tmp}/setup-calls"
 get() {{ sed -n "s/^$1=//p" "{D}/settings.txt" 2>/dev/null | tail -n 1; }}
 case "$1 $2" in
@@ -50,7 +51,7 @@ env.extra.update(CONSOLE_PORT=CP, CONSOLE_BIND="127.0.0.1", UBUS=f"{tmp}/ubus", 
 
 
 def settings():
-    return open(f"{D}/settings.txt").read() if os.path.exists(f"{D}/settings.txt") else ""
+    return pathlib.Path(f"{D}/settings.txt").read_text() if os.path.exists(f"{D}/settings.txt") else ""
 
 
 try:
@@ -121,14 +122,14 @@ try:
         check("SQM_ON=1\n" in settings(), "and the switch is kept")
 
         # ---- the router itself was the limit: the number is shown, not offered as the line speed ------------------------------------------------------------------------
-        open(f"{tmp}/mode", "w").write("cpu")
+        pathlib.Path(f"{tmp}/mode").write_text("cpu")
         pg.wait_for_timeout(2200)
         pg.click("#sqt")
         pg.wait_for_function("document.getElementById('sqb').textContent.indexOf('may be the limit') >= 0", timeout=20000)
         check(pg.input_value("#sqd") == "87.4" and "97%" in pg.text_content("#sqb"), "a busy router's number is not put in the boxes, and the warning names the processor load: " + pg.text_content("#sqb"))
 
         # ---- the test cannot reach any host --------------------------------------------------------------------------------------------------------------------------
-        open(f"{tmp}/mode", "w").write("fail")
+        pathlib.Path(f"{tmp}/mode").write_text("fail")
         pg.wait_for_timeout(2200)
         pg.click("#sqt")
         pg.wait_for_function("document.getElementById('sqb').textContent.indexOf('answered') >= 0", timeout=20000)

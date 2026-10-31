@@ -1,6 +1,7 @@
 """Tests of the optional smooth-line packages step of setup/piso-setup.sh (feature 058): which packages are tried, in what order, and what is reported,
 with stand-ins for the package layer and the kernel. Run with:  python3 router/tests/test_optional.py"""
 import os
+import pathlib
 import subprocess
 import sys
 import tempfile
@@ -39,15 +40,15 @@ FULL = "sqm-scripts kmod-ifb tc-full kmod-sched-cake irqbalance"
 def run(code, **env):
     root = tempfile.mkdtemp(dir=tmp)
     log = f"{root}/calls.log"
-    open(log, "w").close()
+    pathlib.Path(log).write_text("")
     e = dict(os.environ, PISO_SETUP_SOURCE_ONLY="1", PISO_CONF=f"{tmp}/conf", PISO_LOG=f"{tmp}/log", PISO_STATE=f"{tmp}/state", PISO_ROUTER_ID="a1b2",
              PISO_ROOT=root, T_LOG=log, T_FEED=FULL, T_INSTALLED="", T_KERNEL="", T_FAILINSTALL="")
     e.update(env)
-    r = subprocess.run(["sh", "-c", f". {SCRIPT}; {STUBS}\n{code}"], env=e, capture_output=True, text=True, timeout=60)
-    calls = open(log).read()
+    r = subprocess.run(["sh", "-c", f". {SCRIPT}; {STUBS}\n{code}"], env=e, capture_output=True, text=True, timeout=60, check=False)
+    calls = pathlib.Path(log).read_text()
     status = ""
     if os.path.exists(f"{root}/etc/coinslot.d/packages.txt"):
-        status = open(f"{root}/etc/coinslot.d/packages.txt").read()
+        status = pathlib.Path(f"{root}/etc/coinslot.d/packages.txt").read_text()
     return r, calls, status
 
 
@@ -94,7 +95,7 @@ r, calls, st = run("install_optional_packages; check_all() { echo CHECKS; return
 check("Smooth-line packages" in r.stdout, "piso-setup status shows the optional packages: " + r.stdout + r.stderr)
 r, calls, st = run("install_optional_packages; write_summary; cat \"$SUMMARY\"", PISO_SUMMARY=f"{tmp}/sum")
 check("Smooth-line packages" in r.stdout, "the setup summary shows the optional packages: " + r.stdout + r.stderr)
-flow = open(f"{ROOT}/setup/src/98-setup-flow.sh").read()
+flow = pathlib.Path(f"{ROOT}/setup/src/98-setup-flow.sh").read_text()
 check("install_packages\n\tinstall_optional_packages" in flow, "the first setup runs the optional step right after openNDS and the others")
 
 # ---- criterion 1: openNDS first, the others optional --------------------------------------------------------------------------------
@@ -111,7 +112,7 @@ check("INSTALL opennds" in calls and "sqm" not in calls, "and no optional packag
 r, calls, st = run(CORE + "install_packages && install_optional_packages; echo rc=$?", T_FAILINSTALL="sqm-scripts kmod-ifb kmod-sched-cake irqbalance", T_INSTALLED="curl ca-bundle jsonfilter")
 check("rc=0" in r.stdout and "INSTALL opennds" in calls, "openNDS goes in and every optional package fails: the setup carries on without an error: " + r.stdout + r.stderr)
 check(st.count("|failed|") >= 3, "and each failure is written down: " + st)
-flow = open(f"{ROOT}/setup/src/98-setup-flow.sh").read()
+flow = pathlib.Path(f"{ROOT}/setup/src/98-setup-flow.sh").read_text()
 check(flow.index("\tinstall_packages\n") < flow.index("\tinstall_optional_packages\n"), "the setup flow installs the required packages before it tries the optional ones")
 
 print(f"{checks} checks, {failures} failures")

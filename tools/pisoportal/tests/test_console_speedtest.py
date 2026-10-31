@@ -3,6 +3,7 @@
 online, one at a time, one a minute), and GET /api/settings carries the state, the result and the reason a start is not possible."""
 import json
 import os
+import pathlib
 import time
 import urllib.error
 import urllib.request
@@ -13,11 +14,11 @@ CP = 18810
 env = Env(offset=235)
 tmp = env.tmp
 RESULT = f"{tmp}/piso-speedtest.json"
-open(f"{tmp}/ubus", "w").write('#!/bin/sh\ncase "$4" in *\\"password\\":\\"router-pass\\"*) echo \'{ "ubus_rpc_session": "abc" }\';; *) echo \'{}\';; esac\n')
+pathlib.Path(f"{tmp}/ubus").write_text('#!/bin/sh\ncase "$4" in *\\"password\\":\\"router-pass\\"*) echo \'{ "ubus_rpc_session": "abc" }\';; *) echo \'{}\';; esac\n')
 os.chmod(f"{tmp}/ubus", 0o755)
-open(f"{tmp}/setup.conf", "w").write("BOX_ADMIN_PASS='box-pass-123'\n")
+pathlib.Path(f"{tmp}/setup.conf").write_text("BOX_ADMIN_PASS='box-pass-123'\n")
 # a fake piso-setup: `sqm test` behaves as the file "mode" says, after a second; anything else is only written down
-open(f"{tmp}/piso-setup", "w").write(f'''#!/bin/sh
+pathlib.Path(f"{tmp}/piso-setup").write_text(f'''#!/bin/sh
 echo "$*" >> "{tmp}/setup-calls"
 [ "$1 $2" = "sqm test" ] || exit 0
 sleep 1
@@ -52,7 +53,7 @@ def call(path, body=None, cookie=None, headers=None):
 
 
 def calls():
-    return open(f"{tmp}/setup-calls").read() if os.path.exists(f"{tmp}/setup-calls") else ""
+    return pathlib.Path(f"{tmp}/setup-calls").read_text() if os.path.exists(f"{tmp}/setup-calls") else ""
 
 
 def test_block(cookie):
@@ -64,7 +65,7 @@ def finished(cookie, state=None):
 
 
 def mode(m):
-    open(f"{tmp}/mode", "w").write(m)
+    pathlib.Path(f"{tmp}/mode").write_text(m)
 
 
 try:
@@ -80,7 +81,7 @@ try:
     code, body, _h = call("/api/speedtest", {}, cookie=cookie)
     check(code == 409 and b"NO_SQM" in body and calls() == "", f"a direct call is refused too: {code} {body}")
 
-    open(f"{env.data}/sqm.txt", "w").write("installed|1\nqdisc|cake\nactive|0\nwan|eth1\nlimit_down_kbps|\nlimit_up_kbps|\nreason|switched off\n")
+    pathlib.Path(f"{env.data}/sqm.txt").write_text("installed|1\nqdisc|cake\nactive|0\nwan|eth1\nlimit_down_kbps|\nlimit_up_kbps|\nreason|switched off\n")
     t = test_block(cookie)
     check(t["can_start"] is True and t["blocked"] == "" and t["state"] == "idle", f"SQM installed and a quiet router: the button is on: {t}")
 
@@ -116,7 +117,7 @@ try:
     t = test_block(cookie)
     check(abs(t["down"] - 87.4) < 0.01 and abs(t["up"] - 18.2) < 0.01 and t["host"] == "speed.cloudflare.com" and t["cpu_limited"] is False and t["reason"] == "", f"the result: {t}")
     check(t["age"] is not None and 0 <= t["age"] < 5, f"with its age: {t}")
-    check("SQM_DOWN_MBPS" not in open(f"{env.data}/settings.txt").read() if os.path.exists(f"{env.data}/settings.txt") else True, "a test saves no settings (the owner presses Save)")
+    check("SQM_DOWN_MBPS" not in pathlib.Path(f"{env.data}/settings.txt").read_text() if os.path.exists(f"{env.data}/settings.txt") else True, "a test saves no settings (the owner presses Save)")
     code, body, _h = call("/api/speedtest", {}, cookie=cookie)
     check(code == 429 and b"TOO_SOON" in body and calls() == "sqm test\n", f"another test within the gap is refused: {code} {body}")
     t = test_block(cookie)
@@ -145,12 +146,12 @@ try:
     time.sleep(4.2)
 
     # ---- a result left by a test that was killed ------------------------------------------------------------------------------------------------------------------
-    open(RESULT, "w").write('{"state":"running","down":null,"up":null,"host":"","cpu":0,"cpu_limited":false,"time":%d,"reason":""}\n' % int(time.time()))
+    pathlib.Path(RESULT).write_text('{"state":"running","down":null,"up":null,"host":"","cpu":0,"cpu_limited":false,"time":' + str(int(time.time())) + ',"reason":""}\n')
     t = test_block(cookie)
     check(t["state"] == "failed" and "interrupted" in t["reason"], f"a 'running' file with no test running is shown as interrupted, not as for ever running: {t}")
     check(t["can_start"] is True, "and the button is on")
     os.remove(RESULT)
-    open(f"{tmp}/setup-calls", "w").close()
+    pathlib.Path(f"{tmp}/setup-calls").write_text("")
     check(call("/api/settings", {"voucher_choice": "on"}, cookie=cookie)[0] == 200 and calls() == "", "other settings do not start a test")
 finally:
     env.close()

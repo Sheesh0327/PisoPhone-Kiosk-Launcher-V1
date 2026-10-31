@@ -3,6 +3,7 @@
 value saves nothing and starts nothing, and that a good one is saved first and then handed to `piso-setup sqm apply` outside the request."""
 import json
 import os
+import pathlib
 import time
 import urllib.error
 import urllib.request
@@ -13,12 +14,12 @@ CP = 18800
 env = Env(offset=230)
 tmp = env.tmp
 OLD_SETTINGS = "GAME_MINUTES=10\nVOUCHER_CHOICE=on\n"
-open(f"{env.data}/settings.txt", "w").write(OLD_SETTINGS)
-open(f"{tmp}/ubus", "w").write('#!/bin/sh\ncase "$4" in *\\"password\\":\\"router-pass\\"*) echo \'{ "ubus_rpc_session": "abc" }\';; *) echo \'{}\';; esac\n')
+pathlib.Path(f"{env.data}/settings.txt").write_text(OLD_SETTINGS)
+pathlib.Path(f"{tmp}/ubus").write_text('#!/bin/sh\ncase "$4" in *\\"password\\":\\"router-pass\\"*) echo \'{ "ubus_rpc_session": "abc" }\';; *) echo \'{}\';; esac\n')
 os.chmod(f"{tmp}/ubus", 0o755)
-open(f"{tmp}/setup.conf", "w").write("BOX_ADMIN_PASS='box-pass-123'\n")
+pathlib.Path(f"{tmp}/setup.conf").write_text("BOX_ADMIN_PASS='box-pass-123'\n")
 # a fake piso-setup: it writes down its arguments and what settings.txt said at that moment, then takes its time (the request must not wait for it)
-open(f"{tmp}/piso-setup", "w").write(f'#!/bin/sh\necho "$*" >> "{tmp}/setup-calls"\ncp "{env.data}/settings.txt" "{tmp}/settings-at-call" 2>/dev/null\nsleep "${{FAKE_SETUP_SLEEP:-2}}"\nexit 0\n')
+pathlib.Path(f"{tmp}/piso-setup").write_text(f'#!/bin/sh\necho "$*" >> "{tmp}/setup-calls"\ncp "{env.data}/settings.txt" "{tmp}/settings-at-call" 2>/dev/null\nsleep "${{FAKE_SETUP_SLEEP:-2}}"\nexit 0\n')
 os.chmod(f"{tmp}/piso-setup", 0o755)
 env.extra.update(CONSOLE_PORT=CP, CONSOLE_BIND="127.0.0.1", UBUS=f"{tmp}/ubus", PISO_SETUP_CONF=f"{tmp}/setup.conf", PISO_SETUP_BIN=f"{tmp}/piso-setup")
 
@@ -40,11 +41,11 @@ def call(path, body=None, cookie=None, headers=None):
 
 
 def settings():
-    return open(f"{env.data}/settings.txt").read()
+    return pathlib.Path(f"{env.data}/settings.txt").read_text()
 
 
 def calls():
-    return open(f"{tmp}/setup-calls").read() if os.path.exists(f"{tmp}/setup-calls") else ""
+    return pathlib.Path(f"{tmp}/setup-calls").read_text() if os.path.exists(f"{tmp}/setup-calls") else ""
 
 
 def sqm(cookie):
@@ -67,10 +68,10 @@ try:
     check(s["available"] is False and s["on"] is False and s["down"] == "" and s["up"] == "" and s["percent"] == 95 and s["active"] is False and s["applying"] is False,
           f"a router that never installed SQM: not available, off, no speeds, a 95% margin: {s}")
     check(s["reason"] != "", f"and it says why: {s}")
-    open(f"{env.data}/sqm.txt", "w").write("installed|1\nqdisc|cake\nactive|1\nwan|eth1\nlimit_down_kbps|47500\nlimit_up_kbps|19000\nreason|\n")
+    pathlib.Path(f"{env.data}/sqm.txt").write_text("installed|1\nqdisc|cake\nactive|1\nwan|eth1\nlimit_down_kbps|47500\nlimit_up_kbps|19000\nreason|\n")
     s = sqm(cookie)
     check(s["available"] is True and s["qdisc"] == "cake" and s["active"] is True and s["limit_down"] == 47500 and s["limit_up"] == 19000 and s["reason"] == "", f"SQM installed and limiting: {s}")
-    open(f"{env.data}/sqm.txt", "w").write("installed|1\nqdisc|fq_codel\nactive|0\nwan|\nlimit_down_kbps|\nlimit_up_kbps|\nreason|switched off\n")
+    pathlib.Path(f"{env.data}/sqm.txt").write_text("installed|1\nqdisc|fq_codel\nactive|0\nwan|\nlimit_down_kbps|\nlimit_up_kbps|\nreason|switched off\n")
     s = sqm(cookie)
     check(s["available"] is True and s["active"] is False and s["limit_down"] == 0 and s["reason"] == "switched off", f"installed but off: {s}")
 
@@ -99,7 +100,7 @@ try:
     check("SQM_DOWN_MBPS=50\n" in st and "SQM_UP_MBPS=20\n" in st and "SQM_ON=1\n" in st and "GAME_MINUTES=10\n" in st and "VOUCHER_CHOICE=on\n" in st, f"kept in the data folder next to the other lines: {st!r}")
     check(wait_until(lambda: calls() != "", 5) and calls() == "sqm apply\n", f"piso-setup was called with fixed arguments only: {calls()!r}")
     wait_until(lambda: os.path.exists(f"{tmp}/settings-at-call"), 3)   # (the fake writes its call down first, then copies the settings)
-    at = open(f"{tmp}/settings-at-call").read() if os.path.exists(f"{tmp}/settings-at-call") else ""
+    at = pathlib.Path(f"{tmp}/settings-at-call").read_text() if os.path.exists(f"{tmp}/settings-at-call") else ""
     check("SQM_ON=1\n" in at and "SQM_DOWN_MBPS=50\n" in at, "and it found the new speeds already saved")
     check(idle(cookie), "the apply ends and the console is told")
 
@@ -127,28 +128,28 @@ try:
     check("SQM_DOWN_MBPS=50\n" in settings(), "and an unsigned change saved nothing")
 
     # ---- two quick changes: the last one wins, and apply never runs twice at the same time -------------------------------------------------------------
-    open(f"{tmp}/setup-calls", "w").close()
+    pathlib.Path(f"{tmp}/setup-calls").write_text("")
     for v in ("40", "41", "42"):
         call("/api/settings", {"sqm_down": v}, cookie=cookie)
     check(idle(cookie), "all applies end")
     check("SQM_DOWN_MBPS=42\n" in settings() and calls().count("sqm apply") in (2, 3), f"changes made while one apply runs are applied once more, after it: {calls()!r}")
-    check(wait_until(lambda: open(f"{tmp}/settings-at-call").read().count("SQM_DOWN_MBPS=42") == 1, 3), "the last call saw the last value")
+    check(wait_until(lambda: pathlib.Path(f"{tmp}/settings-at-call").read_text().count("SQM_DOWN_MBPS=42") == 1, 3), "the last call saw the last value")
 
     # ---- Install now (group 5): only where trying again could work, only on a quiet router, handed over with fixed arguments -------------------------------------------
     os.remove(f"{env.data}/sqm.txt")
-    open(f"{tmp}/setup-calls", "w").close()
+    pathlib.Path(f"{tmp}/setup-calls").write_text("")
     i = sqm(cookie)["install"]
     check(i["can"] is True and i["why"] == "", f"never tried: Install now is offered: {i}")
-    open(f"{env.data}/packages.txt", "w").write("image|official|OpenWrt 23.05|\npkg|sqm-scripts|skipped|not in the package feed\npkg|kmod-ifb|skipped|not in the package feed\n")
+    pathlib.Path(f"{env.data}/packages.txt").write_text("image|official|OpenWrt 23.05|\npkg|sqm-scripts|skipped|not in the package feed\npkg|kmod-ifb|skipped|not in the package feed\n")
     i = sqm(cookie)["install"]
     check(i["can"] is False and "package feed" in i["why"], f"not in the package feed: trying again cannot help, and it says why: {i}")
     code, body, _h = call("/api/sqm/install", {}, cookie=cookie)
     check(code == 409 and b"NOT_POSSIBLE" in body and calls() == "", f"and a direct call is refused: {code} {body}")
     for why in ("no package manager on this router", "the package manager's trial install (dry run) failed: it does not fit this image"):
-        open(f"{env.data}/packages.txt", "w").write(f"pkg|sqm-scripts|skipped|{why}\n")
+        pathlib.Path(f"{env.data}/packages.txt").write_text(f"pkg|sqm-scripts|skipped|{why}\n")
         check(sqm(cookie)["install"]["can"] is False, f"no retry for: {why}")
     for st, why in (("failed", "the install did not finish, so it was taken out again"), ("skipped", "only 1500 KB of flash is free, and this step needs 2048 KB")):
-        open(f"{env.data}/packages.txt", "w").write(f"pkg|sqm-scripts|{st}|{why}\n")
+        pathlib.Path(f"{env.data}/packages.txt").write_text(f"pkg|sqm-scripts|{st}|{why}\n")
         check(sqm(cookie)["install"]["can"] is True, f"a retry can help: {st}, {why}")
     env.nds_client("aa:bb:cc:00:00:01", STATE="Authenticated", SESSION_END=int(time.time()) + 900, DL=100, UL=10)
     i = sqm(cookie)["install"]
@@ -164,7 +165,7 @@ try:
     code, body, _h = call("/api/sqm/install", {}, cookie=cookie)
     check(code == 409 and b"RUNNING" in body and calls() == "sqm install\n", "a second start while one runs is refused")
     check(wait_until(lambda: sqm(cookie)["installing"] is False, 10), "and it ends")
-    open(f"{env.data}/sqm.txt", "w").write("installed|1\nqdisc|cake\nactive|0\nwan|eth1\nlimit_down_kbps|\nlimit_up_kbps|\nreason|switched off\n")
+    pathlib.Path(f"{env.data}/sqm.txt").write_text("installed|1\nqdisc|cake\nactive|0\nwan|eth1\nlimit_down_kbps|\nlimit_up_kbps|\nreason|switched off\n")
     code, body, _h = call("/api/sqm/install", {}, cookie=cookie)
     check(code == 409 and b"INSTALLED" in body, f"already installed: nothing to do: {code} {body}")
 finally:

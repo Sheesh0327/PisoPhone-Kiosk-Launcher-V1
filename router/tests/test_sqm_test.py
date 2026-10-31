@@ -3,6 +3,7 @@ pauses SQM for the test and always puts it back, and says honestly when it could
 Fake curl (no network), fake sqm init script, fake /proc/stat. Run with:  python3 router/tests/test_sqm_test.py"""
 import json
 import os
+import pathlib
 import subprocess
 import sys
 import tempfile
@@ -25,7 +26,7 @@ bindir = f"{tmp}/bin"
 os.makedirs(bindir)
 # The fake curl: four streams; a stream of B bytes at T_DOWN_MBPS / T_UP_MBPS in total takes 4*B*8/rate seconds. It prints what -w asks for:
 # "size_download size_upload time_total". T_FAIL_HOSTS: hosts that do not answer. T_CPU=busy: /proc/stat shows a router that is flat out.
-open(f"{bindir}/curl", "w").write(r'''#!/bin/sh
+pathlib.Path(f"{bindir}/curl").write_text(r'''#!/bin/sh
 echo "curl $*" >> "$T_LOG"
 url=""; for a in "$@"; do url="$a"; done
 host=${url#https://}; host=${host%%/*}
@@ -54,22 +55,22 @@ def run(code="cmd_sqm test; echo rc=$?", settings=None, sqm_installed=True, **en
     root = tempfile.mkdtemp(dir=tmp)
     for d in ("etc/coinslot.d", "etc/init.d", "tmp", "proc"):
         os.makedirs(f"{root}/{d}")
-    open(f"{root}/proc/stat", "w").write("cpu 100 0 100 800 0 0 0 0\n")
+    pathlib.Path(f"{root}/proc/stat").write_text("cpu 100 0 100 800 0 0 0 0\n")
     if settings is not None:
-        open(f"{root}/etc/coinslot.d/settings.txt", "w").write("".join(f"{k}={v}\n" for k, v in settings.items()))
+        pathlib.Path(f"{root}/etc/coinslot.d/settings.txt").write_text("".join(f"{k}={v}\n" for k, v in settings.items()))
     log = f"{root}/calls.log"
-    open(log, "w").close()
+    pathlib.Path(log).write_text("")
     if sqm_installed:
-        open(f"{root}/etc/init.d/sqm", "w").write(f'#!/bin/sh\necho "sqm-init $*" >> "{log}"\n')
+        pathlib.Path(f"{root}/etc/init.d/sqm").write_text(f'#!/bin/sh\necho "sqm-init $*" >> "{log}"\n')
         os.chmod(f"{root}/etc/init.d/sqm", 0o755)
     e = dict(os.environ, PATH=f"{bindir}:" + os.environ["PATH"], PISO_SETUP_SOURCE_ONLY="1", PISO_CONF=f"{tmp}/conf", PISO_LOG=f"{tmp}/log", PISO_STATE=f"{tmp}/state",
              PISO_ROUTER_ID="a1b2", PISO_ROOT=root, T_LOG=log, T_STAT=f"{root}/proc/stat", T_GUESTS_FILE="")
     e.update(env)
-    r = subprocess.run(["sh", "-c", f". {SCRIPT}; {STUBS}\n{code}"], env=e, capture_output=True, text=True, timeout=120)
+    r = subprocess.run(["sh", "-c", f". {SCRIPT}; {STUBS}\n{code}"], env=e, capture_output=True, text=True, timeout=120, check=False)
     out = None
     if os.path.exists(f"{root}/tmp/piso-speedtest.json"):
-        out = json.load(open(f"{root}/tmp/piso-speedtest.json"))
-    return r, open(log).read(), out, root
+        out = json.loads(pathlib.Path(f"{root}/tmp/piso-speedtest.json").read_text())
+    return r, pathlib.Path(log).read_text(), out, root
 
 
 ON = {"SQM_ON": "1", "SQM_DOWN_MBPS": "50", "SQM_UP_MBPS": "20", "SQM_PERCENT": "95"}

@@ -2,6 +2,7 @@
 them, and installing the packages waits for a quiet moment. Fake uci, fake sqm init script, stand-ins for the package layer.
 Run with:  python3 router/tests/test_sqm.py"""
 import os
+import pathlib
 import re
 import subprocess
 import sys
@@ -24,7 +25,7 @@ def check(cond, msg):
 tmp = tempfile.mkdtemp()
 bindir = f"{tmp}/bin"
 os.makedirs(bindir)
-open(f"{bindir}/uci", "w").write('''#!/bin/sh
+pathlib.Path(f"{bindir}/uci").write_text('''#!/bin/sh
 echo "uci $*" >> "$T_LOG"
 case "$1" in batch) cat >> "$T_LOG" ;; esac
 exit 0
@@ -50,21 +51,21 @@ def run(code, settings=None, sqm_installed=True, **env):
     os.makedirs(f"{root}/etc/coinslot.d")
     os.makedirs(f"{root}/etc/init.d")
     if settings is not None:
-        open(f"{root}/etc/coinslot.d/settings.txt", "w").write("".join(f"{k}={v}\n" for k, v in settings.items()))
+        pathlib.Path(f"{root}/etc/coinslot.d/settings.txt").write_text("".join(f"{k}={v}\n" for k, v in settings.items()))
     log = f"{root}/calls.log"
-    open(log, "w").close()
+    pathlib.Path(log).write_text("")
     if sqm_installed:
-        open(f"{root}/etc/init.d/sqm", "w").write(f'#!/bin/sh\necho "sqm-init $*" >> "{log}"\n')
+        pathlib.Path(f"{root}/etc/init.d/sqm").write_text(f'#!/bin/sh\necho "sqm-init $*" >> "{log}"\n')
         os.chmod(f"{root}/etc/init.d/sqm", 0o755)
     e = dict(os.environ, PATH=f"{bindir}:" + os.environ["PATH"], PISO_SETUP_SOURCE_ONLY="1", PISO_CONF=f"{tmp}/conf", PISO_LOG=f"{tmp}/log", PISO_STATE=f"{tmp}/state",
              PISO_ROUTER_ID="a1b2", PISO_ROOT=root, T_LOG=log, T_KERNEL="", T_INSTALLED="")
     e.update(env)
-    r = subprocess.run(["sh", "-c", f". {SCRIPT}; {STUBS}\n{code}"], env=e, capture_output=True, text=True, timeout=60)
-    ALL_UCI.extend(l for l in open(log).read().splitlines() if l.startswith("uci ") or l.startswith("set ") or l.startswith("delete "))
+    r = subprocess.run(["sh", "-c", f". {SCRIPT}; {STUBS}\n{code}"], env=e, capture_output=True, text=True, timeout=60, check=False)
+    ALL_UCI.extend(l for l in pathlib.Path(log).read_text().splitlines() if l.startswith(("uci ", "set ", "delete ")))
     status = ""
     if os.path.exists(f"{root}/etc/coinslot.d/sqm.txt"):
-        status = open(f"{root}/etc/coinslot.d/sqm.txt").read()
-    return r, open(log).read(), status
+        status = pathlib.Path(f"{root}/etc/coinslot.d/sqm.txt").read_text()
+    return r, pathlib.Path(log).read_text(), status
 
 
 ON = {"SQM_ON": "1", "SQM_DOWN_MBPS": "50", "SQM_UP_MBPS": "20", "SQM_PERCENT": "95"}
@@ -113,14 +114,14 @@ r, calls, st = run("cmd_sqm install; echo rc=$?", T_UPDATE_RC="1")
 check("rc=0" not in r.stdout and "install_optional_packages" not in calls, "the package lists cannot be updated: it stops and says so: " + r.stdout + calls)
 r, calls, st = run("cmd_sqm nonsense; echo rc=$?")
 check("rc=0" not in r.stdout and "usage" in r.stdout + r.stderr, "an unknown sqm command prints the usage: " + r.stdout + r.stderr)
-flow = open(f"{ROOT}/setup/src/98-setup-flow.sh").read()
+flow = pathlib.Path(f"{ROOT}/setup/src/98-setup-flow.sh").read_text()
 check("cmd_sqm \"$ARG\"" in flow and "brand-pack | sqm)" in flow, "piso-setup knows the sqm command")
 
 # ---- feature 058, criterion 8: nothing of openNDS, the firewall, the network or the speed caps is touched ---------------------------------
 check(len(ALL_UCI) > 20, "the runs above made uci calls to look at: " + str(len(ALL_UCI)))
 WRITES = [l for l in ALL_UCI if l != "uci batch" and not re.match(r"uci (-q )?(get|show|export)\b", l)]   # ("uci batch" is followed by its lines, which are in the list)
 check(len(WRITES) > 10 and all("sqm" in l for l in WRITES), "every uci change of apply, off, install and status names the sqm config and nothing else (reads aside): " + str([l for l in WRITES if "sqm" not in l][:3]))
-src = "".join(open(f"{ROOT}/setup/src/{f}").read() for f in ("13-optional.sh", "14-sqm.sh"))
+src = "".join(pathlib.Path(f"{ROOT}/setup/src/{f}").read_text() for f in ("13-optional.sh", "14-sqm.sh"))
 uci_lines = [l for l in src.splitlines() if re.search(r"\buci\b", l) and not l.lstrip().startswith("#")]
 check(uci_lines and not any(re.search(r"opennds|firewall|network|dhcp|wireless|flow_offloading|ratecheck|checkinterval", l) for l in uci_lines),
       "and the source of the optional-package step and the sqm commands has no uci line for openNDS, the firewall, the network, DHCP, Wi-Fi or the speed caps: " + str(uci_lines[:4]))
