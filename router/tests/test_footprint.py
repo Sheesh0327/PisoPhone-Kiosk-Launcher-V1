@@ -12,12 +12,12 @@ BUDGET_KB = {
     "tools/pisoportal/bin/pisoportal-armv7": 1200,
     "tools/pisoportal/bin/pisoportal-x86_64": 1200,
     "setup/piso-setup.sh": 1700,                      # the one-file installer / update (it is downloaded, not kept)
-    "setup/piso-setup.sh.in": 150,                    # the installed command (the file without its payload)
+    "setup/piso-setup.sh.in": 175,                    # the installed command (the file without its payload; 148 KB before features 057 and 058: 155 KB with the package-manager layer, 162 KB with the optional-package step; the rest of 056 is expected to need up to 175)
     "tools/pisoportal/src/page.html": 28,             # the customer page (1.3.4: voucher choice and code view, speech with a fallback, heartbeat)
     "tools/pisoportal/src/brand_fil.js": 14,          # a branded page: the Filipino wording and the language button (feature 049; page.html itself did not grow)
     "tools/pisoportal/src/brand_page.css": 6,         # a branded page: the four layouts
     "tools/pisoportal/src/console.html": 30,          # the owner's console page: sidebar, icons, phone rows (feature 053; 21 KB before it)
-    "tools/pisoportal/src/console-ui.js": 30,         # the console's script, version 12 (27 KB before feature 053)
+    "tools/pisoportal/src/console-ui.js": 33,         # the console's script, version 13 (27 KB before feature 053; the Smooth line card of feature 058 added 3.6 KB)
 }
 bad = 0
 for path, limit in BUDGET_KB.items():

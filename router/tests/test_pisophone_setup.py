@@ -1067,14 +1067,24 @@ for gone in ("OFFLINE_DIR", "build_offline_bundle", "push_offline_bundle", "Offl
 r = e2e(lan="192.168.8.1", router="192.168.8.1", answers=("Tindahan WiFi", "Aling Nena", "y", "n"), secrets_=("routerpass1", "routerpass1", "kioskpass1", "kioskpass1", "boxadmin99", "boxadmin99"))
 check(r.rc == 0 and r.err is None and "set network.lan.ipaddr=10.0.0.1" in r.uci and open(f"{tmp}/lan").read().strip() == "10.0.0.1", f"a router at 192.168.8.1 is moved to 10.0.0.1 and set up ({r.err}): " + r.out[-500:])
 check("Router found at 192.168.8.1" in r.out and "moving it to 10.0.0.1" in r.out, "and the address it was found at is named: " + r.out[:300])
-# feature 045 (SU-06a): an apk router (OpenWrt 25.x) is refused before anything is changed, even when it has internet (the online way fails at opkg)
-PACKAGER = "@@RELEASE\nDISTRIB_RELEASE='25.12.0'\n@@APK\nyes\n@@OPKG\nno\n"
+# feature 057 (was 045 SU-06a): an apk router (OpenWrt 25.x) is no longer refused: the setup goes on
+PACKAGER = "@@RELEASE\nDISTRIB_RELEASE='25.12.0'\n@@APK\nyes\n@@OPKG\nno\n@@NDS\nno\n"
+open(f"{tmp}/lan", "w").write("192.168.1.1")
+r = e2e(inet=True, **SHOP)
+check(r.err is None and "SETUP-RAN" in r.out, "an apk router: the setup goes on: " + str(r.err) + r.out[-300:])
+# no package manager and no openNDS: refused before anything is changed, even when it has internet
+PACKAGER = "@@RELEASE\nDISTRIB_RELEASE='23.05.0'\n@@APK\nno\n@@OPKG\nno\n@@NDS\nno\n"
+open(f"{tmp}/lan", "w").write("192.168.1.1")
+r = e2e(inet=True, **SHOP)
+check(r.err and "package manager" in r.err and "openNDS" in r.err and "ROUTERS.md" in r.err and "Nothing was changed" in r.err, "no package manager and no openNDS: refused, saying what to do: " + str(r.err))
+check(r.wget == "" and "SETUP-RAN" not in r.out and r.uci == "" and not any("ping -c 1" in c for c in commands(r)) and not any("cat >" in c for c in commands(r)),
+      "and nothing was tried on it (no download, no internet test, no copy, no setup, no change)")
+# a custom image with no package manager but openNDS built in goes on
+PACKAGER = "@@RELEASE\nDISTRIB_RELEASE='23.05.0'\n@@APK\nno\n@@OPKG\nno\n@@NDS\nyes\n"
 open(f"{tmp}/lan", "w").write("192.168.1.1")
 r = e2e(inet=True, **SHOP)
 PACKAGER = PACKAGER_OPKG
-check(r.err and "apk" in r.err and "25.12.0" in r.err and "ROUTERS.md" in r.err and "Nothing was changed" in r.err, "an apk router: refused, naming its release and the supported ones: " + str(r.err))
-check(r.wget == "" and "SETUP-RAN" not in r.out and r.uci == "" and not any("ping -c 1" in c for c in commands(r)) and not any("cat >" in c for c in commands(r)),
-      "and nothing was tried on it (no download, no internet test, no copy, no setup, no change)")
+check(r.err is None and "SETUP-RAN" in r.out, "no package manager but openNDS built in: the setup goes on: " + str(r.err) + r.out[-300:])
 
 shutil.rmtree(tmp, ignore_errors=True)
 # ---- feature 045 (SU-18): the computer's addresses at the top of the setup log -------------------------------------------------------------

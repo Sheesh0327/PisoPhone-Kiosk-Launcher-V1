@@ -21,7 +21,7 @@
 # Everything is generated here (Wi-Fi password, box admin password, gateway key) and printed once at the end and saved in
 # /root/piso-setup-summary.txt. Running the file again is safe: it keeps what it already made.
 #
-# Other commands (after setup): piso-setup status | wifi-name "<name>" | guest-port [lanN|off] | voucher-choice [on|off] | brand-pack <file> | pair | summary | test-coin | diag | box-diag | set-password | box-wifi-name | reconcile [rebase] | telegram | rotate-box-wifi | export [file] | import <file> | space | forget-summary | kiosk-wifi | verify | handout | lock-admin | unlock-admin | wifi-admin [on|off] | update [check] (installs the newest release from the website; same as self-update) | self-update [check] | box-update [check] (installs the coin box's newest firmware) | auto-update on|off
+# Other commands (after setup): piso-setup status | wifi-name "<name>" | guest-port [lanN|off] | voucher-choice [on|off] | brand-pack <file> | sqm apply|install|status|test | pair | summary | test-coin | diag | box-diag | set-password | box-wifi-name | reconcile [rebase] | telegram | rotate-box-wifi | export [file] | import <file> | space | forget-summary | kiosk-wifi | verify | handout | lock-admin | unlock-admin | wifi-admin [on|off] | update [check] (installs the newest release from the website; same as self-update) | self-update [check] | box-update [check] (installs the coin box's newest firmware) | auto-update on|off
 #
 # Options:  --dry-run  print the router settings instead of applying them (needs nothing but the uci command)
 #           --yes      do not ask for confirmation
@@ -29,7 +29,7 @@
 
 VERSION="dev"
 # the release of this file (setup/RELEASE): routers install only a higher release that the owner signed
-PISO_RELEASE='1.5.34'
+PISO_RELEASE='1.5.35'
 # the CPU family the portal program in this file is built for (router_family below names the family of the router it runs on)
 PISO_ARCH='aarch64'
 
@@ -193,6 +193,515 @@ box_net_ssid() { if [ "$(conf_get BOX_WIFI_ROTATED)" = 1 ]; then printf '%s' "$B
 
 resolve_wifi_names
 # ---------------------------------------------------------------------------------------------------------------------
+# Package manager: opkg, apk or none, and what kind of image this is (feature 057)
+# ---------------------------------------------------------------------------------------------------------------------
+# The installer never calls opkg or apk by name: it uses pkg_* below. The layer never passes a flag that skips a signature,
+# a checksum, a certificate or a dependency; the router's own configured feeds are the only source (check_security_rules.sh).
+# Test hooks: PISO_ROOT (a copy of the router's /etc), PISO_FIT_PROBE (the package the kernel-fit probe tries, default kmod-ifb).
+
+# pkg_manager: opkg, apk or none. With both, the one that lists the base system (busybox) is the router's own.
+pkg_manager() {
+	_o=0; _a=0
+	command -v opkg > /dev/null 2>&1 && _o=1
+	command -v apk > /dev/null 2>&1 && _a=1
+	if [ "$_o$_a" = 11 ]; then
+		if [ -n "$(opkg list-installed busybox 2> /dev/null)" ]; then echo opkg
+		elif apk info -e busybox > /dev/null 2>&1; then echo apk
+		else echo opkg; fi
+	elif [ "$_o" = 1 ]; then echo opkg
+	elif [ "$_a" = 1 ]; then echo apk
+	else echo none; fi
+}
+
+# pkg_name <package>: the name this manager knows it by (one place for a package that is called differently).
+pkg_name() {
+	case "$1" in
+		*) echo "$1" ;;
+	esac
+}
+
+pkg_update() {
+	case "$(pkg_manager)" in
+		opkg) opkg update ;;
+		apk) apk update ;;
+		*) return 1 ;;
+	esac
+}
+
+# pkg_installed <package>: it is installed now.
+pkg_installed() {
+	_p=$(pkg_name "$1")
+	case "$(pkg_manager)" in
+		opkg) opkg list-installed 2> /dev/null | grep -q "^$_p " ;;
+		apk) apk info -e "$_p" > /dev/null 2>&1 ;;
+		*) return 1 ;;
+	esac
+}
+
+# pkg_installed_prefix <start of a name>: some installed package's name starts with it (a family such as libmicrohttpd*).
+pkg_installed_prefix() {
+	case "$(pkg_manager)" in
+		opkg) opkg list-installed 2> /dev/null | grep -qi "^$1" ;;
+		apk) apk info 2> /dev/null | grep -qi "^$1" ;;
+		*) return 1 ;;
+	esac
+}
+
+# pkg_opennds_ready: openNDS is installed and usable (its init script and ndsctl exist), however it got there.
+pkg_opennds_ready() { [ -x "$PISO_ROOT/etc/init.d/opennds" ] && command -v ndsctl > /dev/null 2>&1; }
+
+# pkg_available <package>: the manager knows it. opkg info exits 0 even for an unknown package, so its output is read; and it also answers for
+# an installed package, so pkg_dry_run is the real test of whether an install would work.
+pkg_available() {
+	_p=$(pkg_name "$1")
+	case "$(pkg_manager)" in
+		opkg) opkg info "$_p" 2> /dev/null | grep -q '^Package:' ;;
+		apk) [ -n "$(apk search -e "$_p" 2> /dev/null)" ] ;;
+		*) return 1 ;;
+	esac
+}
+
+# pkg_dry_run <package>...: the manager's own simulation says an install would work (nothing is changed).
+pkg_dry_run() {
+	case "$(pkg_manager)" in
+		opkg) opkg install --noaction "$@" > /dev/null 2>&1 ;;
+		apk) apk add --simulate "$@" > /dev/null 2>&1 ;;
+		*) return 1 ;;
+	esac
+}
+
+pkg_install() {
+	case "$(pkg_manager)" in
+		opkg) opkg install "$@" ;;
+		apk) apk add "$@" ;;
+		*) return 1 ;;
+	esac
+}
+
+pkg_remove() {
+	case "$(pkg_manager)" in
+		opkg) opkg remove "$@" ;;
+		apk) apk del "$@" ;;
+		*) return 1 ;;
+	esac
+}
+
+# pkg_free_kb: the free KB of the writable flash (/overlay), else of /; empty when unknown.
+pkg_free_kb() {
+	_f=$(df -k /overlay 2> /dev/null | awk 'NR==2 {print $4}')
+	[ -n "$_f" ] || _f=$(df -k / 2> /dev/null | awk 'NR==2 {print $4}')
+	echo "$_f"
+}
+
+# ---- what kind of image this is ---------------------------------------------------------------------------------------
+# The kind comes from facts on the router, never from its model name: the distribution id in /etc/openwrt_release, the hosts of the
+# configured package feeds, and a dry run of one kernel module (a feed that does not fit this image's kernel cannot install its kmods).
+# It is a label for how careful the installer is (feature 058); the probes still decide each package. It is not a claim of support.
+
+# pkg_fork_site <distribution id>: the feed domain of a known fork (the one list of forks).
+pkg_fork_site() {
+	case "$1" in
+		ImmortalWrt) echo immortalwrt.org ;;
+	esac
+}
+
+# pkg_feed_hosts: the host of every active feed line (opkg and apk files), one per line.
+pkg_feed_hosts() {
+	for _f in "$PISO_ROOT"/etc/opkg/distfeeds.conf "$PISO_ROOT"/etc/opkg/customfeeds.conf "$PISO_ROOT"/etc/apk/repositories.d/*.list "$PISO_ROOT"/etc/apk/repositories; do
+		[ -r "$_f" ] || continue
+		sed -n 's/^[^#]*:\/\/\([^\/ ]*\).*/\1/p' "$_f" | sed 's/.*@//; s/:[0-9]*$//'
+	done | sort -u
+}
+
+# pkg_image_type: one line, "<official|fork|custom>|<description>|<reason>". Run it after pkg_update (the probe needs the package lists).
+pkg_image_type() {
+	_rel="$PISO_ROOT/etc/openwrt_release"
+	_id=$(sed -n "s/^DISTRIB_ID=['\"]\{0,1\}\([^'\"]*\).*/\1/p" "$_rel" 2> /dev/null | head -n 1)
+	_desc=$(sed -n "s/^DISTRIB_DESCRIPTION=['\"]\{0,1\}\([^'\"]*\).*/\1/p" "$_rel" 2> /dev/null | head -n 1)
+	_desc=$(printf %s "${_desc:-unknown image}" | tr -d "|'")   # (no quote and no bar: it is saved in the settings file)
+	[ -n "$_id" ] || { echo "custom|$_desc|no release file"; return 0; }
+	if [ "$_id" = OpenWrt ]; then _kind=official; _dom=openwrt.org; else _kind=fork; _dom=$(pkg_fork_site "$_id"); fi
+	[ -n "$_dom" ] || { echo "custom|$_desc|$_id is not a distribution this setup knows"; return 0; }
+	[ "$(pkg_manager)" != none ] || { echo "custom|$_desc|no package manager"; return 0; }
+	_hosts=$(pkg_feed_hosts)
+	[ -n "$_hosts" ] || { echo "custom|$_desc|no package feeds are configured"; return 0; }
+	for _h in $_hosts; do
+		case "$_h" in
+			"$_dom" | *."$_dom") ;;
+			*) echo "custom|$_desc|a package feed comes from $_h, not $_dom"; return 0 ;;
+		esac
+	done
+	pkg_dry_run "${PISO_FIT_PROBE:-kmod-ifb}" || { echo "custom|$_desc|the package feed does not offer ${PISO_FIT_PROBE:-kmod-ifb} for this image (it does not fit the kernel, or the package lists are old)"; return 0; }
+	echo "$_kind|$_desc|feeds from $_dom, kernel fit ok"
+}
+
+# pkg_image_record: work out the image type (after the package lists are fresh) and save it in the setup settings.
+pkg_image_record() { conf_set IMAGE_TYPE "$(pkg_image_type)"; }
+
+# pkg_image_report: the lines for the summary and "piso-setup status": the package manager and the image, in plain words.
+pkg_image_report() {
+	_t=$(conf_get IMAGE_TYPE)
+	_k="${_t%%|*}"; _r="${_t#*|}"; _d="${_r%%|*}"; _why="${_r#*|}"
+	case "$_k" in
+		official) _k="official OpenWrt" ;;
+		fork) _k="known fork" ;;
+		custom) _k="custom image" ;;
+		*) echo "Package manager: $(pkg_manager)"; echo "Image:           not checked yet"; return 0 ;;
+	esac
+	echo "Package manager: $(pkg_manager)"
+	echo "Image:           $_d ($_k: $_why)"
+}
+# ---------------------------------------------------------------------------------------------------------------------
+# Optional packages: a smoother line for many customers (feature 058)
+# ---------------------------------------------------------------------------------------------------------------------
+# openNDS is the one package the setup cannot do without (install_packages). The packages below are extras: the setup tries each one, never stops
+# because of one, and writes down what happened (etc/coinslot.d/packages.txt: "image|<kind>|<description>|<reason>" and "pkg|<name>|<state>|<reason>",
+# states installed, present, builtin, skipped, failed), which "piso-setup status", the summary and the console read.
+#   sqm-scripts + kmod-ifb + tc-full   the shaper (all or nothing: a half-installed shaper is taken out again)
+#   kmod-sched-cake                    the cake qdisc (without it the console falls back to fq_codel)
+#   irqbalance                         spreads network interrupts over the cores
+# Each is first looked for on the router (installed, or the module already in the kernel), then dry-run through the package layer, and only then
+# installed. On a custom image the kernel's own modules decide: a kernel module package from the feed is not tried (it would not load).
+OPT_MIN_FREE_KB=2048   # under this much free flash nothing optional is tried (the installer's own warning level)
+
+opt_status_file() { echo "$PISO_ROOT/etc/coinslot.d/packages.txt"; }
+
+# kernel_has <module>: the kernel has it loaded, built in or on disk.
+kernel_has() {
+	[ -d "$PISO_ROOT/sys/module/$1" ] && return 0
+	ls "$PISO_ROOT"/lib/modules/*/"$1".ko* > /dev/null 2>&1 && return 0
+	grep -qs "/$1\.ko" "$PISO_ROOT"/lib/modules/*/modules.builtin 2> /dev/null
+}
+
+# opt_note <name> <state> <reason>: one line of the status.
+opt_note() { OPT_LINES="${OPT_LINES}pkg|$1|$2|$3
+"; }
+
+# opt_blocked <package>: prints why this package cannot be tried now; nothing when it can.
+opt_blocked() {
+	if [ "$_mgr" = none ]; then echo "no package manager on this router"; return 0; fi
+	if [ -n "$_low" ]; then echo "$_low"; return 0; fi
+	case "$1" in kmod-*)
+		if [ "$_kind" = custom ]; then echo "the kernel of this custom image does not match the package feed (kernel modules from it would not load)"; return 0; fi ;;
+	esac
+	pkg_available "$1" || echo "not in the package feed"
+}
+
+install_optional_packages() {
+	step "Optional packages (a smoother line for many customers)"
+	OPT_LINES=""
+	_img=$(conf_get IMAGE_TYPE); _kind="${_img%%|*}"; _mgr=$(pkg_manager); _low=""
+	_free=$(pkg_free_kb)
+	case "$_free" in "" | *[!0-9]*) ;; *) [ "$_free" -ge "$OPT_MIN_FREE_KB" ] || _low="only $_free KB of flash is free, and this step needs $OPT_MIN_FREE_KB KB" ;; esac
+	_tries=1; [ "$_kind" = official ] && _tries=2   # (an official image gets one more try, like openNDS)
+
+	# --- the shaper: what is still missing of sqm-scripts, kmod-ifb and tc-full
+	_need=""; _core_ok=1; _why=""
+	if pkg_installed sqm-scripts; then opt_note sqm-scripts present "already installed"; else _need="sqm-scripts"; fi
+	if pkg_installed kmod-ifb; then opt_note kmod-ifb present "already installed"
+	elif kernel_has ifb; then opt_note kmod-ifb builtin "the kernel already has it"
+	else _need="$_need kmod-ifb"; fi
+	_tc=""
+	if pkg_installed tc-full; then opt_note tc-full present "already installed"
+	elif [ -z "$(opt_blocked tc-full)" ]; then _tc="tc-full"; _need="$_need tc-full"
+	else opt_note tc-full skipped "$(opt_blocked tc-full) (sqm-scripts brings the tc it needs)"; fi
+	for _p in $_need; do
+		[ "$_p" = tc-full ] && continue
+		_why=$(opt_blocked "$_p")
+		[ -n "$_why" ] && { _core_ok=0; break; }
+	done
+	if [ -n "$_need" ] && [ "$_core_ok" = 1 ]; then
+		# shellcheck disable=SC2086 # one argument per package
+		if ! pkg_dry_run $_need; then _core_ok=0; _why="the package manager's trial install (dry run) failed: it does not fit this image"; fi
+	fi
+	if [ -n "$_need" ] && [ "$_core_ok" = 1 ]; then
+		_t=0; _done=1
+		# shellcheck disable=SC2086 # one argument per package
+		while [ "$_t" -lt "$_tries" ]; do _t=$((_t + 1)); pkg_install $_need > /dev/null 2>&1 && { _done=0; break; }; done
+		if [ "$_done" = 0 ]; then
+			for _p in $_need; do opt_note "$_p" installed "added by this setup"; done
+		else
+			for _p in $_need; do pkg_remove "$_p" > /dev/null 2>&1; opt_note "$_p" failed "the install did not finish, so it was taken out again"; done
+			_core_ok=0
+		fi
+	elif [ -n "$_need" ]; then
+		for _p in $_need; do opt_note "$_p" skipped "$_why"; done
+	fi
+
+	# --- cake: without it the console uses fq_codel
+	if pkg_installed kmod-sched-cake; then opt_note kmod-sched-cake present "already installed"
+	elif kernel_has sch_cake; then opt_note kmod-sched-cake builtin "the kernel already has it"
+	elif [ "$_core_ok" = 0 ]; then opt_note kmod-sched-cake skipped "it is only useful with the shaper, which is not installed"
+	else
+		_why=$(opt_blocked kmod-sched-cake)
+		if [ -n "$_why" ]; then opt_note kmod-sched-cake skipped "$_why"
+		elif ! pkg_dry_run kmod-sched-cake; then opt_note kmod-sched-cake skipped "the package manager's trial install (dry run) failed: it does not fit this image"
+		elif pkg_install kmod-sched-cake > /dev/null 2>&1; then opt_note kmod-sched-cake installed "added by this setup"
+		else pkg_remove kmod-sched-cake > /dev/null 2>&1; opt_note kmod-sched-cake failed "the install did not finish"; fi
+	fi
+
+	# --- irqbalance
+	if pkg_installed irqbalance; then opt_note irqbalance present "already installed"
+	else
+		_why=$(opt_blocked irqbalance)
+		if [ -n "$_why" ]; then opt_note irqbalance skipped "$_why"
+		elif ! pkg_dry_run irqbalance; then opt_note irqbalance skipped "the package manager's trial install (dry run) failed: it does not fit this image"
+		elif pkg_install irqbalance > /dev/null 2>&1; then opt_note irqbalance installed "added by this setup"
+		else pkg_remove irqbalance > /dev/null 2>&1; opt_note irqbalance failed "the install did not finish"; fi
+	fi
+	opt_write
+	return 0
+}
+
+# opt_write: the status file (image line first); a failed write is only noted.
+opt_write() {
+	_f=$(opt_status_file)
+	[ "$DRY" = 1 ] && return 0
+	mkdir -p "$(dirname "$_f")" 2> /dev/null
+	# shellcheck disable=SC2015 # the message is for a failed write or move, whichever it was
+	{ printf 'image|%s\n' "$(conf_get IMAGE_TYPE)"; printf '%s' "$OPT_LINES"; } > "$_f.tmp" 2> /dev/null && mv "$_f.tmp" "$_f" 2> /dev/null || log "could not write $_f"
+}
+
+# optional_report: the lines for the summary and "piso-setup status".
+optional_report() {
+	_f=$(opt_status_file)
+	[ -r "$_f" ] || return 0
+	echo "Smooth-line packages (optional):"
+	sed -n 's/^pkg|\([^|]*\)|\([^|]*\)|\(.*\)$/\1|\2|\3/p' "$_f" | while IFS='|' read -r _n _s _r; do
+		case "$_s" in
+			installed) _w="installed" ;; present) _w="already installed" ;; builtin) _w="already in the kernel" ;;
+			failed) _w="not installed (failed)" ;; *) _w="skipped" ;;
+		esac
+		case "$_s" in installed | present | builtin) printf '  %-16s %s\n' "$_n" "$_w" ;; *) printf '  %-16s %s: %s\n' "$_n" "$_w" "$_r" ;; esac
+	done
+}
+# ---------------------------------------------------------------------------------------------------------------------
+# SQM: keeping a customer's download from filling the line (feature 058)
+# ---------------------------------------------------------------------------------------------------------------------
+# The owner's line speed is saved by the console in etc/coinslot.d/settings.txt (SQM_ON, SQM_DOWN_MBPS, SQM_UP_MBPS, SQM_PERCENT, default 95).
+# "piso-setup sqm apply" turns it into one SQM queue of our own (sqm.piso_wan, other queues are left alone) on the WAN; the console reads
+# etc/coinslot.d/sqm.txt ("key|value": installed, qdisc, active, wan, limit_down_kbps, limit_up_kbps, reason).
+#   piso-setup sqm apply     set or remove the queue from the saved settings
+#   piso-setup sqm install   (re)try the optional packages now, when no customer is online
+#   piso-setup sqm status    write the status file
+#   piso-setup sqm test      measure the line (only when no customer is online); the result is tmp/piso-speedtest.json
+sqm_dir() { echo "$PISO_ROOT/etc/coinslot.d"; }
+sqm_init() { echo "$PISO_ROOT/etc/init.d/sqm"; }
+sqm_setting() { sed -n "s/^$1=\\(.*\\)\$/\\1/p" "$(sqm_dir)/settings.txt" 2> /dev/null | tail -n 1 | tr -d ' \r'; }
+
+# sqm_wan_dev: the device the WAN really uses now (pppoe-wan on a PPPoE line).
+sqm_wan_dev() {
+	_d=$(ifstatus wan 2> /dev/null | jsonfilter -e '@.l3_device' 2> /dev/null)
+	[ -n "$_d" ] || _d=$(ifstatus wan 2> /dev/null | jsonfilter -e '@.device' 2> /dev/null)
+	echo "$_d"
+}
+
+# sqm_active <device> <qdisc>: the queue is on the device.
+sqm_active() { tc qdisc show dev "$1" 2> /dev/null | grep -q "$2"; }
+
+# sqm_kbps <Mbps> <percent>: the limit in kbit/s.
+sqm_kbps() { awk -v m="$1" -v p="$2" 'BEGIN { printf "%d", m * 1000 * p / 100 }'; }
+
+# sqm_number_ok <value> <min> <max>: a number with at most one decimal place, inside the range.
+sqm_number_ok() {
+	case "$1" in "" | *[!0-9.]* | .* | *. | *.*.* | *.[0-9][0-9]*) return 1 ;; esac
+	awk -v v="$1" -v lo="$2" -v hi="$3" 'BEGIN { exit (v + 0 >= lo && v + 0 <= hi) ? 0 : 1 }'
+}
+
+# sqm_status <installed> <qdisc> <active> <wan> <down kbps> <up kbps> <reason>: the file the console reads.
+sqm_status() {
+	[ "$DRY" = 1 ] && return 0
+	mkdir -p "$(sqm_dir)" 2> /dev/null
+	printf 'installed|%s\nqdisc|%s\nactive|%s\nwan|%s\nlimit_down_kbps|%s\nlimit_up_kbps|%s\nreason|%s\n' "$1" "$2" "$3" "$4" "$5" "$6" "$7" > "$(sqm_dir)/sqm.txt.tmp" 2> /dev/null \
+		&& mv "$(sqm_dir)/sqm.txt.tmp" "$(sqm_dir)/sqm.txt" 2> /dev/null
+}
+
+# sqm_qdisc: cake when the kernel or an installed package has it, else fq_codel.
+sqm_qdisc() { if kernel_has sch_cake || pkg_installed kmod-sched-cake; then echo cake; else echo fq_codel; fi; }
+
+cmd_sqm_apply() {
+	_inst=0; [ -x "$(sqm_init)" ] && _inst=1
+	_on=$(sqm_setting SQM_ON); _dn=$(sqm_setting SQM_DOWN_MBPS); _up=$(sqm_setting SQM_UP_MBPS); _pc=$(sqm_setting SQM_PERCENT); _pc="${_pc:-95}"
+	_qd=$(sqm_qdisc)
+	if [ "$_on" != 1 ]; then   # off (or never set): our queue goes, other queues stay
+		if [ "$_inst" = 1 ]; then
+			uci -q delete sqm.piso_wan > /dev/null 2>&1; uci commit sqm > /dev/null 2>&1
+			"$(sqm_init)" stop > /dev/null 2>&1
+		fi
+		sqm_status "$_inst" "$_qd" 0 "" "" "" "switched off"
+		echo "SQM is off."
+		return 0
+	fi
+	if [ "$_inst" != 1 ]; then
+		sqm_status 0 "" 0 "" "" "" "the SQM package is not installed on this router"
+		echo "SQM is not installed on this router (try: piso-setup sqm install)." >&2
+		return 1
+	fi
+	if ! sqm_number_ok "$_dn" 0.1 10000 || ! sqm_number_ok "$_up" 0.1 10000 || ! sqm_number_ok "$_pc" 50 100; then
+		sqm_status 1 "$_qd" 0 "" "" "" "the saved line speed or margin is not a usable number"
+		echo "The saved speeds must be from 0.1 to 10000 Mbps and the margin from 50 to 100 percent. Nothing was changed." >&2
+		return 1
+	fi
+	_dev=$(sqm_wan_dev)
+	if [ -z "$_dev" ]; then
+		sqm_status 1 "$_qd" 0 "" "" "" "the router has no WAN device right now"
+		echo "The router has no WAN device right now. Nothing was changed." >&2
+		return 1
+	fi
+	_dk=$(sqm_kbps "$_dn" "$_pc"); _uk=$(sqm_kbps "$_up" "$_pc")
+	uci -q delete sqm.piso_wan > /dev/null 2>&1
+	if [ "$_qd" = cake ]; then
+		_script="layer_cake.qos"
+		_extra="set sqm.piso_wan.qdisc_advanced='1'
+set sqm.piso_wan.qdisc_really_really_advanced='1'
+set sqm.piso_wan.iqdisc_opts='nat dual-dsthost ingress'
+set sqm.piso_wan.eqdisc_opts='nat dual-srchost'
+set sqm.piso_wan.squash_dscp='1'
+set sqm.piso_wan.squash_ingress='1'"
+	else
+		_script="simple.qos"; _extra=""
+	fi
+	uci batch << EOT
+set sqm.piso_wan=queue
+set sqm.piso_wan.enabled='1'
+set sqm.piso_wan.interface='$_dev'
+set sqm.piso_wan.download='$_dk'
+set sqm.piso_wan.upload='$_uk'
+set sqm.piso_wan.qdisc='$_qd'
+set sqm.piso_wan.script='$_script'
+set sqm.piso_wan.linklayer='ethernet'
+set sqm.piso_wan.overhead='18'
+$_extra
+EOT
+	uci commit sqm
+	"$(sqm_init)" enable > /dev/null 2>&1
+	"$(sqm_init)" restart > /dev/null 2>&1
+	if sqm_active "$_dev" "$_qd"; then
+		sqm_status 1 "$_qd" 1 "$_dev" "$_dk" "$_uk" ""
+		echo "SQM ($_qd) is limiting $_dev to $_dk kbit/s down and $_uk kbit/s up."
+	else
+		sqm_status 1 "$_qd" 0 "$_dev" "$_dk" "$_uk" "SQM was set but its queue is not on $_dev (see: logread -e sqm)"
+		echo "SQM was set, but its queue is not on $_dev yet (see: logread -e sqm)." >&2
+	fi
+	return 0
+}
+
+cmd_sqm_install() {
+	if [ "$(guests_online)" -gt 0 ] 2> /dev/null; then
+		echo "BUSY: customers are online. Try again at a quiet moment." >&2
+		return 3
+	fi
+	DRY=0
+	pkg_update > /dev/null 2>&1 || { echo "The package lists could not be updated (no internet, or the package sources do not answer). Nothing was changed." >&2; return 1; }
+	pkg_image_record
+	install_optional_packages
+	optional_report
+	cmd_sqm_apply > /dev/null 2>&1
+	return 0
+}
+
+cmd_sqm_status() {
+	_inst=0; [ -x "$(sqm_init)" ] && _inst=1
+	_dev=$(sqm_wan_dev); _qd=$(sqm_qdisc); _act=0
+	[ "$_inst" = 1 ] && [ -n "$_dev" ] && sqm_active "$_dev" "$_qd" && _act=1
+	sqm_status "$_inst" "$_qd" "$_act" "$_dev" "" "" ""
+	cat "$(sqm_dir)/sqm.txt" 2> /dev/null
+}
+
+# ---- the speed test (group 5b): "piso-setup sqm test" measures the line and writes tmp/piso-speedtest.json, nothing else -------------
+# Data only: curl throws every byte away. Four streams each way, about 250 MB at most per direction, 15 seconds at most per transfer.
+# SQM is stopped while it measures (its saved settings are never touched) and started again however the test ends.
+SQM_TEST_HOSTS="${PISO_SPEEDTEST_HOSTS:-speed.cloudflare.com}"   # the one place the servers are named; the next one is tried when a host does not answer
+sqm_test_file() { echo "$PISO_ROOT/tmp/piso-speedtest.json"; }
+
+# sqm_test_write <state> <down Mbps> <up Mbps> <host> <cpu percent> <reason>: the file the console reads (the router's own words, no quotes in them).
+sqm_test_write() {
+	_cpu="${5:-0}"; _lim=false; [ "$_cpu" -ge 90 ] 2> /dev/null && _lim=true
+	printf '{"state":"%s","down":%s,"up":%s,"host":"%s","cpu":%s,"cpu_limited":%s,"time":%s,"reason":"%s"}\n' "$1" "${2:-null}" "${3:-null}" "$4" "$_cpu" "$_lim" "$(date +%s)" "$6" \
+		> "$(sqm_test_file).tmp" 2> /dev/null && mv "$(sqm_test_file).tmp" "$(sqm_test_file)" 2> /dev/null
+}
+
+# sqm_cpu_sample: "total idle" jiffies from the first line of /proc/stat.
+sqm_cpu_sample() { awk '/^cpu /{ t = 0; for (i = 2; i <= 9; i++) t += $i; print t, $5 + $6; exit }' "$PISO_ROOT/proc/stat" 2> /dev/null; }
+
+# sqm_test_phase <down|up> <host>: four streams at once. Sets SQM_T_MBPS (empty when nothing arrived) and SQM_T_CPU (the busiest phase so far);
+# returns 1 with SQM_T_WHY when a customer connects or the 80 second limit passes.
+sqm_test_phase() {
+	_dir="$PISO_ROOT/tmp/piso-speedtest.$$"; rm -rf "$_dir"; mkdir -p "$_dir"; _pids=""; _i=0; _b=62500000
+	_w='%{size_download} %{size_upload} %{time_total}\n'
+	_c0=$(sqm_cpu_sample)
+	while [ $_i -lt 4 ]; do
+		if [ "$1" = down ]; then curl -s -o /dev/null -m 15 -w "$_w" "https://$2/__down?bytes=$_b" > "$_dir/$_i" 2> /dev/null &
+		else head -c $_b /dev/zero | curl -s -o /dev/null -m 15 -X POST -T - -w "$_w" "https://$2/__up" > "$_dir/$_i" 2> /dev/null &
+		fi
+		_pids="$_pids $!"; _i=$((_i + 1))
+	done
+	SQM_T_WHY=""
+	while :; do
+		if [ "$(guests_online)" -gt 0 ] 2> /dev/null; then SQM_T_WHY="a customer connected, so the test stopped"; break; fi
+		_alive=0; for _p in $_pids; do kill -0 "$_p" 2> /dev/null && _alive=1; done
+		[ $_alive = 0 ] && break
+		if [ "$(date +%s)" -ge "$SQM_T_END" ]; then SQM_T_WHY="the test took too long and was stopped"; break; fi
+		sleep 1
+	done
+	# shellcheck disable=SC2086 # one argument per process id
+	[ -n "$SQM_T_WHY" ] && kill $_pids 2> /dev/null
+	wait
+	SQM_T_MBPS=$(cat "$_dir"/* 2> /dev/null | awk '{ b += $1 + $2; if ($3 > t) t = $3 } END { if (t > 0 && b > 0) printf "%.1f", b * 8 / t / 1000000 }')
+	_c=$(echo "$_c0 $(sqm_cpu_sample)" | awk '{ dt = $3 - $1; if (dt > 0) printf "%d", 100 * (dt - ($4 - $2)) / dt; else print 0 }')
+	[ "${_c:-0}" -gt "${SQM_T_CPU:-0}" ] && SQM_T_CPU=$_c
+	rm -rf "$_dir"
+	[ -z "$SQM_T_WHY" ]
+}
+
+cmd_sqm_test() {
+	if [ "$(guests_online)" -gt 0 ] 2> /dev/null; then
+		echo "BUSY: customers are online. Try again at a quiet moment." >&2
+		return 3
+	fi
+	_lock="$PISO_ROOT/tmp/piso-speedtest.lock"; mkdir -p "$PISO_ROOT/tmp"
+	if ! mkdir "$_lock" 2> /dev/null; then
+		if kill -0 "$(cat "$_lock/pid" 2> /dev/null)" 2> /dev/null; then echo "BUSY: a speed test is already running." >&2; return 3; fi
+		rm -rf "$_lock"; mkdir "$_lock" 2> /dev/null || { echo "BUSY: a speed test is already running." >&2; return 3; }
+	fi
+	echo $$ > "$_lock/pid"
+	_stopped=0
+	if [ -x "$(sqm_init)" ] && { [ "$(sqm_setting SQM_ON)" = 1 ] || sqm_active "$(sqm_wan_dev)" "$(sqm_qdisc)"; }; then _stopped=1; fi
+	trap '[ "$_stopped" = 1 ] && "$(sqm_init)" start > /dev/null 2>&1; rm -rf "$_lock"' EXIT
+	trap 'exit 1' HUP INT TERM
+	[ "$_stopped" = 1 ] && "$(sqm_init)" stop > /dev/null 2>&1
+	SQM_T_END=$(($(date +%s) + 80)); SQM_T_CPU=0; _down=""; _up=""; _host=""; _why=""
+	sqm_test_write running "" "" "" 0 ""
+	for _h in $SQM_TEST_HOSTS; do
+		sqm_test_phase down "$_h" || { _why="$SQM_T_WHY"; break; }
+		if [ -n "$SQM_T_MBPS" ]; then _down="$SQM_T_MBPS"; _host="$_h"; break; fi
+	done
+	if [ -n "$_down" ] && [ -z "$_why" ]; then
+		sqm_test_phase up "$_host" || _why="$SQM_T_WHY"
+		_up="$SQM_T_MBPS"
+	fi
+	if [ -z "$_why" ] && [ -z "$_down" ]; then _why="no speed test server answered (is the router online?)"; fi
+	if [ -z "$_why" ] && [ -z "$_up" ]; then _why="the download was measured but the upload could not be"; fi
+	if [ -n "$_why" ]; then
+		sqm_test_write failed "" "" "$_host" "$SQM_T_CPU" "$_why"
+		echo "The speed test did not finish: $_why." >&2
+		return 1
+	fi
+	sqm_test_write done "$_down" "$_up" "$_host" "$SQM_T_CPU" ""
+	echo "Download $_down Mbps, upload $_up Mbps (via $_host)."
+	return 0
+}
+
+cmd_sqm() {
+	case "$1" in
+		apply) cmd_sqm_apply ;;
+		install) cmd_sqm_install ;;
+		status) cmd_sqm_status ;;
+		test) cmd_sqm_test ;;
+		*) echo "usage: piso-setup sqm apply|install|status|test" >&2; return 1 ;;
+	esac
+}
+# ---------------------------------------------------------------------------------------------------------------------
 # Flash: which chip holds the writable data, and how much room is left
 # ---------------------------------------------------------------------------------------------------------------------
 # flash_class: prints one line, "small <bytes> <how>" or "large <bytes> <how>" (<bytes> is - when unknown; <how> is nor, nand, disk
@@ -285,6 +794,13 @@ wan_clash() {
 	return 1
 }
 
+# preflight_packages: the router has opkg or apk, or no package manager at all but openNDS already installed (a custom image with the packages built in).
+preflight_packages() {
+	[ "$(pkg_manager)" != none ] && return 0
+	pkg_opennds_ready || die "this router has no package manager (opkg or apk) and openNDS is not installed, so the setup has nothing to install it with. Install openNDS on the router first, then run this again (see docs/ROUTERS.md). Nothing was changed."
+	tip "this router has no package manager: the setup uses the packages already on it, and anything optional is skipped."
+}
+
 preflight() {
 	step "Checking the router"
 	if [ "$DRY" != 1 ]; then
@@ -292,7 +808,7 @@ preflight() {
 		[ -f /etc/openwrt_release ] || die "this is not an OpenWrt router"
 	fi
 	command -v uci > /dev/null || die "uci not found"
-	command -v opkg > /dev/null || die "this router has no opkg (OpenWrt 25.x and snapshots install packages with apk). This setup supports OpenWrt 23.05 and 24.10 (see docs/ROUTERS.md). Nothing was changed."
+	preflight_packages
 	check_arch
 	R24=""; R5=""
 	for r in $(radios); do
@@ -306,7 +822,7 @@ preflight() {
 }
 
 # preflight_network: the router's WAN address and internet, and that its LAN and WAN ranges do not clash. The router needs internet for
-# the first setup: it downloads its packages itself (opkg, against its own signed feeds).
+# the first setup: it downloads its packages itself (opkg or apk, against the router's own signed feeds).
 preflight_network() {
 	WAN=$(wan_ip)
 	[ -n "$WAN" ] || die "the router has no WAN address, and it needs internet for the first setup: plug the modem into the WAN port and wait a minute, then run this again"
@@ -322,28 +838,36 @@ preflight_network() {
 	tip "the setup takes about 3 to 8 minutes. Keep this window open, the coin box powered on near the router, and the network cable plugged in."
 }
 
-# update_failed: opkg update failed. With a working ping the router has internet, so the release's package sources are what does not answer.
+# update_failed: the package update failed. With a working ping the router has internet, so the release's package sources are what does not answer.
 update_failed() {
 	if ping -c 1 -W 3 1.1.1.1 > /dev/null 2>&1 || ping -c 1 -W 3 8.8.8.8 > /dev/null 2>&1; then
 		_rel=$(sed -n "s/^DISTRIB_RELEASE=['\"]\{0,1\}\([^'\"]*\).*/\1/p" "$PISO_ROOT/etc/openwrt_release" 2> /dev/null | head -n 1)
-		die "opkg update failed although the router has internet: the package sources of OpenWrt ${_rel:-this release} do not answer (an old release moved to the archive, or a vendor build). Supported releases: docs/ROUTERS.md"
+		die "$(pkg_manager) update failed although the router has internet: the package sources of OpenWrt ${_rel:-this release} do not answer (an old release moved to the archive, or a vendor build). Supported releases: docs/ROUTERS.md"
 	fi
-	die "opkg update failed (no internet or DNS?)"
+	die "$(pkg_manager) update failed (no internet or DNS?)"
 }
 
 install_packages() {
 	step "Installing packages"
-	opkg update > /dev/null 2>&1 || opkg update || update_failed
+	if [ "$(pkg_manager)" = none ]; then
+		log "no package manager: using the packages already on the router"
+		pkg_image_record
+		stop_opennds
+		return 0
+	fi
+	pkg_update > /dev/null 2>&1 || pkg_update || update_failed
 	for p in opennds curl ca-bundle jsonfilter; do
-		if ! opkg list-installed 2> /dev/null | grep -q "^$p "; then
+		if ! pkg_installed "$p"; then
 			log "installing $p"
-			opkg install "$p" > /dev/null 2>&1 || opkg install "$p" || die "could not install $p"
+			pkg_install "$p" > /dev/null 2>&1 || pkg_install "$p" || die "could not install $p"
 		fi
 		# Installing opennds starts it at once with its default settings, which gate the LAN (the kiosk network) and
 		# would reject the coin box and the phones: stop it before anything else can fail. It is started at the end.
 		[ "$p" = opennds ] && stop_opennds
 	done
-	opkg list-installed 2> /dev/null | grep -qi '^libmicrohttpd' || opkg install libmicrohttpd-no-ssl > /dev/null 2>&1
+	pkg_installed_prefix libmicrohttpd || pkg_install libmicrohttpd-no-ssl > /dev/null 2>&1
+	pkg_image_record
+	log "$(pkg_image_report | sed -n 2p)"
 }
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -1044,6 +1568,10 @@ $_bnn}
 
 $(flash_report)
 
+$(pkg_image_report)
+
+$(optional_report)
+
 Useful commands on the router:
   piso-setup status            health check of every part
   piso-setup wifi-name "Name"  rename the customer Wi-Fi
@@ -1235,6 +1763,8 @@ stage2() {
 # ---------------------------------------------------------------------------------------------------------------------
 cmd_status() {
 	[ -r "$STATE" ] && echo "setup: $(cat "$STATE")"
+	pkg_image_report
+	optional_report
 	DRY=1; check_all; _f=$?
 	box_name_notice   # (information only: it does not count as a failed check)
 	[ -s "$PISO_ROOT/etc/coinslot.d/alerts.txt" ] && { echo "Recent alerts (the router's monitor wrote them to /etc/coinslot.d/alerts.txt):"; tail -n 5 "$PISO_ROOT/etc/coinslot.d/alerts.txt" | sed 's/^/  /'; }
@@ -2364,6 +2894,7 @@ stage1() {
 
 	: > "$LOG"
 	install_packages
+	install_optional_packages
 	extract_payload "$0"
 	step "Writing the router settings"
 	[ -n "$(conf_get CONSOLE_MODE)" ] || conf_set CONSOLE_MODE front   # (the console is the front page, http://admin.hub; LuCI is on 8080)
@@ -2379,7 +2910,7 @@ main() {
 		case "$1" in
 			--dry-run) DRY=1 ;;
 			--yes | -y) ASSUME_YES=1 ;;
-			status | wan-clash | pair | summary | wifi-name | guest-port | kiosk-wifi | verify | uninstall-info | test-coin | diag | box-diag | set-password | reconcile | telegram | rotate-box-wifi | box-wifi-name | handout | console | export | import | space | forget-summary | lock-admin | lock-admin-confirm | unlock-admin | wifi-admin | update | self-update | box-update | auto-update | voucher-choice | brand-pack) CMD="$1"; shift; ARG="$1"; ARGS="$*"; break ;;
+			status | wan-clash | pair | summary | wifi-name | guest-port | kiosk-wifi | verify | uninstall-info | test-coin | diag | box-diag | set-password | reconcile | telegram | rotate-box-wifi | box-wifi-name | handout | console | export | import | space | forget-summary | lock-admin | lock-admin-confirm | unlock-admin | wifi-admin | update | self-update | box-update | auto-update | voucher-choice | brand-pack | sqm) CMD="$1"; shift; ARG="$1"; ARGS="$*"; break ;;
 			-h | --help) sed -n '2,/^# Options:/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 			*) echo "unknown option: $1 (try --help)" >&2; exit 1 ;;
 		esac
@@ -2410,6 +2941,7 @@ main() {
 		box-update) cmd_box_update "$ARG" ;;
 		auto-update) cmd_auto_update "$ARG" ;;
 		voucher-choice) cmd_voucher_choice "$ARG" ;;
+		sqm) cmd_sqm "$ARG" ;;
 		brand-pack) cmd_brand_pack "$ARG" ;;
 		lock-admin)
 			# shellcheck disable=SC2086 # one argument per MAC address

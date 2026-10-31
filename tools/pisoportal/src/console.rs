@@ -535,16 +535,17 @@ impl Console {
 
 // ---- the server ---------------------------------------------------------------------------------------------------------------------
 
-/// The owner's console settings (voucher choice at payment, file send, ledger size).
+/// The owner's console settings (voucher choice at payment, file send, ledger size, the smooth line).
 fn settings_json(core: &Core) -> String {
     let budget = crate::ledger::Budget::load(&core.cfg.revenue_path());
     format!(
-        "{{\"voucher_choice\":{},\"file_send\":{},\"file_send_key\":{},\"ledger_max_kb\":{},\"ledger_keep_months\":{}}}",
+        "{{\"voucher_choice\":{},\"file_send\":{},\"file_send_key\":{},\"ledger_max_kb\":{},\"ledger_keep_months\":{},\"sqm\":{}}}",
         core.voucher_choice(),
         core.send.switch_on(),
         core.send.has_key(),
         budget.max_kb,
-        budget.keep_months
+        budget.keep_months,
+        crate::sqmconsole::json(core)
     )
 }
 
@@ -737,7 +738,13 @@ fn handle(c: &Console, req: Request, mut conn: Incoming) {
                     // (only the settings named in the body change)
                     let (vc, fs) = (jget(&body, "voucher_choice"), jget(&body, "file_send"));
                     let (lkb, lkm) = (jget(&body, "ledger_max_kb"), jget(&body, "ledger_keep_months"));
-                    if vc.is_empty() && fs.is_empty() && lkb.is_empty() && lkm.is_empty() {
+                    let sqm = match crate::sqmconsole::parse(&c.core.cfg.data_dir, &body) {
+                        Ok(change) => change,
+                        Err((code, why)) => {
+                            return json(&mut conn, "400 Bad Request", &format!("{{\"error\":\"{}\",\"why\":\"{}\"}}", code, why), "");
+                        }
+                    };
+                    if vc.is_empty() && fs.is_empty() && lkb.is_empty() && lkm.is_empty() && sqm.is_none() {
                         return json(&mut conn, "400 Bad Request", "{\"error\":\"NOTHING\"}", "");
                     }
                     // the revenue ledger's size budget (feature 032): both are checked before either is saved
@@ -769,6 +776,12 @@ fn handle(c: &Console, req: Request, mut conn: Incoming) {
                             return json(&mut conn, "500 Internal Server Error", "{\"error\":\"IO\"}", "");
                         }
                     }
+                    if let Some(change) = &sqm {
+                        if !crate::sqmconsole::save(dd, change) {
+                            return json(&mut conn, "500 Internal Server Error", "{\"error\":\"IO\"}", "");
+                        }
+                        crate::sqmconsole::apply_in_background(&c.core.cfg.setup_bin);
+                    }
                     if !fs.is_empty() && !c.core.set_file_send(crate::config::parse_switch(&fs, true)) {
                         return json(&mut conn, "500 Internal Server Error", "{\"error\":\"IO\"}", "");
                     }
@@ -779,6 +792,25 @@ fn handle(c: &Console, req: Request, mut conn: Incoming) {
                     out.insert_str(1, "\"ok\":true,");
                     json(&mut conn, "200 OK", &out, "")
                 }
+                ("POST", "/api/speedtest") => match crate::sqmconsole::start_speedtest(&c.core) {
+                    Ok(()) => {
+                        let mut out = settings_json(&c.core);
+                        out.insert_str(1, "\"ok\":true,");
+                        json(&mut conn, "200 OK", &out, "")
+                    }
+                    Err((code, why)) => {
+                        let status = if code == "TOO_SOON" { "429 Too Many Requests" } else { "409 Conflict" };
+                        json(&mut conn, status, &format!("{{\"error\":\"{}\",\"why\":\"{}\"}}", code, why), "")
+                    }
+                },
+                ("POST", "/api/sqm/install") => match crate::sqmconsole::start_install(&c.core) {
+                    Ok(()) => {
+                        let mut out = settings_json(&c.core);
+                        out.insert_str(1, "\"ok\":true,");
+                        json(&mut conn, "200 OK", &out, "")
+                    }
+                    Err((code, why)) => json(&mut conn, "409 Conflict", &format!("{{\"error\":\"{}\",\"why\":\"{}\"}}", code, why), ""),
+                },
                 ("GET", "/api/brand") => json(&mut conn, "200 OK", &crate::brandconsole::editor_json(&c.core.cfg.data_dir), ""),
                 ("POST", "/api/brand") => match crate::brandconsole::save_draft(&c.core.cfg.data_dir, &body) {
                     Ok(notes) => {

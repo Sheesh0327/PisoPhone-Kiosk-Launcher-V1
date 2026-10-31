@@ -39,7 +39,7 @@ thead th{position:sticky;top:0;z-index:1;background:var(--s1)}tbody tr:hover td{
 button.b,a.b{display:inline-block;min-height:32px;padding:5px 12px;border-radius:8px;border:1px solid var(--ln2);background:var(--s1);color:var(--tx);cursor:pointer;font:inherit;font-size:13px;font-weight:550;text-decoration:none}
 button.b:hover,a.b:hover{background:var(--s2)}
 button.go{min-height:40px;padding:0 20px;border:0;border-radius:8px;background:var(--pri);color:var(--prifg);font:inherit;font-weight:650;cursor:pointer}
-button.go:hover{opacity:.9}button.go:disabled{opacity:.5}
+.ra{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.ra button.b{min-height:40px}button.go:hover{opacity:.9}button.go:disabled{opacity:.5}
 button.dg{border-color:var(--bad);color:var(--bad)}
 button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid var(--bfg);outline-offset:2px}
 input,select{height:40px;width:100%;padding:0 12px;border-radius:8px;border:1px solid var(--ln2);background:var(--bg);color:var(--tx);font:inherit}
@@ -136,6 +136,12 @@ main{padding:16px 16px 40px}footer{padding:12px 16px}.hm{display:none}
 <div><label for="lkb">Sales record: most space it may use, in KB (0 = never delete old months)</label><input id="lkb" type="number" min="0" max="16384" step="1"></div>
 <div><label for="lkm">Sales record: months of detail you would like to keep</label><input id="lkm" type="number" min="1" max="60" step="1"></div></div>
 <p class="s" id="setm" role="status"></p><p class="s">Takes effect at once. A payment already started keeps the choice it began with. The same setting on the router: <b>piso-setup voucher-choice on|off</b>. When the sales record is bigger than its space (256 to 16384 KB, 1024 by default), the router deletes the oldest months at the start of a month, a few at a time. Your lifetime total, each deleted month's total and the check against the coin box stay; only the line-by-line detail of those months is gone. The space wins: a busy shop may keep fewer months than it would like.</p></div>
+<h2>Smooth line</h2><div class="card" id="sqc"><p class="s">Keeps one customer's big download from filling the whole line, so every page stays quick. Type the real speed of your internet line (or press Test my line), leave a little room, and switch it on. It never changes the speed limits of your plans.</p><p class="s" id="sqn" role="status"></p>
+<div class="sg"><div><label for="sqd">Download speed of your line (Mbps)</label><input id="sqd" inputmode="decimal" autocomplete="off"></div>
+<div><label for="squ">Upload speed of your line (Mbps)</label><input id="squ" inputmode="decimal" autocomplete="off"></div>
+<div><label for="sqp">Leave this much room, in percent of the line (50 to 100)</label><input id="sqp" type="number" min="50" max="100" step="1"></div>
+<div><label for="sqs">Smooth line</label><select id="sqs"><option value="off">Off</option><option value="on">On</option></select></div></div>
+<p class="s" id="sql"></p><div class="ra"><button class="go" id="sqk">Save</button><button class="b" id="sqt">Test my line</button><button class="b hide" id="sqi">Install now</button></div><p class="s" id="sqb" role="status"></p><p id="sqm2" class="s" role="status"></p></div>
 <h2>Prices</h2><div class="card" id="prc"><p class="s">Pesos to minutes. The best mix of lines is used for any amount, so &#8369;17 can be 10 + 5 + 1 + 1. Each plan needs a 1-peso line, so every coin counts. A payment already started keeps the prices it began with.</p>
 <div class="pg"><div><h3>HyperSpeed</h3><div id="rows-h"></div><button class="b" id="add-h">Add a line</button>
 <div class="f" style="margin-top:12px;max-width:240px"><div><label for="pro">Minutes for each extra peso</label><input id="pro" type="number" min="0" max="120" step="1"></div></div></div>

@@ -358,7 +358,7 @@ try:
             pg.click("#gobtn")
             pg.wait_for_selector("#app:not(.hide)", timeout=8000)
             pg.wait_for_timeout(800)
-            check(pg.evaluate("window.PISO_UI_VERSION") == (11 if name.startswith("old script") else 12), f"{name}: the script that runs is the one chosen: {pg.evaluate('window.PISO_UI_VERSION')}")
+            check(pg.evaluate("window.PISO_UI_VERSION") == (11 if name.startswith("old script") else 13), f"{name}: the script that runs is the one chosen: {pg.evaluate('window.PISO_UI_VERSION')}")
             for t, label in SCREENS:
                 pg.click(f'#tabs button[data-t="{t}"]')
                 pg.wait_for_timeout(500)
