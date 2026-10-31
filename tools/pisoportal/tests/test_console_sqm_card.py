@@ -2,7 +2,12 @@
 """The console's Smooth line card in a real browser (headless Chromium), feature 056 groups 5 and 5d: greyed out with its reason and Install now where the router has no
 SQM, Test my line fills the two boxes (and says when the router itself was the limit), the live "will limit to" line, Save, a bad number, what is typed surviving the
 page's refresh, and the card at phone width. The router side is a fake piso-setup."""
-import glob, os, shutil, sys, time
+import glob
+import os
+import shutil
+import sys
+import time
+
 from harness import *
 
 try:

@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """The console's "Test my line" (feature 056, group 5c): POST /api/speedtest starts `piso-setup sqm test` outside the request, only when it may (SQM installed, nobody
 online, one at a time, one a minute), and GET /api/settings carries the state, the result and the reason a start is not possible."""
-import json, os, time, urllib.error, urllib.request
+import json
+import os
+import time
+import urllib.error
+import urllib.request
+
 from harness import *
 
 CP = 18810

@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """The console's smooth-line (SQM) settings (feature 056, group 4): what GET /api/settings reports about SQM, which values POST /api/settings accepts, that a bad
 value saves nothing and starts nothing, and that a good one is saved first and then handed to `piso-setup sqm apply` outside the request."""
-import json, os, time, urllib.error, urllib.request
+import json
+import os
+import time
+import urllib.error
+import urllib.request
+
 from harness import *
 
 CP = 18800

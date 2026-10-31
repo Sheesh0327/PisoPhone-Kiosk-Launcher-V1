@@ -91,6 +91,7 @@ check(not os.path.exists(f"{root}/etc/coinslot.d/settings.txt"), "a test saves n
 
 # ---- the data is capped -----------------------------------------------------------------------------------------------
 import re
+
 sizes = [int(x) for x in re.findall(r"bytes=(\d+)", calls)]
 check(sizes and sum(sizes) <= 260 * 1000 * 1000, "no more than about 250 MB is asked for downloading: " + str(sizes))
 
@@ -120,7 +121,8 @@ check("curl " not in calls and "sqm-init" not in calls and js is None, "and noth
 r, calls, js, root = run(settings=ON, T_ACTIVE="1", T_SLEEP="2", T_GUESTS_FILE=f"{tmp}/guest-arrived")
 check("rc=0" not in r.stdout and js and js["state"] == "failed" and "customer" in js["reason"], "a customer connects mid-test: it stops and says so: " + r.stdout + str(js))
 check("sqm-init start" in calls, "and SQM is back: " + calls)
-os.path.exists(f"{tmp}/guest-arrived") and os.remove(f"{tmp}/guest-arrived")
+if os.path.exists(f"{tmp}/guest-arrived"):
+    os.remove(f"{tmp}/guest-arrived")
 
 # ---- the router itself was the limit ----------------------------------------------------------------------------------
 r, calls, js, root = run(T_CPU="busy", T_DOWN_MBPS="300")

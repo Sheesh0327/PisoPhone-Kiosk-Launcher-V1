@@ -10,7 +10,7 @@ import tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SCRIPT = f"{ROOT}/setup/piso-setup.sh"
 failures = checks = 0
-ALL_UCI = []   # every uci call (and batch line) any run below made
+ALL_UCI: list[str] = []   # every uci call (and batch line) any run below made
 
 
 def check(cond, msg):
@@ -24,7 +24,7 @@ def check(cond, msg):
 tmp = tempfile.mkdtemp()
 bindir = f"{tmp}/bin"
 os.makedirs(bindir)
-open(f"{bindir}/uci", "w").write(f'''#!/bin/sh
+open(f"{bindir}/uci", "w").write('''#!/bin/sh
 echo "uci $*" >> "$T_LOG"
 case "$1" in batch) cat >> "$T_LOG" ;; esac
 exit 0

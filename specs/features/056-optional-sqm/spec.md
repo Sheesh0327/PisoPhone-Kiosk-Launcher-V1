@@ -1,6 +1,6 @@
 # Feature 056: Optional smooth-line packages (SQM) and a console setting to match the real ISP speed
 
-Status: **approved 2026-10-31; speed test added 2026-10-31 and the owner said proceed; in progress (groups that need the router wait)**   Branch: `feat/056-optional-sqm` (a router change: from `beta`, see `CLAUDE.md` section 5; this session works on `ccr-e31098f5-7k2rgz`)   Area: setup + router
+Status: **built and validated on a computer 2026-10-31 (groups 1 to 8); bench groups 0 and 9 wait for the owner's router**   Branch: `feat/056-optional-sqm` (a router change: from `beta`, see `CLAUDE.md` section 5; this session works on `ccr-e31098f5-7k2rgz`)   Area: setup + router
 Backlog rows: owner request 2026-10-31 (no backlog row)   Release: router (through `beta`)
 
 ## Intent
