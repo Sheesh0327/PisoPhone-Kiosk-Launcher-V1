@@ -248,6 +248,7 @@ jobs:
           python3 scripts/tests/test_portal_session_ui.py
           python3 scripts/tests/test_portal_theme_ui.py
           python3 scripts/tests/test_portal_license_ui.py
+          python3 scripts/tests/test_portal_voice_ui.py
       - name: Run host tests
         run: sh esp32_firmware/host_tests/run.sh
       - name: Test the sold-unit checker

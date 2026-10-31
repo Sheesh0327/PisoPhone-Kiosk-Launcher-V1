@@ -230,6 +230,25 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .row-batt.mid { color: var(--warn); }
 .row-actions { display: flex; justify-content: flex-end; gap: 8px; white-space: nowrap; }
 .row-actions .btn { min-width: 76px; justify-content: center; }
+/*@phones*/
+.voice-cell { display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; max-width: 320px; }
+.row-actions .voice-btn { min-width: 0; padding-left: 10px; padding-right: 10px; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.voice-btn .ic { width: 18px; height: 18px; }
+.voice-cell .plane, .voice-cell .cross, .voice-cell .voice-busy, .voice-cell .voice-sent { display: none; }
+.voice-cell[data-phase="recorded"] .mic, .voice-cell[data-phase="failed"] .mic, .voice-cell[data-phase="sending"] .mic, .voice-cell[data-phase="sent"] .mic { display: none; }
+.voice-cell[data-phase="recorded"] .plane, .voice-cell[data-phase="failed"] .plane, .voice-cell[data-phase="recorded"] .cross, .voice-cell[data-phase="failed"] .cross { display: inline-flex; }
+.voice-cell[data-phase="sending"] .voice-busy, .voice-cell[data-phase="sent"] .voice-sent { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.voice-cell[data-phase="sent"] .voice-sent { color: var(--ok); }
+.voice-cell[data-phase="recording"] .mic { background: var(--bad); border-color: var(--bad); color: #fff; animation: voice-pulse 1s ease-in-out infinite; }
+.voice-btn.off { opacity: 0.45; }
+.voice-count, .voice-len { font-family: var(--mono); font-variant-numeric: tabular-nums; font-size: 12px; }
+.voice-count:empty, .voice-len:empty { display: none; }
+.voice-note { flex-basis: 100%; text-align: right; font-size: 12px; line-height: 1.35; white-space: normal; color: var(--muted); }
+.voice-note.bad { color: var(--bad); }
+.voice-note:empty { display: none; }
+@keyframes voice-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.65; } }
+@media (prefers-reduced-motion: reduce) { .voice-cell[data-phase="recording"] .mic { animation: none; } }
+/*@end*/
 .row-empty-msg { padding: 28px 20px; text-align: center; color: var(--muted); }
 .mini-bar { width: 44px; height: 5px; background: var(--line); border-radius: 99px; overflow: hidden; }
 .mini-bar > i { display: block; height: 100%; background: var(--ok); }
