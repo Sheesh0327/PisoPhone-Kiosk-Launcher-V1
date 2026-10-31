@@ -1,13 +1,11 @@
 package com.pisophone.kiosk.voice
 
-import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import java.io.File
 import java.security.MessageDigest
 
 /**
@@ -17,14 +15,9 @@ import java.security.MessageDigest
  */
 @RunWith(RobolectricTestRunner::class)
 class VoiceClipTest {
-    private fun fixture(): JSONObject {
-        val candidates = listOf("../protocol/fixtures/box_phone_voice_v1.json", "protocol/fixtures/box_phone_voice_v1.json")
-        val file = candidates.map { File(it) }.firstOrNull { it.isFile }
-            ?: error("protocol/fixtures/box_phone_voice_v1.json not found from ${File(".").absolutePath}")
-        return JSONObject(file.readText())
-    }
+    private fun fixture() = VoiceTestSupport.fixture()
 
-    private fun hex(s: String): ByteArray = ByteArray(s.length / 2) { s.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
+    private fun hex(s: String) = VoiceTestSupport.hex(s)
 
     private fun sha256(samples: ShortArray): String {
         val bytes = ByteArray(samples.size * 2)

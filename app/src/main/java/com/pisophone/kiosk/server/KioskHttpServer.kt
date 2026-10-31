@@ -5,6 +5,7 @@ import android.util.Log
 import com.pisophone.kiosk.network.BoxClock
 import com.pisophone.kiosk.repository.PaymentResult
 import com.pisophone.kiosk.security.KioskSecurity
+import com.pisophone.kiosk.voice.VoiceMessageReceiver
 import fi.iki.elonen.NanoHTTPD
 import org.json.JSONObject
 import java.util.concurrent.ConcurrentHashMap
@@ -27,6 +28,12 @@ interface KioskServerDelegate {
      * default does nothing, so a delegate written before this feature keeps compiling and an old box changes nothing.
      */
     fun onBrandingUpdated(palette: String?, shopName: String?, title: String?, density: String?, deviceLabel: String? = null) {}
+    /**
+     * A voice message from the box (feature 056) that has arrived whole and checked out, as 8 kHz mono samples. The default does nothing,
+     * so a delegate written before this feature keeps compiling.
+     */
+    fun onVoiceMessage(samples: ShortArray) {}
+
     fun onTriggerAction(action: String, slotNum: Int? = null, extra: Map<String, String>? = null)
     fun getCrashLog(): String?
 }
@@ -369,6 +376,27 @@ class KioskHttpServer(
                 val slot = decryptedParams["slot"]?.toIntOrNull() ?: decryptedParams["slot_num"]?.toIntOrNull()
                 delegate.onTriggerAction(actionType, slot, decryptedParams)
                 createResponse(Response.Status.OK, "text/plain", "OK")
+            }
+            "/voice" -> {
+                if (!delegate.isReady()) {
+                    createResponse(Response.Status.SERVICE_UNAVAILABLE, "text/plain", "INITIALIZING")
+                } else {
+                    // The signed request has passed every check above (signature, time, once only). Its body is the frames of the
+                    // message: read here, with a known length (NanoHTTPD 2.3.1 has no chunked requests). Nothing plays unless all checks.
+                    val contentLength = session.headers["content-length"]?.trim()?.toLongOrNull() ?: -1L
+                    val envelopeHmac = hmac.trim().lowercase()
+                    val outcome = VoiceMessageReceiver.receive(secretKey, envelopeHmac, decryptedParams, contentLength, session.inputStream)
+                    when (outcome) {
+                        is VoiceMessageReceiver.Outcome.Accepted -> {
+                            delegate.onVoiceMessage(outcome.samples)
+                            createResponse(Response.Status.OK, "text/plain", "OK")
+                        }
+                        is VoiceMessageReceiver.Outcome.Refused -> {
+                            Log.w(TAG, "Refused a voice message: ${outcome.word}")
+                            createResponse(Response.Status.BAD_REQUEST, "text/plain", outcome.word)
+                        }
+                    }
+                }
             }
             "/crash" -> {
                 val crashText = delegate.getCrashLog()

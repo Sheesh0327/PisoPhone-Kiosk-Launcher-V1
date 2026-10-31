@@ -8,6 +8,7 @@ import android.os.SystemClock
 import android.util.Log
 import android.widget.Toast
 import com.pisophone.kiosk.audio.KioskAudioManager
+import com.pisophone.kiosk.audio.VoiceMessageController
 import com.pisophone.kiosk.db.AppDatabase
 import com.pisophone.kiosk.db.CoinEvent
 import com.pisophone.kiosk.network.Esp32AccountRequests
@@ -225,6 +226,9 @@ class KioskEngine(
         delegate = esp32Coordinator,
     )
 
+    /** Plays the voice messages the shop's box passes on (feature 056); the countdown and closing speech keep their priority. */
+    private val voiceMessages = VoiceMessageController(context) { audioManager.isSpeaking() }
+
     private val serverCoordinator = KioskServerCoordinator(
         context = context,
         stateManager = stateManager,
@@ -239,6 +243,7 @@ class KioskEngine(
         isReady = { isInitialized.get() },
         onUnverifiedEsp32Contact = { _ -> esp32Manager.triggerCandidateDiscovery(stateManager.deviceIp.value) },
         onSessionLocked = { cancelArm -> onSessionLocked(cancelArm) },
+        onVoiceMessage = { samples -> voiceMessages.onMessage(samples) },
     )
 
     private val supervisor = KioskSessionSupervisor(
@@ -807,6 +812,7 @@ class KioskEngine(
         esp32Manager.shutdown()
         audioManager.shutdown()
         nanoServer?.stop()
+        voiceMessages.stop()
         overlayCoordinator.remove()
     }
 }

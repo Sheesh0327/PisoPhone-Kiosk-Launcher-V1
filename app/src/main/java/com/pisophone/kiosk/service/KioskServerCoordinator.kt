@@ -36,6 +36,8 @@ class KioskServerCoordinator(
     private val onUnverifiedEsp32Contact: ((String) -> Unit)? = null,
     /** Centralized lock side effects (unarm, send customer app home, pause media). */
     private val onSessionLocked: (cancelArm: Boolean) -> Unit = {},
+    /** A voice message from the box that arrived whole and checked out (feature 056). */
+    private val onVoiceMessage: (ShortArray) -> Unit = {},
 ) : KioskServerDelegate {
     companion object {
         private const val TAG = "KioskServerCoordinator"
@@ -44,6 +46,8 @@ class KioskServerCoordinator(
     override fun isReady(): Boolean = isReady.invoke()
 
     override fun getSecretKey(): String = getSecretKey.invoke()
+
+    override fun onVoiceMessage(samples: ShortArray) = onVoiceMessage.invoke(samples)
 
     override fun getDeviceId(): String = stateManager.deviceId.value.ifBlank { KioskSecurity.getHardwareId(context) }
 

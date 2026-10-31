@@ -83,6 +83,7 @@
     </plurals>
 
     <string name="popover_time_added">Time added!</string>
+    <string name="voice_message_banner">Message from the shop</string>
     <string name="pill_boost">Boost</string>
     <string name="pill_boosting">Boosting…</string>
     <string name="pill_boost_hint">Closes your other apps. The one you are using stays open.</string>
