@@ -29,7 +29,8 @@ class VoiceFrameAssembler(
     sealed class Result {
         class Ok(val clip: ByteArray) : Result()
 
-        class Refused(val reason: String) : Result()
+        /** [cause] is the exception behind a refusal, when there is one (it is logged by the server). */
+        class Refused(val reason: String, val cause: Throwable? = null) : Result()
     }
 
     companion object {
@@ -98,7 +99,7 @@ class VoiceFrameAssembler(
                     doFinal(cipher)
                 }
             } catch (e: GeneralSecurityException) {
-                return Result.Refused("padding")
+                return Result.Refused("padding", e)
             }
             if (plain.size != plainLen) return Result.Refused("padding")
             plain.copyInto(clip, seq * PLAIN_MAX)

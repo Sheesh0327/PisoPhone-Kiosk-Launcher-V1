@@ -56,7 +56,10 @@ internal object VoiceTestSupport {
             val body = cipher.doFinal(if (raw) rawFirstBody else plain)
             val head = byteArrayOf(
                 if (seq == count - 1) 1 else 0,
-                (seq shr 8).toByte(), seq.toByte(), (plain.size shr 8).toByte(), plain.size.toByte(),
+                (seq shr 8).toByte(),
+                seq.toByte(),
+                (plain.size shr 8).toByte(),
+                plain.size.toByte(),
             )
             val mac = Mac.getInstance("HmacSHA256")
             mac.init(SecretKeySpec(secret.toByteArray(), "HmacSHA256"))

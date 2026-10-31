@@ -6,6 +6,7 @@ import android.os.Looper
 import android.util.Log
 import android.widget.Toast
 import com.pisophone.kiosk.audio.KioskAudioManager
+import com.pisophone.kiosk.audio.VoiceMessageController
 import com.pisophone.kiosk.repository.CoinEventRepository
 import com.pisophone.kiosk.repository.PaymentRepository
 import com.pisophone.kiosk.repository.PaymentResult
@@ -36,8 +37,6 @@ class KioskServerCoordinator(
     private val onUnverifiedEsp32Contact: ((String) -> Unit)? = null,
     /** Centralized lock side effects (unarm, send customer app home, pause media). */
     private val onSessionLocked: (cancelArm: Boolean) -> Unit = {},
-    /** A voice message from the box that arrived whole and checked out (feature 056). */
-    private val onVoiceMessage: (ShortArray) -> Unit = {},
 ) : KioskServerDelegate {
     companion object {
         private const val TAG = "KioskServerCoordinator"
@@ -47,7 +46,10 @@ class KioskServerCoordinator(
 
     override fun getSecretKey(): String = getSecretKey.invoke()
 
-    override fun onVoiceMessage(samples: ShortArray) = onVoiceMessage.invoke(samples)
+    /** Plays the voice messages the shop's box passes on (feature 056); the countdown and closing speech keep their priority. */
+    private val voiceMessages by lazy { VoiceMessageController(context) { getAudioManager()?.isSpeaking() == true } }
+
+    override fun onVoiceMessage(samples: ShortArray) = voiceMessages.onMessage(samples)
 
     override fun getDeviceId(): String = stateManager.deviceId.value.ifBlank { KioskSecurity.getHardwareId(context) }
 

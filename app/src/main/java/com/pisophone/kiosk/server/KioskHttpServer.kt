@@ -28,6 +28,7 @@ interface KioskServerDelegate {
      * default does nothing, so a delegate written before this feature keeps compiling and an old box changes nothing.
      */
     fun onBrandingUpdated(palette: String?, shopName: String?, title: String?, density: String?, deviceLabel: String? = null) {}
+
     /**
      * A voice message from the box (feature 056) that has arrived whole and checked out, as 8 kHz mono samples. The default does nothing,
      * so a delegate written before this feature keeps compiling.
@@ -392,7 +393,7 @@ class KioskHttpServer(
                             createResponse(Response.Status.OK, "text/plain", "OK")
                         }
                         is VoiceMessageReceiver.Outcome.Refused -> {
-                            Log.w(TAG, "Refused a voice message: ${outcome.word}")
+                            Log.w(TAG, "Refused a voice message: ${outcome.word}", outcome.cause)
                             createResponse(Response.Status.BAD_REQUEST, "text/plain", outcome.word)
                         }
                     }

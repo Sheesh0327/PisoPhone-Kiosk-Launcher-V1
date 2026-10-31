@@ -12,8 +12,8 @@ object VoiceMessageReceiver {
     sealed class Outcome {
         class Accepted(val samples: ShortArray) : Outcome()
 
-        /** [word] is what the server answers with and writes to its log. */
-        class Refused(val word: String) : Outcome()
+        /** [word] is what the server answers with and writes to its log, with [cause] (an exception behind it, if any). */
+        class Refused(val word: String, val cause: Throwable? = null) : Outcome()
     }
 
     /**
@@ -30,10 +30,10 @@ object VoiceMessageReceiver {
             VoiceFrameAssembler(secret, envelopeHmacHex, clipBytes).readFrom(body)
         } catch (e: IOException) {
             // The sender stopped (a Wi-Fi drop: the server's own read timeout) or the connection broke: nothing is played.
-            return Outcome.Refused("VOICE_CUT_OFF")
+            return Outcome.Refused("VOICE_CUT_OFF", e)
         }
         val clip = when (assembled) {
-            is VoiceFrameAssembler.Result.Refused -> return Outcome.Refused("VOICE_FRAMES_${assembled.reason}")
+            is VoiceFrameAssembler.Result.Refused -> return Outcome.Refused("VOICE_FRAMES_${assembled.reason}", assembled.cause)
             is VoiceFrameAssembler.Result.Ok -> assembled.clip
         }
         return when (val decoded = VoiceClip.decode(clip)) {
