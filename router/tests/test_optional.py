@@ -97,5 +97,22 @@ check("Smooth-line packages" in r.stdout, "the setup summary shows the optional 
 flow = open(f"{ROOT}/setup/src/98-setup-flow.sh").read()
 check("install_packages\n\tinstall_optional_packages" in flow, "the first setup runs the optional step right after openNDS and the others")
 
+# ---- criterion 1: openNDS first, the others optional --------------------------------------------------------------------------------
+CORE = r'''
+pkg_update() { return 0; }
+stop_opennds() { :; }
+pkg_installed_prefix() { return 0; }
+pkg_image_record() { :; }
+pkg_image_report() { printf 'x\ny\n'; }
+'''
+r, calls, st = run(CORE + "install_packages; echo rc=$?", T_FAILINSTALL="opennds", T_INSTALLED="curl ca-bundle jsonfilter")
+check(r.returncode != 0 and "rc=0" not in r.stdout and "could not install opennds" in r.stdout + r.stderr, "openNDS cannot be installed: the setup stops with the message it has always had: " + r.stdout + r.stderr)
+check("INSTALL opennds" in calls and "sqm" not in calls, "and no optional package was tried: " + calls)
+r, calls, st = run(CORE + "install_packages && install_optional_packages; echo rc=$?", T_FAILINSTALL="sqm-scripts kmod-ifb kmod-sched-cake irqbalance", T_INSTALLED="curl ca-bundle jsonfilter")
+check("rc=0" in r.stdout and "INSTALL opennds" in calls, "openNDS goes in and every optional package fails: the setup carries on without an error: " + r.stdout + r.stderr)
+check(st.count("|failed|") >= 3, "and each failure is written down: " + st)
+flow = open(f"{ROOT}/setup/src/98-setup-flow.sh").read()
+check(flow.index("\tinstall_packages\n") < flow.index("\tinstall_optional_packages\n"), "the setup flow installs the required packages before it tries the optional ones")
+
 print(f"{checks} checks, {failures} failures")
 sys.exit(1 if failures else 0)

@@ -4,7 +4,7 @@ Status 2026-10-31: **built and tested on a computer; nothing has run on a router
 
 | # | Success criterion | Check | Result | Evidence |
 |---|---|---|---|---|
-| 1 | openNDS first, others optional | `router/tests/test_optional.py`: "it always finishes without an error"; every optional failure is reported, never fatal | **partly**: optional steps never stop the setup. "openNDS fails stops with today's message" has **no test that names it** | `test_optional.py` 21 checks, 0 failures |
+| 1 | openNDS first, others optional | `router/tests/test_optional.py`: with openNDS failing, `install_packages` stops with "could not install opennds" and tries no optional package; with only optional packages failing the setup carries on and writes each failure down; the flow installs the required packages first (the test was shown to fail when the install works) | pass (fake package layer) | `test_optional.py` 26 checks, 0 failures |
 | 2 | Image type | `router/tests/test_pkgmgr.py` (official, fork, custom; `test_optional.py` for what each is offered) | pass (fake commands and container images only) | `test_pkgmgr.py` 56, `test_optional.py` 21 |
 | 3 | Scan, priority order, cake missing gives fq_codel, fake opkg and fake apk | `test_optional.py`, `test_sqm.py` (fq_codel without cake) | pass | 21 and 37 checks, 0 failures |
 | 4 | All-or-nothing core | `test_optional.py` ("a core install that fails is taken out again") | pass | as above |
