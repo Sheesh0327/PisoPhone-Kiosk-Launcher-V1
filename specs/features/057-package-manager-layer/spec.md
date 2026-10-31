@@ -1,6 +1,6 @@
 # Feature 057: One package-manager layer for the router setup (opkg and apk)
 
-Status: **draft (waiting for the owner's approval)**   Branch: `feat/057-package-manager-layer` (a router change: from `beta`, see `CLAUDE.md` section 5; this session works on `ccr-e31098f5-7k2rgz`)   Area: setup (router installer, `install.sh`, setup program)
+Status: **approved 2026-10-31**   Branch: `feat/057-package-manager-layer` (a router change: from `beta`, see `CLAUDE.md` section 5; this session works on `ccr-e31098f5-7k2rgz`)   Area: setup (router installer, `install.sh`, setup program)
 Backlog rows: owner request 2026-10-31; replaces the "full apk support is a later feature" note of feature 046   Release: router (through `beta`)
 
 ## Intent
