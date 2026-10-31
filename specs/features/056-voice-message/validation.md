@@ -8,9 +8,9 @@ Nothing is built yet. Every line below is "not run" until its task group is done
 | 2 | A refresh of the phone list never disturbs a recording or a waiting clip | browser test | not run | |
 | 3 | Which rows get a mic, a greyed mic, or none; nothing in the PisoWiFi-only image | browser test; `python3 scripts/check_product_strip.py` | not run | |
 | 4 | Blocked microphone: plain message, nothing recorded (three cases) | browser test with the cases faked | not run | |
-| 5 | Wire format: page encoder, Python reference and phone decoder agree; bad clips refused | `protocol/` vectors; `voice_clip_test.cpp`; Kotlin unit test; browser test | not run | |
+| 5 | Wire format and frames: page encoder, Python reference and phone decoder agree; bad clips and bad frame sets refused | `protocol/` vectors; `voice_clip_test.cpp`; Kotlin unit test; browser test | not run | |
 | 6 | Security: unsigned, stale, replayed and mis-sized messages play nothing; signed-out, foreign-site and unknown-address requests refused | host tests; Kotlin unit tests | not run | |
-| 7 | Relay: byte-for-byte delivery; busy, low memory and unreachable phone each give their own error; buffer freed; nothing stored | host tests with a fake phone | not run | |
+| 7 | Relay, streamed: byte-for-byte delivery; never more than one frame held (longest clip); busy, low memory, unreachable phone and a stalled or dropped phone each give their own error; buffer freed; nothing stored | host tests with a fake phone | not run | |
 | 8 | Phone playback: plays once with the banner, replaces, waits for the countdown, deletes the clip, leaves time and session alone | Robolectric unit tests | not run | |
 | 9 | Money and time: existing coin, payment, protocol and session tests unchanged and green; relay refuses before its reserve is touched | `esp32_firmware/host_tests/run.sh`; `./gradlew testDebugUnitTest` | not run | |
 | 10 | Capability flag; no new manifest permission; versions raised; generated files current; security rules pass | manifest diff; `embed_web.py` check; `bash scripts/check_security_rules.sh` | not run | |
