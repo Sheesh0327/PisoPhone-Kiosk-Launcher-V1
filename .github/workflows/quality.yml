@@ -334,6 +334,7 @@ jobs:
           cargo test --locked --release
           python3 tests/test_flow.py
           python3 tests/test_console.py
+          python3 tests/test_console_sqm.py
           python3 tests/test_pricing_flow.py
           python3 tests/test_link_loss.py
           python3 tests/test_money_panel.py
@@ -357,6 +358,9 @@ jobs:
       - name: Check the package-manager layer (opkg, apk or none; official, fork or custom image) and the flags it must never use
         run: |
           python3 router/tests/test_pkgmgr.py
+          python3 router/tests/test_optional.py
+          python3 router/tests/test_sqm.py
+          python3 router/tests/test_sqm_test.py
           python3 scripts/tests/test_package_flags.py
       - name: Footprint budget (a small router must fit)
         run: python3 router/tests/test_footprint.py

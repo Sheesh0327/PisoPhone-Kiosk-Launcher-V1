@@ -36,7 +36,7 @@ Small, ordered, each finished and checkable on its own. Test first; a red result
   `ifstatus wan | jsonfilter -e '@.l3_device'`, writes `/etc/config/sqm` at the chosen margin, enables and restarts sqm, or removes the shaping when off),
   `sqm status` (writes the status file the portal reads). (files: new `setup/src/` piece or `80-commands.sh`; test: `router/tests/test_setup_tools.py`
   with a fake uci/ifstatus: 95% of 50/20 gives 47500/19000 kbit/s, PPPoE device, off removes; red: yes)
-- [ ] 4. **Portal settings.** `GET/POST /api/settings` carry `sqm` (available, reason, on, down, up, percent, qdisc, limit_down, limit_up). Validation as in criterion 5, saved by `override_set`,
+- [x] 4. **Portal settings.** (done on a computer 2026-10-31: `tools/pisoportal/src/sqmconsole.rs`, `tests/test_console_sqm.py` 46 checks, 3 unit tests; the hand-over is `piso-setup sqm apply` through `PISO_SETUP_BIN`; the card in the console is group 5.) `GET/POST /api/settings` carry `sqm` (available, reason, on, down, up, percent, qdisc, limit_down, limit_up). Validation as in criterion 5, saved by `override_set`,
   then the portal hands over to `piso-setup sqm apply` (not in the request thread). A bad value saves nothing. (files: `console.rs`, `config.rs`; test: `cargo test` and
   `tests/test_flow.py`; red: yes)
 - [ ] 5. **Console card.** The Settings page card: fields, live "will limit to" line, switch, greyed-out reason + Install now where it can work; English text in

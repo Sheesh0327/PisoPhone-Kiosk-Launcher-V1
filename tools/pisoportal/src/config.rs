@@ -61,6 +61,8 @@ pub struct Config {
     pub console_port: u16,
     pub ubus: String,
     pub setup_conf: String,
+    /// the installed command the console hands work to (`sqm apply`); PISO_SETUP_BIN in tests
+    pub setup_bin: String,
     pub dhcp_leases: String,
     pub route_file: String,
     pub netdev_file: String,
@@ -198,6 +200,7 @@ impl Config {
             console_port: port("CONSOLE_PORT", 8081),
             ubus: get("UBUS", "ubus"),
             setup_conf: get("PISO_SETUP_CONF", "/etc/piso-setup.conf"),
+            setup_bin: get("PISO_SETUP_BIN", "/usr/sbin/piso-setup"),
             dhcp_leases: get("DHCP_LEASES", "/tmp/dhcp.leases"),
             route_file: get("ROUTE_FILE", "/proc/net/route"),
             netdev_file: get("NETDEV_FILE", "/proc/net/dev"),

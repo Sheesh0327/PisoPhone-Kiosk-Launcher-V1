@@ -209,7 +209,9 @@ try:
     check(b"wheel" not in call("/ui.js")[1].lower() and b"wheel" not in call("/")[1].lower(), "033: the console page and its script have no wheel panel")
     # ---- settings: the voucher choice ----------------------------------------------------------------------------------------------------------
     code, body, _h = call("/api/settings", cookie=cookie)
-    check(code == 200 and json.loads(body) == {"voucher_choice": True, "file_send": True, "file_send_key": True, "ledger_max_kb": 1024, "ledger_keep_months": 3}, f"settings: the voucher choice is on, the mini-game has 10 minutes, file sending is on and the revenue ledger has 1024 KB for 3 wanted months by default: {body}")
+    settings_now = json.loads(body)
+    sqm_block = settings_now.pop("sqm", None)   # (feature 056: the smooth line block has its own test, test_console_sqm.py)
+    check(code == 200 and settings_now == {"voucher_choice": True, "file_send": True, "file_send_key": True, "ledger_max_kb": 1024, "ledger_keep_months": 3} and isinstance(sqm_block, dict), f"settings: the voucher choice is on, the mini-game has 10 minutes, file sending is on and the revenue ledger has 1024 KB for 3 wanted months by default: {body}")
     check(call("/api/settings", cookie="piso_console=x")[0] == 401, "settings need a session")
     check(call("/api/settings", {"voucher_choice": "off"}, cookie=cookie, headers={"X-Piso": "0"})[0] == 403, "changing a setting needs the page's header")
     check(call("/api/settings", {}, cookie=cookie)[0] == 400, "a change that names nothing is refused")
