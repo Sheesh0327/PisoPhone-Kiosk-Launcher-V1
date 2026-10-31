@@ -21,11 +21,21 @@ Branch `ccr-e31098f5-7k2rgz` (the session branch; not pushed to `beta` or `main`
 - Cloudflare speed endpoints could not be reached from the build session (unverified).
 - Taking 1.5.35 through `beta` (needs the owner's go-ahead; `CLAUDE.md` section 5).
 
-## Next step (056, in this order, test first, one commit each)
-1. Group 5b: `piso-setup sqm test` (refuses `BUSY` with customers online; stops the sqm service for the test and always restarts it; parallel `curl` to Cloudflare with a data cap; CPU from `/proc/stat`; writes `/tmp/piso-speedtest.json`).
-2. Group 4 and 5c: portal `GET/POST /api/settings` with the `sqm` fields (validation 0.1 to 10000 Mbps, margin 50 to 100) saved with `override_set`, `POST /api/speedtest` (one at a time, one a minute, refused while a coin window is open), hand-over to `piso-setup sqm apply` / `sqm-test` outside the request thread.
-3. Groups 5 and 5d: the console card and the Test my line button (greyed out with a reason when SQM is missing or customers are online).
-4. Groups 6 to 8: openNDS/firewall unchanged check (flow offloading 0), documents (RS71), gates. Group 9 and group 0 need the owner's router.
+## Update (later the same day): groups 5b, 4, 5c, 5 and 5d are done on a computer
+Branch `claude/feature-056-package-layer-sqm-er37ac` (pushed; not `beta`, not `main`). It carries a merge of `origin/main` (`6b10568`): `main` meanwhile took the voice message as **its own feature 056**
+(hardware checks RS66 to RS69), so here the 057 check is **RS70** and the planned SQM check is **RS71**. Two features share the number 056 (folders `056-voice-message`, `056-optional-sqm`): the owner may want one renumbered.
+- 5b `piso-setup sqm test` (`setup/src/14-sqm.sh`, `router/tests/test_sqm_test.py`, 30 checks). The command is `sqm test`, not `sqm-test` (spec, plan edited).
+- 4 and 5c: `tools/pisoportal/src/sqmconsole.rs`; `POST /api/settings` (`sqm_on`, `sqm_down`, `sqm_up`, `sqm_percent`), `POST /api/speedtest`, `POST /api/sqm/install`, an `sqm` block (with `speedtest` and `install`) in `GET /api/settings`. Tests: `test_console_sqm.py` 61, `test_console_speedtest.py` 34, 6 unit tests.
+- 5 and 5d: the Smooth line card (`console.html`, `console-ui.js` version 13; the SQM code is skipped when the page has no card, the layout test needs that), `test_console_sqm_card.py` 29 (Chromium). `test_console_layout` 247 and `test_console_brand` 75 pass.
+- Decisions to confirm: console script budget 30 to 33 KB; page check 30000 to 31000 bytes; the installed command is 173 of 175 KB (almost no room left); Install now is hidden when the setup recorded "not in the package feed", "no package manager" or "does not fit"; a result with the CPU at 90% or more is shown but not put in the boxes.
+- Not proven: `test_flow.py` failed 5 of 216 once (output lost), 3 clean reruns after; the known flake. Never run on a router: Cloudflare endpoints, real `curl -T -` uploads, the real hand-over, `shellcheck`/`busybox` (not installed here). Contrast of the card was not measured.
+- Python `playwright` had to be pip-installed for the browser tests; run them with `CHROME=/opt/pw-browsers/chromium-1243/chrome-linux64/chrome` (and `PISO_TEST_TARGET_DIR` for layout/brand).
+
+## Next step (056)
+1. Group 6: guard test that openNDS and firewall settings are unchanged (flow offloading 0) and that no money-path file is in the diff (`test_setup.py`).
+2. Group 7: documents (`docs/ROUTERS.md`, `setup/README.md`, `CHANGELOG.md`, RS71 in `docs/REAL_WORLD_TESTING.md`; manual text for the card).
+3. Group 8: every gate in the plan (cargo, test_flow, router tests, security rules, `build_piso_setup.py --check`, ruff/mypy on touched Python).
+4. Groups 0 and 9 need the owner's router. Release only through `beta` (needs the owner's go-ahead): raise nothing further, `setup/RELEASE` is 1.5.35; decode the program inside the signed file and check it has the SQM text.
 
 ## Slow tests
 `cd tools/pisoportal && cargo test && cargo build --release && python3 tests/test_flow.py` (about a minute; `test_flow.py` needs the release build). Router tests: `python3 router/tests/test_*.py` (the web ones need `CHROME=/opt/pw-browsers/chromium-*/chrome-linux*/chrome`). `python3 tools/build_piso_setup.py` after any `setup/src` change; `--check` must pass.
