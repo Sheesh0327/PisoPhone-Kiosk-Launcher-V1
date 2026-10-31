@@ -1,6 +1,6 @@
 # Feature 056: Optional smooth-line packages (SQM) and a console setting to match the real ISP speed
 
-Status: **approved 2026-10-31 (needs feature 057 built first)**   Branch: `feat/056-optional-sqm` (a router change: from `beta`, see `CLAUDE.md` section 5; this session works on `ccr-e31098f5-7k2rgz`)   Area: setup + router
+Status: **approved 2026-10-31; speed test added 2026-10-31 and the owner said proceed; in progress (groups that need the router wait)**   Branch: `feat/056-optional-sqm` (a router change: from `beta`, see `CLAUDE.md` section 5; this session works on `ccr-e31098f5-7k2rgz`)   Area: setup + router
 Backlog rows: owner request 2026-10-31 (no backlog row)   Release: router (through `beta`)
 
 ## Intent
@@ -118,6 +118,8 @@ line (from an ordinary speed test) so SQM is set just under it. Serves the goal 
 Answered 2026-10-31: the router runs the speed test and prefills the boxes (Cloudflare endpoints with fallbacks; only when no customer is online; the owner presses Save; SQM is paused during the test and restored; a warning when the CPU was the limit; typing a speed stays possible); SQM off until speeds are entered; new setups plus a button for existing routers; skip with a clear message
 on failure; packages sqm-scripts + kmod-ifb + tc, kmod-sched-cake, irqbalance; flash guard at the minimum (2048 KB); SQM shapes only the whole WAN;
 greyed-out card with a reason; 95% margin, changeable.
+
+Decided while building (please confirm): **the footprint budget of the installed command `setup/piso-setup.sh.in` was raised from 160 KB (set by feature 057) to 175 KB** (`router/tests/test_footprint.py`). It was 148 KB before 057; the optional-package step alone took it to 162 KB and the `sqm` commands and the speed test are still to come. About 27 KB more than before on a 16 MB router, around 10 KB once compressed on flash. If you prefer a tighter limit, tell me which pieces to cut.
 
 Still open:
 1. **Also raise the user limits?** Your first question was about "as many users as the router can handle". SQM fixes the lag; it does not raise the

@@ -25,6 +25,8 @@ $(flash_report)
 
 $(pkg_image_report)
 
+$(optional_report)
+
 Useful commands on the router:
   piso-setup status            health check of every part
   piso-setup wifi-name "Name"  rename the customer Wi-Fi

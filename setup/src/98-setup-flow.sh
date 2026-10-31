@@ -133,6 +133,7 @@ stage1() {
 
 	: > "$LOG"
 	install_packages
+	install_optional_packages
 	extract_payload "$0"
 	step "Writing the router settings"
 	[ -n "$(conf_get CONSOLE_MODE)" ] || conf_set CONSOLE_MODE front   # (the console is the front page, http://admin.hub; LuCI is on 8080)

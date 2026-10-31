@@ -26,10 +26,10 @@ Small, ordered, each finished and checkable on its own. Test first; a red result
   (`opkg info sqm-scripts kmod-sched-cake kmod-ifb tc-full tc-tiny irqbalance`, or `apk search -e`; and `uname -r`, `ls /lib/modules/$(uname -r) | grep -E 'sch_cake|ifb'`, `zcat /proc/config.gz | grep -E 'NET_SCH_CAKE|IFB'`), the flash each costs, and whether openNDS applies its caps with `tc` on an `ifb`
   (read `ndsctl status` and `/usr/lib/opennds`). Write the facts into `specs/features/056-optional-sqm/bench-facts.md`. **Stop for the owner if the openNDS
   shaper and SQM would share a device** (SQ-12). (files: none in the repo; test: n/a; red result: n/a)
-- [ ] 1. **Optional-package step in the installer.** `install_optional_packages` after `install_packages`: flash guard (2048 KB), `opkg info` scan, priority order,
+- [x] 1. **Optional-package step in the installer** (`setup/src/13-optional.sh`, tests in `router/tests/test_optional.py`). `install_optional_packages` after `install_packages`: flash guard (2048 KB), `opkg info` scan, priority order,
   all-or-nothing core, status file, log lines. openNDS loop untouched. (files: `setup/src/20-preflight.sh`, `setup/src/15-flash.sh`; test: `router/tests/test_setup.py` with a fake
   `opkg` and a fake `apk`: feed with everything / only openNDS / no cake / ifb fails / flash 1500 KB / opennds fails / module already in the kernel / dry run refuses (kernel mismatch) / no package manager with openNDS present; red result logged: yes)
-- [ ] 2. **Report it.** Summary lines and `piso-setup status` show each optional package as installed / skipped (reason). (files: `setup/src/60-summary.sh`,
+- [x] 2. **Report it.** Summary lines and `piso-setup status` show each optional package as installed / skipped (reason). (files: `setup/src/60-summary.sh`,
   `setup/src/80-commands.sh`; test: `test_setup.py`; red: yes)
 - [ ] 3. **`piso-setup sqm` commands (root, on the router):** `sqm install` (the button's job: runs group 1's step; refuses with `BUSY` while a coin window is
   open or a payment is recording, reusing the checks the update uses), `sqm apply` (reads the saved speeds, finds the WAN device with
