@@ -227,7 +227,12 @@ jobs:
       - name: Check protocol test vectors are reproducible
         run: |
           python3 protocol/gen_vectors.py
+          python3 protocol/gen_voice_vectors.py
           git diff --exit-code protocol
+      - name: Check the voice message reference (feature 056)
+        run: |
+          pip install -q pytest
+          python3 -m pytest -x -q protocol/test_voice_vectors.py
       - name: Check generated web assets are up to date
         run: python3 scripts/embed_web.py --check
       - name: Check that each product image holds no word of the other product

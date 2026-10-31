@@ -10,6 +10,7 @@ python3 gen_fw_fixture.py "$OUT/fw_fixture.h"
 python3 gen_protocol_fixture.py "$OUT/protocol_fixture.h"
 python3 gen_card_fixture.py "$OUT/card_fixture.h"
 python3 gen_slot_license_fixture.py "$OUT/slot_license_fixture.h"
+python3 gen_voice_fixture.py "$OUT/voice_fixture.h"
 # limits.h / sys/param.h are pre-included because the ESP32 toolchain pulls them in everywhere (NAME_MAX, MIN, MAX, ... are macros there).
 for t in *_test.cpp; do
     g++ -std=c++17 -include limits.h -include sys/param.h -Wall -Wextra -Werror -fsanitize=address,undefined -I"$OUT" -o "$OUT/${t%.cpp}" "$t" -lmbedcrypto
