@@ -84,6 +84,11 @@ Small, separately tested pieces; each decides in a pure class and a thin Android
   `BoxClock` is the time the box itself reported), and `ReplayGuard` accepts each signed message once, so a command captured on
   the network cannot be played back later; a refused one is answered `403 STALE_TIMESTAMP`. Until the phone has heard the box's
   time (just started, or a box that has not learned the time yet) nothing is judged by time, so the box can never be locked out.
+- **Voice message (box -> phone, feature 056):** the owner records up to 15 s in the dashboard's browser (an 8 kHz ADPCM clip, `protocol/gen_voice_vectors.py`
+  describes the bytes) and uploads it; the box (`WebServerVoice.cpp`, rules in `VoiceRelay.h`, `VoiceFrames.h`) passes it on to the phone's `/voice` route in numbered
+  frames, each encrypted and signed with the box key and chained to the one before and to the signed request, holding one frame at a time and storing nothing.
+  The phone (`voice/`: `VoiceFrameAssembler`, `VoiceClip`, `VoicePlayback`) plays only after the last frame checks out, with a banner, and the countdown speech keeps its priority.
+  The phone says `voice=1` on its signed heartbeat; without it the dashboard shows a greyed mic.
 - **Admin -> box:** the web dashboard (Basic auth, or the owner's admin QR code, which also opens super admin; lockout after repeated failures).
 - **Admin -> phone:** `KioskAdminActionReceiver` broadcasts, all gated by the admin PIN.
 
