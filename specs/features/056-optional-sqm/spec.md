@@ -1,0 +1,91 @@
+# Feature 056: Optional smooth-line packages (SQM) and a console setting to match the real ISP speed
+
+Status: **draft (waiting for the owner's approval)**   Branch: `feat/056-optional-sqm` (a router change: from `beta`, see `CLAUDE.md` section 5; this session works on `ccr-e31098f5-7k2rgz`)   Area: setup + router
+Backlog rows: owner request 2026-10-31 (no backlog row)   Release: router (through `beta`)
+
+## Intent
+When many customers share one internet line, a download by one phone fills the modem's queue and everybody's ping jumps (bufferbloat). The router can
+prevent that with SQM ("smart queue management": cake or fq_codel on the WAN), but the installer installs nothing for it today (it installs only
+`opennds curl ca-bundle jsonfilter libmicrohttpd-no-ssl`). This feature makes the installer **try to add the smoothing packages when the router's
+package feed has them**, never at the cost of the setup, and adds a **Settings card in the router console** where the owner types the real speed of the
+line (from an ordinary speed test) so SQM is set just under it. Serves the goal that a non-programmer owner runs a shop with nothing to read or copy.
+
+## Invariants touched
+- Money and time (a payment recorded first, credited once, nothing lost on a power cut): **not touched.** No change to `roll.rs`, `ledger.rs`,
+  `core.rs` grant/credit paths, the coin window or the box. Installing or switching SQM never starts while a coin window is open (SQ-08).
+- Only owner-signed software (OTA, signing, keys): **kept.** Packages come from the router's own signed opkg feeds, as openNDS does today. No package file
+  is added to the repository or fetched from anywhere else. The new code reaches routers only inside the signed router release.
+
+## Constraints
+- **openNDS stays the one required package.** If it cannot be installed the setup stops exactly as it does today (`could not install opennds`).
+- Every other package here is **optional**: a failure to find, fit or install one never stops the setup, never changes what the setup does otherwise,
+  and is **reported** (summary, `piso-setup status`, console).
+- Install priority after openNDS, owner's answer 2026-10-31: (1) `sqm-scripts` with `kmod-ifb` and `tc` (the tc package that `sqm-scripts` needs; the
+  installer takes `tc-full` if the feed has it, else what `sqm-scripts` pulls in), (2) `kmod-sched-cake`, (3) `irqbalance`. `luci-app-sqm` is **not**
+  installed (it would duplicate the console setting). The first group is all-or-nothing: a half-installed shaper is removed again.
+- **Scan, then install:** for each optional package the installer asks opkg whether the feed has it (`opkg info`) and installs only those; it never
+  guesses by router model.
+- **Flash guard:** optional packages are skipped, with the reason recorded, when free flash is under **2048 KB** (the installer's existing warning level,
+  `setup/src/15-flash.sh`). Owner's reasoning: updates are downloaded to RAM, not flash. Caveat for the owner (not a blocker): the docs say an update keeps a
+  ~0.9 MB backup of the old program on flash, and a router with little RAM keeps the update file on flash too; with 2 MB free before the packages that margin can
+  be thin. The packages' real size is **not measured yet**; validation must measure it (SQ-12).
+- **OpenWrt 23.05 and 24.10 only** (opkg). On 25.x or a snapshot the setup already stops earlier (feature 046); nothing changes there.
+- SQM shapes **only the WAN link as a whole.** The per-plan speed caps (Endurance 5 Mbps by default), the openNDS settings (bursting, `checkinterval` 15,
+  `ratecheckwindow` 1) and **flow offloading = off** stay exactly as they are (checked by `router/tests/test_setup.py`).
+- SQM is **off after install.** It is switched on only when the owner saves line speeds in the console. Default margin **95%** of the typed speed, which
+  the owner can change (50 to 100%).
+- Qdisc: **cake** when `kmod-sched-cake` is present, else **fq_codel**, and the console says which one is in use. cake options: `nat`, `dual-dsthost`
+  (download), `dual-srchost` (upload), `wash`, `diffserv3`; the exact strings are fixed in the plan after the bench test.
+- The program (`pisoportal`) uses only `sha2`, `hmac` and `p256` (`CLAUDE.md` section 6): no new crates. It does not run `uci`/`opkg` itself in its
+  request threads; it hands the work to `piso-setup` (a root script) and reads the result back from a small status file.
+- Anything under `setup/src/` or `tools/pisoportal/src/` changes what routers install: raise `setup/RELEASE`; generated files only by
+  `python3 tools/build_piso_setup.py`; go through `beta`; **before anyone raises the release, decode the program inside the signed file and check it has the new text.**
+
+## What a visitor without the condition sees (spec rule 3b)
+- **Router where SQM was not installed** (not in the feed, too little flash, no internet, 25.x): the Settings card is shown **greyed out** with the
+  reason in plain words and an **Install now** button where trying again could work (not for "not in the feed" or "OpenWrt too new"). Nothing is hidden.
+- **SQM installed but no speeds saved yet:** the card says "Line speed not set; smoothing is off" and shows the empty fields. Customers notice nothing.
+- **Customers (the guest page):** see nothing new, ever. This feature adds no guest-page text.
+- **Console login:** the card is behind the same console password as every other setting.
+
+## Success criteria
+1. **openNDS first, others optional.** A test installer run (fake `opkg`) where openNDS fails stops with the same message as today; where only an optional
+   package fails (not in feed, install error, flash under 2048 KB) the setup finishes and the summary lists what was skipped and why.
+2. **Scan:** with a feed that has only some packages, exactly those are installed, in the priority order above; `kmod-sched-cake` missing gives fq_codel.
+3. **All-or-nothing core:** if `sqm-scripts` installs but `kmod-ifb` or `tc` fails, `sqm-scripts` is removed again and SQM is reported "not available".
+4. **Status file:** the installer writes a status of each optional package (installed / skipped / failed + reason) that `piso-setup status` and the
+   console both read.
+5. **Settings card:** Download Mbps, Upload Mbps, margin % (default 95), an on/off switch. It rejects 0, non-numbers and values outside
+   1 to 10000 Mbps / 50 to 100%, saves nothing on a bad value, and shows "SQM will limit to X down / Y up Mbps".
+6. **Apply:** saving writes `/etc/config/sqm` for the WAN's real device (resolved at apply time, so PPPoE works) with 95% of the typed speeds, and
+   restarts SQM; switching off removes the shaping. `tc qdisc show` on the router shows cake (or fq_codel) on the WAN and on its `ifb`.
+7. **Per-plan caps untouched:** the generated openNDS and firewall settings in `router/tests/test_setup.py` are identical with and without SQM
+   (flow offloading still 0).
+8. **No money path touched:** the diff changes nothing under the grant/credit/roll/ledger code; `cargo test` and `python3 tests/test_flow.py` pass.
+9. **Install now on a router that is already running:** nothing is installed by an automatic update. The button installs the optional packages once,
+   and **refuses while a coin window is open or a payment is being recorded**, saying so; it can be run again.
+10. **Router reboot:** after a reboot with SQM on, the shaping comes back by itself (sqm-scripts' own init), checked on the bench.
+11. **Bench test before release (stop point, SQ-11):** on the 360T6M, with a phone on Endurance and a second phone downloading, ping to 1.1.1.1 is
+    measured with SQM off and on, with openNDS's own caps active. If SQM and openNDS's shaping clash (caps no longer hold, or CPU stays near 100%),
+    **stop and ask the owner**; do not release.
+12. **Measured cost:** the flash used by the optional packages and the idle RAM they add are measured on the 360T6M and written in `docs/ROUTERS.md`.
+13. Documents: `docs/ROUTERS.md` (the package list and the reasons), `setup/README.md`, `CHANGELOG.md`, a new hardware check **RS66** in
+    `docs/REAL_WORLD_TESTING.md`, `specs/RELEASE_STATE.md` when released. `bash scripts/check_security_rules.sh` and every router check in `CLAUDE.md` section 3 pass.
+
+## Out of scope
+- Replacing or changing openNDS's per-plan speed limits, or turning cake's per-host fairness into the way plans are enforced (riskier for money and time rules).
+- A speed test run by the router itself (owner chose: the owner types the result).
+- `luci-app-sqm`, `qos-scripts`, `nft-qos`; Wi-Fi tuning; conntrack size; routers on OpenWrt 25.x (apk).
+- Raising openNDS `maxclients` (default believed 250) or the portal's `MAX_CLIENTS` (24, portal page connections): see owner decision 1.
+- Automatic installation of the packages on live shops by the hourly update.
+
+## Owner decisions
+Answered 2026-10-31: owner types the speed; SQM off until speeds are entered; new setups plus a button for existing routers; skip with a clear message
+on failure; packages sqm-scripts + kmod-ifb + tc, kmod-sched-cake, irqbalance; flash guard at the minimum (2048 KB); SQM shapes only the whole WAN;
+greyed-out card with a reason; 95% margin, changeable.
+
+Still open:
+1. **Also raise the user limits?** Your first question was about "as many users as the router can handle". SQM fixes the lag; it does not raise the
+   number of devices. Do you want openNDS `maxclients` and the connection-tracking table set for many users in this feature, or in a separate one?
+2. **Is irqbalance's gain worth one more package?** It only helps dual-core routers like the 360T6M; I kept it as you chose, last in priority.
+3. **Is the 2048 KB guard right once the real package size is measured?** Revisit after SQ-12.
