@@ -296,7 +296,7 @@ pkg_free_kb() {
 # ---- what kind of image this is ---------------------------------------------------------------------------------------
 # The kind comes from facts on the router, never from its model name: the distribution id in /etc/openwrt_release, the hosts of the
 # configured package feeds, and a dry run of one kernel module (a feed that does not fit this image's kernel cannot install its kmods).
-# It is a label for how careful the installer is (feature 056); the probes still decide each package. It is not a claim of support.
+# It is a label for how careful the installer is (feature 058); the probes still decide each package. It is not a claim of support.
 
 # pkg_fork_site <distribution id>: the feed domain of a known fork (the one list of forks).
 pkg_fork_site() {
@@ -352,7 +352,7 @@ pkg_image_report() {
 	echo "Image:           $_d ($_k: $_why)"
 }
 # ---------------------------------------------------------------------------------------------------------------------
-# Optional packages: a smoother line for many customers (feature 056)
+# Optional packages: a smoother line for many customers (feature 058)
 # ---------------------------------------------------------------------------------------------------------------------
 # openNDS is the one package the setup cannot do without (install_packages). The packages below are extras: the setup tries each one, never stops
 # because of one, and writes down what happened (etc/coinslot.d/packages.txt: "image|<kind>|<description>|<reason>" and "pkg|<name>|<state>|<reason>",
@@ -476,7 +476,7 @@ optional_report() {
 	done
 }
 # ---------------------------------------------------------------------------------------------------------------------
-# SQM: keeping a customer's download from filling the line (feature 056)
+# SQM: keeping a customer's download from filling the line (feature 058)
 # ---------------------------------------------------------------------------------------------------------------------
 # The owner's line speed is saved by the console in etc/coinslot.d/settings.txt (SQM_ON, SQM_DOWN_MBPS, SQM_UP_MBPS, SQM_PERCENT, default 95).
 # "piso-setup sqm apply" turns it into one SQM queue of our own (sqm.piso_wan, other queues are left alone) on the WAN; the console reads

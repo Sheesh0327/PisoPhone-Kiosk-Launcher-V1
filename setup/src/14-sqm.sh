@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------------------------------------------------
-# SQM: keeping a customer's download from filling the line (feature 056)
+# SQM: keeping a customer's download from filling the line (feature 058)
 # ---------------------------------------------------------------------------------------------------------------------
 # The owner's line speed is saved by the console in etc/coinslot.d/settings.txt (SQM_ON, SQM_DOWN_MBPS, SQM_UP_MBPS, SQM_PERCENT, default 95).
 # "piso-setup sqm apply" turns it into one SQM queue of our own (sqm.piso_wan, other queues are left alone) on the WAN; the console reads

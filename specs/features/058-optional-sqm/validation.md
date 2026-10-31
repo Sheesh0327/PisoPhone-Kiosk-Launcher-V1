@@ -1,4 +1,4 @@
-# Validation: 056 optional smooth-line packages (SQM) and the console setting
+# Validation: 058 optional smooth-line packages (SQM) and the console setting
 
 Status 2026-10-31: **built and tested on a computer; nothing has run on a router.** Criteria 11, 12, 13 and 17 are the owner's bench test (RS71) and group 0 / 9 of the plan. Not released, not through `beta`.
 
@@ -34,7 +34,7 @@ Status 2026-10-31: **built and tested on a computer; nothing has run on a router
 Any router. The real hand-over to `piso-setup`, the Cloudflare speed servers, `curl -T -` uploads, the cake option strings and `layer_cake.qos` (first guesses), real CPU numbers from `/proc/stat`, `tc` on a real WAN, the footprint of the packages, a reboot, SQM next to openNDS's own shaping (the stop point). Colour contrast of the new card was not measured. The Filipino/English split does not apply (console only). Hardware check: **RS71** (and RS70 for feature 057).
 
 ## Decisions made on the way, for the owner to confirm
-Installed-command budget 175 KB (173 used); console script budget 33 KB and page check 31,000 bytes; `piso-setup sqm test` instead of `sqm-test`; irqbalance installed but not switched on; Install now hidden when the setup recorded that trying again cannot help; a processor-limited result is shown but not put in the boxes; the feature number 056 is also used by the voice message on `main`.
+Installed-command budget 175 KB (173 used); console script budget 33 KB and page check 31,000 bytes; `piso-setup sqm test` instead of `sqm-test`; irqbalance installed but not switched on; Install now hidden when the setup recorded that trying again cannot help; a processor-limited result is shown but not put in the boxes; the feature was renumbered 058 because `main` uses 056 for the voice message (answered by the owner 2026-10-31).
 
 ## Money and time
 Not touched: no credit, expiry, deduction, ledger or payment-queue code changed. The only change in `core.rs` is a read-only getter used to refuse a speed test or an install while a coin window is open. SQM shapes the router's internet link as a whole and does not change the per-plan caps (checked by the tests of criterion 8, not on a router).

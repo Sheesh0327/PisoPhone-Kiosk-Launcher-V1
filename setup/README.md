@@ -303,7 +303,7 @@ sets a root password, and ends with a health check. The router's wired LAN ports
 | `piso-setup pair` | replaces the coin box: re-opens pairing for a few minutes, then locks to the new box |
 | `piso-setup summary` | shows the saved passwords again |
 | `piso-setup voucher-choice [on\|off]` | the coin page offers "Use now" or "Get a voucher code" before Insert Coin (**default on**). Off: the page is exactly as it was before vouchers. Same switch as the console's **Settings** page; whichever was changed last wins (see below). |
-| `piso-setup sqm apply\|install\|status\|test` | the optional smooth line (SQM, feature 056). `apply` sets or removes the router's queue from the speeds saved in the console (95% margin by default; cake if the router has it, else fq_codel); `install` tries the optional packages now (refused while customers are online); `status` writes what the console shows; `test` measures the line (refused with BUSY while customers are online) and leaves `/tmp/piso-speedtest.json`. Changes only the `sqm` config. |
+| `piso-setup sqm apply\|install\|status\|test` | the optional smooth line (SQM, feature 058). `apply` sets or removes the router's queue from the speeds saved in the console (95% margin by default; cake if the router has it, else fq_codel); `install` tries the optional packages now (refused while customers are online); `status` writes what the console shows; `test` measures the line (refused with BUSY while customers are online) and leaves `/tmp/piso-speedtest.json`. Changes only the `sqm` config. |
 
 ### Voucher codes (customers buy them with coins)
 There is no batch to make and nothing to print. On the coin page a customer picks **Use now** (the default: coins add time at once) or **Get a voucher code**.

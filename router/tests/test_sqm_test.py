@@ -1,4 +1,4 @@
-"""Tests of `piso-setup sqm test` of setup/piso-setup.sh (feature 056, group 5b): the router measures the line itself, only when nobody is online,
+"""Tests of `piso-setup sqm test` of setup/piso-setup.sh (feature 058, group 5b): the router measures the line itself, only when nobody is online,
 pauses SQM for the test and always puts it back, and says honestly when it could not measure or the router itself was the limit.
 Fake curl (no network), fake sqm init script, fake /proc/stat. Run with:  python3 router/tests/test_sqm_test.py"""
 import json

@@ -1,4 +1,4 @@
-"""Tests of the optional smooth-line packages step of setup/piso-setup.sh (feature 056): which packages are tried, in what order, and what is reported,
+"""Tests of the optional smooth-line packages step of setup/piso-setup.sh (feature 058): which packages are tried, in what order, and what is reported,
 with stand-ins for the package layer and the kernel. Run with:  python3 router/tests/test_optional.py"""
 import os
 import subprocess

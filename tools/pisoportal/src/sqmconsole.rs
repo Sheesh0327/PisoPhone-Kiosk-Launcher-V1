@@ -1,4 +1,4 @@
-//! The console's smooth-line (SQM) settings (feature 056, group 4): what the Settings page is told about SQM, which values it may save, and the hand-over to
+//! The console's smooth-line (SQM) settings (feature 058, group 4): what the Settings page is told about SQM, which values it may save, and the hand-over to
 //! `piso-setup sqm apply`. The router's speeds and margin are kept in DATA_DIR/settings.txt next to the other console settings; `piso-setup` reads them from
 //! there and writes DATA_DIR/sqm.txt ("key|value" lines) to say what it did. The portal never touches the router's SQM files itself.
 use crate::core::Core;

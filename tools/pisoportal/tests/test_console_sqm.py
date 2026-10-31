@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The console's smooth-line (SQM) settings (feature 056, group 4): what GET /api/settings reports about SQM, which values POST /api/settings accepts, that a bad
+"""The console's smooth-line (SQM) settings (feature 058, group 4): what GET /api/settings reports about SQM, which values POST /api/settings accepts, that a bad
 value saves nothing and starts nothing, and that a good one is saved first and then handed to `piso-setup sqm apply` outside the request."""
 import json
 import os

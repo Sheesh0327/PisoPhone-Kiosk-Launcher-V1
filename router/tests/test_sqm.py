@@ -1,4 +1,4 @@
-"""Tests of the `piso-setup sqm` commands of setup/piso-setup.sh (feature 056): the saved line speed becomes the router's SQM settings, switching off removes
+"""Tests of the `piso-setup sqm` commands of setup/piso-setup.sh (feature 058): the saved line speed becomes the router's SQM settings, switching off removes
 them, and installing the packages waits for a quiet moment. Fake uci, fake sqm init script, stand-ins for the package layer.
 Run with:  python3 router/tests/test_sqm.py"""
 import os
@@ -116,7 +116,7 @@ check("rc=0" not in r.stdout and "usage" in r.stdout + r.stderr, "an unknown sqm
 flow = open(f"{ROOT}/setup/src/98-setup-flow.sh").read()
 check("cmd_sqm \"$ARG\"" in flow and "brand-pack | sqm)" in flow, "piso-setup knows the sqm command")
 
-# ---- feature 056, criterion 8: nothing of openNDS, the firewall, the network or the speed caps is touched ---------------------------------
+# ---- feature 058, criterion 8: nothing of openNDS, the firewall, the network or the speed caps is touched ---------------------------------
 check(len(ALL_UCI) > 20, "the runs above made uci calls to look at: " + str(len(ALL_UCI)))
 WRITES = [l for l in ALL_UCI if l != "uci batch" and not re.match(r"uci (-q )?(get|show|export)\b", l)]   # ("uci batch" is followed by its lines, which are in the list)
 check(len(WRITES) > 10 and all("sqm" in l for l in WRITES), "every uci change of apply, off, install and status names the sqm config and nothing else (reads aside): " + str([l for l in WRITES if "sqm" not in l][:3]))

@@ -1,6 +1,6 @@
-# Feature 056: Optional smooth-line packages (SQM) and a console setting to match the real ISP speed
+# Feature 058: Optional smooth-line packages (SQM) and a console setting to match the real ISP speed
 
-Status: **built and validated on a computer 2026-10-31 (groups 1 to 8); bench groups 0 and 9 wait for the owner's router**   Branch: `feat/056-optional-sqm` (a router change: from `beta`, see `CLAUDE.md` section 5; this session works on `ccr-e31098f5-7k2rgz`)   Area: setup + router
+Status: **built and validated on a computer 2026-10-31 (groups 1 to 8); bench groups 0 and 9 wait for the owner's router**   Branch: `feat/058-optional-sqm` (a router change: from `beta`, see `CLAUDE.md` section 5; this session works on `ccr-e31098f5-7k2rgz`)   Area: setup + router
 Backlog rows: owner request 2026-10-31 (no backlog row)   Release: router (through `beta`)
 
 ## Intent
@@ -25,7 +25,7 @@ line (from an ordinary speed test) so SQM is set just under it. Serves the goal 
   installed (it would duplicate the console setting). The first group is all-or-nothing: a half-installed shaper is removed again.
 - **Package manager: opkg or apk** (owner, 2026-10-31: the router is a custom, unofficial ImmortalWrt image, and the setup must work with either manager).
   This feature does **not** call `opkg` or `apk` directly: it uses the layer from **feature 057** (detect, update, is-installed, dry-run install, install,
-  remove). 056 cannot start before 057 is built.
+  remove). 058 cannot start before 057 is built.
 - **Scan, then install (owner's answer 2026-10-31):** for each optional package the installer (1) first checks whether the router **already has it**: the
   package installed, or for the kernel parts the module already built in or loadable (`sch_cake`, `ifb`, `sch_fq_codel`; read from the kernel, no guessing by router
   model), then (2) if not, **dry-runs** the install through the layer (`opkg install --noaction` / `apk add --simulate`) and installs only if that passes.

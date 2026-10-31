@@ -102,7 +102,7 @@ pkg_free_kb() {
 # ---- what kind of image this is ---------------------------------------------------------------------------------------
 # The kind comes from facts on the router, never from its model name: the distribution id in /etc/openwrt_release, the hosts of the
 # configured package feeds, and a dry run of one kernel module (a feed that does not fit this image's kernel cannot install its kmods).
-# It is a label for how careful the installer is (feature 056); the probes still decide each package. It is not a claim of support.
+# It is a label for how careful the installer is (feature 058); the probes still decide each package. It is not a claim of support.
 
 # pkg_fork_site <distribution id>: the feed domain of a known fork (the one list of forks).
 pkg_fork_site() {

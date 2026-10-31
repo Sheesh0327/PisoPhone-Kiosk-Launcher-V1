@@ -24,4 +24,4 @@ Never opened: `setup/piso-setup*.sh`, `website/install.sh` (generated).
 - [x] 6. **Gates** (done on a computer; the run on the owner's image, criterion 7, waits for the owner's router: RS70). `bash scripts/check_security_rules.sh`; `cargo test` and `python3 tests/test_flow.py` in `tools/pisoportal` (nothing there changes, they must still pass); the four router test files; `test_setup_phone_web.py`, `test_phone_only.py`; `python3 tools/build_piso_setup.py --check`; ruff/mypy on touched Python. Then the run on the owner's image (criterion 7) and `validation.md`.
 
 ## Release
-Raise `setup/RELEASE` (1.5.34 now; 056 raises it again after 057). Regenerate with `python3 tools/build_piso_setup.py`. Router path through `beta` (`CLAUDE.md` section 5): CI builds the program and setup files; decode the program inside the signed file before anyone raises the release.
+Raise `setup/RELEASE` (1.5.34 now; 058 raises it again after 057). Regenerate with `python3 tools/build_piso_setup.py`. Router path through `beta` (`CLAUDE.md` section 5): CI builds the program and setup files; decode the program inside the signed file before anyone raises the release.

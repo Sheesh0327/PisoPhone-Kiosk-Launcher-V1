@@ -1,5 +1,5 @@
 # ---------------------------------------------------------------------------------------------------------------------
-# Optional packages: a smoother line for many customers (feature 056)
+# Optional packages: a smoother line for many customers (feature 058)
 # ---------------------------------------------------------------------------------------------------------------------
 # openNDS is the one package the setup cannot do without (install_packages). The packages below are extras: the setup tries each one, never stops
 # because of one, and writes down what happened (etc/coinslot.d/packages.txt: "image|<kind>|<description>|<reason>" and "pkg|<name>|<state>|<reason>",

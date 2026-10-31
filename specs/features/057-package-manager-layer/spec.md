@@ -24,7 +24,7 @@ packages). Serves the owner's goal: a shop owner who is not a programmer can set
   `DISTRIB_ID`, `DISTRIB_DESCRIPTION`, `DISTRIB_REVISION` and `DISTRIB_TARGET` in `/etc/openwrt_release`, the hosts of the configured feeds (`/etc/opkg/distfeeds.conf`,
   `/etc/opkg/customfeeds.conf` or `/etc/apk/repositories.d/*`), and a **kernel-fit probe** (a dry run of one small kmod such as `kmod-ifb`). Rule: `official` needs the OpenWrt id **and**
   OpenWrt's own feed host **and** the probe passing; `fork` needs a known fork id (one list, in one place) **and** that fork's feed host **and** the probe passing; everything else is `custom`.
-  A failed probe can only lower the label, never raise it. The label sets how cautious the installer is (feature 056); it never replaces a probe, and it is **not** a claim of support
+  A failed probe can only lower the label, never raise it. The label sets how cautious the installer is (feature 058); it never replaces a probe, and it is **not** a claim of support
   (`docs/ROUTERS.md` still lists only hardware that has actually run).
 - **No package manager:** if openNDS is installed and its init script exists, the setup carries on and reports every package step as "no package manager"; otherwise it stops before changing anything, as today.
 - **Package names:** the layer holds one name map (a package that is called differently under apk is mapped there, nowhere else). Names are checked on a real image, not assumed.
@@ -52,7 +52,7 @@ packages). Serves the owner's goal: a shop owner who is not a programmer can set
 
 ## Out of scope
 - Feed addresses typed by the owner, and installing from a file on the computer (removed in feature 041).
-- The optional packages themselves (feature 056).
+- The optional packages themselves (feature 058).
 - A router whose release is unknown, or a CPU family with no program built.
 
 ## Owner decisions

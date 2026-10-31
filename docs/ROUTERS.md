@@ -74,7 +74,7 @@ real setup with the release used; a model that is not here may still work):
 The router's own changes are the same everywhere (setup script, console, backups, updates); only the program and its folder on the website
 differ: `mipsel` is at `https://pisophone.pages.dev/update/`, the others at `https://pisophone.pages.dev/update/<family>/`.
 
-## The smooth line (SQM), optional (feature 056)
+## The smooth line (SQM), optional (feature 058)
 
 When many customers share one line, one big download can fill it and every other page crawls. **SQM** (smart queue management) stops that: it keeps the line just below its real
 speed so the router, not the modem, decides who waits. It is **extra**: the setup tries to add it, and never stops or fails because of it.
