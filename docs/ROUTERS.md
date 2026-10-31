@@ -73,3 +73,21 @@ real setup with the release used; a model that is not here may still work):
 
 The router's own changes are the same everywhere (setup script, console, backups, updates); only the program and its folder on the website
 differ: `mipsel` is at `https://pisophone.pages.dev/update/`, the others at `https://pisophone.pages.dev/update/<family>/`.
+
+## The smooth line (SQM), optional (feature 056)
+
+When many customers share one line, one big download can fill it and every other page crawls. **SQM** (smart queue management) stops that: it keeps the line just below its real
+speed so the router, not the modem, decides who waits. It is **extra**: the setup tries to add it, and never stops or fails because of it.
+
+* **What the setup adds, when the router's package list has it and at least 2048 KB of flash is free:** `sqm-scripts`, `kmod-ifb` and `tc-full` (all or nothing: if one fails, all three are taken out
+  again), `kmod-sched-cake` (the better queue; without it the line uses `fq_codel`) and `irqbalance` (spreads network work over the processor cores; it is installed but **not switched on**).
+  What was added or skipped, and why, is in the setup summary and in `piso-setup status`. A router with no package manager, an image whose kernel does not match the package list, or a
+  package list without these packages simply skips them and says so.
+* **It is off after the install.** The owner switches it on in the console, **Settings, Smooth line**: type the download and upload speed of the line (or press **Test my line**), leave a
+  margin (95% by default) and choose On. The router then limits the line to that share. The same from the router: `piso-setup sqm apply` (see `setup/README.md`).
+* **Test my line** runs on the router: four parallel streams each way against Cloudflare's public speed servers, about 250 MB at most per direction, nothing downloaded is kept or run. It
+  only starts when **no customer is online and nobody is paying**, pauses SQM while it measures and puts it back, and fills the two boxes; nothing is saved until the owner presses Save.
+  If the router's own processor was nearly full the number is shown with a warning and not offered as the line speed: confirm it with a speed test on a phone.
+* **Install now** on a router that was set up before: the card offers it when the packages are missing and trying again could help. An automatic update never installs them.
+* **The plans' own speed limits (Endurance and the others) are openNDS's and are not changed.** SQM only shapes the router's internet link as a whole.
+* **What has been tried:** only against fake commands on a computer. **Never on a router** (hardware check RS71). The flash and memory the packages cost will be measured on the 360T6M and written here.
