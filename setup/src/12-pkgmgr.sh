@@ -44,6 +44,18 @@ pkg_installed() {
 	esac
 }
 
+# pkg_installed_prefix <start of a name>: some installed package's name starts with it (a family such as libmicrohttpd*).
+pkg_installed_prefix() {
+	case "$(pkg_manager)" in
+		opkg) opkg list-installed 2> /dev/null | grep -qi "^$1" ;;
+		apk) apk info 2> /dev/null | grep -qi "^$1" ;;
+		*) return 1 ;;
+	esac
+}
+
+# pkg_opennds_ready: openNDS is installed and usable (its init script and ndsctl exist), however it got there.
+pkg_opennds_ready() { [ -x "$PISO_ROOT/etc/init.d/opennds" ] && command -v ndsctl > /dev/null 2>&1; }
+
 # pkg_available <package>: the manager knows it. opkg info exits 0 even for an unknown package, so its output is read; and it also answers for
 # an installed package, so pkg_dry_run is the real test of whether an install would work.
 pkg_available() {
@@ -112,7 +124,7 @@ pkg_image_type() {
 	_rel="$PISO_ROOT/etc/openwrt_release"
 	_id=$(sed -n "s/^DISTRIB_ID=['\"]\{0,1\}\([^'\"]*\).*/\1/p" "$_rel" 2> /dev/null | head -n 1)
 	_desc=$(sed -n "s/^DISTRIB_DESCRIPTION=['\"]\{0,1\}\([^'\"]*\).*/\1/p" "$_rel" 2> /dev/null | head -n 1)
-	_desc="${_desc:-unknown image}"
+	_desc=$(printf %s "${_desc:-unknown image}" | tr -d "|'")   # (no quote and no bar: it is saved in the settings file)
 	[ -n "$_id" ] || { echo "custom|$_desc|no release file"; return 0; }
 	if [ "$_id" = OpenWrt ]; then _kind=official; _dom=openwrt.org; else _kind=fork; _dom=$(pkg_fork_site "$_id"); fi
 	[ -n "$_dom" ] || { echo "custom|$_desc|$_id is not a distribution this setup knows"; return 0; }
@@ -127,4 +139,21 @@ pkg_image_type() {
 	done
 	pkg_dry_run "${PISO_FIT_PROBE:-kmod-ifb}" || { echo "custom|$_desc|the package feed does not offer ${PISO_FIT_PROBE:-kmod-ifb} for this image (it does not fit the kernel, or the package lists are old)"; return 0; }
 	echo "$_kind|$_desc|feeds from $_dom, kernel fit ok"
+}
+
+# pkg_image_record: work out the image type (after the package lists are fresh) and save it in the setup settings.
+pkg_image_record() { conf_set IMAGE_TYPE "$(pkg_image_type)"; }
+
+# pkg_image_report: the lines for the summary and "piso-setup status": the package manager and the image, in plain words.
+pkg_image_report() {
+	_t=$(conf_get IMAGE_TYPE)
+	_k="${_t%%|*}"; _r="${_t#*|}"; _d="${_r%%|*}"; _why="${_r#*|}"
+	case "$_k" in
+		official) _k="official OpenWrt" ;;
+		fork) _k="known fork" ;;
+		custom) _k="custom image" ;;
+		*) echo "Package manager: $(pkg_manager)"; echo "Image:           not checked yet"; return 0 ;;
+	esac
+	echo "Package manager: $(pkg_manager)"
+	echo "Image:           $_d ($_k: $_why)"
 }

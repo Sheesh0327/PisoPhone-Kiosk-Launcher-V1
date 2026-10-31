@@ -35,7 +35,7 @@ def sh(code, path_dir=None, root=None):
     base = f"{tmp}/basic"
     if not os.path.isdir(base):
         os.makedirs(base)
-        for c in ("sed", "grep", "sort", "head", "cat", "awk", "df", "tr", "cut", "date", "id", "uname", "sh", "dirname", "basename"):
+        for c in ("sed", "grep", "sort", "head", "cat", "awk", "df", "tr", "cut", "date", "id", "uname", "sh", "dirname", "basename", "tail", "chmod", "touch", "rm", "mv", "mkdir", "wc", "tee", "cp"):
             p = subprocess.run(["sh", "-c", f"command -v {c}"], capture_output=True, text=True).stdout.strip()
             if p:
                 os.symlink(p, f"{base}/{c}")
@@ -148,6 +148,62 @@ t = image(rel("SomeVendorOS", "Vendor 1.0"), OFFICIAL_FEEDS)
 check(t[0] == "custom", f"an unknown distribution id is custom: {t}")
 r = sh("pkg_image_type", NONE, tempfile.mkdtemp(dir=tmp))
 check(r.stdout.startswith("custom|") and r.returncode == 0, f"no package manager gives custom: {r.stdout} {r.stderr}")
+
+# ---- the router installer uses the layer (feature 057, group 2) ------------------------------------------------------------
+STUBS = 'stop_opennds() { echo STOPPED >> ' + tmp + '/calls.log; }; '
+APK_FRESH = bindir("apk_fresh", apk='case "$1" in info) exit 1 ;; esac')   # nothing installed yet
+reset()
+r = sh(STUBS + "(install_packages); echo rc=$?", APK_FRESH)
+c = calls()
+check("rc=0" in r.stdout and "apk update" in c and "apk add opennds" in c and "apk add curl" in c and "apk add ca-bundle" in c and "apk add jsonfilter" in c and "STOPPED" in c,
+      "apk router: install_packages updates, installs openNDS and the others with apk and stops openNDS: " + c + r.stdout + r.stderr)
+check("opkg" not in c, "apk router: opkg is never called: " + c)
+OPKG_FRESH = bindir("opkg_fresh", opkg='case "$1" in list-installed) ;; esac')
+reset()
+r = sh(STUBS + "(install_packages); echo rc=$?", OPKG_FRESH)
+c = calls()
+check("rc=0" in r.stdout and "opkg update" in c and "opkg install opennds" in c and "STOPPED" in c, "opkg router: the same installs as before: " + c + r.stdout)
+reset()
+r = sh(STUBS + "(install_packages); echo rc=$?", NONE)
+check("rc=0" in r.stdout and "no package manager" in r.stdout and "apk" not in calls() and "opkg" not in calls(),
+      "no package manager: install_packages says so, installs nothing and does not fail: " + r.stdout + r.stderr)
+root = tempfile.mkdtemp(dir=tmp)
+r = sh("(preflight_packages); echo rc=$?", NONE, root)
+check("rc=0" not in r.stdout and "no package manager" in r.stdout + r.stderr and "openNDS is not installed" in r.stdout + r.stderr and "Nothing was changed" in r.stdout + r.stderr,
+      "no package manager and no openNDS: the setup stops before changing anything and says why: " + r.stdout + r.stderr)
+os.makedirs(f"{root}/etc/init.d")
+open(f"{root}/etc/init.d/opennds", "w").write("#!/bin/sh\n")
+os.chmod(f"{root}/etc/init.d/opennds", 0o755)
+withnds = bindir("with_ndsctl", ndsctl="exit 0")
+r = sh("(preflight_packages); echo rc=$?", withnds, root)
+check("rc=0" in r.stdout, "no package manager but openNDS is installed (init script and ndsctl): the setup goes on: " + r.stdout + r.stderr)
+r = sh("(preflight_packages); echo rc=$?", APK, root)
+check("rc=0" in r.stdout, "apk router: the package preflight passes: " + r.stdout + r.stderr)
+r = sh("(preflight_packages); echo rc=$?", OPKG, root)
+check("rc=0" in r.stdout, "opkg router: the package preflight passes: " + r.stdout + r.stderr)
+APK_BAD = bindir("apk_bad", apk="exit 1")
+r = sh("step() { :; }; ping() { return 0; }; (install_packages); echo rc=$?", APK_BAD, root)
+check("rc=0" not in r.stdout and "apk update failed" in r.stdout + r.stderr, "an apk update that fails says apk, not opkg: " + r.stdout + r.stderr)
+check(sh("pkg_installed_prefix libmicrohttpd", OPKG).returncode != 0 and sh("pkg_installed_prefix busybox", OPKG).returncode == 0, "opkg: a package family is found by the start of its name")
+
+# ---- the image type is recorded at install and shown (feature 057, group 2) ------------------------------------------------
+FORK = "pkg_image_type() { echo 'fork|ImmortalWrt 23.05.0 r1|feeds from immortalwrt.org, kernel fit ok'; }; "
+cf = f"{tmp}/imgconf"
+open(cf, "w").close()
+def withconf(code, path_dir=None):
+    e_conf = cf
+    return subprocess.run(["sh", "-c", f". {SCRIPT}; {code}"], env=dict(os.environ, PISO_SETUP_SOURCE_ONLY="1", PISO_CONF=e_conf, PISO_LOG=f"{tmp}/log", PISO_STATE=f"{tmp}/state",
+                          PISO_SUMMARY=f"{tmp}/summary-img", PISO_ROUTER_ID="a1b2", PATH=(path_dir + ":" if path_dir else "") + f"{tmp}/basic"), capture_output=True, text=True, timeout=60)
+r = withconf(FORK + "step() { :; }; pkg_image_record; pkg_image_report", OPKG)
+check("IMAGE_TYPE='fork|ImmortalWrt 23.05.0 r1|" in open(cf).read(), "the image type is saved in the setup settings: " + open(cf).read() + r.stderr)
+check("Package manager: opkg" in r.stdout and "ImmortalWrt 23.05.0 r1" in r.stdout and "known fork" in r.stdout and "immortalwrt.org" in r.stdout, "the report names the manager, the image and the kind in plain words: " + r.stdout)
+r = withconf("pkg_image_report", NONE)
+check("Package manager: none" in r.stdout and "Image:" in r.stdout, "the report works with no package manager: " + r.stdout)
+r = withconf("check_all() { echo CHECKS; return 0; }; cmd_status", OPKG)
+check("Image:" in r.stdout and "known fork" in r.stdout, "piso-setup status shows the image kind: " + r.stdout + r.stderr)
+r = withconf("write_summary; cat \"$SUMMARY\"", OPKG)
+check("Image:" in r.stdout and "known fork" in r.stdout, "the setup summary shows the image kind: " + r.stdout + r.stderr)
+check(sh("pkg_image_type", OPKG, root).stdout.count("'") == 0, "the saved image text never holds a single quote (the settings file is quoted with them)")
 
 print(f"{checks} checks, {failures} failures")
 sys.exit(1 if failures else 0)

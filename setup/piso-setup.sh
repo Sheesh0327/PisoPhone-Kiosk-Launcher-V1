@@ -238,6 +238,18 @@ pkg_installed() {
 	esac
 }
 
+# pkg_installed_prefix <start of a name>: some installed package's name starts with it (a family such as libmicrohttpd*).
+pkg_installed_prefix() {
+	case "$(pkg_manager)" in
+		opkg) opkg list-installed 2> /dev/null | grep -qi "^$1" ;;
+		apk) apk info 2> /dev/null | grep -qi "^$1" ;;
+		*) return 1 ;;
+	esac
+}
+
+# pkg_opennds_ready: openNDS is installed and usable (its init script and ndsctl exist), however it got there.
+pkg_opennds_ready() { [ -x "$PISO_ROOT/etc/init.d/opennds" ] && command -v ndsctl > /dev/null 2>&1; }
+
 # pkg_available <package>: the manager knows it. opkg info exits 0 even for an unknown package, so its output is read; and it also answers for
 # an installed package, so pkg_dry_run is the real test of whether an install would work.
 pkg_available() {
@@ -306,7 +318,7 @@ pkg_image_type() {
 	_rel="$PISO_ROOT/etc/openwrt_release"
 	_id=$(sed -n "s/^DISTRIB_ID=['\"]\{0,1\}\([^'\"]*\).*/\1/p" "$_rel" 2> /dev/null | head -n 1)
 	_desc=$(sed -n "s/^DISTRIB_DESCRIPTION=['\"]\{0,1\}\([^'\"]*\).*/\1/p" "$_rel" 2> /dev/null | head -n 1)
-	_desc="${_desc:-unknown image}"
+	_desc=$(printf %s "${_desc:-unknown image}" | tr -d "|'")   # (no quote and no bar: it is saved in the settings file)
 	[ -n "$_id" ] || { echo "custom|$_desc|no release file"; return 0; }
 	if [ "$_id" = OpenWrt ]; then _kind=official; _dom=openwrt.org; else _kind=fork; _dom=$(pkg_fork_site "$_id"); fi
 	[ -n "$_dom" ] || { echo "custom|$_desc|$_id is not a distribution this setup knows"; return 0; }
@@ -321,6 +333,23 @@ pkg_image_type() {
 	done
 	pkg_dry_run "${PISO_FIT_PROBE:-kmod-ifb}" || { echo "custom|$_desc|the package feed does not offer ${PISO_FIT_PROBE:-kmod-ifb} for this image (it does not fit the kernel, or the package lists are old)"; return 0; }
 	echo "$_kind|$_desc|feeds from $_dom, kernel fit ok"
+}
+
+# pkg_image_record: work out the image type (after the package lists are fresh) and save it in the setup settings.
+pkg_image_record() { conf_set IMAGE_TYPE "$(pkg_image_type)"; }
+
+# pkg_image_report: the lines for the summary and "piso-setup status": the package manager and the image, in plain words.
+pkg_image_report() {
+	_t=$(conf_get IMAGE_TYPE)
+	_k="${_t%%|*}"; _r="${_t#*|}"; _d="${_r%%|*}"; _why="${_r#*|}"
+	case "$_k" in
+		official) _k="official OpenWrt" ;;
+		fork) _k="known fork" ;;
+		custom) _k="custom image" ;;
+		*) echo "Package manager: $(pkg_manager)"; echo "Image:           not checked yet"; return 0 ;;
+	esac
+	echo "Package manager: $(pkg_manager)"
+	echo "Image:           $_d ($_k: $_why)"
 }
 # ---------------------------------------------------------------------------------------------------------------------
 # Flash: which chip holds the writable data, and how much room is left
@@ -415,6 +444,13 @@ wan_clash() {
 	return 1
 }
 
+# preflight_packages: the router has opkg or apk, or no package manager at all but openNDS already installed (a custom image with the packages built in).
+preflight_packages() {
+	[ "$(pkg_manager)" != none ] && return 0
+	pkg_opennds_ready || die "this router has no package manager (opkg or apk) and openNDS is not installed, so the setup has nothing to install it with. Install openNDS on the router first, then run this again (see docs/ROUTERS.md). Nothing was changed."
+	tip "this router has no package manager: the setup uses the packages already on it, and anything optional is skipped."
+}
+
 preflight() {
 	step "Checking the router"
 	if [ "$DRY" != 1 ]; then
@@ -422,7 +458,7 @@ preflight() {
 		[ -f /etc/openwrt_release ] || die "this is not an OpenWrt router"
 	fi
 	command -v uci > /dev/null || die "uci not found"
-	command -v opkg > /dev/null || die "this router has no opkg (OpenWrt 25.x and snapshots install packages with apk). This setup supports OpenWrt 23.05 and 24.10 (see docs/ROUTERS.md). Nothing was changed."
+	preflight_packages
 	check_arch
 	R24=""; R5=""
 	for r in $(radios); do
@@ -436,7 +472,7 @@ preflight() {
 }
 
 # preflight_network: the router's WAN address and internet, and that its LAN and WAN ranges do not clash. The router needs internet for
-# the first setup: it downloads its packages itself (opkg, against its own signed feeds).
+# the first setup: it downloads its packages itself (opkg or apk, against the router's own signed feeds).
 preflight_network() {
 	WAN=$(wan_ip)
 	[ -n "$WAN" ] || die "the router has no WAN address, and it needs internet for the first setup: plug the modem into the WAN port and wait a minute, then run this again"
@@ -452,28 +488,36 @@ preflight_network() {
 	tip "the setup takes about 3 to 8 minutes. Keep this window open, the coin box powered on near the router, and the network cable plugged in."
 }
 
-# update_failed: opkg update failed. With a working ping the router has internet, so the release's package sources are what does not answer.
+# update_failed: the package update failed. With a working ping the router has internet, so the release's package sources are what does not answer.
 update_failed() {
 	if ping -c 1 -W 3 1.1.1.1 > /dev/null 2>&1 || ping -c 1 -W 3 8.8.8.8 > /dev/null 2>&1; then
 		_rel=$(sed -n "s/^DISTRIB_RELEASE=['\"]\{0,1\}\([^'\"]*\).*/\1/p" "$PISO_ROOT/etc/openwrt_release" 2> /dev/null | head -n 1)
-		die "opkg update failed although the router has internet: the package sources of OpenWrt ${_rel:-this release} do not answer (an old release moved to the archive, or a vendor build). Supported releases: docs/ROUTERS.md"
+		die "$(pkg_manager) update failed although the router has internet: the package sources of OpenWrt ${_rel:-this release} do not answer (an old release moved to the archive, or a vendor build). Supported releases: docs/ROUTERS.md"
 	fi
-	die "opkg update failed (no internet or DNS?)"
+	die "$(pkg_manager) update failed (no internet or DNS?)"
 }
 
 install_packages() {
 	step "Installing packages"
-	opkg update > /dev/null 2>&1 || opkg update || update_failed
+	if [ "$(pkg_manager)" = none ]; then
+		log "no package manager: using the packages already on the router"
+		pkg_image_record
+		stop_opennds
+		return 0
+	fi
+	pkg_update > /dev/null 2>&1 || pkg_update || update_failed
 	for p in opennds curl ca-bundle jsonfilter; do
-		if ! opkg list-installed 2> /dev/null | grep -q "^$p "; then
+		if ! pkg_installed "$p"; then
 			log "installing $p"
-			opkg install "$p" > /dev/null 2>&1 || opkg install "$p" || die "could not install $p"
+			pkg_install "$p" > /dev/null 2>&1 || pkg_install "$p" || die "could not install $p"
 		fi
 		# Installing opennds starts it at once with its default settings, which gate the LAN (the kiosk network) and
 		# would reject the coin box and the phones: stop it before anything else can fail. It is started at the end.
 		[ "$p" = opennds ] && stop_opennds
 	done
-	opkg list-installed 2> /dev/null | grep -qi '^libmicrohttpd' || opkg install libmicrohttpd-no-ssl > /dev/null 2>&1
+	pkg_installed_prefix libmicrohttpd || pkg_install libmicrohttpd-no-ssl > /dev/null 2>&1
+	pkg_image_record
+	log "$(pkg_image_report | sed -n 2p)"
 }
 
 # ---------------------------------------------------------------------------------------------------------------------
@@ -1174,6 +1218,8 @@ $_bnn}
 
 $(flash_report)
 
+$(pkg_image_report)
+
 Useful commands on the router:
   piso-setup status            health check of every part
   piso-setup wifi-name "Name"  rename the customer Wi-Fi
@@ -1365,6 +1411,7 @@ stage2() {
 # ---------------------------------------------------------------------------------------------------------------------
 cmd_status() {
 	[ -r "$STATE" ] && echo "setup: $(cat "$STATE")"
+	pkg_image_report
 	DRY=1; check_all; _f=$?
 	box_name_notice   # (information only: it does not count as a failed check)
 	[ -s "$PISO_ROOT/etc/coinslot.d/alerts.txt" ] && { echo "Recent alerts (the router's monitor wrote them to /etc/coinslot.d/alerts.txt):"; tail -n 5 "$PISO_ROOT/etc/coinslot.d/alerts.txt" | sed 's/^/  /'; }
