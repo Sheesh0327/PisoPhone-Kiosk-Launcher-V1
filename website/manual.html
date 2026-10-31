@@ -167,6 +167,22 @@ ol.steps>li::before{content:counter(s);position:absolute;left:0;top:2px;width:30
 <li><b>Add or remove time:</b> choose one phone or <i>All phones</i>, type minutes, tap <b>Add time</b> or <b>Remove time</b>. Use this for refunds, freebies and fixes.</li>
 <li><b>Player accounts:</b> see <a href="#cards">chapter 8</a>.</li>
 </ul>
+<h3 id="voice">Talking to a renter (voice messages)</h3>
+<p>Every paired phone in the table has a <b>mic</b> button, whether the phone is online or offline. <b>Hold the mic and speak</b> (up to 15 seconds; it stops by itself at 15). When you let go, the mic becomes a <b>paper plane</b> showing how long the message is: it is recorded and ready. Tap the plane to send it to that phone, which plays it at once with a &ldquo;Message from the shop&rdquo; banner, even on the lock screen. The little cross beside the plane throws the recording away. A tap that is too short to be a message is ignored.</p>
+<ul>
+<li><b>Nothing is kept.</b> The recording stays in your browser until you tap the plane, and the box only passes it on; it stores no message. If you close or reload the page, an unsent recording is gone. The phone plays a message once, and does not keep it.</li>
+<li><b>If the phone is off</b> or does not answer, the page says so and the plane stays: tap it again when the phone is back. A message is never held back to be played later.</li>
+<li><b>A greyed mic</b> means the app on that phone is too old: update the app. Empty slots and phones waiting to be paired have no mic.</li>
+<li>Messages do not touch the time left or any money. The shop's &ldquo;voice off&rdquo; setting and quiet hours do not stop a message, but a phone whose volume is at zero stays silent.</li>
+</ul>
+<p><b>One-time setting for recording.</b> Browsers only let a page use the microphone if it is opened with <code>https://</code>, and the box page is plain <code>http://</code> on your shop network. So once, on each phone or computer you use as the admin, in <b>Chrome</b>:</p>
+<ol>
+<li>Give the box a fixed address in your router (a reserved address for the box), so the address never changes. The setting below names that exact address.</li>
+<li>In Chrome open <code>chrome://flags/#unsafely-treat-insecure-origin-as-secure</code>.</li>
+<li>Type the box page address exactly as you open it, for example <code>http://192.168.1.50</code>, set the option to <b>Enabled</b> and press <b>Relaunch</b>.</li>
+<li>Open the box page again and hold a mic; allow the microphone when Chrome asks.</li>
+</ol>
+<p>An <b>iPhone</b> cannot record on this page (its browsers have no such setting): use a computer or an Android phone. The box page shown <i>inside the router console</i> (the Rental phones tab) cannot use the microphone either: use the link under it to open the box page on its own.</p>
 <h3>Settings</h3>
 <table>
 <tr><th>Setting</th><th>What it does</th></tr>
@@ -396,6 +412,7 @@ ol.steps>li::before{content:counter(s);position:absolute;left:0;top:2px;width:30
 <tr><td>Add or remove time</td><td>Overview &rarr; Add or remove time</td></tr>
 <tr><td>Open admin on a phone</td><td>Tap the shield on the lock screen, or hold the pill 5 s &rarr; box admin password</td></tr>
 <tr><td>Find a phone</td><td>Overview &rarr; Locate (rings 1 min)</td></tr>
+<tr><td>Talk to a renter</td><td>Overview &rarr; hold the mic, let go, tap the paper plane (<a href="#voice">how</a>)</td></tr>
 <tr><td>Update the box</td><td>Tools &rarr; Firmware update &rarr; Install update</td></tr>
 <tr><td>Add another unit</td><td>Run <code>pisophone_setup.py</code> &rarr; Set up the next unit</td></tr>
 <tr><td>Lost my admin QR</td><td><code>make_admin_qr.py --new</code>, commit, update boxes</td></tr>

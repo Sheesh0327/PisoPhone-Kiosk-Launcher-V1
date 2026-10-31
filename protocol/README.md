@@ -6,6 +6,10 @@ holds the known answers both must reproduce, so a change to one side that breaks
 ## Layout
 - `gen_vectors.py`: writes `fixtures/box_phone_v1.json`, using Python's `cryptography` library, independent of both implementations.
 - `fixtures/box_phone_v1.json`: the committed vectors (`version`, `encrypt`, `hmac`, `accounts`). The `v1` in the name is the format version.
+- `gen_voice_vectors.py`: the reference for the voice message (feature 056): the 8 kHz ADPCM clip and the frames the box sends the phone
+  (the bytes are described in its docstring). It writes `fixtures/box_phone_voice_v1.json` and also holds the independent encoder, decoder and frame checker.
+- `fixtures/box_phone_voice_v1.json`: its committed vectors: good clips from one sample to the full 15.0 s, refused clips, and the frames of three of them.
+- `test_voice_vectors.py`: checks the reference and that the fixture is what the generator makes (`python3 -m pytest -x protocol/test_voice_vectors.py`).
 
 ## The format (version 1)
 - key = SHA-256 of the shared secret (UTF-8)
@@ -19,6 +23,9 @@ What each message means and who sends it: `docs/ARCHITECTURE.md` (section 3). Th
 |---|---|
 | Coin box firmware | `esp32_firmware/host_tests/protocol_contract_test.cpp` (the header it needs is made from the JSON by `esp32_firmware/host_tests/gen_protocol_fixture.py`) |
 | Phone app | `app/src/test/java/com/pisophone/kiosk/security/ProtocolContractUnitTest.kt` |
+| Voice message, box | `esp32_firmware/host_tests/voice_clip_test.cpp`, `voice_frames_test.cpp`, `voice_relay_test.cpp` (header made by `gen_voice_fixture.py`) |
+| Voice message, phone | `app/src/test/java/com/pisophone/kiosk/voice/` (`VoiceClipTest`, `VoiceFrameAssemblerTest`, `VoiceMessageReceiverTest`) |
+| Voice message, admin page | `scripts/tests/test_portal_voice_ui.py` (the page's encoder makes the same bytes) |
 
 ## Build
 Run it only when the format changes on purpose, and then bump the version in the file name:

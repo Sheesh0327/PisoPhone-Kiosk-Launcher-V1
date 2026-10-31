@@ -102,6 +102,7 @@ struct DeviceTelemetry {
     unsigned long timeReportedMs; // when timeRemainingSeconds was last reported by the phone
     unsigned long long lastNonceTs;
     int restarts24h; // how often the phone's app restarted after a crash in the last 24 hours (reported by the phone; 0 if unknown)
+    bool canPlayVoice; // the app can play a voice message (voice=1 on its signed heartbeat)
     bool
         isApp; // True ONLY if request comes from the PisoPhone app (filters out external script coinslot access requests)
 };

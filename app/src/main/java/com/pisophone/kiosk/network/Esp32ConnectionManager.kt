@@ -236,7 +236,7 @@ class Esp32ConnectionManager(
                         }
 
                         val req = Request.Builder()
-                            .url("http://$host:$esp32Port/heartbeat?device_id=$deviceId&ip=$cleanIp&name=$encodedName&time=${delegate.getSessionTimeRemaining()}&state=${delegate.getAppState()}&battery=$curBat&charging=${if (isChg) 1 else 0}&ts=$ts&sig=$sig$accountReport&restarts=${com.pisophone.kiosk.util.CrashLoop.restartsLast24h(context)}&source=app&app=1&client=pisophone_app")
+                            .url("http://$host:$esp32Port/heartbeat?device_id=$deviceId&ip=$cleanIp&name=$encodedName&time=${delegate.getSessionTimeRemaining()}&state=${delegate.getAppState()}&battery=$curBat&charging=${if (isChg) 1 else 0}&ts=$ts&sig=$sig$accountReport&restarts=${com.pisophone.kiosk.util.CrashLoop.restartsLast24h(context)}&voice=1&source=app&app=1&client=pisophone_app")
                             .build()
                         try {
                             httpClient.newCall(req).execute().use { response ->

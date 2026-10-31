@@ -933,6 +933,9 @@ class KioskAudioManager(
     }
 
     /** Time was added during the countdown: stop it and give the game its sound back. */
+    /** True while the countdown digits or the closing remark are being spoken: a voice message waits for them (feature 056). */
+    fun isSpeaking(): Boolean = isTtsActive || countdownHold
+
     fun cancelCountdown() {
         if (!countdownHold) return
         clips?.stop()

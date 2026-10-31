@@ -6,6 +6,7 @@ import android.os.Looper
 import android.util.Log
 import android.widget.Toast
 import com.pisophone.kiosk.audio.KioskAudioManager
+import com.pisophone.kiosk.audio.VoiceMessageController
 import com.pisophone.kiosk.repository.CoinEventRepository
 import com.pisophone.kiosk.repository.PaymentRepository
 import com.pisophone.kiosk.repository.PaymentResult
@@ -44,6 +45,11 @@ class KioskServerCoordinator(
     override fun isReady(): Boolean = isReady.invoke()
 
     override fun getSecretKey(): String = getSecretKey.invoke()
+
+    /** Plays the voice messages the shop's box passes on (feature 056); the countdown and closing speech keep their priority. */
+    private val voiceMessages by lazy { VoiceMessageController(context) { getAudioManager()?.isSpeaking() == true } }
+
+    override fun onVoiceMessage(samples: ShortArray) = voiceMessages.onMessage(samples)
 
     override fun getDeviceId(): String = stateManager.deviceId.value.ifBlank { KioskSecurity.getHardwareId(context) }
 

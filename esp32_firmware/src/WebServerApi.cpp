@@ -399,6 +399,7 @@ void handleApiStatus() {
         json += "\"battery\":" + String(bat) + ",";
         json += "\"charging\":" + String(chg ? "true" : "false") + ",";
         json += "\"restarts\":" + String(isBound ? getTrackedRestarts(ip, devId) : 0) + ",";
+        json += "\"voice\":" + String(isBound && getTrackedVoice(ip, devId) ? "true" : "false") + ",";
         json += "\"active\":" + String(phoneSlots[i].active ? "true" : "false") + ",";
         json += "\"expStatus\":" + String(phoneSlots[i].active ? 0 : 2) + ",";
         json += "\"isExpiredOrInactive\":" + String(!phoneSlots[i].active ? "true" : "false");
