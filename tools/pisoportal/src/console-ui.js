@@ -107,7 +107,7 @@ function sqsay(t,bad){var m=$('sqm2');m.textContent=t||'';m.className=bad?'msg b
 function sqnum(v){v=String(v).trim();return /^\d+(\.\d)?$/.test(v)&&+v>=0.1&&+v<=10000?+v:null}
 function sqlim(v,p){return Math.floor(v*10*p+1e-6)/1000}
 function sqlive(){var d=sqnum($('sqd').value),u=sqnum($('squ').value),p=Math.round(+$('sqp').value);$('sql').textContent=d!==null&&u!==null&&p>=50&&p<=100?'Will limit to '+sqlim(d,p)+' Mbps down and '+sqlim(u,p)+' Mbps up ('+p+'% of the line).':'Line speed not set; smoothing is off.'}
-function sqm(j){var q=j&&j.sqm;if(!q)return;var t=q.speedtest,i=q.install,off=!q.available,s='',n;
+function sqm(j){var q=j&&j.sqm;if(!q||!$('sqc'))return;var t=q.speedtest,i=q.install,off=!q.available,s='',n;
  $('sqc').className='card'+(off?' off':'');['sqd','squ','sqp','sqs','sqk'].forEach(function(x){$(x).disabled=off});
  if(!sqDirty&&!$('sqc').contains(document.activeElement)){$('sqd').value=q.down;$('squ').value=q.up;$('sqp').value=q.percent;$('sqs').value=q.on?'on':'off'}
  $('sqi').className='b'+(off?'':' hide');$('sqi').disabled=!i.can||q.installing;$('sqt').disabled=!t.can_start;
@@ -121,7 +121,7 @@ function sqm(j){var q=j&&j.sqm;if(!q)return;var t=q.speedtest,i=q.install,off=!q
  else if(t.state==='failed')s='The test did not finish: '+t.reason;else if(!off&&t.blocked)s=t.blocked;
  $('sqb').textContent=s;sqlive();
  if(q.applying||q.installing||t.state==='running'){clearTimeout(sqT);sqT=setTimeout(function(){if(tab==='set')api('/api/settings').then(sets).catch(function(){})},1500)}}
-['sqd','squ','sqp'].forEach(function(x){$(x).oninput=function(){sqDirty=true;sqlive()}});$('sqs').onchange=function(){sqDirty=true};
+if($('sqc')){['sqd','squ','sqp'].forEach(function(x){$(x).oninput=function(){sqDirty=true;sqlive()}});$('sqs').onchange=function(){sqDirty=true};
 $('sqk').onclick=function(){var d=sqnum($('sqd').value),u=sqnum($('squ').value),p=Math.round(+$('sqp').value),on=$('sqs').value,b;
  if(($('sqd').value&&d===null)||($('squ').value&&u===null)){sqsay('Speeds are numbers from 0.1 to 10000, with at most one decimal.',1);return}
  if(!(p>=50&&p<=100)){sqsay('Leave a room of 50 to 100 percent.',1);return}
@@ -129,7 +129,7 @@ $('sqk').onclick=function(){var d=sqnum($('sqd').value),u=sqnum($('squ').value),
  b={sqm_on:on,sqm_percent:String(p)};if(d!==null)b.sqm_down=String(d);if(u!==null)b.sqm_up=String(u);sqsay('');
  api('/api/settings',b).then(function(j){if(j.ok){sqDirty=false;sqsay('Saved. The router is applying it now.');sets(j)}else sqsay(j.why||'Could not save.',1)}).catch(function(){})};
 $('sqt').onclick=function(){sqsay('');api('/api/speedtest',{}).then(function(j){if(j.ok)sets(j);else sqsay(j.why||'Could not start the test.',1)}).catch(function(){})};
-$('sqi').onclick=function(){sqsay('');api('/api/sqm/install',{}).then(function(j){if(j.ok)sets(j);else sqsay(j.why||'Could not start the install.',1)}).catch(function(){})};
+$('sqi').onclick=function(){sqsay('');api('/api/sqm/install',{}).then(function(j){if(j.ok)sets(j);else sqsay(j.why||'Could not start the install.',1)}).catch(function(){})};}
 /* prices: the editor keeps what is typed until it is saved (the page refreshes every few seconds and must not overwrite it) */
 var pdirty=false;
 function prow(p,m){return '<div class="tr"><span class="s">&#8369;</span><input type="number" class="tp" min="1" max="1000" step="1" value="'+(+p||'')+'" aria-label="Pesos"><span class="s">buys</span><input type="number" class="tm" min="1" max="10080" step="1" value="'+(+m||'')+'" aria-label="Minutes"><span class="s tx">'+(m>=60?mins(m):'min')+'</span><button class="b rm" aria-label="Remove this line">Remove</button></div>'}
