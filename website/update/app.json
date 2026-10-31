@@ -1,10 +1,10 @@
 {
-  "versionCode": 550,
-  "versionName": "5.5.0",
+  "versionCode": 555,
+  "versionName": "5.5.5",
   "channel": "stable",
   
   "signatureChecksum": "Un0usqLMwnmeaowrY2g21EgRVWe4bTRDLUi2RH12WbE",
-  "sha256": "7ce72e62791b10806ad80a01786f85ec2c2504d57912dd96a65b2e1f34c844a3",
+  "sha256": "afaaf6d930bd966904ab2d040ff0a40e46756f148ffbb35208f9eed4d9d1d0a0",
   "size": 3565566,
   "releaseDate": "2026-10-31"
 }
