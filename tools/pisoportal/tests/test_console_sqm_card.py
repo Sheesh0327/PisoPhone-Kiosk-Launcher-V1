@@ -49,6 +49,24 @@ os.chmod(f"{tmp}/piso-setup", 0o755)
 env.extra.update(CONSOLE_PORT=CP, CONSOLE_BIND="127.0.0.1", UBUS=f"{tmp}/ubus", PISO_SETUP_CONF=f"{tmp}/setup.conf", PISO_SETUP_BIN=f"{tmp}/piso-setup",
                  SPEEDTEST_FILE=RESULT, SPEEDTEST_GAP_SECONDS="2")
 
+# text contrast inside the card (4.5 : 1), counting the opacity of the element and of its parents; disabled controls are inactive and exempt (a greyed-out card is not dimmed: its fields are disabled and its reason is plain text)
+CARD_CONTRAST = """() => {
+  const px = (c) => { const m = c.match(/[\\d.]+/g).map(Number); return { r: m[0], g: m[1], b: m[2], a: m.length > 3 ? m[3] : 1 } };
+  const lin = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4) };
+  const lum = (c) => 0.2126 * lin(c.r) + 0.7152 * lin(c.g) + 0.0722 * lin(c.b);
+  const bgOf = (e) => { for (let n = e; n; n = n.parentElement) { const c = px(getComputedStyle(n).backgroundColor); if (c.a >= 1) return c } return { r: 255, g: 255, b: 255 } };
+  const card = document.getElementById('sqc'), off = card.classList.contains('off'), bad = [];
+  for (const e of card.querySelectorAll('*')) {
+    if (!e.offsetParent || e.disabled) continue;
+    if (![...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim())) continue;
+    let a = 1; for (let n = e; n && n !== document.body; n = n.parentElement) a *= +getComputedStyle(n).opacity;
+    const f = px(getComputedStyle(e).color), b = bgOf(e);
+    const fg = { r: f.r * a + b.r * (1 - a), g: f.g * a + b.g * (1 - a), b: f.b * a + b.b * (1 - a) };
+    const l1 = lum(fg), l2 = lum(b), r = (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+    if (r < 4.5) bad.push((e.id || e.className || e.tagName) + ' ' + e.textContent.trim().slice(0, 24) + ' ' + r.toFixed(2));
+  }
+  return bad } """
+
 
 def settings():
     return pathlib.Path(f"{D}/settings.txt").read_text() if os.path.exists(f"{D}/settings.txt") else ""
@@ -153,6 +171,13 @@ try:
             ph.wait_for_selector("#sqc", state="attached", timeout=8000)
             ph.wait_for_function("document.getElementById('sqn').textContent.length > 0", timeout=8000)
             check(ph.evaluate("document.documentElement.scrollWidth <= window.innerWidth"), f"{scheme}, 360 px wide: no sideways scrolling")
+            bad = ph.evaluate(CARD_CONTRAST)
+            check(bad == [] and "off" not in (ph.get_attribute("#sqc", "class") or "").split(), f"{scheme}: the card's text has a contrast of 4.5 : 1 or better: {bad}")
+            os.rename(f"{D}/sqm.txt", f"{D}/sqm.txt.away")   # a router without SQM: the greyed-out card
+            ph.wait_for_function("document.getElementById('sqc').className.indexOf('off') >= 0", timeout=8000)
+            bad = ph.evaluate(CARD_CONTRAST)
+            check(bad == [], f"{scheme}: the greyed-out card's reason and buttons have a contrast of 4.5 : 1 or better: {bad}")
+            os.rename(f"{D}/sqm.txt.away", f"{D}/sqm.txt")
             tall = ph.evaluate("['sqk','sqt'].every(function(i){return document.getElementById(i).getBoundingClientRect().height >= 40})")
             check(tall, f"{scheme}, 360 px wide: the buttons are at least 40 px tall")
             ph.close()
