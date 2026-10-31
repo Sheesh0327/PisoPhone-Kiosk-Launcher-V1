@@ -21,7 +21,7 @@ Never opened: `setup/piso-setup*.sh`, `website/install.sh` (generated).
 - [x] 3. **`install.sh` and the setup program.** Stop refusing apk; keep refusing an unknown release. (test: `test_install.py`, `test_setup_phone_web.py`, `test_phone_only.py`; red: yes)
 - [x] 4. **Security rule.** Forbidden flags in `check_security_rules.sh` with a failing and a passing test. (red: yes)
 - [x] 5. **Documents** (criterion 6): `docs/ROUTERS.md`, `setup/README.md`, `CHANGELOG.md`, RS67, and the new tests in `.github/workflows/quality.yml`. No code.
-- [ ] 6. **Gates and hardware.** `bash scripts/check_security_rules.sh`; `cargo test` and `python3 tests/test_flow.py` in `tools/pisoportal` (nothing there changes, they must still pass); the four router test files; `test_setup_phone_web.py`, `test_phone_only.py`; `python3 tools/build_piso_setup.py --check`; ruff/mypy on touched Python. Then the run on the owner's image (criterion 7) and `validation.md`.
+- [x] 6. **Gates** (done on a computer; the run on the owner's image, criterion 7, waits for the owner's router: RS67). `bash scripts/check_security_rules.sh`; `cargo test` and `python3 tests/test_flow.py` in `tools/pisoportal` (nothing there changes, they must still pass); the four router test files; `test_setup_phone_web.py`, `test_phone_only.py`; `python3 tools/build_piso_setup.py --check`; ruff/mypy on touched Python. Then the run on the owner's image (criterion 7) and `validation.md`.
 
 ## Release
 Raise `setup/RELEASE` (1.5.34 now; 056 raises it again after 057). Regenerate with `python3 tools/build_piso_setup.py`. Router path through `beta` (`CLAUDE.md` section 5): CI builds the program and setup files; decode the program inside the signed file before anyone raises the release.
