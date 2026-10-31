@@ -1,6 +1,6 @@
 # Feature 056: voice message from the box's admin page to a rented phone
 
-Status: **built and validated on a computer 2026-10-31 (`validation.md`); not tried on a real box, phone or browser (RS66 to RS69); waiting for the owner's review**   Branch: `ccr-6f20d511-8e6cu1` (this session's branch; the usual name would be `feat/056-voice-message`)   Area: firmware + app (one box <-> phone message, so both sides change in one feature; the router is not touched)
+Status: **merged into `main` 2026-10-31 (`549203a`); not released; not tried on a real box, phone or browser (RS66 to RS69)**   Branch: `ccr-6f20d511-8e6cu1` (this session's branch; the usual name would be `feat/056-voice-message`)   Area: firmware + app (one box <-> phone message, so both sides change in one feature; the router is not touched)
 Backlog rows: none (owner request 2026-10-31)   Release: firmware (higher `PISO_FW_VERSION`) and app (higher build); the web files are regenerated
 
 ## Intent
