@@ -1,19 +1,19 @@
 {
-  "build": 308,
+  "build": 309,
   "chips": {
     "esp32c3": {
       "url": "https://pisophone.pages.dev/update/phone/firmware-esp32c3.bin",
-      "sha256": "3f7b622dd4a06f08f0786d0890e2f5a834709fb5797435fb505f73ccfeeb8e79",
-      "size": 1355792,
-      "sig": "MEYCIQCz/tjeZlzAGiK7ugB4nt/hHTVWeHs1oz0y3IdG/gjUWQIhAPkQejDpOMcZp8ivuM6+vmhEvHt2hrxlgfcDXfZrjBkL"
+      "sha256": "6070105bd5567c6ce35edaf266e663f651564d960ce2c46f724d6088f42c0bc6",
+      "size": 1370464,
+      "sig": "MEQCICMWJKcx9ZUZI9KEwF+Cpqu7iyLUWJPMDlONFJbph903AiAK7HrQPHb9Mfr94mJOrHmKojz5CDsdfdO5I7QZSpKR/g=="
     },
     "esp32": {
       "url": "https://pisophone.pages.dev/update/phone/firmware-esp32.bin",
-      "sha256": "88a890971b3a7bf5cccacf0dab53a89b8e6ca9b718f3bfa2e2d26553283fa45d",
-      "size": 1347168,
-      "sig": "MEQCIDie+a53DAMJhzZBfieL37Avzm5rwDCnjkuKaUkN2yLrAiAMn+XbEEJG3q+PLf56fDowlob8oTa6wXROUnS/Dm9aTA=="
+      "sha256": "3b6939ef7838488ccfa970f310371b6b7268aa2d8bc019cbd86c28b4d56e063b",
+      "size": 1361664,
+      "sig": "MEUCIHTapL2q6IoD/HHnoWUlB9YSTgN5HhKSQFw9oecgoGrdAiEAjmi3IKZ4nBH2/rX5PgEZinIyl2yKERuikcnPZoEQn1o="
     }
   },
-  "version": "3.12.5",
+  "version": "3.13.0",
   "releaseDate": "2026-10-31"
 }
