@@ -1,0 +1,94 @@
+
+== T1 plain http on a LAN address, no setting (what an owner gets today)
+{
+ "origin": "http://192.0.2.2:41931",
+ "isSecureContext": false,
+ "mediaDevices": "undefined",
+ "getUserMedia": false,
+ "MediaRecorder": "function",
+ "AudioContext": "function",
+ "AudioWorklet": "function"
+}
+
+== T2 same address after the one-time Chrome setting (unsafely-treat-insecure-origin-as-secure)
+{
+ "origin": "http://192.0.2.2:41931",
+ "isSecureContext": true,
+ "mediaDevices": "object",
+ "getUserMedia": true,
+ "MediaRecorder": "function",
+ "AudioContext": "function",
+ "AudioWorklet": "function",
+ "gum": "ok",
+ "trackSettings": {
+  "autoGainControl": true,
+  "channelCount": 1,
+  "deviceId": "default",
+  "echoCancellation": true,
+  "groupId": "798a80723064c66498b1832305fc8575a9bd710b0d177566d0ec3d2567f37703",
+  "latency": 0.01,
+  "noiseSuppression": true,
+  "sampleRate": 48000,
+  "sampleSize": 16,
+  "voiceIsolation": false
+ },
+ "mediaRecorderTypes": [
+  "audio/webm;codecs=opus",
+  "audio/webm",
+  "audio/mp4"
+ ],
+ "mediaRecorder": {
+  "mimeType": "audio/webm;codecs=opus",
+  "bytesFor3s": 40980
+ },
+ "audioContextRate": 44100,
+ "capture": {
+  "how": "AudioWorklet",
+  "samplesAtDeviceRate": 132736,
+  "secondsCaptured": 3.01,
+  "peak": 1.009,
+  "samplesAt8k": 24080,
+  "adpcmBytesFor3s": 12040,
+  "resampleMs": 4
+ },
+ "frames": {
+  "allow=\"\"": "ok",
+  "allow=\"microphone\"": "ok"
+ }
+}
+
+== T3 setting made, but the owner says "Block" to the prompt
+{
+ "origin": "http://192.0.2.2:41931",
+ "isSecureContext": true,
+ "mediaDevices": "object",
+ "getUserMedia": true,
+ "MediaRecorder": "function",
+ "AudioContext": "function",
+ "AudioWorklet": "function",
+ "gum": "NotAllowedError: Permission denied"
+}
+
+== T4 setting made, accepted, but the device has no microphone
+{
+ "origin": "http://192.0.2.2:41931",
+ "isSecureContext": true,
+ "mediaDevices": "object",
+ "getUserMedia": true,
+ "MediaRecorder": "function",
+ "AudioContext": "function",
+ "AudioWorklet": "function",
+ "gum": "NotFoundError: Requested device not found"
+}
+
+== T5 for reference: localhost counts as secure with no setting
+{
+ "origin": "http://127.0.0.1:41931",
+ "isSecureContext": true,
+ "mediaDevices": "object",
+ "getUserMedia": true,
+ "MediaRecorder": "function",
+ "AudioContext": "function",
+ "AudioWorklet": "function",
+ "gum": "ok"
+}
