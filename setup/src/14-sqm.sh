@@ -210,7 +210,7 @@ cmd_sqm_test() {
 		echo "The speed test did not finish: $_why." >&2
 		return 1
 	fi
-	sqm_test_write done "$_down" "$_up" "$_host" "$SQM_T_CPU" ""
+	sqm_test_write "done" "$_down" "$_up" "$_host" "$SQM_T_CPU" ""
 	echo "Download $_down Mbps, upload $_up Mbps (via $_host)."
 	return 0
 }
