@@ -284,6 +284,7 @@ void recordDeviceNonce(String deviceId, unsigned long long ts) {
         newDev.lastSeenMs = millis();
         newDev.lastNonceTs = ts;
         newDev.restarts24h = 0;
+        newDev.canPlayVoice = false;
         newDev.isApp = (deviceId.length() > 0 && !deviceId.startsWith("DEV_"));
     }
 }
@@ -338,6 +339,7 @@ void updateDeviceTelemetry(String deviceId, String ip, int timeRemaining, int st
         newDev.lastSeenMs = millis();
         newDev.lastNonceTs = ts;
         newDev.restarts24h = 0;
+        newDev.canPlayVoice = false;
         newDev.isApp = isApp;
     }
 }
@@ -366,6 +368,16 @@ void setTrackedRestarts(String ip, String devId, int restarts) {
 int getTrackedRestarts(String ip, String devId) {
     DeviceTelemetry* dev = findTrackedDevice(ip, devId);
     return dev ? dev->restarts24h : 0;
+}
+
+void setTrackedVoice(String ip, String devId, bool canPlay) {
+    DeviceTelemetry* dev = findTrackedDevice(ip, devId);
+    if (dev) dev->canPlayVoice = canPlay;
+}
+
+bool getTrackedVoice(String ip, String devId) {
+    DeviceTelemetry* dev = findTrackedDevice(ip, devId);
+    return dev ? dev->canPlayVoice : false;
 }
 
 bool getTrackedChargingState(String ip, String devId) {
