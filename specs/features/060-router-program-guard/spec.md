@@ -1,6 +1,6 @@
 # Feature 060: A release cannot be signed around an old router program
 
-Status: **draft, waiting for the owner's approval**   Branch: `feat/060-router-program-guard`   Area: ci (with scripts)
+Status: **approved 2026-11-01 (decisions 1 and 2 as recommended; decision 3, the CLAUDE.md edit, still waits for a separate yes)**   Branch: `feat/060-router-program-guard`   Area: ci (with scripts)
 Backlog rows: HARDENING item 11 (`docs/HARDENING.md`), the incident in `specs/STATUS.md` ("Owner decisions open", 2026-10-29); CI-1, CI-2, CI-4 turn out to be fixed already (group 0)   Release: none (CI and owner tools only; no router, firmware or app release)
 
 ## Intent
@@ -38,6 +38,8 @@ Serves rule 2 (only software the owner signed is installed: a signature on stale
 - The firmware and app signing paths (they build in the same run that signs).
 
 ## Owner decisions
+Answered 2026-11-01 with "Approve 060": decision 1 = refuse (not warn), decision 2 = no reproducible rebuild now. **Decision 3 was not answered separately: `CLAUDE.md` is not edited until the owner says yes.** The original questions follow.
+
 1. **Should `publish-router.yml` refuse, or only warn?** Recommendation: refuse (the point is to stop the wrong release). A warn-only mode would be the same as the manual step we have now.
 2. **Do you want the full reproducible-build check later?** Recommendation: not now; revisit after this guard has run for a few releases.
 3. **May I edit `CLAUDE.md` section 5** (one sentence)? It is the project's first-bytes file; I will not touch it without your yes.
