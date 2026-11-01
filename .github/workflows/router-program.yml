@@ -49,7 +49,7 @@ jobs:
           - { family: armv7,   image: 'openwrt/sdk:ipq40xx-generic-23.05.5',     target: armv7-unknown-linux-musleabihf,  buildstd: false }
           - { family: x86_64,  image: 'openwrt/sdk:x86-64-23.05.5',              target: x86_64-unknown-linux-musl,       buildstd: false }
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # The C toolchain of each family comes out of a large Docker image (a pull of a minute or two). It only changes with the image tag.
       - name: Restore the C toolchain of this family
@@ -148,7 +148,7 @@ jobs:
     if: always() && github.ref_name == 'beta'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: beta   # (the programs were pushed to the branch by the jobs above)
       - name: Rebuild the setup files around the programs on the branch

@@ -44,7 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: production-signing
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       # Feature 060: the router programs are built by CI only on beta, and this job signs whatever is committed. Before anything is
       # signed (or the key is read), check that the programs inside the setup files are the committed ones and were built from this
       # commit's router source. It reads files only; --fetch fetches the one commit BUILD-INFO names when the checkout is shallow.
