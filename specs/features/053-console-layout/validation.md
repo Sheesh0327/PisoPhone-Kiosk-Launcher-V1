@@ -1,7 +1,7 @@
 # Validation: feature 053, the console layout
 
 Run on 2026-10-30 on a computer (Chromium 1243 under Playwright, the real portal program built from this branch, a fake coin box and a fake openNDS). Nothing was run on a real router or phone.
-Pictures: `evidence/before/` (48, group 0) and `evidence/after/` (52: the same, plus the phone's menu panel), 1280, 768 and 390 px, light and dark.
+Pictures: 48 before (group 0) and 52 after (the same, plus the phone's menu panel), 1280, 768 and 390 px, light and dark. **Removed from the tree on 2026-11-01 to cut the repository's size (5.2 MB, the owner's order); they are in git history: `git show 929f0345:specs/features/053-console-layout/evidence/after/<name>.jpg`** (also `before/`). `evidence/group0-findings.md` stays.
 
 | # | Success criterion (from spec.md) | Check | Result | Evidence |
 |---|---|---|---|---|
@@ -14,7 +14,7 @@ Pictures: `evidence/before/` (48, group 0) and `evidence/after/` (52: the same, 
 | 7 | Sign-in and session behaviour unchanged | `test_console.py` (wrong password, no cookie, wrong origin, missing `X-Piso`, lock-out after five) | pass | `110 checks, 0 failures` |
 | 8 | No request leaves the router except the signed-script check | layout test: every `https` host except `pisophone.pages.dev/console/` aborted, all seven screens opened, requests listed | pass | same run |
 | 9 | Size: page-size guard and program budget hold, numbers recorded | page 21,832 to 28,726 bytes (guard 30,000); script 26,625 to 28,375; native x86_64 build 966,784 to 975,680 bytes (+8,896, measured on a clean build of `main` and of this branch); `router/tests/test_footprint.py` now also watches both files (12 budgets, 0 failures) | pass on a computer; **mipsel and installer sizes are estimates** | mipsel program 1,117,028 B (1,091 KB) + 8,896 = about 1,125,900 B (about 1,099 KB of 1,200 KB); installer 1,686,330 B (1,647 KB) + about 11,900 (base64) = about 1,698,200 B (about 1,658 KB of 1,700 KB). The real numbers come from CI's build on `beta` |
-| 10 | Before and after pictures at 1280, 768 and 390 px, light and dark, shown to the owner | `evidence/before/`, `evidence/after/` | pass | 48 + 52 pictures; I looked at the Overview, Customers, Sales, Vouchers, Settings, Branding, sign-in and the phone menu |
+| 10 | Before and after pictures at 1280, 768 and 390 px, light and dark, shown to the owner | the 48 + 52 pictures (removed 2026-11-01, in git history at `929f0345`) | pass | 48 + 52 pictures; I looked at the Overview, Customers, Sales, Vouchers, Settings, Branding, sign-in and the phone menu |
 | 11 | Real router and real phone | hardware check **RS64** in `docs/REAL_WORLD_TESTING.md` | **not run** | owner's |
 
 ## Gates (constitution rule 7)
