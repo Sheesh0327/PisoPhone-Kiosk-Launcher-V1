@@ -83,7 +83,7 @@ def families(repo):
 
 
 def embedded_program(setup_bytes):
-    """(header sha256, decoded program) from the #@@B64 /usr/bin/pisoportal block, or (None, reason)."""
+    """(header sha256, decoded program, mode) from the #@@B64 /usr/bin/pisoportal block, or (None, reason, None)."""
     lines = setup_bytes.split(b"\n")
     for i, line in enumerate(lines):
         m = re.fullmatch(rb"#@@B64 /usr/bin/pisoportal (\d+) ([0-9a-f]{64})", line.rstrip(b"\r"))
@@ -94,10 +94,10 @@ def embedded_program(setup_bytes):
                     break
                 body.append(nxt.strip())
             try:
-                return m.group(2).decode(), base64.b64decode(b"".join(body), validate=True)
+                return m.group(2).decode(), base64.b64decode(b"".join(body), validate=True), m.group(1).decode()
             except (binascii.Error, ValueError):
-                return None, "the base64 after the #@@B64 line cannot be decoded"
-    return None, "it has no `#@@B64 /usr/bin/pisoportal` line"
+                return None, "the base64 after the #@@B64 line cannot be decoded", None
+    return None, "it has no `#@@B64 /usr/bin/pisoportal` line", None
 
 
 def check_embedded(repo, family, out):
@@ -118,11 +118,15 @@ def check_embedded(repo, family, out):
         out.append(("FAIL", "%s: %s.sha256 does not match the program (%s...)" % (family, prog_path, sha[:12])))
         ok = False
     if setup_bytes is not None:
-        header, body = embedded_program(setup_bytes)
+        header, body, mode = embedded_program(setup_bytes)
         if header is None:
             out.append(("FAIL", "%s: %s: %s" % (family, setup, body)))
             ok = False
         else:
+            if mode != "755":  # the installer applies this mode with chmod: anything else leaves /usr/bin/pisoportal unable to run
+                out.append(("FAIL", "%s: %s installs the program with mode %s, not 755: the router could not run it"
+                            % (family, setup, mode)))
+                ok = False
             if hashlib.sha256(body).hexdigest() != header:
                 out.append(("FAIL", "%s: the program inside %s does not match the sha256 on its #@@B64 line (%s...)"
                             % (family, setup, header[:12])))

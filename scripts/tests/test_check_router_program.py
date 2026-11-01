@@ -46,12 +46,12 @@ def write(root, rel, data):
         f.write(data)
 
 
-def setup_file(program, header_sha=None):
+def setup_file(program, header_sha=None, mode="755"):
     """A setup file the way tools/build_piso_setup.py writes one: the script, then the program as 76-column base64."""
     b64 = base64.b64encode(program).decode()
     sha = header_sha or hashlib.sha256(program).hexdigest()
     lines = "".join(b64[i:i + 76] + "\n" for i in range(0, len(b64), 76))
-    return "#!/bin/sh\necho installer\n#@@FILE /etc/x 644\nhello\n#@@B64 /usr/bin/pisoportal 755 %s\n%s" % (sha, lines)
+    return "#!/bin/sh\necho installer\n#@@FILE /etc/x 644\nhello\n#@@B64 /usr/bin/pisoportal %s %s\n%s" % (mode, sha, lines)
 
 
 def program(family, tag=""):
@@ -259,6 +259,14 @@ code, out = run(clone)
 check(code == 1 and "not in this" in out, "a shallow clone without the commit is refused: %d %s" % (code, out))
 code, out = run(clone, "--fetch")
 check(code == 0, "--fetch gets the named commit and then passes: %d %s" % (code, out))
+
+# 19. the program would be installed without the executable bit (mode on the #@@B64 line is applied with chmod by the installer)
+root, built_from = case()
+write(root, "setup/piso-setup-mips.sh", setup_file(program("mips"), mode="644"))
+code, out = run(root)
+check(code == 1 and "644" in out and "piso-setup-mips.sh" in out, "a program with mode 644 is refused: %d %s" % (code, out))
+check("mipsel" not in "".join(ln for ln in out.splitlines() if ln.startswith("FAIL")),
+      "only the family with the bad mode is blamed: " + out)
 
 for d in cleanup:
     shutil.rmtree(d, ignore_errors=True)
