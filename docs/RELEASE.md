@@ -84,7 +84,9 @@ damaged file, a downgrade, or an update that does not start after installing (th
 is refused or undone, and you get a Telegram message either way. With customers online an update waits for a quiet moment.
 1. Change the router software on `beta`, test it, raise `setup/RELEASE` (for example `1.1.0`). Push; CI builds the router program
    and `setup/piso-setup.sh` (check `tools/pisoportal/bin/BUILD-INFO` shows your commit).
-2. Merge `beta` into `main` when your tests pass, `git pull`.
+2. Merge `beta` into `main` when your tests pass, `git pull`. Run `python3 scripts/check_router_program.py` (it also runs inside
+   `verify_release.py`): it prints PASS for each of the five CPU families when the program inside the setup file is the committed one
+   and was built from the router source you are releasing. See "The router program check" below if it prints FAIL.
 3. `publish-router.yml` signs the file with `OWNER_SIGNING_KEY_B64` and commits `website/update/router.json` and `router-setup.sh` to `main`
    (Cloudflare publishes them), at **0%** of the routers: a new release reaches no installed router (a new router set up with the installer gets
    it at once) until you widen it. Run the workflow by hand (Actions > Publish the router update > Run workflow) with rollout `10`, then again with
@@ -93,6 +95,16 @@ is refused or undone, and you get a Telegram message either way. With customers 
 4. Watch Telegram ("update: release 1.1.0 installed and running"). A router that cannot run the new release goes back by itself
    and tells you ("FAILED and was undone"). When the first routers are fine, sign the **same file again** with `--rollout 100`.
 5. To withdraw a bad release: publish a fixed one with a higher version (routers never go to a lower version).
+**The router program check (feature 060).** CI builds the router programs only on `beta`, and `publish-router.yml` signs whatever is
+committed, so a release can be signed around an old program (1.5.25, 1.5.26 and 1.5.28 were). `scripts/check_router_program.py` stops that:
+for every CPU family it decodes the program inside `setup/piso-setup[-<family>].sh`, compares it with `tools/pisoportal/bin/` and its
+sha256, and compares what the program was built from (`BUILD-INFO-<family>`: the commit, and since the next beta build a `source:` line of
+tree ids) with `tools/pisoportal/src`, `Cargo.toml`, `Cargo.lock` and `owner_key.b64` of the commit being released. `publish-router.yml`
+runs it first and **signs nothing** when it fails; `verify_release.py` shows it as a FAIL line. When it fails: push the router change to
+`beta`, wait for CI's two commits ("ci: built the router program" and "ci: rebuilt the setup files around the router programs"), merge
+`beta` into `main` (taking `main`'s `website/update` and `website/flash`), run it again. It proves the program was built from this source,
+not that the build is bit-for-bit reproducible (`docs/HARDENING.md` item 11), and it does not replace decoding the signed file and
+looking for the new text once (`CLAUDE.md` section 5): that stays as a second look.
 Router commands: `piso-setup update` (install the newest release now, even with customers online; the same as `piso-setup self-update`;
 add `check` to only look; or send `/update` in Telegram), `piso-setup auto-update off|on` (off: you are told, nothing installs by itself).
 The key is built into the router program, so a stolen Cloudflare account can publish nothing a router will install. A stolen GitHub account with write access

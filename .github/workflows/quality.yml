@@ -134,6 +134,11 @@ jobs:
         run: python3 scripts/check_vendored.py
       - name: Check that no document links to a file that is gone
         run: python3 scripts/tests/test_check_links.py && python3 scripts/check_links.py
+      - name: Check the release tools (a router release cannot be signed around an old router program; feature 060)
+        run: |
+          python3 scripts/tests/test_workflow_signing.py
+          python3 scripts/tests/test_check_router_program.py
+          python3 scripts/tests/test_verify_release.py
 
   website:
     name: Provisioning website

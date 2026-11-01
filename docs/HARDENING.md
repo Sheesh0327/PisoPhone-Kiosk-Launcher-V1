@@ -17,7 +17,7 @@ Ordered by risk to money first. Items marked **decision** need the owner's answe
 | 7 | Router | Fair use can race a pause and lift its 1 kbit/s | re-check under the file lock before granting |
 | 8 | Router | The monitor does not watch the portal's health | `/ping` in the monitor, restart after 3 failures, alert |
 | 9 | App, **decision** | Phones with no box secret accept the public legacy key | refuse it once no box runs in legacy mode: are any of your boxes still in legacy mode? |
-| 11 | Security | Router programs are built on `beta` and signed without a reproducible build check | rebuild on `main` in the signing job and compare |
+| 11 | Security | Router programs are built on `beta` and signed without a reproducible build check | **partly closed by feature 060:** `scripts/check_router_program.py` refuses a release whose program was not built from the source being released. A bit-for-bit rebuild in the signing job is still open (owner: not now) |
 | 12 | Security | First phone setup trusts the website's APK (USB path installs with `-d`, no certificate pin) | pin the certificate fingerprint in the page and the setup program |
 | 13 | Security | The admin QR key is used inside a page the box serves over HTTP | sign in the owner's own app instead |
 | 14 | Security | `RELEASES_TOKEN` is readable from any branch; the security rules miss one-line keys | move it to the protected environment; add patterns |

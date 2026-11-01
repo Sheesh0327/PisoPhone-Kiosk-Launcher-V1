@@ -1,7 +1,9 @@
 """Tests the two rules of scripts/verify_release.py that decide whether a change reaches boxes or routers: a document in a watched folder
 (a README) is not a change to what a box or a router installs, and the files that are still count."""
 import os
+import subprocess
 import sys
+import tempfile
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 fails = 0
@@ -38,6 +40,15 @@ check(rt(["setup/src/00-header.sh"]) is True, "a part of the setup file is a rou
 check(rt(["setup/piso-setup.sh"]) is True, "the setup file is a router change")
 check(rt(["router/README.md", "router/pisoportal.init"]) is True, "next to a real change, the router change still counts")
 check(rt([]) is False, "no changed file is no router change")
+
+# feature 060: the router program check is a FAIL line of its own (the checker itself is tested in test_check_router_program.py)
+with tempfile.TemporaryDirectory() as empty:
+    subprocess.run(["git", "init", "-q", empty], check=True)
+    subprocess.run(["git", "-C", empty, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "--allow-empty", "-m", "x"],
+                   check=True)
+    ok, text = verify_release.router_program_result(empty)
+    check(ok is False, "a tree with no router programs is a FAIL")
+    check("no router program" in text, "the FAIL line says why: " + text)
 
 print(f"{total} checks, {fails} failures")
 sys.exit(1 if fails else 0)
