@@ -45,6 +45,15 @@ jobs:
     environment: production-signing
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      # Feature 060: the router programs are built by CI only on beta, and this job signs whatever is committed. Before anything is
+      # signed (or the key is read), check that the programs inside the setup files are the committed ones and were built from this
+      # commit's router source. It reads files only; --fetch fetches the one commit BUILD-INFO names when the checkout is shallow.
+      - name: Check the router program was built from this source
+        run: |
+          if ! python3 scripts/check_router_program.py --fetch; then
+            echo "::error::The router program was built before the last change to the router source (or the setup files do not carry it). Nothing was signed. Push to beta, wait for CI's two commits (\"ci: built the router program\" and \"ci: rebuilt the setup files around the router programs\"), merge beta into main, then release."
+            exit 1
+          fi
       - name: Install the signing library
         run: pip install cryptography==44.0.0
       - name: Check the keys

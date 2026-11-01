@@ -112,7 +112,11 @@ jobs:
           OUT="../../dist"; mkdir -p "$OUT" && cp "$BIN" "$OUT/pisoportal-${{ matrix.family }}"
           (cd "$OUT" && sha256sum "pisoportal-${{ matrix.family }}" | tee "pisoportal-${{ matrix.family }}.sha256")
           { echo "pisoportal $(grep -m1 '^version' Cargo.toml | cut -d'"' -f2) for ${{ matrix.target }} (${{ matrix.family }}), from commit $GITHUB_SHA"
-            rustc -V; echo "C toolchain: ${{ matrix.image }} ($("$GCC" --version | head -n 1))"; } | tee "$OUT/BUILD-INFO-${{ matrix.family }}"
+            rustc -V; echo "C toolchain: ${{ matrix.image }} ($("$GCC" --version | head -n 1))"
+            # what the program was made of, as git tree ids: scripts/check_router_program.py compares these with the tree being
+            # released, so the signing job needs no history (a shallow checkout cannot reach the commit on the first line)
+            echo "source: src=$(git rev-parse "$GITHUB_SHA:tools/pisoportal/src") Cargo.toml=$(git rev-parse "$GITHUB_SHA:tools/pisoportal/Cargo.toml") Cargo.lock=$(git rev-parse "$GITHUB_SHA:tools/pisoportal/Cargo.lock") owner_key.b64=$(git rev-parse "$GITHUB_SHA:tools/pisoportal/owner_key.b64")"
+          } | tee "$OUT/BUILD-INFO-${{ matrix.family }}"
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

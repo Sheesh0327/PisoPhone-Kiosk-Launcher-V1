@@ -34,6 +34,19 @@ def git(*args):
     return p.stdout if p.returncode == 0 else None
 
 
+def router_program_result(root=ROOT):
+    """(ok, text) from scripts/check_router_program.py: are the programs inside the router setup files the committed ones, and were they
+    built from the router source of this tree? (CLAUDE.md section 5: releases 1.5.25, 1.5.26 and 1.5.28 were signed with an old one.)"""
+    p = subprocess.run([sys.executable, os.path.join(ROOT, "scripts", "check_router_program.py"), "--root", root],
+                       capture_output=True, text=True)
+    lines = (p.stdout + p.stderr).splitlines()
+    if p.returncode == 0:
+        families = sum(1 for ln in lines if ln.startswith("PASS") and "built from the source" in ln)
+        return True, "the programs of %d CPU families are the committed ones, inside the setup files and built from this source" % families
+    fails = [ln[6:] for ln in lines if ln.startswith("FAIL")]
+    return False, "; ".join(fails) or "the check did not run: " + (lines[-1] if lines else "no output")
+
+
 def firmware_changed(files):
     """The changed files under the firmware folders that a box would install. A document (README.md) is not one, and neither is the
     version file itself."""
@@ -139,6 +152,10 @@ def main():
     # --- the app
     p = subprocess.run([sys.executable, "scripts/check_published_apk.py"], capture_output=True, text=True)
     report("PASS" if p.returncode == 0 else "FAIL", "app feed: " + ((p.stdout or p.stderr).strip().splitlines() or ["no output"])[-1])
+
+    # --- the router program inside the setup files (CI builds it only on beta; an old one was signed before)
+    ok, text = router_program_result()
+    report("PASS" if ok else "FAIL", "router program: " + text)
 
     # --- the version rules, against what is live
     ref = a.against
