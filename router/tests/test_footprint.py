@@ -11,7 +11,7 @@ BUDGET_KB = {
     "tools/pisoportal/bin/pisoportal-aarch64": 1200,
     "tools/pisoportal/bin/pisoportal-armv7": 1200,
     "tools/pisoportal/bin/pisoportal-x86_64": 1200,
-    "setup/piso-setup.sh": 1700,                      # the one-file installer / update (it is downloaded, not kept)
+    "setup/piso-setup.sh": 1800,                      # the one-file installer / update (it is downloaded, not kept). 1700 until features 057 and 058: the portal program grew about 65 KB (the smooth-line settings, speed test and card) and the installed command about 25 KB, which made it 1759 KB; raised by the owner 2026-10-31 (routers have about 100 MB of free flash, and the installer is not kept on flash)
     "setup/piso-setup.sh.in": 175,                    # the installed command (the file without its payload; 148 KB before features 057 and 058: 155 KB with the package-manager layer, 162 KB with the optional-package step; the rest of 056 is expected to need up to 175)
     "tools/pisoportal/src/page.html": 28,             # the customer page (1.3.4: voucher choice and code view, speech with a fallback, heartbeat)
     "tools/pisoportal/src/brand_fil.js": 14,          # a branded page: the Filipino wording and the language button (feature 049; page.html itself did not grow)

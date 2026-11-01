@@ -1,8 +1,8 @@
 {
-  "version": "1.5.34",
-  "sha256": "9e4bc6f337e42e2cc85e1c5dae0a780e6d68656e3837355bf73c41ad1cd4dc56",
-  "size": 1689115,
-  "rollout": 100,
-  "changelog": "A shorter burst before the speed limit applies (router 1.5.34)",
-  "sig": "MEQCICHjQxYhvbymj+Nnbr2WxvcQfOfEk2XHO18Hv5wO+VzEAiAD1uzo7ox2uLfnnOkisxy0KNAIjNEKuMDdFBsFGPX9aw=="
+  "version": "1.5.35",
+  "sha256": "9298d8f4b204c82fddd89eafec17d48e29bd66de783680668eeb8f5ccff823be",
+  "size": 1797614,
+  "rollout": 0,
+  "changelog": "Router software release 1.5.35",
+  "sig": "MEQCIBg/93gz1zpThkS4Hgwksis08Bz3+Z+ww7bZPAaDbl8oAiBUgXrCnQHghKuBp+wrvkzTzEOopeQEy/axLr3l4yMS9A=="
 }
