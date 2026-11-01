@@ -56,7 +56,7 @@ and does stays the same. Serves the goal "an owner who is not a programmer can r
 7. Sign-in and session behaviour: `test_console.py`'s authentication checks pass unchanged (wrong password, no cookie, wrong origin, missing `X-Piso`).
 8. No outside request: with every host except the router blocked the console works, and the only request that leaves the router is the signed-script check the page has always made (`pisophone.pages.dev/console/`); fonts are the system fonts and icons are inline.
 9. Size: the page-size guard and the mipsel program budget in the plan hold, with the numbers recorded in `validation.md`.
-10. Evidence: before and after screenshots of the seven screens at 1280, 768 and 390 px, light and dark, in `evidence/` and shown to the owner.
+10. Evidence: before and after screenshots of the seven screens at 1280, 768 and 390 px, light and dark, shown to the owner (the pictures were removed from the tree on 2026-11-01 and are in git history at `929f0345`; `evidence/group0-findings.md` stays).
 11. Real router and real phone: the owner opens the console on the Qihoo 360 T6M from a phone and a computer (new hardware check **RS64**); not run here.
 
 ## Out of scope
