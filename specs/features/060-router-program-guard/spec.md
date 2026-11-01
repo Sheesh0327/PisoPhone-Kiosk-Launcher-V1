@@ -1,6 +1,6 @@
 # Feature 060: A release cannot be signed around an old router program
 
-Status: **approved 2026-11-01 (decisions 1 and 2 as recommended; decision 3, the CLAUDE.md edit, still waits for a separate yes)**   Branch: `feat/060-router-program-guard`   Area: ci (with scripts)
+Status: **approved 2026-11-01 (decisions 1 and 2 as recommended; decision 3, the CLAUDE.md edit, still waits for a separate yes); built and validated on a computer 2026-11-01 (`validation.md`)**   Branch: `feat/060-router-program-guard`   Area: ci (with scripts)
 Backlog rows: HARDENING item 11 (`docs/HARDENING.md`), the incident in `specs/STATUS.md` ("Owner decisions open", 2026-10-29); CI-1, CI-2, CI-4 turn out to be fixed already (group 0)   Release: none (CI and owner tools only; no router, firmware or app release)
 
 ## Intent
