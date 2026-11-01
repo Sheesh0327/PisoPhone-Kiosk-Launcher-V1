@@ -519,14 +519,13 @@
   "severity": "high",
   "money_or_signing": true,
   "confidence": "confirmed",
-  "status": "open",
-  "fix": "sign from the approved commit (commit f8367b2)",
+  "status": "fixed",
+  "fix": "verified fixed on main 2026-11-01: firmware-images.yml signs from a worktree of $GITHUB_SHA and fails if the artifact is from another commit; scripts/tests/test_workflow_signing.py passes",
   "test": {
    "kind": "ci",
    "where": "scripts/tests/test_workflow_signing.py (passes on beta)"
   },
-  "release": "none",
-  "prior_work": "implemented and tested on claude/sleepy-gauss-rn31gl@748add9; not on beta. Bring back through a feature spec."
+  "release": "none"
  },
  {
   "id": "CI-2",
@@ -538,14 +537,13 @@
   "severity": "high",
   "money_or_signing": true,
   "confidence": "reported",
-  "status": "open",
-  "fix": "approval covers the signed commit (f8367b2)",
+  "status": "fixed",
+  "fix": "verified fixed on main 2026-11-01: publish-router.yml fingerprints console-ui.js, sign_console_ui.py and the workflow file and signs from $GITHUB_SHA; test_workflow_signing.py passes",
   "test": {
    "kind": "ci",
    "where": "scripts/tests/test_workflow_signing.py (passes on beta)"
   },
-  "release": "none",
-  "prior_work": "implemented and tested on claude/sleepy-gauss-rn31gl@748add9; not on beta. Bring back through a feature spec."
+  "release": "none"
  },
  {
   "id": "CI-4",
@@ -557,14 +555,13 @@
   "severity": "med",
   "money_or_signing": true,
   "confidence": "reported",
-  "status": "open",
-  "fix": "test jobs read-only (f8367b2); verify the two remaining write jobs are the commit jobs",
+  "status": "fixed",
+  "fix": "verified fixed on main 2026-11-01: build-apk.yml test jobs have contents: read (lines 244 and 313); only the publish jobs write",
   "test": {
    "kind": "ci",
    "where": "review of build-apk.yml permissions"
   },
-  "release": "none",
-  "prior_work": "implemented and tested on claude/sleepy-gauss-rn31gl@748add9; not on beta. Bring back through a feature spec."
+  "release": "none"
  },
  {
   "id": "CI-9",
