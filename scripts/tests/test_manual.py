@@ -40,6 +40,9 @@ if "<title>" not in text:
 for must in ("10.0.0.10", "Scan admin QR", "piso-setup status", "make_admin_qr.py"):
     if must not in text:
         fails.append(f"missing {must}")
+for forbidden in ("pisophone_setup.py", "install.sh"):
+    if forbidden in text:
+        fails.append(f"contains {forbidden} (DIY setup instruction)")
 if len(re.findall(r"<h2 id=", text)) < 15:
     fails.append("too few chapters")
 for f in fails:

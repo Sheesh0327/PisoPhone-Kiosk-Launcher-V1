@@ -112,28 +112,22 @@ ol.steps>li::before{content:counter(s);position:absolute;left:0;top:2px;width:30
 
 <h2 id="need">2. What you need</h2>
 <ul>
-<li>The ESP32 coin box board, and a USB <b>data</b> cable (charge-only cables do not work).</li>
-<li>An OpenWrt router, factory reset (for example the 360T6M), and a modem with internet. The router itself does not need the internet during the setup (your computer downloads and copies what it needs); customers do.</li>
-<li>A computer to run the setup program (Windows, macOS, Linux, Armbian, Parrot, Raspberry Pi OS), with a network cable to the router. A small Armbian PC with no screen works too.</li>
-<li>Your own phone or laptop to open the setup page.</li>
-<li>The rental phones, factory reset.</li>
-<li>Your <b>admin QR code</b> (see <a href="#safe">chapter 14</a>), made once on your own computer.</li>
+<li>Your assembled TechNet PisoHub coin box unit and its 12V/5V power adapter.</li>
+<li>The configured OpenWrt router and an Ethernet cable connecting the router's WAN port to your internet modem.</li>
+<li>The rental phones (Android), factory reset and charged.</li>
+<li>Your phone or laptop to access the management console and dashboard on the shop Wi-Fi network.</li>
+<li>Your <b>admin QR code</b> (see <a href="#safe">chapter 14</a>) to access owner settings.</li>
 </ul>
 
-<h2 id="setup">3. Set up a new unit</h2>
-<p>One program, <code>pisophone_setup.py</code>, does the whole job. It is about 15 minutes per unit.</p>
-<p><b>First, on the program's first page, choose what you set up</b>: the full system, <i>PisoWiFi only</i> (customer Wi-Fi by the coin, no rental phones: no hidden PisoKiosk Wi-Fi is made and the phone steps are left out) or <i>PisoPhone only</i>. Nothing is chosen for you. The steps below are for the full system.</p>
+<h2 id="setup">3. Setting up your shop</h2>
+<p>Each TechNet PisoHub unit arrives pre-configured and ready to run. Setting up takes about 5 minutes.</p>
 <ol class="steps">
-<li><b>Download and run it.</b> Get <a href="https://pisophone.pages.dev/pisophone_setup.py">pisophone_setup.py</a> and run <code>python3 pisophone_setup.py</code> (Windows: <code>py pisophone_setup.py</code>). It installs what is missing by itself.</li>
-<li><b>Open the page it prints</b> on your phone, for example <code>http://192.168.1.50:8765</code>, and type the <b>PIN</b> shown in the terminal.</li>
-<li><b>Router step.</b> Reset the router, connect the modem to its <b>WAN</b> port and the computer to a <b>LAN</b> port. The program finds the router.</li>
-<li><b>Settings step.</b> Type this customer's <b>shop name</b> and <b>public Wi-Fi name</b>. Keep the passwords it made, or type your own.</li>
-<li><b>Install step.</b> Plug the ESP32 into the computer by USB, tap <b>Start the installation</b> and wait about 10 minutes. It writes the coin box, sets up the router and pairs them. Keep the USB cable plugged in.</li>
-<li><b>Save your papers.</b> The program saves a summary, a setup sheet and a <b>Wi-Fi join card</b>. Print the sheet and the card. The card holds a password: keep it with your admin QR code.</li>
+<li><b>Connect the router to internet.</b> Plug an Ethernet cable from your internet modem into the router's <b>WAN</b> port. Power on the router.</li>
+<li><b>Power the coin box.</b> Plug the power supply into the ESP32 coin box. The box automatically links to its dedicated hidden router network.</li>
+<li><b>Open the management console.</b> Connect your phone or laptop to the shop Wi-Fi and open <code>http://admin.hub</code> (or <code>http://10.0.0.10</code>).</li>
+<li><b>Change the admin password.</b> Sign in using the default credentials and set your shop's private admin password in Settings.</li>
+<li><b>Add your rental phones.</b> Follow <a href="#phones">chapter 4</a> to enroll each rental phone as a kiosk.</li>
 </ol>
-<div class="note"><b>No monitor?</b>On a small Armbian PC run once <code>sudo python3 pisophone_setup.py --install-service</code>. The page then starts by itself at every boot. <code>cat /var/lib/pisophone-setup/pin</code> shows the PIN again.</div>
-<div class="warn"><b>Phone cannot open the page?</b>A factory-reset router has no Wi-Fi yet. The setup computer needs a second connection (its own Wi-Fi or another Ethernet port) on a network your phone is also on, or use the computer's own browser at <code>http://127.0.0.1:8765</code>.</div>
-<p>Problems during install? Tap <b>Try again</b>: it is always safe and continues where it stopped. The full table is in <code>setup/README.md</code>.</p>
 
 <h2 id="phones">4. Set up the rental phones</h2>
 <p>Do this for each phone, starting from a factory-reset phone.</p>
@@ -369,7 +363,6 @@ ol.steps>li::before{content:counter(s);position:absolute;left:0;top:2px;width:30
 <tr><td>Coin box</td><td><b>By itself.</b> The router checks every hour and installs a new box firmware at a quiet moment (no customer online, no phone with time running). Only firmware you signed is accepted, and the box goes back to the old one if the new one does not start. To do it now: <code>piso-setup box-update</code> (or dashboard &rarr; Tools &rarr; <b>Firmware update</b>). <code>piso-setup auto-update off</code> stops the automatic part.</td></tr>
 <tr><td>Router</td><td><b>By itself.</b> The router checks every hour and installs a release you signed when no customer is online; it goes back if the release does not run. To do it now: <code>piso-setup update</code> (or send <code>/update</code> in Telegram).</td></tr>
 <tr><td>Rental phones</td><td><b>By itself.</b> A phone set up as the device owner checks every hour and installs a new app while nobody is using it (lock screen showing, no time left). Admin console &rarr; Direct App Update &rarr; <b>Check for Update &amp; Install</b> does it at once.</td></tr>
-<tr><td>Setup program</td><td>Download the latest <code>pisophone_setup.py</code></td></tr>
 </table>
 <div class="note"><b>You are told</b>The router tells you in Telegram when it updates itself or the box. A new router release starts at 0% of the routers, so it only reaches them once you widen it.</div>
 
@@ -414,7 +407,7 @@ ol.steps>li::before{content:counter(s);position:absolute;left:0;top:2px;width:30
 <tr><td>Find a phone</td><td>Overview &rarr; Locate (rings 1 min)</td></tr>
 <tr><td>Talk to a renter</td><td>Overview &rarr; hold the mic, let go, tap the paper plane (<a href="#voice">how</a>)</td></tr>
 <tr><td>Update the box</td><td>Tools &rarr; Firmware update &rarr; Install update</td></tr>
-<tr><td>Add another unit</td><td>Run <code>pisophone_setup.py</code> &rarr; Set up the next unit</td></tr>
+<tr><td>Add another unit</td><td>Order a pre-configured unit &rarr; Plug into shop network</td></tr>
 <tr><td>Lost my admin QR</td><td><code>make_admin_qr.py --new</code>, commit, update boxes</td></tr>
 </table>
 <h3>Numbers to remember</h3>
