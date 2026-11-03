@@ -64,26 +64,19 @@ def build(arch=DEFAULT_ARCH):
 
 
 def outputs(text):
-    """Every generated file and its content: the setup file, its sha256 (the one-line installer checks the download against
-    it) and the website's copies of the installer (https://pisophone.pages.dev/install.sh) and of the computer-side setup
-    script (https://pisophone.pages.dev/pisophone_setup.py). The other CPU families get setup/piso-setup-<family>.sh (and the same
-    copies on the website) for every family whose portal program CI has built."""
+    """Every generated file and its content: the setup file and its sha256 (the one-line installer checks the download against
+    it). The other CPU families get setup/piso-setup-<family>.sh for every family whose portal program CI has built."""
     out = {
         "setup/piso-setup.sh.in": template(),
         "setup/piso-setup.sh": text,
         "setup/piso-setup.sh.sha256": hashlib.sha256(text.encode()).hexdigest() + "  piso-setup.sh\n",
-        # the router downloads the setup file from the website (the repository is private): the installer's site_for()
-        "website/setup/piso-setup.sh": text,
-        "website/setup/piso-setup.sh.sha256": hashlib.sha256(text.encode()).hexdigest() + "  piso-setup.sh\n",
-        "website/install.sh": open(os.path.join(ROOT, "setup/install.sh")).read(),
-        "website/pisophone_setup.py": open(os.path.join(ROOT, "setup/pisophone_setup.py")).read(),
     }
     for arch in built_arches():
         if arch == DEFAULT_ARCH:
             continue
         body, name = build(arch), setup_name(arch)
         digest = hashlib.sha256(body.encode()).hexdigest() + f"  {name}\n"
-        out.update({f"setup/{name}": body, f"setup/{name}.sha256": digest, f"website/setup/{name}": body, f"website/setup/{name}.sha256": digest})
+        out.update({f"setup/{name}": body, f"setup/{name}.sha256": digest})
     return out
 
 
@@ -93,7 +86,7 @@ if __name__ == "__main__":
         stale = [p for p, t in files.items() if not os.path.exists(os.path.join(ROOT, p)) or open(os.path.join(ROOT, p)).read() != t]
         if stale:
             sys.exit(", ".join(stale) + " out of date: edit the parts in setup/src/ (not the generated files), then run python3 tools/build_piso_setup.py")
-        print("setup/piso-setup.sh (with its sha256) and the website's copies (website/setup/, install.sh, pisophone_setup.py) are up to date")
+        print("setup/piso-setup.sh (with its sha256) is up to date")
     else:
         for p, t in files.items():
             target = os.path.join(ROOT, p)

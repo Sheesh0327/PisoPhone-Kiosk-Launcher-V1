@@ -143,14 +143,12 @@ order as the program: the coin box, the router (steps 1 to 3), alerts, and the p
 
 #### Flashing the coin box (once per box, by USB)
 The setup program (`pisophone_setup.py`) does this by itself: it finds the board on USB, asks it which chip it is (ESP32-C3 or
-ESP32), downloads the matching image from the website, checks its size and sha256, erases the board, writes the image, reads
+ESP32), prepares the matching image, checks its size and sha256, erases the board, writes the image, reads
 it back to verify and restarts the box. The images are built by CI from the branch's firmware
-(`.github/workflows/firmware-images.yml`, the `-dev` environments) and published in `website/flash/`
-(`manifest.json` lists them); on the beta site the program writes beta's firmware.
+(`.github/workflows/firmware-images.yml`, the `-dev` environments); on the beta site the program writes beta's firmware.
 
-By hand with Espressif's tool (`python3 -m pip install esptool`), from the same files:
+By hand with Espressif's tool (`python3 -m pip install esptool`):
 ```
-curl -O https://pisophone.pages.dev/flash/esp32-c3-dev.bin          # esp32dev-dev.bin for a classic ESP32
 python3 -m esptool --port <PORT> --baud 460800 write_flash -e -z 0x0 esp32-c3-dev.bin     # 0x1000 for the classic ESP32
 ```
 (`<PORT>` is `COM5` on Windows, `/dev/ttyUSB0` or `/dev/ttyACM0` on Linux, `/dev/cu.usbserial-...` on macOS; esptool 5 spells the
@@ -212,8 +210,7 @@ Other uses of the same line: `... | sh -s update` installs new software on a rou
 router by itself and runs the setup unattended, with passwords from `ROOT_PASSWORD`, `KIOSK_PASSWORD`, `BOX_NEW_ADMIN_PASSWORD`
 or generated: this is what `pisophone_setup.py` uses).
 
-**PisoWiFi only (no rental phones):** put `SHOP_PRODUCT=wifi` in front of `sh`, for example `wget -qO- https://pisophone.pages.dev/install.sh | SHOP_PRODUCT=wifi sh`. The router then has no hidden PisoKiosk Wi-Fi and no rental-phone password; the customer Wi-Fi, the coin box, vouchers and the console are the same, and the console tab that shows the coin box reads *Coin box*. Without it (or with `SHOP_PRODUCT=both`) you get the full system. Running the line again with the other value switches an installed router: going to `wifi` first says that rental phones on the PisoKiosk Wi-Fi will lose it and asks (`--yes` accepts); paid time, sales, vouchers and the ledger are not touched. An update never changes the product. Any other value stops the setup. The installer is `setup/install.sh`; the website serves copies of it and
-of `pisophone_setup.py` (`website/install.sh`, `website/pisophone_setup.py`, kept equal by `tools/build_piso_setup.py`).
+**PisoWiFi only (no rental phones):** put `SHOP_PRODUCT=wifi` in front of `sh`, for example `cat setup/install.sh | SHOP_PRODUCT=wifi sh`. The router then has no hidden PisoKiosk Wi-Fi and no rental-phone password; the customer Wi-Fi, the coin box, vouchers and the console are the same, and the console tab that shows the coin box reads *Coin box*. Without it (or with `SHOP_PRODUCT=both`) you get the full system. Running the line again with the other value switches an installed router: going to `wifi` first says that rental phones on the PisoKiosk Wi-Fi will lose it and asks (`--yes` accepts); paid time, sales, vouchers and the ledger are not touched. An update never changes the product. Any other value stops the setup. The installer is `setup/install.sh`, bundled into `setup/piso-setup*.sh` by `tools/build_piso_setup.py`.
 
 ### Step 2: run the setup
 Without internet on the router (or to do it by hand): set the address yourself (`uci set network.lan.ipaddr='10.0.0.1'; uci commit
@@ -366,7 +363,7 @@ The setup prints `TIP:` lines at the moments people usually get stuck: what the 
 This folder holds the setup program (`pisophone_setup.py`, run on a computer) and the router installer (`install.sh`, then `piso-setup.sh`).
 
 #### Layout
-- `pisophone_setup.py`: the setup program. `website/pisophone_setup.py` is a copy, kept equal by `tools/build_piso_setup.py`.
+- `pisophone_setup.py`: the setup program.
 - `install.sh`: the one-line router installer. `RELEASE`: the router release number; a router installs only a newer one.
 - `src/`: the router setup file, written in parts. **Edit these:** `00-header` settings and helpers, `10-settings` stored settings and this
   router's Wi-Fi names, `15-flash` which chip holds the writable data and how much room is left, `20-preflight`, `30-router-settings` the
@@ -394,7 +391,7 @@ python3 router/tests/test_pisophone_setup.py   # the setup program, with a fake 
 
 #### Generated files
 `piso-setup.sh`, `piso-setup-<family>.sh` and their `.sha256` are written by `tools/build_piso_setup.py`; never edit them by hand, and do not
-open them. `website/setup/*` and `website/install.sh` are written by the same script.
+open them.
 
 #### See also
 `tools/README.md`, `router/README.md`, `tools/pisoportal/README.md`, `docs/ROUTERS.md`, `docs/RELEASE.md`.

@@ -42,9 +42,9 @@ Change the source and regenerate. Do not read the big ones either; they cost a l
 | File | Made by |
 |---|---|
 | `esp32_firmware/include/WebAssets.h` | `python3 scripts/embed_web.py` (from `esp32_firmware/web/`) |
-| `setup/piso-setup*.sh` (+ `.sha256`), `website/setup/*`, `website/install.sh`, `website/pisophone_setup.py` | `python3 tools/build_piso_setup.py` (from `setup/src/*.sh`, `setup/pisophone_setup.py`); `--check` must pass |
+| `setup/piso-setup*.sh` (+ `.sha256`) | `python3 tools/build_piso_setup.py` (from `setup/src/*.sh`); `--check` must pass |
 | `tools/pisoportal/bin/*` | the `router-program` workflow (cross-compiles and commits) |
-| `website/update/*`, `website/flash/*` | CI (`firmware-images.yml`, `build-apk.yml`, `publish-router.yml`) |
+| `website/update/*` | CI (`build-apk.yml`, `firmware-images.yml`, `publish-router.yml`) |
 | `app/schemas/*` | Room's export during the Gradle build |
 | `website/js/*-bundle.js` | vendored; recorded in `website/js/VENDORED.md` (`scripts/check_vendored.py`) |
 
@@ -64,7 +64,7 @@ pages needs no router, firmware or app release.
   new text** (`verify_release.py` checks signatures and sizes, not what is inside).
 - Do not push to a branch while a needed "Code quality" run on it is in flight: a new push cancels it.
 - **Merge to `main`** (when asked, and only if Code quality is green on that exact commit): merge that commit in a separate git
-  worktree; take `main`'s version of `website/update`, `website/flash` and every generated router file unless the change really
+  worktree; take `main`'s version of `website/update` and every generated router file unless the change really
   alters the router; `python3 scripts/verify_release.py` must say 0 FAIL; push; then CI commits "router release X signed and
   published (0%)". Raising to 100% is a separate, explicit step: run `publish-router.yml` on `main` with rollout 100 and check
   `verify_release.py` again. The owner-only steps (keys, approvals) are in `docs/RELEASE.md`.

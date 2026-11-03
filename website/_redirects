@@ -6,3 +6,5 @@
 /esp32/firmware-esp32.bin /update/firmware-esp32.bin 302
 /firmware.json /update/firmware.json 302
 /esp32/firmware.json /update/firmware.json 302
+/start / 302
+/start/* / 302

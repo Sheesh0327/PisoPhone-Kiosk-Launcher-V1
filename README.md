@@ -10,17 +10,7 @@ unlock by the minute, with prepaid QR time cards. Both are run from the box's ow
 real shops every day, so two rules decide every change: money and time are never wrong, and only software the owner signed is installed.
 
 ## Start here
-Pick the job you need. Each page is a short, step-by-step guide.
-
-| I want to... | Go to |
-|---|---|
-| **Set up a shop** (coin box and router, about 15 minutes) | [Set up a shop](https://pisophone.pages.dev/start/shop.html) |
-| **Add a phone** (a factory-reset Android phone becomes a rental kiosk) | [Add a phone](https://pisophone.pages.dev/start/phone.html) |
-| **Add a print server** (optional: customers send files to print) | [Add a print server](https://pisophone.pages.dev/start/print.html) |
-
-The pages are in [`website/start/`](website/start). Setting up a shop and its phones does not require copying or typing any
-keys. The optional print server is the exception: its send key is still copied by hand until pairing is built
-([`docs/REFERENCE.md`](docs/REFERENCE.md) is the specification). The full setup guide is [`setup/README.md`](setup/README.md).
+Setting up a shop and adding phones does not require copying or typing any keys: the coin box and router manage security automatically. The full owner manual is on the website at [`website/manual.html`](website/manual.html), and the technical setup guide is [`setup/README.md`](setup/README.md).
 
 ## Repository layout
 | Path | What it is |

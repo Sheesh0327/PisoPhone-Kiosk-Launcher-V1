@@ -104,7 +104,7 @@ delta=<seconds added>
 
 **(d) Voucher records under a clock jump (RT-03).** The voucher batch format stays the same. `check_clock` also shifts `created`, `expires` and `used_at` for vouchers created during the stale period, using the same window rule as (b).
 
-**(e) Flash manifest signature (ST-2). Owner decision.** `website/flash/manifest.json` gets a `sig` field over this canonical text:
+**(e) Flash manifest signature (ST-2). Owner decision.** The flash `manifest.json` gets a `sig` field over this canonical text:
 ```
 pisophone-flash-v1|<chip>|<version>|<sha256 lowercase hex>|<size>
 ```
@@ -191,7 +191,7 @@ They run in the order R1 to R6. Each package is one or more small pull requests 
 | APP-21 | `KioskUpdateManager.kt:140-149` | Set the state with compare-and-set; use a `SupervisorJob`. | Two taps start one download. |
 | ST-5 | `pisophone_setup.py:4985,4767,4799` | Default `--local-only`. Per-IP lockout. **Owner decision**: a one-time PIN per run. | 6 bad logins from IP B do not lock out IP A. |
 | ST-7 | `pisophone_setup.py:1912,2757` | Do not save passwords inside a OneDrive or Documents-synced folder by default. Warn the owner. | Path-choice unit test on Windows. |
-| CI-5, CI-6 | `quality.yml:19-37,66-102` | Diff against the merge-base on `beta`. Add the missing website paths. | A push touching only `website/start/shop.html` starts the workflow. |
+| CI-5, CI-6 | `quality.yml:19-37,66-102` | Diff against the merge-base on `beta`. Add the missing website paths. | A push touching only a website page starts the workflow. |
 | WEB-1, WEB-2 | `website/_headers` | Remove `unsafe-inline` from `script-src` (move inline scripts out). Add CORS for `/update/phone/*` and `/update/wifi/*`. | `test_site_page.py` asserts both. |
 
 **Acceptance criteria (R3)**: every row has the test named (or a hardware check added to `REAL_WORLD_TESTING.md`). Firmware and router rows go into the same releases as R1, not separate ones.

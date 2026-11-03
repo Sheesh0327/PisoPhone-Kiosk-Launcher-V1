@@ -33,19 +33,65 @@
         <span id="connectionPill" class="pill ok hidden">Coin box found</span>
     </div>
 
-    <!-- Shown when the page was not opened from a coin box -->
+    <!-- Shown when the page was not opened from a coin box: TechNet PisoHub Business Front Page -->
     <div id="restrictedView" class="card hidden">
         <img class="hero-banner" loading="lazy" src="img/pisohub-banner.jpg" alt="TechNet Solutions: PisoWiFi and PisoPhone" width="1000" height="750">
-        <h1>Open this page from your coin box</h1>
-        <p class="lead">Phone setup needs the details of your coin box, which its own page passes along. Opened on its own, this page has nothing to set up.</p>
-        <ol class="steps">
-            <li>Connect this computer or phone to the same Wi-Fi network as the coin box.</li>
-            <li>Open the admin page, <code>http://admin.hub</code> (or the router's address), and choose <em>Rental phones</em>: the coin box's page is inside it.</li>
-            <li>Under <b>Tools</b>, <b>Phone slots</b>, choose <b>Set up a phone</b> or <b>Remove from a phone</b>.</li>
-        </ol>
-        <div class="links">
-            <a href="start/"><svg class="ic"><use href="#i-info"/></svg><span>Start here<small>Set up a shop, add a phone or add a print server, step by step.</small></span></a>
-            <a href="pisophone_setup.py" download><svg class="ic"><use href="#i-download"/></svg><span>Setting up a whole new site?<small>Download the setup program. It guides you through everything.</small></span></a>
+        <h1>TechNet PisoHub</h1>
+        <p class="lead">Coin-operated Wi-Fi and rental phones for commercial shops. One reliable ESP32 coin box powers your entire business with zero guesswork.</p>
+
+        <h2 style="font-size: 1.25rem; margin-top: 1.2rem; margin-bottom: 0.6rem;">Two Products, One Coin Box</h2>
+        <div class="grid-2">
+            <div class="feature-card">
+                <h3><svg class="ic"><use href="#i-phone"/></svg> PisoPhone Kiosk</h3>
+                <p>Rental Android phones locked as dedicated gaming and browsing kiosks. Unlocks by the minute per coin, accepts prepaid QR time cards, and locks automatically on expiry.</p>
+            </div>
+            <div class="feature-card">
+                <h3><svg class="ic"><use href="#i-wifi"/></svg> PisoWiFi Hotspot</h3>
+                <p>High-speed customer Wi-Fi through an OpenWrt router. Portal rates, bandwidth caps, voucher support, and customizable shop branding.</p>
+            </div>
+        </div>
+
+        <h2 style="font-size: 1.25rem; margin-top: 1.5rem; margin-bottom: 0.6rem;">Engineered for Shop Owners</h2>
+        <div class="grid-2">
+            <div class="feature-card">
+                <h3><svg class="ic"><use href="#i-bolt"/></svg> Durable Accounting</h3>
+                <p>Money and time are never wrong. Hardware pulse guards, durable flash queues, and exactly-once crediting ensure zero revenue loss across power cuts.</p>
+            </div>
+            <div class="feature-card">
+                <h3><svg class="ic"><use href="#i-box"/></svg> Turnkey Hardware</h3>
+                <p>Fully assembled, tested, and pre-configured kits. Plug in power, connect your internet modem, and open for customers immediately.</p>
+            </div>
+            <div class="feature-card">
+                <h3><svg class="ic"><use href="#i-lock"/></svg> Signed Updates</h3>
+                <p>Automatic background over-the-air updates for firmware, router portal, and kiosk apps, cryptographically verified by the owner key.</p>
+            </div>
+            <div class="feature-card">
+                <h3><svg class="ic"><use href="#i-info"/></svg> Management Console</h3>
+                <p>Full real-time visibility into sales, active sessions, coin box health, speed limits, and custom shop themes from any device on your network.</p>
+            </div>
+        </div>
+
+        <h2 style="font-size: 1.25rem; margin-top: 1.5rem; margin-bottom: 0.6rem;">Already Own a PisoHub?</h2>
+        <div class="note">
+            <svg class="ic"><use href="#i-info"/></svg>
+            <div class="grow">
+                <b>Managing your shop or adding phones:</b>
+                <p style="margin: 4px 0 8px 0; font-size: 13.5px; color: var(--ink);">Connect your phone or computer to your shop's Wi-Fi network and open <code>http://admin.hub</code> (or <code>http://10.0.0.10</code>). To provision a rental phone, select <b>Phone slots</b> &rarr; <b>Set up a phone</b> on the coin box dashboard.</p>
+                <a href="manual.html" style="font-weight: 600; color: var(--accent);"><svg class="ic" style="vertical-align: middle; margin-right: 4px;"><use href="#i-info"/></svg>View the Owner's Manual</a>
+            </div>
+        </div>
+
+        <div class="contact-box">
+            <h3>Get TechNet PisoHub for Your Business</h3>
+            <p>Interested in setting up a coin-operated phone rental kiosk or Wi-Fi hotspot in your shop? Inquire about assembled units, pricing, and availability.</p>
+            <div class="contact-links">
+                <a href="https://github.com/Sheesh0327/PisoPhone-Kiosk-Launcher-V1" class="btn" target="_blank" rel="noopener">
+                    <svg class="ic"><use href="#i-logo"/></svg> Project Repository
+                </a>
+                <a href="manual.html" class="btn">
+                    <svg class="ic"><use href="#i-info"/></svg> Documentation &amp; Manual
+                </a>
+            </div>
         </div>
     </div>
 

@@ -57,7 +57,7 @@ jobs:
         working-directory: esp32_firmware
         run: |
           set -eu
-          mkdir -p ../website/flash "$RUNNER_TEMP/ota"
+          mkdir -p "$RUNNER_TEMP/flash" "$RUNNER_TEMP/ota"
           VERSION=$(sed -n 's/^#define PISO_FW_VERSION "\(.*\)"/\1/p' include/FirmwareVersion.h)
           [ -n "$VERSION" ] || { echo "::error::no PISO_FW_VERSION"; exit 1; }
           builds=""
@@ -74,7 +74,7 @@ jobs:
             cp "$B/firmware.bin" "$RUNNER_TEMP/ota/$PRODUCT/firmware-$CHIP.bin"   # the app-only image for over-the-air updates
             APP0=$(find ~/.platformio/packages -name boot_app0.bin -path '*partitions*' | head -n 1)
             [ -n "$APP0" ] || { echo "::error::boot_app0.bin not found"; exit 1; }
-            OUT=../website/flash/$ENV.bin
+            OUT=$RUNNER_TEMP/flash/$ENV.bin
             # the image starts at the bootloader's offset (0x0 on the C3, 0x1000 on the classic ESP32)
             python -m esptool --chip "$CHIP" merge_bin -o "$OUT" --target-offset "$BOOT" \
               --flash_mode keep --flash_freq keep --flash_size keep \
@@ -94,8 +94,8 @@ jobs:
             SIZE=$(stat -c %s "$OUT")
             builds="$builds{\"env\":\"$ENV\",\"product\":\"$PRODUCT\",\"chip\":\"$NAME\",\"file\":\"$ENV.bin\",\"offset\":$((BOOT)),\"size\":$SIZE,\"sha256\":\"$SHA\"},"
           done
-          printf '{"version":"%s","commit":"%s","builds":[%s]}\n' "$VERSION" "$GITHUB_SHA" "${builds%,}" | python3 -m json.tool > ../website/flash/manifest.json
-          cat ../website/flash/manifest.json
+          printf '{"version":"%s","commit":"%s","builds":[%s]}\n' "$VERSION" "$GITHUB_SHA" "${builds%,}" | python3 -m json.tool > "$RUNNER_TEMP/flash/manifest.json"
+          cat "$RUNNER_TEMP/flash/manifest.json"
       # A manual run with "bundle" on: the two production environments too, then the two owner zips (scripts/make_firmware_bundles.py,
       # which reads each build's partition table and fails the run when a layout is wrong). No secrets here: no keys are ever packed.
       - name: Build the production environments and pack the firmware zips
@@ -109,7 +109,7 @@ jobs:
           APP0=$(find ~/.platformio/packages -name boot_app0.bin -path '*partitions*' | head -n 1)
           [ -n "$APP0" ] || { echo "::error::boot_app0.bin not found"; exit 1; }
           python3 ../scripts/make_firmware_bundles.py --version "$VERSION" --commit "$GITHUB_SHA" --build-dir .pio/build \
-            --boot-app0 "$APP0" --merged-dir ../website/flash --out "$RUNNER_TEMP/bundles"
+            --boot-app0 "$APP0" --merged-dir "$RUNNER_TEMP/flash" --out "$RUNNER_TEMP/bundles"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: ${{ inputs.bundle == true }}
         with:
@@ -120,7 +120,7 @@ jobs:
       - name: Gather the images for the publish job
         run: |
           mkdir -p "$RUNNER_TEMP/stage"
-          cp -r website/flash "$RUNNER_TEMP/stage/flash"
+          cp -r "$RUNNER_TEMP/flash" "$RUNNER_TEMP/stage/flash"
           cp -r "$RUNNER_TEMP/ota" "$RUNNER_TEMP/stage/ota"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -202,8 +202,6 @@ jobs:
           for attempt in 1 2 3 4 5; do
             git fetch -q origin "$GITHUB_REF_NAME"
             git reset -q --hard "origin/$GITHUB_REF_NAME"
-            rm -rf website/flash && cp -r "$RUNNER_TEMP/flash" website/flash
-            git add -A website/flash
             if [ "$GITHUB_REF_NAME" = main ]; then
               # (the production site is built from main, and the boxes' dashboard reads https://pisophone.pages.dev/update)
               # (a failure here must not hold back the coin box images, but it still fails the run, after they are pushed)
@@ -222,7 +220,7 @@ jobs:
               fi
             fi
             if git diff --staged --quiet; then exit $ota_failed; fi
-            git commit -q -m "ci: coin box images for the setup program and updates ($(python3 -c "import json;print(json.load(open('website/flash/manifest.json'))['version'])"))"
+            git commit -q -m "ci: coin box updates ($(python3 -c "import json;print(json.load(open('$RUNNER_TEMP/flash/manifest.json'))['version'])"))"
             if git push origin "HEAD:refs/heads/$GITHUB_REF_NAME"; then exit $ota_failed; fi
             sleep $((attempt * 3))
           done
