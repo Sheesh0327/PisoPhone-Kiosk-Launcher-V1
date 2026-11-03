@@ -47,6 +47,7 @@ var X={
 "Please wait, do not insert coins yet":"Maghintay muna, huwag pang magpasok ng barya",
 "Insert coin now":"Magpasok na ng barya",
 "Counting coins":"Binibilang ang mga barya",
+"Pull down to refresh if stuck":"I-pull down para i-refresh kung na-stuck",
 "Each coin adds voucher time":"Bawat barya ay nagdaragdag ng voucher time",
 "Each coin adds Wi-Fi time":"Bawat barya ay nagdaragdag ng Wi-Fi time",
 "This pays for a voucher code. You are not connected yet.":"Ito ay bayad para sa voucher code. Hindi ka pa nakakonekta.",

@@ -88,6 +88,7 @@ details .btn{margin:8px 0 12px}
 <p class="msg w" id="lv" style="display:none">This pays for a voucher code. You are not connected yet.</p>
 <p class="mut c" id="lhint" style="display:none" role="status">Coin received. Insert more, or tap Done.</p>
 <p class="sub" id="ltop" style="display:none">Page closed? Keep inserting, coins still count.</p>
+<p class="sub" id="lstuck" style="display:none;cursor:pointer">Pull down to refresh if stuck</p>
 <button class="btn" id="ldone" type="button" style="display:none">Done</button>
 <button class="btn alt" id="lcancel" type="button">Cancel</button>
 </div>
@@ -119,7 +120,7 @@ details .btn{margin:8px 0 12px}
 var FIRST=%FIRST%;
 var A=window.AudioContext||window.webkitAudioContext,ctx=null,ws=null,tk=null,left=0,total=FIRST,cont="",plan="endurance",pes=0,fas=location.search.replace(/^.*[?&]fas=([^&]*).*$/,"$1");
 if(fas===location.search)fas="";
-var SS=window.speechSynthesis,SU=window.SpeechSynthesisUtterance,keep=[],voice=null,unl=0,sq=0,vch=false,rt=0,rx=0,lc=0,cw=0;
+var SS=window.speechSynthesis,SU=window.SpeechSynthesisUtterance,keep=[],voice=null,unl=0,sq=0,vch=false,rt=0,rx=0,lc=0,cw=0,sw=0,dn=0;
 function el(i){return document.getElementById(i)}
 function put(i,t){var e=el(i);if(e&&e.textContent!==t)e.textContent=t}
 function show(n){var l=document.getElementsByClassName("v"),i;for(i=0;i<l.length;i++)l[i].style.display=l[i].id==="v-"+n?"block":"none"}
@@ -173,13 +174,13 @@ function foff(on){var e=el("foff");if(!on){clearTimeout(fo);fo=null;e.style.disp
 function msg(t,btns){put("mtext",t);var b=el("mbtns");b.innerHTML="";var i,x;for(i=0;i<(btns||[]).length;i++){x=document.createElement("button");x.type="button";x.className="btn"+(btns[i][2]?" alt":"");x.textContent=btns[i][0];x.onclick=btns[i][1];b.appendChild(x)}show("msg")}
 function again(){clearTimeout(wk);wk=null;send({t:"hello",fas:fas,reset:true})}
 function startPlan(p,f,v){plan=p;if(woke){woke=false;try{history.replaceState(null,"",location.pathname+clean())}catch(e){}}send({t:"start",plan:p,forfeit:!!f,mode:v?"voucher":"now"})}
-function wait(p){show("live");put("lplan",pn(p));put("lsub","Getting the coin slot ready");put("lpes","");put("lmin","Please wait, do not insert coins yet");el("lcd").style.display="none";el("ldone").style.display="none";el("lhint").style.display="none"}
+function wait(p){show("live");put("lplan",pn(p));put("lsub","Getting the coin slot ready");put("lpes","");put("lmin","Please wait, do not insert coins yet");el("lcd").style.display="none";el("ldone").style.display="none";el("lhint").style.display="none";el("lstuck").style.display="none"}
 var go=function(){var r=document.querySelector("input[name=p]:checked");var p=r?r.value:"endurance";wait(p);startPlan(p,false,vch&&el("mv").checked);later(prime)};
 el("go").onclick=go;
-el("ldone").onclick=function(){this.disabled=true;this.textContent="Closing…";send({t:"done"})};
-el("lcancel").onclick=function(){send({t:"done"})};
+el("ldone").onclick=function(){this.disabled=true;this.textContent="Closing…";dn=1;if(!send({t:"done"}))connect()};
+el("lcancel").onclick=function(){dn=1;if(!send({t:"done"}))connect()};
 el("fagain").onclick=function(){show("idle");again()};
-el("rl").onclick=function(){location.reload()};
+el("rl").onclick=el("lstuck").onclick=function(){location.reload()};
 el("pz").onclick=function(){if(this.getAttribute("aria-disabled")!=="true"){this.setAttribute("aria-disabled","true");send({t:"pause"})}};
 el("rs").onclick=function(){this.disabled=true;this.textContent="Resuming…";send({t:"resume"})};
 var vc=el("vc");
@@ -213,9 +214,9 @@ function vlist(a){var b=el("vls"),i,h="";for(i=0;i<a.length;i++){var c=String(a[
  b.innerHTML=h;el("vlist").style.display=a.length?"block":"none";var l=b.getElementsByTagName("button");for(i=0;i<l.length;i++)l[i].onclick=function(){redeem(this.getAttribute("data-c"))}}
 function view(j){
 var s=j.s;
-if(s!=="armed")stopTick();if(s!=="idle"&&s!=="final"&&s!=="paused")tstop();if(s!=="final"){foff(false);clearTimeout(wk);wk=null}
-/* a window that stays in "Counting coins" is asked about again by a new connection every 3 s (a phone may have paused the old one) */
-if(s==="closing"){if(!cw)cw=setInterval(connect,3e3)}else if(cw){clearInterval(cw);cw=0}
+if(s!=="armed"){stopTick();dn=0}if(s!=="idle"&&s!=="final"&&s!=="paused")tstop();if(s!=="final"){foff(false);clearTimeout(wk);wk=null}
+/* a window that stays in "Counting coins" is asked about again every 3 s (a new connection when the old one has been quiet, without cutting one still opening) */
+if(s==="closing"){if(!cw)cw=setInterval(function(){if(ws&&ws.readyState===0&&Date.now()-lc<5e3)return;if(!ws||ws.readyState!==1||Date.now()-rx>=2500)connect();else send({t:"hello",fas:fas})},3e3);if(!sw)sw=setTimeout(function(){el("lstuck").style.display="block"},3e3)}else{if(cw){clearInterval(cw);cw=0}if(sw){clearTimeout(sw);sw=0}el("lstuck").style.display="none"}
 if(s==="idle"||s==="paused"){
  show("idle");el("ldone").disabled=false;el("ldone").textContent="Done";pj=s==="paused";
  var on=el("ion"),ps=pj,tm=j.left>0;
@@ -234,13 +235,14 @@ if(s==="idle"||s==="paused"){
  return}
 if(s==="starting"){wait(j.plan);el("lv").style.display=j.v?"block":"none";return}
 if(s==="armed"){
- show("live");el("lcd").style.display="block";put("lplan",pn(j.plan));put("lsub","Insert coin now");el("lv").style.display=j.v?"block":"none";
+ show("live");if(dn)send({t:"done"});else{el("ldone").disabled=false;el("ldone").textContent="Done"}
+ el("lcd").style.display="block";put("lplan",pn(j.plan));put("lsub","Insert coin now");el("lv").style.display=j.v?"block":"none";
  put("lpes","₱"+j.pulses);el("lpes").className="big"+(j.pulses>0?" p":"");put("lmin",j.pulses>0?"= "+fmt(j.minutes)+(j.v?" voucher":" of Wi-Fi"):j.v?"Each coin adds voucher time":"Each coin adds Wi-Fi time");
  if(j.pulses>pes){var d=j.pulses-pes;say(j.pulses+(j.pulses===1?" peso":" pesos"),function(){ding(d)})}else if(!pes&&!j.pulses&&!tk)say("Insert coin now",function(){ding(1)});
  pes=j.pulses;left=j.remaining;total=j.total||FIRST;bar();
  el("ldone").style.display=j.pulses>0?"block":"none";el("lhint").style.display=j.pulses>0?"block":"none";el("ltop").style.display=tl>0?"block":"none";el("lcancel").style.display=j.pulses>0?"none":"block";
  if(!tk)tk=setInterval(function(){if(left>0)left--;bar()},1000);return}
-if(s==="closing"){show("live");el("lcd").style.display="none";el("ldone").style.display="none";el("lcancel").style.display="none";el("lhint").style.display="none";el("lv").style.display=j.v?"block":"none";put("lplan",pn(j.plan));put("lsub","Counting coins");put("lpes","₱"+j.pulses);put("lmin","");return}
+if(s==="closing"){show("live");el("lcd").style.display="none";el("ldone").style.display="none";el("lcancel").style.display="none";el("lhint").style.display="none";el("ltop").style.display="none";el("lv").style.display=j.v?"block":"none";put("lplan",pn(j.plan));put("lsub","Counting coins");put("lpes","₱"+j.pulses);put("lmin","");return}
 if(s==="final"){
  if(j.vcode){vshow(j);return}
  show("final");el("fn").style.display="block";el("fv").style.display="none";put("fagain","Add more time");pes=0;tt=0;pj=false;tstart(j.left);put("fmin","time left · ₱"+j.pulses+" = "+fmt(j.minutes)+" bought");
@@ -250,7 +252,7 @@ if(s==="final"){
 if(s==="empty"){msg("No coins detected, you were not charged.",[["Try again",again]]);return}
 if(s==="busy"){msg("Another customer is paying. Try again in about "+j.retry+" s.",[["Try again",again]]);return}
 if(s==="cooldown"){msg("Too many empty tries. Wait about "+j.retry+" s.",[["Try again",again]]);return}
-if(s==="mismatch"){var o=pn(j.plan),sw=plan,n=pn(sw);msg("You still have "+fsec(j.left)+" of "+o+" time. Add more "+o+" time, or switch to "+n+" and give up the time you have left.",[["Add "+o+" time",function(){startPlan(j.plan,false)}],["Switch to "+n+" · lose my time",function(){startPlan(sw,true)},1]]);return}
+if(s==="mismatch"){var o=pn(j.plan),sp=plan,n=pn(sp);msg("You still have "+fsec(j.left)+" of "+o+" time. Add more "+o+" time, or switch to "+n+" and give up the time you have left.",[["Add "+o+" time",function(){startPlan(j.plan,false)}],["Switch to "+n+" · lose my time",function(){startPlan(sp,true)},1]]);return}
 msg("Coin payment is not available right now. Try again, or ask the attendant ("+(j.e||"error")+").",[["Try again",again]])}
 /* one socket at a time. connect() also replaces a socket that went quiet: a phone that paused the page leaves it half open and the
    last state never arrives */
@@ -258,7 +260,7 @@ function connect(){
  clearTimeout(rt);rt=0;var o=ws;ws=null;if(o){o.onopen=o.onmessage=o.onclose=o.onerror=null;try{o.close()}catch(e){}}
  var p=location.protocol==="https:"?"wss://":"ws://",w;lc=rx=Date.now();
  try{w=ws=new WebSocket(p+location.host+"/ws")}catch(e){put("conn","This phone's browser cannot run the coin page.");show("conn");return}
- w.onopen=function(){if(ws!==w)return;rx=Date.now();send({t:"hello",fas:fas})};
+ w.onopen=function(){if(ws!==w)return;rx=Date.now();send({t:"hello",fas:fas});if(dn)send({t:"done"})};
  w.onmessage=function(m){if(ws!==w)return;rx=Date.now();var j;try{j=JSON.parse(m.data)}catch(e){return}if(j.t==="info"){cont=j.cont||"";vch=!!j.vc;if(!vch)el("vchoice").style.display="none";return}if(j.t==="pong")return;if(j.t==="state")view(j);else reply(j)};
  w.onclose=function(){if(ws!==w)return;ws=null;stopTick();put("conn","Connection lost. Reconnecting…");if(!el("v-live").style.display||el("v-live").style.display==="none")show("conn");rt=setTimeout(connect,1500)};
  w.onerror=function(){try{w.close()}catch(e){}}}
