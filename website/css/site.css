@@ -156,6 +156,18 @@ ul.dots { padding-left: 18px; display: flex; flex-direction: column; gap: 6px; }
 .foot a { color: var(--muted); }
 .links { display: flex; flex-direction: column; gap: 8px; }
 .links a { display: flex; align-items: center; gap: 9px; font-weight: 600; text-decoration: none; padding: 11px 14px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface-2); color: var(--ink); }
+.links a small { display: block; font-weight: normal; color: var(--muted); font-size: 13px; margin-top: 2px; }
+
+/* Business front page features & products grid */
+.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+.feature-card { background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r); padding: 14px 16px; }
+.feature-card h3 { margin: 0 0 6px 0; font-size: 16px; display: flex; align-items: center; gap: 8px; color: var(--ink); }
+.feature-card p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
+.feature-badge { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 12px; font-weight: 700; background: var(--accent-soft); color: var(--accent); }
+.contact-box { background: var(--accent-soft); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; margin-top: 10px; }
+.contact-box h3 { margin: 0 0 8px 0; font-size: 16px; color: var(--ink); }
+.contact-box p { margin: 0 0 10px 0; color: var(--ink); font-size: 14px; line-height: 1.5; }
+.contact-links { display: flex; flex-wrap: wrap; gap: 10px; }
 .links a:hover { border-color: var(--accent); }
 .links a .ic { color: var(--accent); }
 .links small { display: block; font-weight: 400; color: var(--muted); }
