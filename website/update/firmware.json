@@ -1,20 +1,20 @@
 {
   "version": "3.13.0",
-  "build": 339,
-  "releaseDate": "2026-10-31",
+  "build": 340,
+  "releaseDate": "2026-11-03",
   "changelog": "Slot licensing removed: all 10 phone slots are available",
   "chips": {
     "esp32c3": {
       "url": "https://pisophone.pages.dev/update/firmware-esp32c3.bin",
-      "sha256": "60e4ab24c005dea763a248740f3f5960ff233c3b812ddb4f92a8800dffa8844f",
+      "sha256": "48f487670b9a23cef6b4cf45b8301077beb98bed2efc9ca2ca9250bc43c64f85",
       "size": 1387008,
-      "sig": "MEYCIQC0O9rKtVCebC0/KwFjDcYH5jIf2E7LdbvLzCGhcOqa1wIhAPjGyTLCiyTWPnggfQgxIwzwCJJn2ZyrmUP383IeaTXD"
+      "sig": "MEQCIEN+4zPm6gsImV+MvUgJFPg7GiNx8csghM3XDGms7eroAiBb81ClLmZ662q1ykpzMhblbZHxwvuCv1PWY9g5V6OFTw=="
     },
     "esp32": {
       "url": "https://pisophone.pages.dev/update/firmware-esp32.bin",
-      "sha256": "7914162d2decf9e94234ba7d9a11bf03a60e915f0a919c0792c38ce191e133a2",
+      "sha256": "7e4cb84f0820135a33a0c7a7e0e314d917f7f9113ec1f1fbfc781a1b97c8e9d8",
       "size": 1377424,
-      "sig": "MEUCIA+TbW3/PMyvkdSICw0MrBlVlhibqQC8bs3wR3tUeyaYAiEA9jwGu1cwsNv2ZArtGoySUHGKaoqYu/OBmYO07ufQoO0="
+      "sig": "MEUCIQCEbDQhT2DhtEk7iUptQQKCyDsg0uH1Cqfw+9512Qv0hQIgPQPMJ5tHUXdxjUcyZmzeX/SIwXTZLtDD1x1lTL1GqLs="
     }
   }
 }
