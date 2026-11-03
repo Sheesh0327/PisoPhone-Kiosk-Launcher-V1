@@ -144,6 +144,13 @@ try:
             check(not left, f"Filipino, {name}: no English words left {left}")
             check(pg.is_visible(".credit") and pg.evaluate("document.documentElement.scrollWidth") <= 360, f"Filipino, {name}: credit shows, no sideways scroll")
             pg.close()
+        pg = open_page(ctx, G.CASES["closing"])
+        pg.wait_for_timeout(3200)
+        check(pg.is_visible("#lstuck"), "Filipino, closing after 3.2 s: #lstuck is visible")
+        check("I-pull down para i-refresh kung na-stuck" in pg.inner_text("#lstuck"), "Filipino, #lstuck has Filipino wording")
+        stuck_left = [l for l in lines(pg) if ENGLISH.search(l)]
+        check(not stuck_left, f"Filipino, closing with stuck reminder: no English words left {stuck_left}")
+        pg.close()
         pg = open_page(ctx, G.CASES["idle_with_time_left"])
         fil_ids = [c.split("|")[0] for c in pg.evaluate(G.SNAP)["controls"]]
         pg.close()

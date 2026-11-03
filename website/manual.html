@@ -374,7 +374,7 @@ ol.steps>li::before{content:counter(s);position:absolute;left:0;top:2px;width:30
 <tr><td>Phone shows "DEVICE NOT ACTIVATED"</td><td>Tap <b>Pair…</b> for that slot in Overview.</td></tr>
 <tr><td>Slot shows Offline</td><td>Check phone battery, Wi-Fi in range, then re-pair.</td></tr>
 <tr><td>Customer paid but is not online, or the page closed while adding time</td><td>The coins still count: the router finishes the payment by itself. Open <code>status.client</code> to see the time. <code>logread -e coinslot | tail -40</code> on the router says what happened.</td></tr>
-<tr><td>The payment page stays on "Counting coins"</td><td>It fixes itself: after 3 seconds the page asks the router again, and keeps asking every 3 seconds, so a phone that paused the page gets its result without a reload. The page also checks its connection every few seconds, and again when the phone wakes or the Wi-Fi comes back.</td></tr>
+<tr><td>The payment page stays on "Counting coins"</td><td>It fixes itself: after 3 seconds the page asks the router again, and keeps asking every 3 seconds, so a phone that paused the page gets its result without a reload. After 3 seconds on "Counting coins" a <b>Pull down to refresh if stuck</b> line also appears (customers can pull down or tap it to reload).</td></tr>
 <tr><td>Customer Wi-Fi shows no login page</td><td><code>piso-setup status</code>; check the modem and the WAN cable.</td></tr>
 <tr><td>Forgot the admin password</td><td>Sign in with your admin QR code (login page &rarr; Scan admin QR); from there you can open Settings and set a new one.</td></tr>
 <tr><td>Admin QR will not scan</td><td>Light and distance; the box must be on the same version as the key. Update the box.</td></tr>

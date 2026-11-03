@@ -311,7 +311,7 @@ pub(crate) fn console_limits() -> Arc<Limits<IpAddr>> {
 
 /// Connections per client address, and open coin pages per device.
 const CONN_PER_IP: usize = 8;
-const WS_PER_DEVICE: usize = 3;
+const WS_PER_DEVICE: usize = 6;
 
 // ---- WebSocket frames ---------------------------------------------------------------------------------------------------------------
 enum Frame {
@@ -444,6 +444,9 @@ fn ws_session(core: Arc<Core>, mut conn: Incoming, key: &str, mac: String) {
             }
         }
         cl2.store(true, Ordering::Relaxed);
+        if let Ok(s) = w2.lock() {
+            let _ = s.shutdown(Shutdown::Both);
+        }
     });
     if spawned.is_err() {
         let _ = conn.s.shutdown(Shutdown::Both);

@@ -313,7 +313,9 @@ try:
         p3.wait_for_function("document.getElementById('lsub').textContent==='Counting coins'", timeout=3000)
         p3.wait_for_timeout(1500)
         check(p3.is_visible("#v-live") and not p3.is_visible("#v-final") and p3.text_content("#lsub") == "Counting coins", "1.5 s into the stall it still says 'Counting coins'")
+        check(not p3.is_visible("#lstuck"), "at 1.5 s into 'Counting coins' the stuck reminder is not visible yet")
         p3.wait_for_selector("#v-final", state="visible", timeout=8000)
+        check(not p3.is_visible("#lstuck"), "in final view the stuck reminder is hidden")
         took = time.time() - proxy.cut_at
         check(2.5 <= took <= 5.0, f"a stalled socket in 'Counting coins' recovers by itself after about 3 s, no reload ({took:.1f} s)")
         check("You are online" in p3.text_content("#fon") and proxy.conns > conns0, "and the final view is the real result, got over a new connection")
