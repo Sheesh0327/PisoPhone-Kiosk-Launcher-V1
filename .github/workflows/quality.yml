@@ -31,8 +31,6 @@ on:
       - 'tools/pisoportal/rustfmt.toml'
       - 'website/index.html'
       - 'website/_headers'
-      - 'website/install.sh'
-      - 'website/pisophone_setup.py'
       - 'website/css/**'
       - 'website/js/**'
       - '.editorconfig'
@@ -56,8 +54,6 @@ on:
       - 'tools/pisoportal/rustfmt.toml'
       - 'website/index.html'
       - 'website/_headers'
-      - 'website/install.sh'
-      - 'website/pisophone_setup.py'
       - 'website/css/**'
       - 'website/js/**'
       - '.editorconfig'
@@ -118,8 +114,8 @@ jobs:
           flag kotlin "^(app/|[^/]*\.kts$|\.editorconfig|detekt\.yml|detekt-baseline\.xml|$W)"
           flag firmware_build "^(esp32_firmware/|protocol/|$W)"
           flag firmware_tests "^(esp32_firmware/|protocol/|scripts/|$W)"
-          flag portal "^(tools/pisoportal/|router/|setup/|website/install\.sh|website/pisophone_setup\.py|tools/build_piso_setup\.py|scripts/(sign_router|owner_key|make_owner_keys)\.py|$W)"
-          flag website "^(website/|esp32_firmware/web/(adminqr|jsqr)\.js|scripts/(make_admin_qr\.py|tests/test_admin_qr\.py|make_wifi_poster\.py|tests/test_make_wifi_poster\.py|tests/test_manual\.py|tests/test_start_pages\.py|make_firmware_bundles\.py|tests/test_make_firmware_bundles\.py)|esp32_firmware/partitions_encrypted\.csv|docs/PROVISIONING_SOLD_UNIT\.md|scripts/check_published_apk\.py|scripts/tests/test_check_published_apk\.py|app/src/main/java/com/pisophone/kiosk/(security/KioskSecurity|network/KioskWifi|provisioning/QrProvisioning)\.kt|scripts/tests/test_provisioning\.js|scripts/tests/test_site_page\.py|scripts/check_vendored\.py|$W)"
+          flag portal "^(tools/pisoportal/|router/|setup/|tools/build_piso_setup\.py|scripts/(sign_router|owner_key|make_owner_keys)\.py|$W)"
+          flag website "^(website/|esp32_firmware/web/(adminqr|jsqr)\.js|scripts/(make_admin_qr\.py|tests/test_admin_qr\.py|make_wifi_poster\.py|tests/test_make_wifi_poster\.py|tests/test_manual\.py|make_firmware_bundles\.py|tests/test_make_firmware_bundles\.py)|esp32_firmware/partitions_encrypted\.csv|docs/PROVISIONING_SOLD_UNIT\.md|scripts/check_published_apk\.py|scripts/tests/test_check_published_apk\.py|app/src/main/java/com/pisophone/kiosk/(security/KioskSecurity|network/KioskWifi|provisioning/QrProvisioning)\.kt|scripts/tests/test_provisioning\.js|scripts/tests/test_site_page\.py|scripts/check_vendored\.py|$W)"
 
   security-rules:
     name: Security rules
@@ -172,8 +168,6 @@ jobs:
         run: |
           python3 scripts/tests/test_manual.py
           python3 scripts/tests/test_make_wifi_poster.py
-      - name: The Start here pages (links, six steps at most, nothing loaded from outside, no keys for the owner)
-        run: python3 scripts/tests/test_start_pages.py
 
   kotlin-style:
     name: ktlint

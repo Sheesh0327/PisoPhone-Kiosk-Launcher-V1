@@ -158,5 +158,5 @@ jobs:
           git config user.email "actions@users.noreply.github.com"
           ls -l tools/pisoportal/bin
           python3 tools/build_piso_setup.py
-          git add setup/piso-setup*.sh setup/piso-setup*.sha256 website/setup website/install.sh website/pisophone_setup.py
+          git add setup/piso-setup*.sh setup/piso-setup*.sha256
           git diff --cached --quiet || { git commit -m "ci: rebuilt the setup files around the router programs"; git pull --rebase -q origin beta && git push; }

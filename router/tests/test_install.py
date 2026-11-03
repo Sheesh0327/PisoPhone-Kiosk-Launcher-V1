@@ -280,7 +280,6 @@ check("Saved" in r.stdout and "nothing was changed" in r.stdout, "the real setup
 body = open(INSTALL).read()
 r = run(stdin_script=body[: len(body) * 2 // 3])
 check(log("wget.log") == "" and "SETUP-RAN" not in r.stdout, "an installer cut off half way downloads and runs nothing")
-check(open(f"{ROOT}/website/install.sh").read() == body, "the website serves the same installer")
 sha = open(f"{ROOT}/setup/piso-setup.sh.sha256").read().split()[0]
 check(sha == hashlib.sha256(open(REAL_SETUP, "rb").read()).hexdigest(), "setup/piso-setup.sh.sha256 matches the committed setup file")
 
