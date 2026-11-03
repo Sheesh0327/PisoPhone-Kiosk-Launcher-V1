@@ -28,8 +28,7 @@ CI runs the setup check in the `pisoportal` job of `quality.yml`, and the checkl
 `docs/REAL_WORLD_TESTING.md` or `tools/checklist/` changes.
 
 ## Generated files
-`build_piso_setup.py` writes `setup/piso-setup*.sh` (with their `.sha256`), `website/setup/*`, `website/install.sh` and
-`website/pisophone_setup.py`. `pisoportal/bin/*` is written by CI. Never edit any of them by hand (`CLAUDE.md` section 4).
+`build_piso_setup.py` writes `setup/piso-setup*.sh` (with their `.sha256`). `pisoportal/bin/*` is written by CI. Never edit any of them by hand (`CLAUDE.md` section 4).
 
 ## See also
 `setup/README.md` (the setup program and the router installer), `router/README.md`, `docs/REAL_WORLD_TESTING.md`, `scripts/README.md`.

@@ -47,7 +47,7 @@ It is read after the stable files, on demand: `specs/README.md` lists it with `s
 - **Recent work:** each router has its own Wi-Fi names (`PisoKiosk-xxxx`, `PisoCoinBox-xxxx`, 1.5.0); coin page: vouchers, pause
   (from 10 pesos, once, 1 kbit/s and 2 MB), mini-game, "send a file to the owner" (relayed to the print server's inbox);
   quicker "you are online" after Done; the setup program (`setup/pisophone_setup.py`) does the whole install and has Owner tools
-  (time cards, admin QR, recovery code) and a read-only Check-up; "Start here" pages (`website/start/`); codebase cleanup of the
+  (time cards, admin QR, recovery code) and a read-only Check-up; Start here guides; codebase cleanup of the
   setup program, tests, scripts and the phone app.
 - **Setup simplification plan** (nobody opening a shop should handle a key): Start pages, README front door and the Check-up are
   done. **Print server pairing** (a code instead of copying `send.key`) is only specified (`docs/REFERENCE.md`): it needs

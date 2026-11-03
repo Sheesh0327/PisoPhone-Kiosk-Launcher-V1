@@ -58,7 +58,7 @@ One commit per task group of a feature (`specs/README.md`). Do not put a key, pa
 
 ## Rules that are easy to break
 - **Generated and published files are never edited by hand**: `esp32_firmware/include/WebAssets.h`, `setup/piso-setup.sh`,
-  `website/setup/*`, `website/install.sh`, `website/update/*`, `website/flash/*`, `tools/pisoportal/bin/*`, `app/schemas/*`.
+  `website/update/*`, `tools/pisoportal/bin/*`, `app/schemas/*`.
   Change the source and regenerate (`CLAUDE.md`, section 4).
 - **The box <-> phone message contract changes on both sides in one change** (`protocol/gen_vectors.py` and
   `esp32_firmware/host_tests/protocol_contract_test.cpp`).

@@ -102,7 +102,7 @@ sha256, and compares what the program was built from (`BUILD-INFO-<family>`: the
 tree ids) with `tools/pisoportal/src`, `Cargo.toml`, `Cargo.lock` and `owner_key.b64` of the commit being released. `publish-router.yml`
 runs it first and **signs nothing** when it fails; `verify_release.py` shows it as a FAIL line. When it fails: push the router change to
 `beta`, wait for CI's two commits ("ci: built the router program" and "ci: rebuilt the setup files around the router programs"), merge
-`beta` into `main` (taking `main`'s `website/update` and `website/flash`), run it again. It proves the program was built from this source,
+`beta` into `main` (taking `main`'s `website/update`), run it again. It proves the program was built from this source,
 not that the build is bit-for-bit reproducible (`docs/HARDENING.md` item 11), and it does not replace decoding the signed file and
 looking for the new text once (`CLAUDE.md` section 5): that stays as a second look.
 Router commands: `piso-setup update` (install the newest release now, even with customers online; the same as `piso-setup self-update`;

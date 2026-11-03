@@ -33,7 +33,7 @@ Keys are not needed for this test (see `docs/KEYS.md`); boxes then accept unsign
 environments (the platform is pinned in `esp32_firmware/envs/*.ini`), security-rule and vendored-file checks, the provisioning
 website (its helpers, its stylesheet and the page itself in a browser under the site's Content-Security-Policy), and the
 router portal and setup tests (rustfmt, clippy, unit, end-to-end and browser tests, shellcheck). `firmware-images.yml` builds the coin box
-firmware for the setup program (`website/flash/`, one checked image per chip). `router-program.yml` builds
+firmware for OTA and bundles. `router-program.yml` builds
 the router program for the five router families (`mipsel_24kc`, `mips_24kc`, `aarch64`, `armv7`, `x86_64`; `docs/ROUTERS.md`) and regenerates `setup/piso-setup.sh` on `beta`. `build-apk.yml` runs the Android unit
 tests, builds and signs the release APK and publishes it to the branch's channel (`main` = production, other branches =
 `-dev`). Dependabot opens update PRs (majors and Kotlin-toolchain minors are ignored on purpose).
@@ -68,7 +68,7 @@ repository (default `Sheesh0327/PisoPhone-Releases`, override with the variable 
 4. Optional, owner-run: once APKs are out of git, `git filter-repo --invert-paths --path-glob '*.apk'` (on a fresh mirror clone,
    then force-push every branch) shrinks the repository. It rewrites history; everyone re-clones.
    (This was done once, on 2026-10-14: the history of about 400 commits, 800 MB of it build outputs, became one commit. Builds that CI
-   commits to `website/update` and `website/flash` grow the repository again, a few tens of MB per release: repeat this when it matters.)
+   commits to `website/update` grow the repository again, a few tens of MB per release: repeat this when it matters.)
 
 `versionCode` is the workflow run number (always increasing across branches); `versionName` is the run number as hundreds.tens.ones (+`-dev`; run 437 is 4.3.7, run 1000 is 10.0.0).
 Firmware images stay on the website (`website/update/firmware-<chip>.bin` + signed manifest): the box's update page downloads

@@ -90,8 +90,8 @@ Three consequences run through the features below:
 - Hardening does not actually cover the box's secrets today (043). Found while reviewing 040; see below.
 
 Already pointing this way in the code: the box dashboard builds `https://pisophone.pages.dev/?mac=<mac>`
-(`esp32_firmware/src/WebDashboardComponents.cpp:80`), `website/install.sh` is already the one-liner from that site,
-`website/start/` already has the pages, and `docs/PROVISIONING_SOLD_UNIT.md` already opens with "only boxes that leave your
+(`esp32_firmware/src/WebDashboardComponents.cpp:80`), the installer is already the one-liner from that site,
+the start pages were already drafted, and `docs/PROVISIONING_SOLD_UNIT.md` already opens with "only boxes that leave your
 hands". The plan is the direction the repository was already taking.
 
 ### 035 Say which routers are actually supported  (owner: demote three, keep building them, name one to buy)
@@ -125,7 +125,7 @@ Two gaps in one feature, both on surfaces the owner already looks at.
 - **The product question goes away.** Every router gets the hidden rental-phone Wi-Fi whether or not phones ever arrive, because
   the cost is one unused SSID and a password. `SHOP_PRODUCT` stops being asked. Routers already set up are not changed.
 - **The box's own page is the single front door.** Power the box, join `PisoCoinBox-xxxx`, and the box's page walks the owner
-  through setup and hands them the router command **pre-filled**. `website/install.sh`, `pisophone_setup.py`, the Start-here
+  through setup and hands them the router command **pre-filled**. The installer script, `pisophone_setup.py`, the Start-here
   pages and the Check-up all stay, but they become routes into that flow rather than four separate beginnings.
 
 ### 038 Phone-led setup  (owner: add it, keep the computer path; the phone drives the router over HTTP)
