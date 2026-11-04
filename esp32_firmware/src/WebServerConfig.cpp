@@ -17,19 +17,25 @@
 #include "Config.h"
 #if PISO_HAS_PHONES
 #include "PhoneProfileStore.h"
+#if PISO_HAS_SHOP_EXTRAS
 #include "ShopBrandingStore.h"
+#endif
 #endif
 #include "PulseGuard.h"
 #include "PinRules.h"
 #include "SetupGate.h"
+#if PISO_HAS_SHOP_EXTRAS
 #include "RevenueVault.h"
 #include "RevenueLedger.h"
+#endif
 #include "Security.h"
 #include "HardwareManager.h"
 #if PISO_HAS_PHONES
 #include "DeviceManager.h"
 #endif
+#if PISO_HAS_SHOP_EXTRAS
 #include "SuperAdminManager.h"
+#endif
 #include "WebDashboardHtml.h"
 #include "WebDashboardIcons.h"
 #include "WebDashboardOta.h"

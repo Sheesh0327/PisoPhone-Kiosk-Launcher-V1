@@ -15,17 +15,23 @@
 #if PISO_HAS_PHONES
 #include "DeviceManager.h"
 #endif
+#if PISO_HAS_SHOP_EXTRAS
 #include "SuperAdminManager.h"
+#endif
 #include "Diagnostics.h"
 #include "InputSafety.h"
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <esp_random.h>
+#if PISO_HAS_SHOP_EXTRAS
 #include "SuperAdminSession.h"
+#endif
 #include "WebAssetServer.h"
 #include "Product.h"
+#if PISO_HAS_SHOP_EXTRAS
 #include "RevenueVault.h"
 #include "RevenueLedger.h"
+#endif
 
 #if PISO_HAS_PHONES
 // A phone acknowledgement the AuthWorker confirmed, waiting for loop() to apply it (see WebServerAuth.h).
@@ -336,7 +342,11 @@ static bool adminCredentialsOk(bool& lockedOut) {
         return false;
     }
     lastAuthViaPassword = false;
+#if PISO_HAS_SHOP_EXTRAS
     if (superAdminSessionOk() || passwordSessionOk()) {
+#else
+    if (passwordSessionOk()) {
+#endif
         loginThrottle.recordSuccess(client);
         return true;
     }
@@ -508,6 +518,7 @@ void redirectHome() {
 }
 
 void handleLogout() {
+#if PISO_HAS_SHOP_EXTRAS
     // Signing out ends the vendor's collection, but only when the request really is the vendor's: /logout is a plain GET that
     // anyone (or a link prefetch) can send, and it must not be able to end someone else's collection window.
     if (isVaultUnmasked && superAdminSessionOk()) {
@@ -517,6 +528,7 @@ void handleLogout() {
         Serial.println("[👑 SUPER ADMIN] Collection recorded at Super Admin logout.");
     }
     if (superAdminSessionOk()) superAdminSessionEnd(); // a plain GET from anyone must not sign the owner out
+#endif
     adminSessions.end(cookieValue(ADMIN_COOKIE).c_str());
     webServer.sendHeader("Set-Cookie", String(ADMIN_COOKIE) + "=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0");
     webServer.requestAuthentication(BASIC_AUTH, "HARDWARE Admin Login", "Logged out");

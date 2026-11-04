@@ -43,6 +43,7 @@ class FloatingPillOverlay(
     private val hiddenForAdminAppFlow: StateFlow<Boolean> = AdminMaintenanceMode.suspendOverlays,
     private val onInsertCoinClick: () -> Unit,
     private val onDoneClick: () -> Unit,
+    private val onPauseClick: (() -> Unit)? = null,
 ) {
     private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val positionPrefs = context.createDeviceProtectedStorageContext().getSharedPreferences("pill_position", Context.MODE_PRIVATE)
@@ -184,6 +185,7 @@ class FloatingPillOverlay(
                     coinsInserted = coinsInserted,
                     paymentTimeout = paymentTimeout,
                     onDoneClick = onDoneClick,
+                    onPauseClick = onPauseClick,
                     isEsp32Online = isEsp32Online,
                     armFailure = armFailure,
                     isArmingInProgress = isArmingInProgress,

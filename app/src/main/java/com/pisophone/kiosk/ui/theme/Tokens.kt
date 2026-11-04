@@ -45,3 +45,32 @@ object TechNet {
     val warnSurface = Color(0xFF3A2A08)
     val okSurface = Color(0xFF0B3B33)
 }
+
+/**
+ * The PisoKids / PisoHome family theme tokens.
+ * Emerald (#10B981) + Gold (#F59E0B) + Slate surfaces (#0F172A / #1E293B).
+ */
+object PisoKidsTheme {
+    val bg = Color(0xFF0F172A)
+    val surface = Color(0xFF1E293B)
+    val surfaceHi = Color(0xFF334155)
+
+    val emerald = Color(0xFF10B981)
+    val emeraldDark = Color(0xFF059669)
+    val emeraldEdge = Color(0xFF047857)
+    val onEmerald = Color(0xFFFFFFFF)
+
+    val gold = Color(0xFFF59E0B)
+    val goldDark = Color(0xFFD97706)
+    val onGold = Color(0xFF000000)
+
+    val text = Color(0xFFF8FAFC)
+    val textMuted = Color(0xFF94A3B8)
+    val line = Color(0xFF334155)
+    val lineStrong = Color(0xFF475569)
+
+    val ok = Color(0xFF10B981)
+    val warn = Color(0xFFF59E0B)
+    val danger = Color(0xFFEF4444)
+    val purple = Color(0xFF8B5CF6)
+}

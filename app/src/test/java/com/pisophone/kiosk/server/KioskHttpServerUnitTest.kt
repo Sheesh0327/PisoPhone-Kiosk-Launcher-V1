@@ -611,4 +611,60 @@ class KioskHttpServerUnitTest {
         assertEquals("the old behaviour stays for a push that carries no branding", 1, configPushes)
         assertTrue(brandingPushes.isEmpty())
     }
+
+    @Test
+    fun testParentDashboardBlockedForUnauthorizedClient() {
+        com.pisophone.kiosk.util.KioskSettings.setHomeMode(context, true)
+        val session = createSession("/parent", emptyMap(), headers = mapOf("remote-addr" to "192.168.1.50"))
+        val response = server.serve(session)
+        assertEquals(403, response.status.requestStatus)
+    }
+
+    @Test
+    fun testParentDashboardPinRequiredForStatusApi() {
+        com.pisophone.kiosk.util.KioskSettings.setHomeMode(context, true)
+        KioskSecurity.setAdminPin(context, "1234")
+        val session = createSession("/parent/status", emptyMap(), headers = mapOf("remote-addr" to "100.115.92.14"))
+        val response = server.serve(session)
+        assertEquals(401, response.status.requestStatus)
+        assertTrue(readResponseBody(response).contains("INVALID_PIN"))
+    }
+
+    @Test
+    fun testParentDashboardStatusAuthorizedOverTailscale() {
+        com.pisophone.kiosk.util.KioskSettings.setHomeMode(context, true)
+        KioskSecurity.setAdminPin(context, "1234")
+        val session = createSession(
+            "/parent/status",
+            params = mapOf("pin" to "1234"),
+            headers = mapOf("remote-addr" to "100.115.92.14"),
+        )
+        val response = server.serve(session)
+        assertEquals(200, response.status.requestStatus)
+        val json = org.json.JSONObject(readResponseBody(response))
+        assertTrue(json.getBoolean("success"))
+        assertEquals(300, json.getInt("time_remaining_sec"))
+    }
+
+    @Test
+    fun testParentDashboardActionApproveChoreCreditsBonusTime() {
+        com.pisophone.kiosk.util.KioskSettings.setHomeMode(context, true)
+        KioskSecurity.setAdminPin(context, "1234")
+        val chores = listOf(
+            com.pisophone.kiosk.util.ChoreItem("ch_1", "Wash Dishes", 20, com.pisophone.kiosk.util.ChoreStatus.PENDING_APPROVAL, repeatDaily = true),
+        )
+        com.pisophone.kiosk.util.KioskSettings.setChores(context, chores)
+
+        val session = createSession(
+            "/parent/action",
+            params = mapOf("pin" to "1234", "action" to "approve_chore", "chore_id" to "ch_1"),
+            headers = mapOf("remote-addr" to "100.115.92.14"),
+        )
+        val response = server.serve(session)
+        assertEquals(200, response.status.requestStatus)
+        assertEquals(1, creditPaymentCallCount)
+        assertEquals(20 * 60, lastCreditedSeconds)
+        val updatedChores = com.pisophone.kiosk.util.KioskSettings.getChores(context)
+        assertEquals(com.pisophone.kiosk.util.ChoreStatus.APPROVED, updatedChores[0].status)
+    }
 }

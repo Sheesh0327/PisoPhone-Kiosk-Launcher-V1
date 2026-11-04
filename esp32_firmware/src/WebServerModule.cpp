@@ -3,9 +3,11 @@
 
 #include "WebServerModule.h"
 #if PISO_HAS_PHONES
+#if PISO_HAS_SHOP_EXTRAS
 #include "WebServerAccounts.h"
-#include "WebServerProfiles.h"
 #include "WebServerBranding.h"
+#endif
+#include "WebServerProfiles.h"
 #include "WebServerVoice.h"
 #endif
 #include "CoinSlotManager.h"
@@ -23,8 +25,13 @@
 #if PISO_HAS_PHONES
 #include "DeviceManager.h"
 #endif
+#if PISO_HAS_SHOP_EXTRAS
 #include "SuperAdminManager.h"
 #include "SuperAdminSession.h"
+#endif
+#if PISO_IS_HOME
+#include "WebServerChores.h"
+#endif
 #include "WebDashboardHtml.h"
 #include <WiFi.h>
 #include <WebServer.h>
@@ -61,8 +68,11 @@ void setupWebServer() {
     webServer.on("/factory_reset", HTTP_POST, handleFactoryReset);
 #if PISO_HAS_PHONES
     webServer.on("/add_time", HTTP_POST, handleAddTime);
+#if PISO_HAS_SHOP_EXTRAS
     webServer.on("/one_vs_one", HTTP_POST, handleOneVsOne);
 #endif
+#endif
+#if PISO_HAS_SHOP_EXTRAS
     webServer.on("/api/superadmin/challenge", HTTP_GET, handleSuperAdminChallenge);
     webServer.on("/api/superadmin/qr_login", HTTP_POST, handleSuperAdminQrLogin);
     webServer.on("/api/superadmin/auth", HTTP_POST, handleSuperAdminAuth);
@@ -72,6 +82,20 @@ void setupWebServer() {
     webServer.on("/api/superadmin/collections", HTTP_POST, handleSuperAdminCollections);
     webServer.on("/api/superadmin/save_split", HTTP_POST, handleSuperAdminSaveSplit);
     webServer.on("/api/superadmin/factory_reset", HTTP_POST, handleSuperAdminFactoryReset);
+#endif
+#if PISO_IS_HOME
+    initHomeChores();
+    webServer.on("/api/phone/chores", HTTP_GET, handleApiPhoneChores);
+    webServer.on("/api/phone/chores/done", HTTP_POST, handleApiPhoneChoreDone);
+    webServer.on("/api/chores/approve", HTTP_POST, handleApiChoreApprove);
+    webServer.on("/api/chores/add", HTTP_POST, handleApiChoreAdd);
+    webServer.on("/api/chores/delete", HTTP_POST, handleApiChoreDelete);
+    webServer.on("/api/chores/reset_daily", HTTP_POST, handleApiChoreResetDaily);
+    webServer.on("/api/piggy/goal", HTTP_POST, handleApiPiggyGoal);
+    webServer.on("/reset_piggy", HTTP_POST, handleResetPiggy);
+    webServer.on("/save_curfew", HTTP_POST, handleSaveCurfew);
+    webServer.on("/api/curfew", HTTP_GET, handleApiCurfew);
+#endif
     webServer.on("/api/status", HTTP_GET, handleApiStatus);
 #if PISO_HAS_PHONES
     webServer.on("/check_qualification", HTTP_GET, handleCheckQualification);
@@ -89,11 +113,15 @@ void setupWebServer() {
     webServer.on("/api/slots/unpair", HTTP_ANY, handleApiSlotUnpair);
     webServer.on("/api/slots/profile", HTTP_ANY, handleApiSlotProfile);
     webServer.on("/api/profiles", HTTP_ANY, handleApiProfiles);
+#if PISO_HAS_SHOP_EXTRAS
     webServer.on("/api/branding", HTTP_ANY, handleApiBranding);
+#endif
     webServer.on("/api/slots/cloud_sync", HTTP_POST, handleApiSlotCloudSync);
     webServer.on("/api/security/switch_key", HTTP_POST, handleApiSecuritySwitchKey);
+#if PISO_HAS_SHOP_EXTRAS
     webServer.on("/api/license", HTTP_GET, handleApiLicense);
     webServer.on("/api/license", HTTP_POST, handleApiLicenseSet);
+#endif
 
     // Dedicated Robust Coin Slot API routes
     webServer.on("/api/coinslot/arm", HTTP_ANY, handleApiCoinslotArm);
@@ -101,6 +129,7 @@ void setupWebServer() {
     webServer.on("/api/coinslot/status", HTTP_GET, handleApiCoinslotStatus);
     webServer.on("/api/coinslot/ack", HTTP_ANY, handleApiCoinslotAck);
 
+#if PISO_HAS_SHOP_EXTRAS
     // Player accounts (QR cards): phone calls are signed; the admin list and changes sit behind the admin login
     webServer.on("/api/account/scan", HTTP_ANY, handleApiAccountScan);
     webServer.on("/api/account/name", HTTP_ANY, handleApiAccountName);
@@ -109,6 +138,7 @@ void setupWebServer() {
     webServer.on("/api/accounts", HTTP_GET, handleApiAccountsList);
     webServer.on("/api/accounts/adjust", HTTP_POST, handleApiAccountsAdjust);
     webServer.on("/api/accounts/delete", HTTP_POST, handleApiAccountsDelete);
+#endif
 #endif
 
 #if PISO_HAS_GATEWAY

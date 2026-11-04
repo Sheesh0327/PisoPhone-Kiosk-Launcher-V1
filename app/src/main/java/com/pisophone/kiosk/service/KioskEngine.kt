@@ -201,6 +201,7 @@ class KioskEngine(
         armingTimeoutSeconds = ARMING_TIMEOUT_SECONDS,
         onArmSlot = { armSlot() },
         onFinishPayment = { finishPayment() },
+        onPauseSession = { pauseRunningClock() },
     )
 
     private val esp32Coordinator = KioskEsp32Coordinator(
@@ -420,6 +421,29 @@ class KioskEngine(
     fun startHeldClock() {
         val started = paymentRepo.startHeldClockBlocking() ?: return
         stateManager.applySessionUpdate(started.sessionExpiryDeadlineMs, started.sessionTimeRemaining, started.revision)
+    }
+
+    /** Pauses the active running clock, banks remaining seconds into held time, and locks the phone. */
+    fun pauseRunningClock() {
+        val cur = stateManager.appState.value
+        if (!SessionRules.isUnlocked(cur)) return
+        val paused = paymentRepo.pauseRunningClockBlocking() ?: return
+        stateManager.applySessionUpdate(
+            deadlineMs = 0L,
+            remainingSeconds = paused.sessionTimeRemaining,
+            revision = paused.revision,
+            targetAppState = SessionRules.afterPause(cur),
+        )
+        stateManager.saveState()
+        onSessionLocked(cancelArm = true)
+    }
+
+    /** Credits bonus screen time from an approved chore. Uses zero-cost non-coin txId prefix. */
+    fun creditChoreReward(choreId: String, rewardMinutes: Int): PaymentResult {
+        if (rewardMinutes <= 0) return PaymentResult.FAILED
+        val seconds = rewardMinutes * 60
+        val txId = "tx-chore-$choreId-${System.currentTimeMillis()}"
+        return creditPayment(txId, seconds, amount = 0.0)
     }
 
     fun speakWarning(text: String) {

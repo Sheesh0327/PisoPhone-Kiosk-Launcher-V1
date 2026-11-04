@@ -71,6 +71,8 @@
     <string name="pill_sign_out_signed_in">Signed in as %1$s · Sign out</string>
     <string name="pill_sign_out_confirm">Tap again to save your time and sign out</string>
     <string name="pill_status_line">Battery %1$d%% · RAM %2$d%%</string>
+    <string name="pill_pause_save_time">Pause &amp; Save Time</string>
+    <string name="pill_pause_confirm">Tap again to save time and lock phone</string>
     <string name="pill_brightness">Brightness</string>
     <string name="pill_cd_close">Close panel</string>
     <string name="pill_cd_mute">Mute or unmute</string>

@@ -87,6 +87,31 @@ class KioskServerCoordinator(
     override fun getSessionTimeRemaining(): Int = stateManager.sessionTimeRemaining.value
     override fun getAppState(): Int = stateManager.appState.value
 
+    override fun onPauseSession() {
+        val cur = stateManager.appState.value
+        if (!SessionRules.isUnlocked(cur)) return
+        val paused = paymentRepo.pauseRunningClockBlocking() ?: return
+        stateManager.applySessionUpdate(
+            deadlineMs = 0L,
+            remainingSeconds = paused.sessionTimeRemaining,
+            revision = paused.revision,
+            targetAppState = SessionRules.afterPause(cur),
+        )
+        stateManager.saveState()
+        onSessionLocked(true)
+    }
+
+    override fun onResumeSession() {
+        val started = paymentRepo.startHeldClockBlocking() ?: return
+        stateManager.applySessionUpdate(
+            deadlineMs = started.sessionExpiryDeadlineMs,
+            remainingSeconds = started.sessionTimeRemaining,
+            revision = started.revision,
+            targetAppState = SessionRules.afterNonCoinCredit(stateManager.appState.value) ?: stateManager.appState.value,
+        )
+        stateManager.saveState()
+    }
+
     override fun getAuditEventsJson(): String = com.pisophone.kiosk.util.blockingIo {
         val events = coinEventRepo.getLatestEvents(100)
         val jsonArray = JSONArray()

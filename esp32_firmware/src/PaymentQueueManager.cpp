@@ -5,7 +5,9 @@
 
 #include "PaymentQueueManager.h"
 #if PISO_HAS_PHONES
+#if PISO_HAS_SHOP_EXTRAS
 #include "WebServerAccounts.h"
+#endif
 #include "ControllerWebSocket.h"
 #endif
 #include "DeviceNetwork.h"
@@ -397,7 +399,9 @@ bool acknowledgePhonePayment(const String& deviceId, const String& txId) {
     // power fails in between, the box still holds the payment and offers it again, and the transaction id makes the
     // account count it once. Done after, a power cut would lose the coin's time from the account for good.
     int credit = peekPhonePaymentCredit(deviceId, txId);
+#if PISO_HAS_SHOP_EXTRAS
     if (credit > 0) accountsOnPhonePaymentAcked(deviceId, txId, credit);
+#endif
     return acknowledgeMatchingPayment(txId, &deviceId, 1);
 }
 

@@ -46,7 +46,7 @@ VERSION_HEADER = os.path.join(ROOT, "esp32_firmware", "include", "FirmwareVersio
 PAGES_UPDATE_URL = "https://pisophone.pages.dev/update"
 
 
-PRODUCTS = ("full", "phone", "wifi")
+PRODUCTS = ("full", "phone", "wifi", "home")
 
 
 def use_product(product):

@@ -29,6 +29,7 @@ class KioskOverlayCoordinator(
     private val armingTimeoutSeconds: Int,
     private val onArmSlot: () -> Unit,
     private val onFinishPayment: () -> Unit,
+    private val onPauseSession: (() -> Unit)? = null,
 ) {
     companion object {
         private const val TAG = "KioskOverlayCoordinator"
@@ -144,6 +145,7 @@ class KioskOverlayCoordinator(
                         onThemeChange = {
                             stateManager.themeIndex.value = (stateManager.themeIndex.value + 1) % 3
                         },
+                        onPauseClick = onPauseSession,
                     )
                 } catch (e: Exception) {
                     Log.e(TAG, "Error constructing KioskOverlay: ${e.message}", e)

@@ -1,12 +1,17 @@
 #include "WebDashboardHtml.h"
-#include "RevenueVault.h"
 #include "Product.h"
-#include "WebAssetServer.h"
+#if PISO_HAS_SHOP_EXTRAS
+#include "RevenueVault.h"
 #include "SuperAdminTemplate.h"
+#include "SuperAdminManager.h"
+#endif
+#if PISO_IS_HOME
+#include "WebServerChores.h"
+#endif
+#include "WebAssetServer.h"
 #include "WebDashboardIcons.h"
 #include "WebDashboardModals.h"
 #include "WebDashboardTemplate.h"
-#include "SuperAdminManager.h"
 #include "Config.h"
 #include "HardwareManager.h"
 #if PISO_HAS_PHONES
@@ -71,12 +76,36 @@ static String getPlaceholderValue(const String& tag) {
 #if PISO_HAS_PHONES
     if (tag == "MATCH_MINUTES") return String(matchMinutes);
 #endif
+#if PISO_IS_HOME
+    if (tag == "TOTAL_COINS") return String(getPiggyCoins());
+    if (tag == "SESSION_COINS") return String(totalCoinsSession);
+    if (tag == "TODAY_COINS") return String(getPiggyCoins());
+    if (tag == "WEEK_COINS") return String(getPiggyCoins());
+    if (tag == "MONTH_COINS") return String(getPiggyCoins());
+    if (tag == "LIFETIME_COINS") return String(totalCoinsLifetime);
+    if (tag == "PIGGY_GOAL_TITLE") return escapeHtmlText(String(getChoreBoard().piggyGoal.title));
+    if (tag == "PIGGY_TARGET_PESOS") return String(getChoreBoard().piggyGoal.targetPesos);
+    if (tag == "PIGGY_PROGRESS_PCT") {
+        uint32_t target = getChoreBoard().piggyGoal.targetPesos;
+        uint32_t saved = getPiggyCoins();
+        uint32_t pct = (target > 0) ? (saved * 100 / target) : 100;
+        return String(pct > 100 ? 100 : pct);
+    }
+#elif PISO_HAS_SHOP_EXTRAS
     if (tag == "TOTAL_COINS") return String(vaultCoins()); // since the last collection
     if (tag == "SESSION_COINS") return String(totalCoinsSession);
     if (tag == "TODAY_COINS") return String(vaultTodayCoins());
     if (tag == "WEEK_COINS") return String(vaultLast7DaysCoins());
     if (tag == "MONTH_COINS") return String(vaultLast30DaysCoins());
     if (tag == "LIFETIME_COINS") return String(totalCoinsLifetime);
+#else
+    if (tag == "TOTAL_COINS") return String(totalCoinsLifetime);
+    if (tag == "SESSION_COINS") return String(totalCoinsSession);
+    if (tag == "TODAY_COINS") return String(totalCoinsSession);
+    if (tag == "WEEK_COINS") return String(totalCoinsSession);
+    if (tag == "MONTH_COINS") return String(totalCoinsSession);
+    if (tag == "LIFETIME_COINS") return String(totalCoinsLifetime);
+#endif
 #if PISO_HAS_PHONES
     if (tag == "DEVICE_OPTIONS") return renderDeviceOptions("");
 #endif
@@ -233,8 +262,10 @@ static void streamProgmemContent(const char* p) {
                 if (isTagMatch(tagStart, "PORTAL_ICONS")) {
                     webServer.sendContent_P(PORTAL_ICONS_HTML);
                 } else if (isTagMatch(tagStart, "SUPER_ADMIN_TAB")) {
+#if PISO_HAS_SHOP_EXTRAS
                     // Straight from flash: no 25 KB String copy on the heap.
                     webServer.sendContent_P(SUPER_ADMIN_HTML);
+#endif
                 } else if (isTagMatch(tagStart, "PORTAL_MODALS")) {
                     streamProgmemContent(PORTAL_MODALS_HTML);
                 } else {

@@ -24,6 +24,14 @@ object KioskSettings {
     private const val KEY_CLEAR_MINUTES = "guest_clear_minutes"
     private const val KEY_SOCIAL_EXTRA = "social_extra"
     private const val KEY_SOCIAL_EXCLUDED = "social_excluded"
+    private const val KEY_IS_HOME_MODE = "is_home_mode"
+    private const val KEY_CURFEW_ENABLED = "curfew_enabled"
+    private const val KEY_CURFEW_START = "curfew_start_min"
+    private const val KEY_CURFEW_END = "curfew_end_min"
+    private const val KEY_PIGGY_TARGET = "piggy_target_pesos"
+    private const val KEY_PIGGY_LABEL = "piggy_label"
+    private const val KEY_CHORES_JSON = "chores_json"
+    private const val KEY_ALLOWED_APPS = "allowed_apps_while_locked"
 
     const val DEFAULT_IDLE_MINUTES = 5
     const val MIN_IDLE_MINUTES = 1
@@ -72,7 +80,9 @@ object KioskSettings {
     fun setWakeOnPickupEnabled(context: Context, enabled: Boolean) = prefs(context).edit().putBoolean(KEY_WAKE_ON_PICKUP, enabled).apply()
 
     // --- guest reset (social apps) ---
-    fun isGuestClearEnabled(context: Context): Boolean = prefs(context).getBoolean(KEY_CLEAR_ENABLED, true)
+    /** Disabled unconditionally in Home mode to protect child app data and game saves. */
+    fun isGuestClearEnabled(context: Context): Boolean =
+        !isHomeMode(context) && prefs(context).getBoolean(KEY_CLEAR_ENABLED, true)
 
     fun setGuestClearEnabled(context: Context, enabled: Boolean) = prefs(context).edit().putBoolean(KEY_CLEAR_ENABLED, enabled).apply()
 
@@ -90,6 +100,72 @@ object KioskSettings {
 
     fun setSocialLists(context: Context, extra: Set<String>, excluded: Set<String>) =
         prefs(context).edit().putStringSet(KEY_SOCIAL_EXTRA, extra).putStringSet(KEY_SOCIAL_EXCLUDED, excluded).apply()
+
+    // --- PisoHome / PisoKids settings ---
+    fun isHomeMode(context: Context): Boolean {
+        val buildFlag = runCatching {
+            Class.forName("com.pisophone.kiosk.BuildConfig")
+                .getField("IS_HOME_PRODUCT")
+                .getBoolean(null)
+        }.getOrDefault(false)
+        return buildFlag || prefs(context).getBoolean(KEY_IS_HOME_MODE, false)
+    }
+
+    fun setHomeMode(context: Context, enabled: Boolean) =
+        prefs(context).edit().putBoolean(KEY_IS_HOME_MODE, enabled).apply()
+
+    fun getCurfewSchedule(context: Context): CurfewSchedule {
+        val p = prefs(context)
+        return CurfewSchedule(
+            enabled = p.getBoolean(KEY_CURFEW_ENABLED, false),
+            startMinuteOfDay = p.getInt(KEY_CURFEW_START, 21 * 60),
+            endMinuteOfDay = p.getInt(KEY_CURFEW_END, 6 * 60),
+        )
+    }
+
+    fun setCurfewSchedule(context: Context, schedule: CurfewSchedule) {
+        prefs(context).edit()
+            .putBoolean(KEY_CURFEW_ENABLED, schedule.enabled)
+            .putInt(KEY_CURFEW_START, schedule.startMinuteOfDay)
+            .putInt(KEY_CURFEW_END, schedule.endMinuteOfDay)
+            .apply()
+    }
+
+    fun getPiggyBankGoal(context: Context): PiggyBankGoal {
+        val p = prefs(context)
+        val target = p.getString(KEY_PIGGY_TARGET, "500.0")?.toDoubleOrNull() ?: 500.0
+        val label = p.getString(KEY_PIGGY_LABEL, "Weekend Pizza") ?: "Weekend Pizza"
+        return PiggyBankGoal(targetPesos = target, label = label)
+    }
+
+    fun setPiggyBankGoal(context: Context, goal: PiggyBankGoal) {
+        prefs(context).edit()
+            .putString(KEY_PIGGY_TARGET, goal.targetPesos.toString())
+            .putString(KEY_PIGGY_LABEL, goal.label)
+            .apply()
+    }
+
+    fun getChores(context: Context): List<ChoreItem> {
+        val json = prefs(context).getString(KEY_CHORES_JSON, "")
+        if (json.isNullOrBlank()) {
+            return listOf(
+                ChoreItem("c1", "Wash the Dishes", 20, ChoreStatus.TODO, repeatDaily = true),
+                ChoreItem("c2", "Clean Bedroom", 15, ChoreStatus.TODO, repeatDaily = true),
+                ChoreItem("c3", "Finish Math Homework", 30, ChoreStatus.TODO, repeatDaily = false),
+            )
+        }
+        return ChoreBoardCodec.fromJson(json)
+    }
+
+    fun setChores(context: Context, chores: List<ChoreItem>) {
+        prefs(context).edit().putString(KEY_CHORES_JSON, ChoreBoardCodec.toJson(chores)).apply()
+    }
+
+    fun getAllowedApps(context: Context): Set<String> =
+        prefs(context).getStringSet(KEY_ALLOWED_APPS, emptySet())?.toSet() ?: emptySet()
+
+    fun setAllowedApps(context: Context, apps: Set<String>) =
+        prefs(context).edit().putStringSet(KEY_ALLOWED_APPS, apps).apply()
 }
 
 /** Quiet hours as a pure rule: [startHour] to [endHour], and the window may cross midnight (22 to 7). */

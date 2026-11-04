@@ -4,7 +4,9 @@
 #include "InputSafety.h"
 #include <string.h>
 #include "WebServerTelemetry.h"
+#if PISO_HAS_SHOP_EXTRAS
 #include "WebServerAccounts.h"
+#endif
 #include "WebServerModule.h"
 #include "WebServerAuth.h"
 #include "Config.h"
@@ -113,7 +115,15 @@ void handleHeartbeat() {
     }
     String json = "{\"status\":\"" + status + "\",\"device\":\"HARDWARE_kiosk\",\"mac\":\"" + macAddressStr + "\"";
     json += boxTimeJsonField();
+#if PISO_HAS_SHOP_EXTRAS
     if (slotIdx >= 0) accountsOnHeartbeat(phoneSlots[slotIdx].slotNum, deviceId, tsStr, json);
+#endif
+#if PISO_IS_HOME
+    curfewrules::CurfewReason cReason = curfewrules::CURFEW_NONE;
+    bool cActive = isCurfewActiveNow(&cReason);
+    json += ",\"curfew_active\":" + String(cActive ? "true" : "false");
+    json += ",\"curfew_reason\":\"" + String(cReason == curfewrules::CURFEW_BEDTIME ? "bedtime" : (cReason == curfewrules::CURFEW_STUDY ? "study" : "none")) + "\"";
+#endif
     // The admin password reaches a phone only under this box's OWN key. In legacy mode the key is the old public one, so
     // anyone on the network could sign a heartbeat, decrypt this and own the box.
     if (slotIdx >= 0 && secretmode::mayPushAdminPassword(isLegacyKeyMode(), webPassword.c_str())) {

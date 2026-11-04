@@ -62,10 +62,11 @@ jobs:
           [ -n "$VERSION" ] || { echo "::error::no PISO_FW_VERSION"; exit 1; }
           builds=""
           # env  esptool chip  chip name as esptool-js reports it  bootloader offset
-          # product: full = the whole TechNet PisoHub box; phone = PisoPhone only (no router code); wifi = PisoWiFi only (no phone code)
+          # product: full = the whole TechNet PisoHub box; phone = PisoPhone only (no router code); wifi = PisoWiFi only (no phone code); home = PisoHome parental box
           for spec in "esp32-c3-dev esp32c3 ESP32-C3 0x0 full" "esp32dev-dev esp32 ESP32 0x1000 full" \
                       "esp32-c3-dev-phone esp32c3 ESP32-C3 0x0 phone" "esp32dev-dev-phone esp32 ESP32 0x1000 phone" \
-                      "esp32-c3-dev-wifi esp32c3 ESP32-C3 0x0 wifi" "esp32dev-dev-wifi esp32 ESP32 0x1000 wifi"; do
+                      "esp32-c3-dev-wifi esp32c3 ESP32-C3 0x0 wifi" "esp32dev-dev-wifi esp32 ESP32 0x1000 wifi" \
+                      "esp32-c3-dev-home esp32c3 ESP32-C3 0x0 home" "esp32dev-dev-home esp32 ESP32 0x1000 home"; do
             set -- $spec
             ENV=$1; CHIP=$2; NAME=$3; BOOT=$4; PRODUCT=$5
             pio run -e "$ENV"
@@ -206,7 +207,7 @@ jobs:
               # (the production site is built from main, and the boxes' dashboard reads https://pisophone.pages.dev/update)
               # (a failure here must not hold back the coin box images, but it still fails the run, after they are pushed)
               ota_ok=1
-              for PRODUCT in full phone wifi; do
+              for PRODUCT in full phone wifi home; do
                 if ! python3 "$TRUSTED/scripts/publish_firmware_ota.py" --product "$PRODUCT" --images "$RUNNER_TEMP/ota/$PRODUCT" ${KEY:+--key "$KEY"}; then
                   ota_ok=0
                 fi

@@ -14,9 +14,12 @@ window.ORPHAN_UNKNOWN = 'unknown phone';
 
 function setupUrl(slot) {
     // the secret travels after the "#": the browser never sends it to the website's server (the setup page then removes it)
+    const isHome = window.PISO_CFG && window.PISO_CFG.product === 'home';
+    const namePrefix = isHome ? 'PisoKid ' : 'PisoPhone ';
     return 'https://pisophone.pages.dev/?mac=' + encodeURIComponent(ESP32_MAC) +
            '&slot=' + encodeURIComponent(slot) +
-           '&name=' + encodeURIComponent('PisoPhone ' + slot) +
+           '&name=' + encodeURIComponent(namePrefix + slot) +
+           (isHome ? '&product=home' : '') +
            '#secret=' + encodeURIComponent(ESP32_SECRET);
 }
 

@@ -25,13 +25,26 @@ const char PORTAL_HTML_TEMPLATE[] PROGMEM = R"HTML(
                 <span class="brand-name">{PRODUCT_NAME}</span>
                 <span class="brand-sub">Coin box</span>
             </div>
-            <nav class="tabs">
+)HTML"
+#if PISO_IS_HOME
+R"HTML(            <nav class="tabs">
+                <button type="button" class="tab active" onclick="switchTab('tab-dashboard')"><svg class="ic"><use href="#i-overview"/></svg>Home</button>
+                <button type="button" class="tab" onclick="switchTab('tab-chores')"><svg class="ic"><use href="#i-check"/></svg>Chores &amp; Schedule</button>
+                <button type="button" class="tab" onclick="switchTab('tab-settings')"><svg class="ic"><use href="#i-settings"/></svg>Settings</button>
+            </nav>
+)HTML"
+#else
+R"HTML(            <nav class="tabs">
                 <button type="button" class="tab active" onclick="switchTab('tab-dashboard')"><svg class="ic"><use href="#i-overview"/></svg>Overview</button>
                 <button type="button" class="tab" onclick="switchTab('tab-settings')"><svg class="ic"><use href="#i-settings"/></svg>Settings</button>
                 <button type="button" class="tab" onclick="switchTab('tab-tools')"><svg class="ic"><use href="#i-tools"/></svg>Tools</button>
+#if PISO_HAS_SHOP_EXTRAS
                 <button type="button" class="tab" onclick="switchTab('tab-superadmin')"><svg class="ic"><use href="#i-shield"/></svg>Vendor</button>
+#endif
             </nav>
-            <div class="topbar-end">
+)HTML"
+#endif
+R"HTML(            <div class="topbar-end">
                 <button type="button" class="themebtn" onclick="toggleTheme()" title="Light or dark" aria-label="Light or dark"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
                 <span id="conn_pill" class="pill ok">Online</span>
                 <a href="/logout" onclick="return confirm('Sign out?');" class="linkbtn"><svg class="ic"><use href="#i-logout"/></svg>Sign out</a>
@@ -69,6 +82,20 @@ R"HTML(                <div id="wifi_stat" class="stat">
 
 )HTML"
 #if PISO_HAS_PHONES
+#if PISO_IS_HOME
+R"HTML(            <div class="panel" id="pending_chores_panel">
+                <div class="panel-head">
+                    <h2><svg class="ic"><use href="#i-check"/></svg>Pending Chore Approvals</h2>
+                    <div class="actions">
+                        <button type="button" class="btn sm" onclick="fetchChores()"><svg class="ic"><use href="#i-refresh"/></svg>Refresh</button>
+                    </div>
+                </div>
+                <div id="pending_chores_container" class="rows">
+                    <div class="row-empty-msg">No pending chores waiting for approval.</div>
+                </div>
+            </div>
+)HTML"
+#endif
 R"HTML(            <div class="panel">
                 <div class="panel-head">
                     <h2>Phones
@@ -107,8 +134,50 @@ R"HTML(            <div class="panel">
                     <button type="submit" name="adjust_action" value="add" class="btn primary" onclick="return validateQuickAdjust(event, 'add')"><svg class="ic"><use href="#i-plus"/></svg>Add time</button>
                 </div>
             </form>
-
-            <div class="panel">
+)HTML"
+#if PISO_IS_HOME
+R"HTML(            <div class="panel">
+                <div class="panel-head">
+                    <h2><svg class="ic"><use href="#i-coin"/></svg>Family Piggy Bank (Alkansya)</h2>
+                    <div class="actions">
+                        <form action="/reset_piggy" method="POST" style="display:inline;" onsubmit="return confirm('Empty the family piggy bank? This resets the saved coin counter to ₱0.');">
+                            <button type="submit" class="btn sm alt"><svg class="ic"><use href="#i-refresh"/></svg>Empty Piggy Bank</button>
+                        </form>
+                    </div>
+                </div>
+                <div class="panel-body">
+                    <div class="stats">
+                        <div class="stat">
+                            <span class="stat-label">Total Coins Saved</span>
+                            <span class="stat-value">₱<span id="piggy_saved_coins">{TOTAL_COINS}</span></span>
+                            <span class="stat-sub">₱{SESSION_COINS} this session</span>
+                        </div>
+                    </div>
+                    <div style="margin-top: 1rem;">
+                        <div style="display:flex; justify-content:space-between; margin-bottom: 6px;">
+                            <span style="font-weight:600;">Goal: {PIGGY_GOAL_TITLE}</span>
+                            <span style="font-weight:600;">₱{TOTAL_COINS} / ₱{PIGGY_TARGET_PESOS} ({PIGGY_PROGRESS_PCT}%)</span>
+                        </div>
+                        <div class="meter"><i id="piggy_bar" style="width: {PIGGY_PROGRESS_PCT}%; background: #10B981;"></i></div>
+                    </div>
+                    <form action="/api/piggy/goal" method="POST" style="margin-top: 1rem; display:flex; gap:8px; align-items:flex-end;">
+                        <input type="hidden" name="redirect" value="1">
+                        <div class="field" style="flex:2;">
+                            <label for="piggy_goal_title">Goal Title</label>
+                            <input id="piggy_goal_title" type="text" name="title" value="{PIGGY_GOAL_TITLE}" maxlength="32">
+                        </div>
+                        <div class="field" style="flex:1;">
+                            <label for="piggy_target_pesos">Target (₱)</label>
+                            <input id="piggy_target_pesos" type="number" name="target" value="{PIGGY_TARGET_PESOS}" min="1">
+                        </div>
+                        <button type="submit" class="btn sm primary" style="height:38px;">Save Goal</button>
+                    </form>
+                </div>
+            </div>
+)HTML"
+#endif
+#if PISO_HAS_SHOP_EXTRAS
+R"HTML(            <div class="panel">
                 <div class="panel-head">
                     <h2><svg class="ic"><use href="#i-users"/></svg>Player accounts <span id="accounts_count" class="tag"></span></h2>
                     <div class="actions">
@@ -124,9 +193,115 @@ R"HTML(            <div class="panel">
             </div>
 )HTML"
 #endif
+#endif
 R"HTML(        </section>
+)HTML"
+#if PISO_IS_HOME
+R"HTML(        <!-- CHORES & SCHEDULE TAB -->
+        <section id="tab-chores" class="tab-content">
+            <div class="panel">
+                <div class="panel-head">
+                    <h2><svg class="ic"><use href="#i-check"/></svg>Today's Chore Quests</h2>
+                    <div class="actions">
+                        <form action="/api/chores/reset_daily" method="POST" style="display:inline;" onsubmit="return confirm('Reset all daily repeating chores back to Todo?');">
+                            <input type="hidden" name="redirect" value="1">
+                            <button type="submit" class="btn sm"><svg class="ic"><use href="#i-refresh"/></svg>Reset Daily Chores</button>
+                        </form>
+                    </div>
+                </div>
+                <div id="all_chores_container" class="rows">
+                    <div class="row-empty-msg">Loading chores…</div>
+                </div>
+                <div class="panel-foot">
+                    <form action="/api/chores/add" method="POST" class="stack" style="width:100%;">
+                        <input type="hidden" name="redirect" value="1">
+                        <h3 style="margin-bottom:8px;">Add New Chore Quest</h3>
+                        <div class="grid">
+                            <div class="field">
+                                <label for="chore_title">Chore Description</label>
+                                <input id="chore_title" type="text" name="title" placeholder="e.g. Wash the dinner dishes" required maxlength="32">
+                            </div>
+                            <div class="field">
+                                <label for="chore_reward_val">Reward Value</label>
+                                <input id="chore_reward_val" type="number" name="reward_val" value="20" min="1" max="1440">
+                            </div>
+                            <div class="field">
+                                <label for="chore_reward_type">Reward Type</label>
+                                <select id="chore_reward_type" name="reward_type">
+                                    <option value="minutes">Minutes (+Time)</option>
+                                    <option value="pesos">Pesos (₱ Coin)</option>
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label for="chore_target_slot">Assign To</label>
+                                <select id="chore_target_slot" name="target_slot">
+                                    <option value="0">All Kids (Any Phone)</option>
+                                    {DEVICE_OPTIONS}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="field" style="margin-top:8px;">
+                            <label><input type="checkbox" name="repeat_daily" value="1" checked> Daily Repeating Quest (auto-resets every morning)</label>
+                        </div>
+                        <div>
+                            <button type="submit" class="btn primary"><svg class="ic"><use href="#i-plus"/></svg>Add Chore Quest</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
 
-        <!-- SETTINGS -->
+            <!-- CURFEW SCHEDULE -->
+            <div class="panel">
+                <div class="panel-head">
+                    <h2><svg class="ic"><use href="#i-lock"/></svg>Bedtime &amp; Study Curfews</h2>
+                </div>
+                <form action="/save_curfew" method="POST" class="panel-body stack">
+                    <div class="grid">
+                        <div class="panel" style="border: 1px solid var(--border); border-radius: 8px; padding: 12px;">
+                            <h3>🌙 Bedtime Curfew</h3>
+                            <p class="hint">Blocks coin inserting and locks phone sessions during sleep hours.</p>
+                            <div class="field" style="margin: 8px 0;">
+                                <label><input type="checkbox" name="bedtime_enabled" value="1" id="curfew_bed_en" checked> Enable Bedtime Lock</label>
+                            </div>
+                            <div class="split">
+                                <div class="field">
+                                    <label for="curfew_bed_s">Start Time</label>
+                                    <input type="time" name="bedtime_start" id="curfew_bed_s" value="21:00">
+                                </div>
+                                <div class="field">
+                                    <label for="curfew_bed_e">Wake Time</label>
+                                    <input type="time" name="bedtime_end" id="curfew_bed_e" value="07:00">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="panel" style="border: 1px solid var(--border); border-radius: 8px; padding: 12px;">
+                            <h3>📚 Study Hours</h3>
+                            <p class="hint">Ensures kids focus on homework before playing games.</p>
+                            <div class="field" style="margin: 8px 0;">
+                                <label><input type="checkbox" name="study_enabled" value="1" id="curfew_std_en"> Enable Study Hours</label>
+                            </div>
+                            <div class="split">
+                                <div class="field">
+                                    <label for="curfew_std_s">Start Time</label>
+                                    <input type="time" name="study_start" id="curfew_std_s" value="16:00">
+                                </div>
+                                <div class="field">
+                                    <label for="curfew_std_e">End Time</label>
+                                    <input type="time" name="study_end" id="curfew_std_e" value="18:00">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="actions">
+                        <button type="submit" class="btn primary"><svg class="ic"><use href="#i-save"/></svg>Save Curfew Schedule</button>
+                    </div>
+                </form>
+            </div>
+        </section>
+)HTML"
+#endif
+R"HTML(        <!-- SETTINGS -->
         <section id="tab-settings" class="tab-content">
             <form action="/save" method="POST" onsubmit="return saveSettings(this, event);" class="stack">
                 <div class="grid">
@@ -194,9 +369,16 @@ R"HTML(                            </div>
                         </div>
                     </div>
 
-                    <div class="panel">
+#if PISO_IS_HOME
+R"HTML(                    <details class="panel" style="grid-column: 1 / -1;">
+                        <summary class="panel-head" style="cursor: pointer;"><h2><svg class="ic"><use href="#i-chip"/></svg>Advanced Hardware (GPIO &amp; Pulse Guard)</h2></summary>
+)HTML"
+#else
+R"HTML(                    <div class="panel">
                         <div class="panel-head"><h2><svg class="ic"><use href="#i-chip"/></svg>Hardware pins</h2></div>
-                        <div class="panel-body">
+)HTML"
+#endif
+R"HTML(                        <div class="panel-body">
                             <div class="split">
                                 <div class="field">
                                     <label for="u_coin_pin">Coin slot pin</label>
@@ -240,8 +422,15 @@ R"HTML(                            </div>
                                 </select>
                             </div>
                         </div>
-                    </div>
-                </div>
+)HTML"
+#if PISO_IS_HOME
+R"HTML(                    </details>
+)HTML"
+#else
+R"HTML(                    </div>
+)HTML"
+#endif
+R"HTML(                </div>
                 <div class="actions">
                     <button type="submit" class="btn primary"><svg class="ic"><use href="#i-save"/></svg>Save changes</button>
 )HTML"
@@ -380,8 +569,12 @@ R"HTML(
             </div>
         </section>
 
-{SUPER_ADMIN_TAB}
-    </main>
+)HTML"
+#if PISO_HAS_SHOP_EXTRAS
+R"HTML({SUPER_ADMIN_TAB}
+)HTML"
+#endif
+R"HTML(    </main>
     <footer class="foot"><span>{PRODUCT_NAME} &middot; Coin box</span><span><a href="https://pisophone.pages.dev/manual.html" target="_blank" rel="noopener">Owner manual</a></span></footer>
 
 {PORTAL_MODALS}
@@ -393,9 +586,13 @@ R"HTML(    <script>window.PISO_CFG = { mac: "{MAC_ADDRESS}", secret: "{SHARED_SE
 #endif
 R"HTML(    <script src="/assets/portal-modals.js?v={ASSET_V_PORTAL_MODALS}"></script>
     <script defer src="/assets/jsqr.js?v={ASSET_V_JSQR}"></script>
-    <script defer src="/assets/adminqr.js?v={ASSET_V_ADMINQR}"></script>
+)HTML"
+#if PISO_HAS_SHOP_EXTRAS
+R"HTML(    <script defer src="/assets/adminqr.js?v={ASSET_V_ADMINQR}"></script>
     <script src="/assets/superadmin.js?v={ASSET_V_SUPERADMIN}"></script>
-</body>
+)HTML"
+#endif
+R"HTML(</body>
 </html>
 )HTML";
 

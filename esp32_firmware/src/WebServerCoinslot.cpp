@@ -24,6 +24,9 @@
 #include "DeviceNetwork.h"
 #include "PaymentQueueManager.h"
 #include "Diagnostics.h"
+#if PISO_IS_HOME
+#include "WebServerChores.h"
+#endif
 #include <WiFi.h>
 #include <WebServer.h>
 
@@ -182,6 +185,19 @@ void handleApiCoinslotArm() {
             "{\"success\":false,\"status\":\"error\",\"error\":\"SETUP_REQUIRED\",\"message\":\"The box's admin password has not been changed yet.\"}");
         return;
     }
+#if PISO_IS_HOME
+    curfewrules::CurfewReason curfewReason = curfewrules::CURFEW_NONE;
+    if (isCurfewActiveNow(&curfewReason)) {
+        const char* rStr = (curfewReason == curfewrules::CURFEW_BEDTIME) ? "CURFEW_BEDTIME" : "CURFEW_STUDY";
+        const char* msg = (curfewReason == curfewrules::CURFEW_BEDTIME)
+            ? "Bedtime curfew is active. Coin inserting is locked."
+            : "Study curfew is active. Coin inserting is locked.";
+        String json = String("{\"success\":false,\"status\":\"locked\",\"error\":\"CURFEW_ACTIVE\",\"reason\":\"") +
+                      rStr + "\",\"message\":\"" + msg + "\"}";
+        webServer.send(423, "application/json", json);
+        return;
+    }
+#endif
     String reqIp = webServer.hasArg("ip") ? webServer.arg("ip") : "";
     reqIp.trim();
     if (reqIp.length() == 0 || reqIp == "127.0.0.1" || reqIp == "0.0.0.0") {

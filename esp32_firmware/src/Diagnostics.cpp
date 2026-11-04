@@ -1,6 +1,6 @@
 #include "Diagnostics.h"
 #include "Product.h"
-#if PISO_HAS_PHONES
+#if PISO_HAS_PHONES && PISO_HAS_SHOP_EXTRAS
 #include "AccountStorage.h"
 #endif
 #include "DiagRing.h"
@@ -153,7 +153,7 @@ String diagBuildJson() {
     heap["min_free"] = ESP.getMinFreeHeap();
     heap["largest_block"] = ESP.getMaxAllocHeap();
 
-#if PISO_HAS_PHONES
+#if PISO_HAS_PHONES && PISO_HAS_SHOP_EXTRAS
     AccountStorageHealth accts = accountsHealth();
     JsonObject acct = doc.createNestedObject("accounts");
     acct["ready"] = accts.ready;

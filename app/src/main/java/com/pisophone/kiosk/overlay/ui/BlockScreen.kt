@@ -121,6 +121,24 @@ fun BlockScreen(
     var showSecurityDialog by remember { mutableStateOf(false) }
     var showEmergencyRecoveryDialog by remember { mutableStateOf(false) }
 
+    if (ProductLockScreenDelegate.renderAlternativeLockScreen(
+            context = context,
+            modifier = modifier,
+            onInsertCoin = onInsertCoin,
+            isWaiting = isWaiting,
+            coinsInserted = coinsInserted,
+            paymentTimeout = paymentTimeout,
+            onDoneClick = onDoneClick,
+            isEsp32Online = isEsp32Online,
+            pricePerCoin = pricePerCoin,
+            minutesPerCoin = minutesPerCoin,
+            batteryStatus = batteryStatus,
+            heldSeconds = 0,
+        )
+    ) {
+        return
+    }
+
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     // The launcher sits under this screen while the phone is locked: tell it, so its video does not decode out of sight.

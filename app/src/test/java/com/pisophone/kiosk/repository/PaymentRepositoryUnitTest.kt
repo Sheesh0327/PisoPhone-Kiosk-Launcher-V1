@@ -594,4 +594,22 @@ class PaymentRepositoryUnitTest {
 
         assertTrue("Bypass guarantees at least the held time", state.sessionTimeRemaining >= 1799)
     }
+
+    @Test
+    fun testPauseRunningClockBanksTimeIntoHeldSeconds() = runBlocking {
+        val repository = PaymentRepository(db = db, isEligible = { isEligibleState })
+        repository.creditPayment("tx-p1", 600, 5.0)
+        val runningState = repository.getSessionState()!!
+        assertTrue(runningState.sessionExpiryDeadlineMs > 0L)
+
+        val pausedState = repository.pauseRunningClock()
+        assertNotNull(pausedState)
+        assertEquals("Paused state clears running deadline to 0", 0L, pausedState!!.sessionExpiryDeadlineMs)
+        assertTrue("Paused state banks remaining seconds into held seconds", pausedState.sessionTimeRemaining in 590..600)
+
+        val resumedState = repository.startHeldClock()
+        assertNotNull(resumedState)
+        assertTrue("Resumed state restores running deadline", resumedState!!.sessionExpiryDeadlineMs > 0L)
+        assertEquals(pausedState.sessionTimeRemaining, resumedState.sessionTimeRemaining)
+    }
 }

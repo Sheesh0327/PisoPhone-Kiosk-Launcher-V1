@@ -94,7 +94,8 @@ PASSWORDS = [  # (environment name read by the setup, what it is, min, max, gene
 ANSWER_ORDER = [env for env, *_ in PASSWORDS] + ["GUEST_SSID", "SITE_NAME", "COUNTRY", "SHOP_PRODUCT", "BOX_EXPECT_MAC"]   # (BOX_EXPECT_MAC: the MAC of the board just written, or empty: the router then pairs any box)
 PRODUCTS = [("wifi", "PisoWiFi", "customer Wi-Fi sold by the coin (an OpenWrt router and the coin box; no rental phones)"),
             ("phone", "PisoPhone", "rental phones with the coin box on your shop's normal router (nothing is installed on the router)"),
-            ("both", "both", "PisoWiFi and PisoPhone (an OpenWrt router, the coin box and the rental phones)")]
+            ("both", "both", "PisoWiFi and PisoPhone (an OpenWrt router, the coin box and the rental phones)"),
+            ("home", "PisoHome", "parental screen-time and chore-reward coin box (family Alkansya, Chore Board, no router or commercial extras)")]
 COUNTRIES = [  # the Wi-Fi regulatory country (which channels and power the router may use)
     ("PH", "Philippines"), ("ID", "Indonesia"), ("MY", "Malaysia"), ("SG", "Singapore"), ("TH", "Thailand"),
     ("VN", "Vietnam"), ("KH", "Cambodia"), ("MM", "Myanmar"), ("JP", "Japan"), ("KR", "South Korea"), ("TW", "Taiwan"),
@@ -202,7 +203,7 @@ def check_answers(answers):
 
 
 def product_choice(args, read=input):
-    """The product of this run: "wifi", "phone" or "both". From --product (or --phone-only, which means phone); with --yes there is
+    """The product of this run: "wifi", "phone", "both" or "home". From --product (or --phone-only, which means phone); with --yes there is
     no one to ask, so a missing choice stops the setup before anything is changed; otherwise asked, with nothing preselected."""
     chosen = getattr(args, "product", None)
     if getattr(args, "phone_only", False):
@@ -212,17 +213,17 @@ def product_choice(args, read=input):
     if chosen:
         return chosen
     if getattr(args, "yes", False):
-        raise SetupError("choose the product: --product wifi, phone or both")
+        raise SetupError(f"choose the product: --product {', '.join(k for k, _n, _w in PRODUCTS)}")
     say()
     say("What are you setting up?")
     for n, (_key, name, what) in enumerate(PRODUCTS, 1):
         say(f"  {n}) {name}: {what}")
     while True:
-        answer = read("Type 1, 2 or 3 (or wifi, phone, both): ").strip().lower()
+        answer = read(f"Type 1, 2, 3 or 4 (or {', '.join(k for k, _n, _w in PRODUCTS)}): ").strip().lower()
         for n, (key, name, _what) in enumerate(PRODUCTS, 1):
             if answer in (str(n), key, name.lower()):
                 return key
-        say("  Please choose one of the three.")
+        say("  Please choose one of the options.")
 
 
 def collect_answers(args, read=input, read_secret=getpass.getpass):
@@ -2575,7 +2576,7 @@ def flash_manifest(branch, cache_dir, opener=urllib.request.urlopen, emit=say):
 
 
 def choose_build(manifest, chip, product="full"):
-    """The image of a product ("full", "phone" or "wifi") for a chip ("ESP32-C3", "ESP32"), or None. A list entry without a
+    """The image of a product ("full", "phone", "wifi" or "home") for a chip ("ESP32-C3", "ESP32"), or None. A list entry without a
     product is the full one; the image of another product is never taken instead."""
     name = (chip or "").upper()
     return next((b for b in manifest["builds"]
@@ -3957,19 +3958,23 @@ def current_device(finder, port):
     return boards[0][0] if len(boards) == 1 else port
 
 
-def box_summary(status, wifi_name, admin_password):
+def box_summary(status, wifi_name, admin_password, product="phone"):
     ip = status.get("ip", "-")
+    title = "PisoHome coin box" if product == "home" else "PisoPhone coin box"
+    license_note = "Family Alkansya & Chore Board." if product == "home" else "Slots: 2 are free, each more needs a license key."
+    box_code_note = "(on the parent dashboard)" if product == "home" else "(give this to the vendor when you buy a slot license; it is also on the admin page, Phone slots)"
+    network_note = "(the coin box and kids' phones use this network)" if product == "home" else "(the coin box and all rental phones use this network)"
     return "\n".join([
-        f"PisoPhone coin box, set up {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}",
+        f"{title}, set up {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}",
         "",
         f"Admin page : http://{ip}/",
         "Sign in    : the password below (the user name is admin)",
         f"Password   : {admin_password}",
-        f"Box code   : {status.get('mac', '?')}    (give this to the vendor when you buy a slot license; it is also on the admin page, Phone slots)",
-        f"Wi-Fi      : {wifi_name}    (the coin box and all rental phones use this network)",
+        f"Box code   : {status.get('mac', '?')}    {box_code_note}",
+        f"Wi-Fi      : {wifi_name}    {network_note}",
         f"Software   : {status.get('fw', '?')}",
         "",
-        "Keep this file private. Slots: 2 are free, each more needs a license key.",
+        f"Keep this file private. {license_note}",
         "",
     ])
 
@@ -4062,12 +4067,13 @@ def run_phone_setup(args, read=input, read_secret=getpass.getpass, emit=say, fin
         raise SetupError("the admin password: " + problem + ".")
 
     # 3. the software, then the Wi-Fi and the admin password, then online
+    prod = getattr(args, "product", None) or "phone"
     if not joining:   # (a box that never joined already has the software: only its Wi-Fi details change)
-        flasher(args.branch, port, emit, flash_cache_dir(), image=args.image, product="phone")
+        flasher(args.branch, port, emit, flash_cache_dir(), image=args.image, product=prod if prod in ("phone", "home") else "phone")
     status = provision_new_box(lambda: current_device(finder, port), wifi_name, wifi_password, admin_password, emit, opener, waiter, sleep)
     folder = out_dir or default_out_dir()
     mac = status.get("mac", "box").replace(":", "")
-    path = write_private_file(os.path.join(folder, f"pisophone-box-{mac}.txt"), box_summary(status, wifi_name, admin_password))
+    path = write_private_file(os.path.join(folder, f"pisophone-box-{mac}.txt"), box_summary(status, wifi_name, admin_password, product=prod))
     ip = status["ip"]
     emit("")
     emit("==== Done: the coin box is online ====")
@@ -4078,8 +4084,11 @@ def run_phone_setup(args, read=input, read_secret=getpass.getpass, emit=say, fin
     qr = terminal_qr(f"http://{ip}/")
     if qr:
         emit("\n  Scan to open the admin page:\n" + qr)
-    emit("\nNext: open the admin page, then Phone slots > Set up a phone: it installs the PisoPhone app on a rental phone.")
-    emit(f"The first {FREE_SLOTS} phone slots are free. For more, buy a slot license key (P{SLOT_PRICE_PHP} each) using the box code above.")
+    if prod == "home":
+        emit("\nNext: open the parent dashboard, then Kids' phones > Set up a kid's phone: it installs the PisoKids app.")
+    else:
+        emit("\nNext: open the admin page, then Phone slots > Set up a phone: it installs the PisoPhone app on a rental phone.")
+        emit(f"The first {FREE_SLOTS} phone slots are free. For more, buy a slot license key (P{SLOT_PRICE_PHP} each) using the box code above.")
     return path
 
 
@@ -4367,7 +4376,7 @@ class Session:
         self.network_report = lambda: network_report(self.system)   # (replaced in the tests)
         self.setup_log = SetupLog(self.out_dir, self.secrets, lambda: self.network_report())
         self.unit = 0
-        self.mode = None           # None until the owner chooses at the start: "full" (the router, customer Wi-Fi and phones), "wifi" (PisoWiFi only) or "phone" (PisoPhone only)
+        self.mode = None           # None until the owner chooses at the start: "full", "wifi", "phone" or "home"
         self.checks = None
         self.deps = {"running": False, "lines": []}
         self.country = "PH"
@@ -4379,7 +4388,7 @@ class Session:
         self.run_checks()
 
     def steps(self):
-        return PHONE_STEPS if self.mode == "phone" else WIFI_STEPS if self.mode == "wifi" else STEPS
+        return PHONE_STEPS if self.mode in ("phone", "home") else WIFI_STEPS if self.mode == "wifi" else STEPS
 
     def key(self):
         return self.steps()[self.step][0]
@@ -4452,7 +4461,7 @@ class Session:
     def run_checks(self):
         def work():
             try:
-                checks = self.core.preflight_phone() if self.mode == "phone" else self.core.preflight()
+                checks = self.core.preflight_phone() if self.mode in ("phone", "home") else self.core.preflight()
             except Exception as e:
                 checks = [("checks", False, str(e))]
             with self.lock:
@@ -4485,10 +4494,10 @@ class Session:
             self.run_checks()
         self.spawn(work)
 
-    # -- the mode: the full system (router) or PisoPhone only -----------------------------------------------------------------------
+    # -- the mode: the full system (router), PisoWiFi, PisoPhone or PisoHome -------------------------------------------------------
     def do_set_mode(self, a):
         with self.lock:
-            if a.get("mode") in ("full", "wifi", "phone") and self.step == 0 and self.mode != a.get("mode"):
+            if a.get("mode") in ("full", "wifi", "phone", "home") and self.step == 0 and self.mode != a.get("mode"):
                 self.mode = a.get("mode")
                 self.checks = None
         self.run_checks()
@@ -4565,7 +4574,7 @@ class Session:
                                      "'Do not write it' so the software is written first.")
                 if write_box and not joining:   # (a box that never joined already has the software: only its Wi-Fi details change)
                     stage(0)
-                    self.core.flash_box(port, self.plog, product=self.mode if self.mode in ("phone", "wifi") else "full")
+                    self.core.flash_box(port, self.plog, product=self.mode if self.mode in ("phone", "wifi", "home") else "full")
                     with self.lock:
                         self.p["flashed"] = True
                 try:
@@ -4573,7 +4582,7 @@ class Session:
                 except SetupError as e:
                     raise SetupError(str(e) + " (Setting up over USB needs coin box software 3.11.0 or newer.)" if "answer" in str(e) else str(e))
                 path = write_private_file(os.path.join(self.out_dir, f"pisophone-box-{status.get('mac', 'box').replace(':', '')}.txt"),
-                                          box_summary(status, wifi, admin))
+                                          box_summary(status, wifi, admin, product=self.mode))
                 result = {"ok": True, "status": status, "wifi": wifi, "admin": admin, "saved": [("Coin box summary (every password)", path)]}
             except SetupError as e:
                 error = str(e)
@@ -4888,7 +4897,7 @@ class Session:
 
         def work():
             try:
-                items = self.core.box_checkup() if self.mode == "phone" else self.core.checkup()
+                items = self.core.box_checkup() if self.mode in ("phone", "home") else self.core.checkup()
             except Exception as e:
                 items = [{"name": "Check-up", "state": "bad", "text": f"Could not run: {e}", "fix": ""}]
             with self.lock:
@@ -5603,10 +5612,11 @@ a{color:var(--acc)}.hide{display:none!important}
  <div class="card"><h2>What are you setting up?</h2>
   <label class="choice"><input type="radio" name="mode" value="full"><span><b>The full TechNet PisoHub</b><br><span class="mut small">PisoWiFi customer Wi-Fi and PisoPhone rental phones with an OpenWrt router. The router is set up over a network cable (SSH), and the coin box over USB.</span></span></label>
   <label class="choice"><input type="radio" name="mode" value="wifi"><span><b>PisoWiFi only</b><br><span class="mut small">Customer Wi-Fi sold by the coin, with the OpenWrt router and the coin box. No rental phones: the phone steps are left out.</span></span></label>
-  <label class="choice"><input type="radio" name="mode" value="phone"><span><b>PisoPhone only</b><br><span class="mut small">Rental phones with the coin box on your shop's normal Wi-Fi router. Nothing is installed on the router and there is no SSH: only the ESP32 coin box is set up, over USB.</span></span></label></div>
+  <label class="choice"><input type="radio" name="mode" value="phone"><span><b>PisoPhone only</b><br><span class="mut small">Rental phones with the coin box on your shop's normal Wi-Fi router. Nothing is installed on the router and there is no SSH: only the ESP32 coin box is set up, over USB.</span></span></label>
+  <label class="choice"><input type="radio" name="mode" value="home"><span><b>PisoHome (PisoKids)</b><br><span class="mut small">Parental screen-time and chore-reward coin box (family Alkansya, Chore Board, Bedtime curfew). Connects to your home Wi-Fi; no router or commercial extras.</span></span></label></div>
  <p class="mut" id="introText">One unit at a time: the coin box gets its software over USB, the router is set up and paired with it, then the rental phones. About 15 minutes. Nothing on the router is changed until you start the installation.</p>
  <div class="card" id="needFull"><h2>What you need</h2><ul class="steps"><li>The ESP32 coin box board and a USB <b>data</b> cable, plugged into this computer</li><li>An OpenWrt router (for example a 360T6M), factory reset</li><li>The modem in the router's WAN port, and a network cable from this computer to a LAN port</li><li class="fullOnly">The rental phones, factory reset</li></ul></div>
- <div class="card hide" id="needPhone"><h2>What you need</h2><ul class="steps"><li>The ESP32 coin box board and a USB <b>data</b> cable, plugged into this computer</li><li>Your shop's Wi-Fi name and password: the <b>2.4 GHz</b> network (the ESP32-C3 cannot use 5 GHz)</li><li>The rental phones, factory reset (they are set up afterwards)</li></ul></div>
+ <div class="card hide" id="needPhone"><h2>What you need</h2><ul class="steps"><li>The ESP32 coin box board and a USB <b>data</b> cable, plugged into this computer</li><li>Your Wi-Fi name and password: the <b>2.4 GHz</b> network (the ESP32-C3 cannot use 5 GHz)</li><li>The phones, factory reset (they are set up afterwards)</li></ul></div>
  <details class="card"><summary><b>My phone can't open this page</b></summary><p class="mut">The page runs on this computer, so the phone must be on a network that reaches it. A factory-reset router has no Wi-Fi yet, so the phone cannot use that one. Give this computer a second connection (its Wi-Fi or another network cable) to your own network and put the phone on that network; keep the cable to the router plugged in. Or use this computer's own browser at <b>http://127.0.0.1:8765</b>. A firewall may block the port (<b>--port</b> changes it).</p></details>
  <div class="card"><h2>This computer</h2><p class="mut small" id="sysline"></p><div id="checks"><p class="mut">Checking...</p></div>
   <div class="row" style="margin-top:8px"><button id="btnDeps" class="hide">Install what is missing</button><button id="btnRecheck">Check again</button></div>
@@ -5732,7 +5742,7 @@ function paint(){
  if(!S)return;
  const tv=view==='tools';$('#toolsMain').classList.toggle('hide',!tv);$$('main:not(#toolsMain)').forEach(m=>m.classList.toggle('hide',tv));$('#nav').classList.toggle('hide',tv);document.querySelector('footer').classList.toggle('hide',tv);$('#btnTools').textContent=tv?'Back to setup':'Owner tools';
  if(tv){paintTools();return}
- $('#unit').textContent='Unit '+S.unit+(S.mode==='phone'?' (PisoPhone only)':S.mode==='wifi'?' (PisoWiFi only)':S.mode==='full'?' (full system)':'');$('#sysname').textContent=S.system.name;
+ $('#unit').textContent='Unit '+S.unit+(S.mode==='home'?' (PisoHome)':S.mode==='phone'?' (PisoPhone only)':S.mode==='wifi'?' (PisoWiFi only)':S.mode==='full'?' (full system)':'');$('#sysname').textContent=S.system.name;
  if(S.unit!==shownUnit){shownUnit=S.unit;shown=-1;fillSettingsOnce();pFillOnce()}
  const nav=$('#nav');if(nav.children.length!==S.steps.length){clear(nav);S.steps.forEach(n=>nav.append(h('div',{},n)))}
  [...nav.children].forEach((d,i)=>d.className=i===S.step?'on':i<S.step?'done':'');
@@ -5742,8 +5752,8 @@ function paint(){
  ({welcome:paint0,router:paint1,settings:paint2,install:paint3,phones:paint4,finish:paint5,p_settings:ppaint1,p_install:ppaint2,p_phones:ppaint3,p_finish:ppaint4})[S.keys[S.step]]();
 }
 function paint0(){
- $$('input[name=mode]').forEach(r=>r.checked=r.value===S.mode);$('#needFull').classList.toggle('hide',S.mode==='phone');$('#needPhone').classList.toggle('hide',S.mode!=='phone');$$('.fullOnly').forEach(e=>e.classList.toggle('hide',S.mode==='wifi'));
- $('#introText').textContent=S.mode==='wifi'?'One unit at a time: the coin box gets its software over USB, then the router is set up and paired with it. About 12 minutes. Nothing on the router is changed until you start the installation.':S.mode==='phone'?'The coin box gets its software over USB, then your shop\'s Wi-Fi and a new admin password. About 5 minutes. After that you set up the rental phones from the coin box\'s own admin page. Nothing is installed on your router.':'One unit at a time: the coin box gets its software over USB, the router is set up and paired with it, then the rental phones. About 15 minutes. Nothing on the router is changed until you start the installation.';
+ $$('input[name=mode]').forEach(r=>r.checked=r.value===S.mode);$('#needFull').classList.toggle('hide',S.mode==='phone'||S.mode==='home');$('#needPhone').classList.toggle('hide',S.mode!=='phone'&&S.mode!=='home');$$('.fullOnly').forEach(e=>e.classList.toggle('hide',S.mode==='wifi'||S.mode==='home'));
+ $('#introText').textContent=S.mode==='home'?'The coin box gets its software over USB, then your home Wi-Fi and a new parent admin password. About 5 minutes. After that you pair the kids\' phones from the coin box parent dashboard. Nothing is installed on your router.':S.mode==='wifi'?'One unit at a time: the coin box gets its software over USB, then the router is set up and paired with it. About 12 minutes. Nothing on the router is changed until you start the installation.':S.mode==='phone'?'The coin box gets its software over USB, then your shop\'s Wi-Fi and a new admin password. About 5 minutes. After that you set up the rental phones from the coin box\'s own admin page. Nothing is installed on your router.':'One unit at a time: the coin box gets its software over USB, the router is set up and paired with it, then the rental phones. About 15 minutes. Nothing on the router is changed until you start the installation.';
  $('#sysline').textContent=S.system.name+' ('+S.system.arch+')'+(S.system.root?', running as administrator':'');
  const c=$('#checks');clear(c);let miss=false;
  if(!S.checks)c.append(h('p',{class:'mut'},'Checking...'));
@@ -5877,19 +5887,19 @@ $$('input[data-pk]').forEach(i=>i.addEventListener('input',()=>{clearTimeout(pwT
 $('#pm_showPw').onchange=e=>{$('#pm_WIFI_PASSWORD').type=e.target.checked?'text':'password'};
 function ppaint2(){
  const rv=S.p.review,i=S.p.install,u=S.usb,box=$('#pm_review');clear(box);
- [['Shop Wi-Fi',rv.wifi],['Wi-Fi password','as typed'],['Admin password','made for you (shown at the end)']].forEach(([k,v])=>box.append(h('div',{class:'kv'},h('span',{},k),h('span',{},v))));
+ [['Wi-Fi',rv.wifi],['Wi-Fi password','as typed'],['Admin password','made for you (shown at the end)']].forEach(([k,v])=>box.append(h('div',{class:'kv'},h('span',{},k),h('span',{},v))));
  let t,cls='mut';
  if(S.p.flashed){t='The coin box software is written.';cls='ok'}else if(u.skip){t='Not written: the board is used as it is.'}else if(u.boards===null)t='Looking for the board...';
  else if(!u.boards.length){t='No board found. Plug the coin box board into this computer with a USB data cable (a charge-only cable does not work), then tap Look again.';cls='warn'}
  else if(u.boards.length>1){t='Several USB boards are connected ('+u.boards.map(b=>b[0]).join(', ')+'). Unplug all but the coin box.';cls='warn'}
- else{t='Found: '+u.boards[0][1]+' on '+u.boards[0][0]+'. It is erased and gets the PisoPhone software.';cls='ok'}
+ else{t='Found: '+u.boards[0][1]+' on '+u.boards[0][0]+'. It is erased and gets the '+(S.mode==='home'?'PisoHome':'PisoPhone')+' software.';cls='ok'}
  const ut=$('#pm_usbText');ut.textContent=t;ut.style.color=cls==='mut'?'':'var(--'+cls+')';
  $('#pm_skipFlash').checked=u.skip;$('#pm_skipFlash').disabled=i.running;$('#pm_btnUsb').disabled=i.running;
  $('#pm_eraseRow').classList.toggle('hide',!S.p.erase_needed);$('#pm_eraseOk').checked=S.p.erase_ok;$('#pm_eraseOk').disabled=i.running;
  const st=$('#pm_stages');clear(st);S.p.stages.forEach((n,k)=>{const done=i.ok||k<i.stage,on=k===i.stage&&i.running;st.append(h('div',{style:'margin:4px 0'},h('span',{class:'dot '+(done?'ok':on?'on':'')}),h('span',{style:on?'font-weight:600':''},n)))});
  $('#pm_activity').textContent=i.activity;
  const bn=$('#pm_instBanner');clear(bn);
- if(i.ok)bn.append(note('ok','The coin box is online. Your details are saved. Tap Next for '+(S.mode==='wifi'?'the final check':'the phones')+'.'));
+ if(i.ok)bn.append(note('ok','The coin box is online. Your details are saved. Tap Next for '+(S.mode==='wifi'?'the final check':S.mode==='home'?'the kids\' phones':'the phones')+'.'));
  else if(i.error)bn.append(note('bad',i.error[0].toUpperCase()+i.error.slice(1)));
  else if(i.banner)bn.append(note(i.banner[0],i.banner[1]));
  const sb=$('#pm_btnStart');sb.classList.toggle('hide',i.ok);sb.disabled=i.running;sb.textContent=i.running?'Installing...':(i.error||i.total)?'Try again':'Start the installation';
@@ -5902,7 +5912,7 @@ function ppaint3(){
  const bl=$('#pm_boxUrl');clear(bl);if(p.url)bl.append(h('a',{href:p.url,target:'_blank',rel:'noopener'},p.url));
  const q=$('#pm_boxQr');if(q.dataset.sig!==p.url){q.dataset.sig=p.url;q.innerHTML=p.qr||''}
  const list=$('#pm_pwList');clear(list);
- [[f.admin,'Coin box admin password (user admin)'],[f.mac,'Box code (give it to your vendor to buy slot licenses)'],[f.wifi,'Wi-Fi the coin box and the phones use'],[f.fw,'Coin box software version']].forEach(([v,l])=>{list.append(h('div',{style:'margin:8px 0'},h('div',{class:'mut small'},l),h('div',{class:'row'},h('span',{class:'pw grow'},v||'-'),v?h('button',{class:'small',onclick:ev=>copyText(v,ev.target)},'Copy'):null)))});
+ [[f.admin,S.mode==='home'?'Parent admin password (user admin)':'Coin box admin password (user admin)'],[f.mac,S.mode==='home'?'Family coin box code':'Box code (give it to your vendor to buy slot licenses)'],[f.wifi,'Wi-Fi the coin box and the phones use'],[f.fw,'Coin box software version']].forEach(([v,l])=>{list.append(h('div',{style:'margin:8px 0'},h('div',{class:'mut small'},l),h('div',{class:'row'},h('span',{class:'pw grow'},v||'-'),v?h('button',{class:'small',onclick:ev=>copyText(v,ev.target)},'Copy'):null)))});
 }
 function ppaint4(){
  const sl=$('#pm_savedList');clear(sl);S.saved.forEach(([l,n],i)=>sl.append(h('p',{},h('a',{href:'/api/saved?i='+i,target:'_blank'},l.split(' (')[0]),' ',h('span',{class:'mut small'},n))));
@@ -6012,7 +6022,7 @@ def main(argv=None):
             return 0
         if not (args.check_box or args.update) and (args.cli or args.yes or args.router or args.phone_only or args.product):
             args.product = product_choice(args)
-            args.phone_only = args.product == "phone"
+            args.phone_only = args.product in ("phone", "home")
         if args.check_box or args.phone_only:
             if not args.no_install:
                 ensure_dependencies(say, detect_system())

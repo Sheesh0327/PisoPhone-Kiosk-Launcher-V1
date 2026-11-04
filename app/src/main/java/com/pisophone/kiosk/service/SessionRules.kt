@@ -111,4 +111,9 @@ object SessionRules {
 
     /** Admin lock, slot lockdown and similar hard resets. */
     fun hardLocked(): Int = LOCKED
+
+    /**
+     * Session paused by the child or bedtime curfew: returns phone to locked state while preserving remaining seconds.
+     */
+    fun afterPause(current: Int): Int = LOCKED
 }

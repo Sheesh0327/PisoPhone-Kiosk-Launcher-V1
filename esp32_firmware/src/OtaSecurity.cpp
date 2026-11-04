@@ -5,7 +5,9 @@
 #include "FirmwareVersion.h"
 #include "LicensePubKey.h"
 #include "WebServerAuth.h"
+#if PISO_HAS_SHOP_EXTRAS
 #include "SuperAdminManager.h"
+#endif
 #include "Diagnostics.h"
 #include "WebServerModule.h"
 #include <WebServer.h>
@@ -62,12 +64,19 @@ void handleApiOtaManifest() {
 
     bool downgrade = false;
     if (webServer.arg("allow_downgrade") == "1") {
+#if PISO_HAS_SHOP_EXTRAS
         if (!authenticateSuperAdmin()) {
             webServer.send(
                 403, "application/json",
                 "{\"status\":\"error\",\"message\":\"Installing an older version needs the owner signed in with the admin QR code.\"}");
             return;
         }
+#else
+        if (!checkAdminAuth()) {
+            webServer.send(403, "application/json", "{\"status\":\"error\",\"message\":\"Admin session required for downgrade.\"}");
+            return;
+        }
+#endif
         downgrade = true;
     }
 

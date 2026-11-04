@@ -54,6 +54,7 @@ class KioskOverlay(
     private val onDoneClick: () -> Unit,
     private val onThemeChange: () -> Unit,
     private val onActivateClick: (String) -> Unit = {},
+    private val onPauseClick: (() -> Unit)? = null,
 ) {
     private val lockScreenOverlay = LockScreenOverlay(
         context = context,
@@ -100,6 +101,7 @@ class KioskOverlay(
         onDismissArenaBanner = onDismissArenaBanner,
         onInsertCoinClick = onInsertCoinClick,
         onDoneClick = onDoneClick,
+        onPauseClick = onPauseClick,
     )
 
     fun show(): Boolean {

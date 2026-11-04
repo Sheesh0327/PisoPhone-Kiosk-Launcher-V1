@@ -29,6 +29,7 @@ object QrProvisioning {
         val name: String?,
         val wifiSsid: String?,
         val wifiPass: String?,
+        val homeMode: Boolean = false,
     )
 
     /** The box's details from the bundle, or null when it carries none (a QR code made by something else). */
@@ -37,7 +38,8 @@ object QrProvisioning {
         fun str(key: String) = b.getString(key)?.trim()?.takeIf { it.isNotEmpty() }
         // a number in the QR code's JSON arrives as an int; a quoted one as a string
         val slot = b.getInt("slot", -1).takeIf { it > 0 } ?: str("slot")?.toIntOrNull() ?: -1
-        val v = Values(str("secret"), str("mac"), slot, str("name"), str("wifi_ssid"), b.getString("wifi_pass"))
+        val homeMode = b.getBoolean("home_mode", false) || str("home_mode") == "true"
+        val v = Values(str("secret"), str("mac"), slot, str("name"), str("wifi_ssid"), b.getString("wifi_pass"), homeMode)
         return v.takeIf { it.secret != null || it.mac != null || it.slot > 0 || !it.wifiPass.isNullOrEmpty() }
     }
 

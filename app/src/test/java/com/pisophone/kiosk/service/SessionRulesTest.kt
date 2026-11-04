@@ -147,6 +147,14 @@ class SessionRulesTest {
         assertEquals(LOCKED, SessionRules.hardLocked())
     }
 
+    @Test
+    fun afterPauseTransitionsToLocked() {
+        assertEquals(LOCKED, SessionRules.afterPause(UNLOCKED))
+        assertEquals(LOCKED, SessionRules.afterPause(UNLOCKED_ARMED))
+        assertEquals(LOCKED, SessionRules.afterPause(LOCKED))
+        assertEquals(LOCKED, SessionRules.afterPause(ARMED_LOCKED))
+    }
+
     // Phase 1 regressions, expressed as state-machine facts.
 
     @Test

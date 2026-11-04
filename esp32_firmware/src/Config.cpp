@@ -4,7 +4,9 @@
 #include "Config.h"
 #if PISO_HAS_PHONES
 #include "PhoneProfileStore.h"
+#if PISO_HAS_SHOP_EXTRAS
 #include "ShopBrandingStore.h"
+#endif
 #endif
 #include "PulseGuard.h"
 #include "CoinCredit.h"
@@ -14,9 +16,13 @@
 #include "DeviceManager.h"
 #endif
 #include "HardwareManager.h"
+#if PISO_HAS_SHOP_EXTRAS
 #include "SuperAdminManager.h"
+#endif
 #include "PaymentQueueManager.h"
+#if PISO_HAS_SHOP_EXTRAS
 #include "RevenueVault.h"
+#endif
 #include "OrphanPayments.h"
 #include "Diagnostics.h"
 #include "Money.h"
@@ -538,7 +544,11 @@ int getLicenseKeyCount() {
 }
 
 int getDeviceCap() {
+#if PISO_IS_HOME
+    return MAX_SUPPORTED_SLOTS;
+#else
     return slotlicense::capWithFloor(getLicenseKeyCount(), licenseFloor);
+#endif
 }
 
 int pairedDeviceCount() {
@@ -638,15 +648,19 @@ void loadAllConfig() {
     // 1. Load phone slots and terminal allocations safely
     runConfigMigrations(); // first: brings stored settings to this firmware's format
     loadSecretMode();
-#if PISO_HAS_PHONES
+#if PISO_HAS_PHONES && PISO_HAS_SHOP_EXTRAS
     loadLicenses();
 #endif
     initTxIdBootCounter();
 #if PISO_HAS_PHONES
     loadSlots();
+#if PISO_HAS_SHOP_EXTRAS
     settleLicenseFloor(); // (needs the phone slots: it records how many phones are paired when licensing starts)
 #endif
+#endif
+#if PISO_HAS_SHOP_EXTRAS
     loadSuperAdminConfig();
+#endif
     loadCredentials();
 
     // 2. Open NVS for all kiosk configuration & lifetime vault revenue counters

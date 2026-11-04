@@ -59,7 +59,9 @@ void sendAddTime(int minutes, String targetIp, String txId) {
 }
 #endif
 
+#if PISO_HAS_SHOP_EXTRAS
 #include "RevenueVault.h"
+#endif
 
 void recordCoinRevenue(int pulses, CoinSlotOwnerType owner) {
     if (pulses <= 0) return;
@@ -78,7 +80,9 @@ void recordCoinRevenue(int pulses, CoinSlotOwnerType owner) {
     totalCentavosLifetime = money::saturatingAdd(totalCentavosLifetime, money::centavosFromPulses(pulses));
     totalCentavosSession = money::saturatingAdd(totalCentavosSession, money::centavosFromPulses(pulses));
 
+#if PISO_HAS_SHOP_EXTRAS
     vaultRecordCoin(pulses, isPhone);
+#endif
     flushRevenueNow();
 }
 

@@ -53,6 +53,14 @@
         }
         // "0" only: a PisoPhone-only shop's phones join the shop's normal, visible Wi-Fi. Anything else keeps the hidden PisoKiosk network.
         if (raw.wifiHidden === '0') out.wifiHidden = false;
+        if (has(raw.product)) {
+            if (!/^[a-z]{3,10}$/.test(raw.product)) fail('product', 'letters only (3-10)');
+            out.product = raw.product;
+            if (raw.product === 'home') out.homeMode = true;
+        }
+        if (raw.homeMode === true || raw.home_mode === 'true' || raw.home_mode === true || raw.homeMode === '1') {
+            out.homeMode = true;
+        }
         return out;
     }
 
@@ -63,6 +71,7 @@
         if (prov.mac) extras += ` --es mac ${shellQuote(prov.mac)}`;
         if (prov.slot) extras += ` --ei slot ${prov.slot}`;
         if (prov.name) extras += ` --es name ${shellQuote(prov.name)}`;
+        if (prov.homeMode) extras += ' --ez home_mode true';
         // without the kiosk Wi-Fi a new phone cannot reach its box, so it could never pair or learn its admin PIN
         if (prov.wifiPass) extras += ` --es wifi_ssid ${shellQuote(prov.wifiSsid || DEFAULT_SSID)} --es wifi_pass ${shellQuote(prov.wifiPass)}`;
         return extras;
@@ -87,6 +96,7 @@
         if (prov.slot) extras.slot = prov.slot;
         // the slot already names the phone ("PisoPhone <slot>"); the name only matters without one (and every byte makes the code harder to scan)
         if (prov.name && !prov.slot) extras.name = prov.name;
+        if (prov.homeMode) extras.home_mode = true;
         extras.wifi_ssid = prov.wifiSsid || DEFAULT_SSID;
         extras.wifi_pass = prov.wifiPass;
         return {

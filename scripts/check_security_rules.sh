@@ -8,7 +8,7 @@ bad() { echo "RULE VIOLATION: $1"; fail=1; }
 CODE_DIRS="app esp32_firmware website scripts router setup tools/pisoportal/src tools/pisoportal/tests protocol .github"
 # website/js/yume-chan-bundle.js is a vendored third-party bundle; it is never scanned. ($EXCLUDE is split into words on
 # purpose wherever it is used.)
-EXCLUDE='--exclude-dir=.git --exclude-dir=build --exclude-dir=target --exclude-dir=node_modules --exclude-dir=__pycache__ --exclude=yume-chan-bundle.js --exclude=check_security_rules.sh'
+EXCLUDE='--exclude-dir=.git --exclude-dir=.gradle --exclude-dir=.pio --exclude-dir=build --exclude-dir=target --exclude-dir=node_modules --exclude-dir=__pycache__ --exclude=yume-chan-bundle.js --exclude=check_security_rules.sh'
 
 # 1. No private keys anywhere in the repository (the signing keys live offline). Binary files are skipped (-I): a firmware image
 # contains the mbedTLS parser's own text "-----BEGIN EC PRIVATE KEY-----", which is not a key.

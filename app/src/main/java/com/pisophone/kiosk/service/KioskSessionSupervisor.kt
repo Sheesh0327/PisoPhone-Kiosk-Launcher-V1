@@ -110,6 +110,28 @@ class KioskSessionSupervisor(
 
                     // Active session countdown
                     if (SessionRules.isUnlocked(curState)) {
+                        // Check Home Mode Curfew (auto-pause active session when curfew begins)
+                        if (KioskSettings.isHomeMode(context)) {
+                            val curfew = KioskSettings.getCurfewSchedule(context)
+                            val cal = java.util.Calendar.getInstance()
+                            val minOfDay = cal.get(java.util.Calendar.HOUR_OF_DAY) * 60 + cal.get(java.util.Calendar.MINUTE)
+                            if (curfew.isCurfewActive(minOfDay)) {
+                                Log.i(TAG, "Curfew active ($minOfDay min of day): auto-pausing active session")
+                                val paused = paymentRepo.pauseRunningClock()
+                                if (paused != null) {
+                                    stateManager.applySessionUpdate(
+                                        deadlineMs = 0L,
+                                        remainingSeconds = paused.sessionTimeRemaining,
+                                        revision = paused.revision,
+                                        targetAppState = SessionRules.afterPause(curState),
+                                    )
+                                    stateManager.saveState()
+                                    onSessionExpired(true)
+                                }
+                                continue
+                            }
+                        }
+
                         startHeldClockIfAny()
                         val deadline = stateManager.sessionExpiryDeadlineMs.value
                         val nowMonotonic = android.os.SystemClock.elapsedRealtime()

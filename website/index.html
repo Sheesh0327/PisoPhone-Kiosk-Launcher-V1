@@ -152,13 +152,26 @@
             </div>
 
             <div id="usbPanel" class="stack hidden">
-                <div id="browserWarning" class="note warn hidden"><svg class="ic"><use href="#i-alert"/></svg><span class="grow">USB setup needs Google Chrome or Microsoft Edge on a computer. Use the QR code instead, or open this page in Chrome.</span></div>
+                <div id="browserWarning" class="note warn hidden">
+                    <svg class="ic"><use href="#i-alert"/></svg>
+                    <div class="grow">
+                        <b>WebUSB not available on this connection.</b>
+                        <p style="margin: 4px 0 6px 0;">USB setup requires a Chromium browser (Chrome, Edge, Brave) on a computer or Android phone (USB-C OTG cable). When using plain HTTP, allow WebUSB by opening Chrome flags:</p>
+                        <div style="margin: 6px 0; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                            <a id="chromeFlagsLink" href="chrome://flags/#unsafely-treat-insecure-origin-as-secure" target="_blank" rel="noopener" class="btn sm" onclick="copyOriginAndOpenFlags(event)">Open Chrome Flags</a>
+                            <button type="button" class="btn sm" onclick="copyCurrentOrigin(this)">Copy Address</button>
+                            <span id="copiedToast" class="pill ok hidden">Copied!</span>
+                        </div>
+                        <p class="hint">Paste the copied address into <i>"Insecure origins treated as secure"</i>, choose <b>Enabled</b>, and relaunch Chrome.</p>
+                    </div>
+                </div>
                 <div class="note">
                     <svg class="ic"><use href="#i-info"/></svg>
                     <div class="grow">
                         <b>Before you plug the phone in</b>
                         <ul class="dots" style="margin-top: 6px;">
                             <li>A <b>factory-reset</b> phone with <b>no account</b> signed in (Android allows the kiosk lock only then).</li>
+                            <li><b>Computer or Phone-to-Phone:</b> Works from a PC or directly from another Android phone via USB-C to USB-C cable (OTG).</li>
                             <li>Settings &gt; About phone: tap <b>Build number</b> 7 times, then turn on <b>USB debugging</b> in Developer options.</li>
                             <li>Xiaomi / Redmi / POCO: also turn on <b>Install via USB</b> and <b>USB debugging (Security settings)</b>. They ask for a Mi account: sign in, turn them on, then <b>remove the account</b> again.</li>
                             <li>A USB <b>data</b> cable. Unlock the phone and tap <b>Allow</b> when it asks about USB debugging.</li>
@@ -311,6 +324,33 @@
 
             // ---- the log ----
             const terminalLog = $('terminalLog'), badge = $('logStatusBadge');
+            function copyCurrentOrigin(btn) {
+                const origin = window.location.origin;
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(origin).then(() => {
+                        const toast = $('copiedToast');
+                        if (toast) {
+                            toast.classList.remove('hidden');
+                            setTimeout(() => toast.classList.add('hidden'), 3000);
+                        }
+                    });
+                } else {
+                    prompt('Copy this address:', origin);
+                }
+            }
+            window.copyCurrentOrigin = copyCurrentOrigin;
+
+            function copyOriginAndOpenFlags(e) {
+                const origin = window.location.origin;
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(origin).catch(() => {});
+                }
+                try {
+                    window.open('chrome://flags/#unsafely-treat-insecure-origin-as-secure', '_blank');
+                } catch (err) {}
+            }
+            window.copyOriginAndOpenFlags = copyOriginAndOpenFlags;
+
             function log(msg) {
                 $('logContainer').classList.remove('hidden');
                 const div = document.createElement('div');
@@ -320,7 +360,7 @@
             }
             function status(text, cls) { badge.textContent = text; badge.className = `pill ${cls}`; }
             async function runUsb(button, label, work) {
-                if (!navigator.usb) { log('USB setup needs Google Chrome or Microsoft Edge on a computer.'); return; }
+                if (!navigator.usb) { log('USB setup needs Google Chrome or Microsoft Edge on a computer or Android phone.'); return; }
                 button.disabled = true;
                 const was = button.innerHTML;
                 button.innerHTML = label;

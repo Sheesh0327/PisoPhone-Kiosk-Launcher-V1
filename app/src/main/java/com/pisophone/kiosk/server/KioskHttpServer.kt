@@ -5,8 +5,17 @@ import android.util.Log
 import com.pisophone.kiosk.network.BoxClock
 import com.pisophone.kiosk.repository.PaymentResult
 import com.pisophone.kiosk.security.KioskSecurity
+import com.pisophone.kiosk.security.TailscalePolicy
+import com.pisophone.kiosk.util.AllowedAppsPolicy
+import com.pisophone.kiosk.util.ChoreBoardCodec
+import com.pisophone.kiosk.util.ChoreItem
+import com.pisophone.kiosk.util.ChoreStatus
+import com.pisophone.kiosk.util.CurfewSchedule
+import com.pisophone.kiosk.util.KioskSettings
+import com.pisophone.kiosk.util.PiggyBankGoal
 import com.pisophone.kiosk.voice.VoiceMessageReceiver
 import fi.iki.elonen.NanoHTTPD
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.ConcurrentHashMap
 
@@ -37,6 +46,8 @@ interface KioskServerDelegate {
 
     fun onTriggerAction(action: String, slotNum: Int? = null, extra: Map<String, String>? = null)
     fun getCrashLog(): String?
+    fun onPauseSession() {}
+    fun onResumeSession() {}
 }
 
 /**
@@ -163,6 +174,10 @@ class KioskHttpServer(
         val clientIp = session.headers["remote-addr"] ?: session.headers["http-client-ip"] ?: "unknown"
         if (isRateLimited(clientIp)) {
             return createResponse(Response.Status.UNAUTHORIZED, "text/plain", "Rate limit exceeded")
+        }
+
+        if (uri.startsWith("/parent")) {
+            return serveParentDashboard(session, uri, params, clientIp)
         }
 
         val secretKey = delegate.getSecretKey()
@@ -409,5 +424,382 @@ class KioskHttpServer(
             }
             else -> createResponse(Response.Status.NOT_FOUND, "text/plain", "Not Found")
         }
+    }
+
+    private fun serveParentDashboard(
+        session: IHTTPSession,
+        uri: String,
+        params: Map<String, String>,
+        clientIp: String,
+    ): Response {
+        val isHome = KioskSettings.isHomeMode(context)
+        if (!TailscalePolicy.isParentDashboardAllowed(clientIp, isHome)) {
+            Log.w(TAG, "Blocked /parent request from unauthorized client IP: $clientIp (isHomeMode=$isHome)")
+            return createResponse(
+                Response.Status.FORBIDDEN,
+                "text/plain",
+                "Access to the parent dashboard is permitted over Tailscale only.",
+            )
+        }
+
+        // Parent PIN authentication
+        val pin = session.headers["x-parent-pin"]
+            ?: params["pin"]
+            ?: session.cookies?.read("parent_pin")
+            ?: ""
+        val expectedPin = KioskSecurity.getAdminPin(context)
+        val isAuthorized = expectedPin.isNotBlank() && KioskSecurity.constantTimeEquals(pin, expectedPin)
+
+        if (!isAuthorized) {
+            if (uri == "/parent/status" || uri == "/parent/action") {
+                return createResponse(
+                    Response.Status.UNAUTHORIZED,
+                    "application/json",
+                    JSONObject().put("success", false).put("error", "INVALID_PIN").toString(),
+                )
+            }
+            return createResponse(Response.Status.OK, "text/html; charset=utf-8", renderPinUnlockHtml(pin.isNotBlank()))
+        }
+
+        return when (uri) {
+            "/parent/status" -> {
+                val curfew = KioskSettings.getCurfewSchedule(context)
+                val cal = java.util.Calendar.getInstance()
+                val minOfDay = cal.get(java.util.Calendar.HOUR_OF_DAY) * 60 + cal.get(java.util.Calendar.MINUTE)
+                val goal = KioskSettings.getPiggyBankGoal(context)
+                val chores = KioskSettings.getChores(context)
+                val allowed = KioskSettings.getAllowedApps(context)
+                val statusObj = JSONObject().apply {
+                    put("success", true)
+                    put("device_name", KioskSecurity.getDeviceAlias(context).ifBlank { "PisoKid" })
+                    put("state", delegate.getAppState())
+                    put("time_remaining_sec", delegate.getSessionTimeRemaining())
+                    put("curfew", JSONObject().apply {
+                        put("enabled", curfew.enabled)
+                        put("start_min", curfew.startMinuteOfDay)
+                        put("end_min", curfew.endMinuteOfDay)
+                        put("is_active", curfew.isCurfewActive(minOfDay))
+                    })
+                    put("piggy", JSONObject().apply {
+                        put("target_pesos", goal.targetPesos)
+                        put("label", goal.label)
+                    })
+                    val choresArr = JSONArray()
+                    for (c in chores) {
+                        choresArr.put(JSONObject().apply {
+                            put("id", c.id)
+                            put("title", c.title)
+                            put("reward_min", c.rewardMinutes)
+                            put("status", c.status.name)
+                            put("repeat", c.repeatDaily)
+                        })
+                    }
+                    put("chores", choresArr)
+                    put("allowed_apps", JSONArray(allowed.toList()))
+                    put("remote_ip", clientIp)
+                }
+                createResponse(Response.Status.OK, "application/json", statusObj.toString())
+            }
+            "/parent/action" -> {
+                val action = params["action"] ?: ""
+                when (action) {
+                    "add_time" -> {
+                        val minutes = params["minutes"]?.toIntOrNull() ?: 15
+                        delegate.creditPayment("tx-parent-add-${System.currentTimeMillis()}", minutes * 60, 0.0)
+                    }
+                    "deduct_time" -> {
+                        val minutes = params["minutes"]?.toIntOrNull() ?: 15
+                        delegate.onDeductTime(minutes * 60)
+                    }
+                    "pause" -> delegate.onPauseSession()
+                    "resume" -> delegate.onResumeSession()
+                    "ring" -> delegate.onTriggerAction("locate")
+                    "ring_stop" -> delegate.onTriggerAction("locate_stop")
+                    "approve_chore" -> {
+                        val choreId = params["chore_id"] ?: ""
+                        val current = KioskSettings.getChores(context)
+                        val target = current.find { it.id == choreId }
+                        if (target != null) {
+                            val updated = current.map { if (it.id == choreId) it.copy(status = ChoreStatus.APPROVED) else it }
+                            KioskSettings.setChores(context, updated)
+                            delegate.creditPayment("tx-chore-$choreId-${System.currentTimeMillis()}", target.rewardMinutes * 60, 0.0)
+                        }
+                    }
+                    "add_chore" -> {
+                        val title = params["title"]?.trim() ?: "Chore"
+                        val reward = params["reward"]?.toIntOrNull() ?: 15
+                        val repeat = params["repeat"]?.toBoolean() ?: true
+                        val current = KioskSettings.getChores(context)
+                        val newChore = ChoreItem("c_${System.currentTimeMillis()}", title, reward, ChoreStatus.TODO, repeat)
+                        KioskSettings.setChores(context, current + newChore)
+                    }
+                    "delete_chore" -> {
+                        val choreId = params["chore_id"] ?: ""
+                        val current = KioskSettings.getChores(context)
+                        KioskSettings.setChores(context, current.filter { it.id != choreId })
+                    }
+                    "update_curfew" -> {
+                        val enabled = params["enabled"]?.toBoolean() ?: false
+                        val start = params["start"]?.toIntOrNull() ?: (21 * 60)
+                        val end = params["end"]?.toIntOrNull() ?: (6 * 60)
+                        KioskSettings.setCurfewSchedule(context, CurfewSchedule(enabled, start, end))
+                    }
+                    "update_goal" -> {
+                        val target = params["target"]?.toDoubleOrNull() ?: 500.0
+                        val label = params["label"]?.trim() ?: "Family Treat"
+                        KioskSettings.setPiggyBankGoal(context, PiggyBankGoal(target, label))
+                    }
+                }
+                createResponse(Response.Status.OK, "application/json", "{\"success\":true}")
+            }
+            else -> {
+                val resp = createResponse(Response.Status.OK, "text/html; charset=utf-8", renderParentDashboardHtml(pin))
+                resp.addHeader("Set-Cookie", "parent_pin=$pin; Path=/; SameSite=Strict")
+                resp
+            }
+        }
+    }
+
+    private fun renderPinUnlockHtml(failed: Boolean): String {
+        val errBlock = if (failed) "<div class=\"err\">Incorrect PIN. Try again.</div>" else ""
+        return """
+            <!DOCTYPE html>
+            <html>
+            <head>
+            <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+            <title>PisoHome Parent Console</title>
+            <style>
+            body{margin:0;padding:24px;background:#0F172A;color:#F8FAFC;font-family:system-ui,-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;box-sizing:border-box;}
+            .card{background:#1E293B;border-radius:16px;padding:32px;max-width:360px;width:100%;box-shadow:0 10px 25px rgba(0,0,0,0.5);text-align:center;}
+            h1{margin:0 0 8px 0;font-size:24px;color:#10B981;}
+            p{color:#94A3B8;font-size:14px;margin:0 0 24px 0;}
+            input{width:100%;padding:14px;border-radius:10px;border:1px solid #334155;background:#0F172A;color:#fff;font-size:20px;text-align:center;letter-spacing:4px;box-sizing:border-box;margin-bottom:16px;}
+            button{width:100%;padding:14px;border-radius:10px;border:none;background:#10B981;color:#fff;font-size:16px;font-weight:600;cursor:pointer;}
+            .err{color:#EF4444;font-size:13px;margin-bottom:12px;}
+            </style>
+            </head>
+            <body>
+            <div class="card">
+            <h1>🛡️ PisoHome</h1>
+            <p>Enter Parent PIN to unlock remote management</p>
+            $errBlock
+            <form method="GET" action="/parent">
+            <input type="password" name="pin" maxlength="12" placeholder="••••" required autofocus pattern="[0-9]*" inputmode="numeric">
+            <button type="submit">Unlock Console</button>
+            </form>
+            </div>
+            </body>
+            </html>
+        """.trimIndent()
+    }
+
+    private fun renderParentDashboardHtml(pin: String): String {
+        return """
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+            <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+            <title>PisoHome · Family Console</title>
+            <style>
+            :root{--emerald:#10B981;--emerald-dark:#059669;--gold:#F59E0B;--bg:#0F172A;--card:#1E293B;--border:#334155;--text:#F8FAFC;--sub:#94A3B8;}
+            body{margin:0;padding:16px;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,sans-serif;-webkit-font-smoothing:antialiased;}
+            .top-bar{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:var(--card);border-radius:12px;margin-bottom:16px;}
+            .logo{font-size:18px;font-weight:700;color:var(--emerald);display:flex;align-items:center;gap:8px;}
+            .badge{background:#064E3B;color:#34D399;padding:4px 8px;border-radius:6px;font-size:12px;font-weight:600;}
+            .tabs{display:flex;gap:8px;margin-bottom:16px;overflow-x:auto;}
+            .tab-btn{flex:1;padding:12px;border:none;background:var(--card);color:var(--sub);border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;}
+            .tab-btn.active{background:var(--emerald);color:#fff;}
+            .panel{display:none;}
+            .panel.active{display:block;}
+            .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:20px;margin-bottom:16px;}
+            .card-title{font-size:16px;font-weight:700;margin:0 0 12px 0;display:flex;justify-content:space-between;align-items:center;}
+            .hero-timer{text-align:center;padding:24px 0;}
+            .time-big{font-size:48px;font-weight:800;color:var(--emerald);letter-spacing:1px;font-variant-numeric:tabular-nums;}
+            .btn-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px;}
+            .btn{padding:12px;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;}
+            .btn-emerald{background:var(--emerald);color:#fff;}
+            .btn-gold{background:var(--gold);color:#000;}
+            .btn-sub{background:#334155;color:var(--text);}
+            .btn-danger{background:#EF4444;color:#fff;}
+            .progress-bar{height:12px;background:#334155;border-radius:6px;overflow:hidden;margin:8px 0;}
+            .progress-fill{height:100%;background:linear-gradient(90deg,var(--emerald),var(--gold));border-radius:6px;}
+            .chore-item{display:flex;justify-content:space-between;align-items:center;padding:12px;border-bottom:1px solid var(--border);}
+            .chore-title{font-weight:600;}
+            .chore-reward{font-size:12px;color:var(--gold);}
+            input,select{width:100%;padding:10px;border-radius:8px;border:1px solid var(--border);background:#0F172A;color:#fff;box-sizing:border-box;margin-bottom:10px;}
+            </style>
+            </head>
+            <body>
+            <div class="top-bar">
+              <div class="logo">🛡️ PisoHome <span class="badge" id="devName">...</span></div>
+              <div style="font-size:12px;color:var(--sub);" id="remoteStatus">Tailscale Connected</div>
+            </div>
+
+            <div class="tabs">
+              <button class="tab-btn active" onclick="switchTab('home')">🏠 Home</button>
+              <button class="tab-btn" onclick="switchTab('chores')">✅ Chores</button>
+              <button class="tab-btn" onclick="switchTab('settings')">⚙️ Settings</button>
+            </div>
+
+            <div id="tab-home" class="panel active">
+              <div class="card">
+                <div class="card-title"><span>Liam's Screen Time</span><span class="badge" id="stateBadge">Active</span></div>
+                <div class="hero-timer">
+                  <div class="time-big" id="timeRemaining">--:--</div>
+                  <div style="font-size:13px;color:var(--sub);" id="curfewNote">No active curfew</div>
+                </div>
+                <div class="btn-grid">
+                  <button class="btn btn-emerald" onclick="doAction('add_time','minutes=15')">+15 Min</button>
+                  <button class="btn btn-sub" onclick="doAction('deduct_time','minutes=15')">-15 Min</button>
+                  <button class="btn btn-gold" id="btnPauseResume" onclick="togglePauseResume()">⏸️ Pause Time</button>
+                  <button class="btn btn-sub" onclick="doAction('ring','')">🔔 Ring Phone</button>
+                </div>
+              </div>
+
+              <div class="card" id="pendingCard" style="display:none;">
+                <div class="card-title" style="color:var(--gold);">Pending Approvals</div>
+                <div id="pendingList"></div>
+              </div>
+
+              <div class="card">
+                <div class="card-title"><span>Family Piggy Bank</span><span id="piggyLabel" style="font-size:13px;color:var(--sub);"></span></div>
+                <div class="progress-bar"><div class="progress-fill" id="piggyFill" style="width:0%;"></div></div>
+                <div style="font-size:13px;color:var(--sub);text-align:right;" id="piggyText">₱0 / ₱500</div>
+              </div>
+            </div>
+
+            <div id="tab-chores" class="panel">
+              <div class="card">
+                <div class="card-title">Quest & Chore Board</div>
+                <div id="choresList"></div>
+                <hr style="border:0;border-top:1px solid var(--border);margin:16px 0;">
+                <div style="font-weight:600;margin-bottom:8px;">Add New Quest</div>
+                <input type="text" id="newChoreTitle" placeholder="e.g. Wash Dishes">
+                <select id="newChoreReward"><option value="15">+15 Minutes</option><option value="20">+20 Minutes</option><option value="30">+30 Minutes</option><option value="60">+60 Minutes</option></select>
+                <button class="btn btn-emerald" style="width:100%;" onclick="addChore()">Add Quest</button>
+              </div>
+
+              <div class="card">
+                <div class="card-title">Bedtime & Curfew Schedule</div>
+                <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;font-size:14px;"><input type="checkbox" id="curfewEnabled" style="width:auto;margin:0;"> Enable Curfew Lock</label>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                  <div><span style="font-size:12px;color:var(--sub);">Start (Bedtime)</span><input type="time" id="curfewStart"></div>
+                  <div><span style="font-size:12px;color:var(--sub);">End (Morning)</span><input type="time" id="curfewEnd"></div>
+                </div>
+                <button class="btn btn-sub" style="width:100%;margin-top:10px;" onclick="saveCurfew()">Save Curfew</button>
+              </div>
+            </div>
+
+            <div id="tab-settings" class="panel">
+              <div class="card">
+                <div class="card-title">Savings Goal</div>
+                <input type="text" id="goalLabel" placeholder="e.g. Weekend Pizza">
+                <input type="number" id="goalTarget" placeholder="Target Pesos (e.g. 500)">
+                <button class="btn btn-sub" style="width:100%;" onclick="saveGoal()">Update Goal</button>
+              </div>
+              <div class="card">
+                <div class="card-title">Tailscale Remote Access</div>
+                <p style="font-size:13px;color:var(--sub);margin:0 0 8px 0;">Connected via Tailscale Always-On VPN (100.64.0.0/10).</p>
+                <div style="font-size:13px;font-family:monospace;background:#0F172A;padding:8px;border-radius:6px;" id="tailscaleInfo">IP: ...</div>
+              </div>
+            </div>
+
+            <script>
+            const PIN = '$pin';
+            let currentState = 0;
+            function switchTab(t){
+              document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+              document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+              document.getElementById('tab-' + t).classList.add('active');
+              event.target.classList.add('active');
+            }
+            function fmtTime(s){
+              const m = Math.floor(s/60), sec = s%60;
+              return m + 'm ' + (sec<10?'0':'') + sec + 's';
+            }
+            function poll(){
+              fetch('/parent/status?pin=' + encodeURIComponent(PIN))
+                .then(r => r.json())
+                .then(d => {
+                  if(!d.success) return;
+                  document.getElementById('devName').textContent = d.device_name;
+                  currentState = d.state;
+                  document.getElementById('timeRemaining').textContent = fmtTime(d.time_remaining_sec);
+                  const isUnlocked = (d.state === 2 || d.state === 3);
+                  document.getElementById('stateBadge').textContent = isUnlocked ? 'Active' : (d.curfew && d.curfew.is_active ? 'Curfew' : 'Locked');
+                  document.getElementById('stateBadge').style.background = isUnlocked ? '#064E3B' : '#7F1D1D';
+                  document.getElementById('stateBadge').style.color = isUnlocked ? '#34D399' : '#FCA5A5';
+                  document.getElementById('btnPauseResume').textContent = isUnlocked ? '⏸️ Pause Time' : '▶️ Resume Time';
+
+                  if (d.curfew && d.curfew.is_active) {
+                    document.getElementById('curfewNote').textContent = '🌙 Curfew Active (Phone Locked)';
+                  } else {
+                    document.getElementById('curfewNote').textContent = d.curfew && d.curfew.enabled ? 'Curfew scheduled tonight' : 'No active curfew';
+                  }
+
+                  // Pending approvals
+                  const pending = (d.chores || []).filter(c => c.status === 'PENDING_APPROVAL');
+                  const pCard = document.getElementById('pendingCard');
+                  if (pending.length > 0) {
+                    pCard.style.display = 'block';
+                    document.getElementById('pendingList').innerHTML = pending.map(c => 
+                      '<div class="chore-item"><div><div class="chore-title">' + c.title + '</div><div class="chore-reward">Reward: +' + c.reward_min + 'm</div></div>' +
+                      '<button class="btn btn-emerald" onclick="doAction(\'approve_chore\',\'chore_id=' + c.id + '\')">Approve +' + c.reward_min + 'm</button></div>'
+                    ).join('');
+                  } else {
+                    pCard.style.display = 'none';
+                  }
+
+                  // Chores list
+                  document.getElementById('choresList').innerHTML = (d.chores || []).map(c => 
+                    '<div class="chore-item"><div><div class="chore-title">' + c.title + ' ' + (c.status === 'APPROVED' ? '✅' : '') + '</div>' +
+                    '<div class="chore-reward">+' + c.reward_min + 'm · ' + (c.repeat ? 'Daily' : 'One-time') + '</div></div>' +
+                    '<button class="btn btn-danger" style="padding:6px 10px;font-size:12px;" onclick="doAction(\'delete_chore\',\'chore_id=' + c.id + '\')">✕</button></div>'
+                  ).join('');
+
+                  // Piggy Bank
+                  if (d.piggy) {
+                    document.getElementById('piggyLabel').textContent = d.piggy.label;
+                    document.getElementById('piggyText').textContent = 'Target: ₱' + d.piggy.target_pesos;
+                    document.getElementById('piggyFill').style.width = '30%';
+                  }
+                  document.getElementById('tailscaleInfo').textContent = 'Remote IP: ' + (d.remote_ip || '100.x.y.z');
+                }).catch(() => {});
+            }
+            function doAction(act, extra){
+              fetch('/parent/action?pin=' + encodeURIComponent(PIN) + '&action=' + act + (extra ? '&' + extra : ''), {method:'POST'})
+                .then(r => r.json())
+                .then(() => poll());
+            }
+            function togglePauseResume(){
+              const isUnlocked = (currentState === 2 || currentState === 3);
+              doAction(isUnlocked ? 'pause' : 'resume', '');
+            }
+            function addChore(){
+              const t = document.getElementById('newChoreTitle').value.trim();
+              const r = document.getElementById('newChoreReward').value;
+              if(!t) return;
+              doAction('add_chore', 'title=' + encodeURIComponent(t) + '&reward=' + r + '&repeat=true');
+              document.getElementById('newChoreTitle').value = '';
+            }
+            function saveCurfew(){
+              const en = document.getElementById('curfewEnabled').checked;
+              const sVal = document.getElementById('curfewStart').value.split(':');
+              const eVal = document.getElementById('curfewEnd').value.split(':');
+              const sMin = (parseInt(sVal[0]||'21',10)*60) + parseInt(sVal[1]||'0',10);
+              const eMin = (parseInt(eVal[0]||'6',10)*60) + parseInt(eVal[1]||'0',10);
+              doAction('update_curfew', 'enabled=' + en + '&start=' + sMin + '&end=' + eMin);
+            }
+            function saveGoal(){
+              const lbl = document.getElementById('goalLabel').value.trim();
+              const tgt = document.getElementById('goalTarget').value;
+              doAction('update_goal', 'label=' + encodeURIComponent(lbl) + '&target=' + encodeURIComponent(tgt));
+            }
+            setInterval(poll, 3000);
+            poll();
+            </script>
+            </body>
+            </html>
+        """.trimIndent()
     }
 }

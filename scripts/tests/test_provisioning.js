@@ -17,6 +17,10 @@ const throws = (fn) => { try { fn(); return false; } catch (e) { return true; } 
 
 const v = P.validateProvisioning({ mac: 'aa:bb:cc:dd:ee:ff', slot: '2', name: 'Phone 2', secret: 'abcdefghijklmnop1234', wifiSsid: 'PisoKiosk', wifiPass: '3hC4RATnpQMJ' });
 check(v.wifiSsid === 'PisoKiosk' && v.wifiPass === '3hC4RATnpQMJ', 'kiosk Wi-Fi passes validation');
+const vHome = P.validateProvisioning({ mac: 'aa:bb:cc:dd:ee:ff', slot: '1', wifiPass: '3hC4RATnpQMJ', product: 'home' });
+check(vHome.homeMode === true, 'product=home enables homeMode');
+const xHome = P.buildProvisioningExtras(vHome);
+check(xHome.includes('--ez home_mode true'), 'provisioning extras include --ez home_mode true: ' + xHome);
 const x = P.buildProvisioningExtras(v);
 check(x.includes("--es wifi_ssid 'PisoKiosk'") && x.includes("--es wifi_pass '3hC4RATnpQMJ'"), 'extras carry the Wi-Fi: ' + x);
 check(!P.buildProvisioningExtras(P.validateProvisioning({ mac: 'aa:bb:cc:dd:ee:ff' })).includes('wifi'), 'no Wi-Fi extras without a password');
@@ -61,6 +65,8 @@ check(throws(() => P.buildQrPayload(prov, {}, 'https://pisophone.pages.dev/')), 
 check(throws(() => P.buildQrPayload({ ...prov, wifiPass: undefined }, app, 'https://pisophone.pages.dev/')), 'no Wi-Fi password: no code (the phone needs it to download the app)');
 check(throws(() => P.buildQrPayload(prov, app, 'http://example.com/')), 'the app is never downloaded over plain http');
 check(JSON.stringify(qp).length < 1200, 'the code stays small enough to scan: ' + JSON.stringify(qp).length + ' characters');
+const qpHome = P.buildQrPayload(vHome, app, 'https://pisophone.pages.dev/');
+check(qpHome[E + 'PROVISIONING_ADMIN_EXTRAS_BUNDLE'].home_mode === true, 'QR payload includes home_mode: true in admin extras');
 // ---- the page and the app must agree on what is valid (a value the app would refuse silently ends in "cannot find its box") ----
 const kotlin = (f) => fs.readFileSync(path.join(__dirname, '..', '..', 'app', 'src', 'main', 'java', 'com', 'pisophone', 'kiosk', f), 'utf8');
 const secretRegex = new RegExp(kotlin('security/KioskSecurity.kt').match(/BOX_SECRET_REGEX = Regex\("([^"]+)"\)/)[1]);

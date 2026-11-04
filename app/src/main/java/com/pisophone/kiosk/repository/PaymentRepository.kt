@@ -226,6 +226,39 @@ class PaymentRepository(
 
     fun startHeldClockBlocking(): PaidSessionState? = blockingIo { startHeldClock() }
 
+    /**
+     * Pauses the active running clock: computes remaining seconds from the active monotonic deadline,
+     * banks them into [PaidSessionState.sessionTimeRemaining], and clears [PaidSessionState.sessionExpiryDeadlineMs] to 0.
+     * Uses existing Room database columns with zero migrations.
+     */
+    suspend fun pauseRunningClock(): PaidSessionState? {
+        val paused = db.withTransaction {
+            val current = paymentDao.getSessionState() ?: return@withTransaction null
+            val nowMonotonic = SystemClock.elapsedRealtime()
+            if (current.sessionExpiryDeadlineMs <= nowMonotonic) return@withTransaction null
+            val remainingSeconds = maxOf(0L, (current.sessionExpiryDeadlineMs - nowMonotonic) / 1000L).toInt()
+            if (remainingSeconds <= 0) return@withTransaction null
+
+            val newState = PaidSessionState(
+                id = 1,
+                sessionTimeRemaining = remainingSeconds,
+                sessionExpiryDeadlineMs = 0L,
+                lastSavedElapsedRealtime = nowMonotonic,
+                revision = current.revision + 1L,
+            )
+            paymentDao.updateSessionState(newState)
+            newState
+        }
+        if (paused != null) {
+            onSessionStateChanged?.invoke(
+                SessionSnapshot(paused.sessionExpiryDeadlineMs, paused.sessionTimeRemaining, paused.revision),
+            )
+        }
+        return paused
+    }
+
+    fun pauseRunningClockBlocking(): PaidSessionState? = blockingIo { pauseRunningClock() }
+
     suspend fun deductTime(secondsDelta: Int, txId: String? = null): PaidSessionState {
         val updatedState = db.withTransaction {
             if (!txId.isNullOrBlank()) {

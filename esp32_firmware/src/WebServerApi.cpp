@@ -10,10 +10,12 @@
 #include "PhoneProfileStore.h"
 #endif
 #include "WebDashboardHtml.h"
+#if PISO_HAS_SHOP_EXTRAS
 #include "SuperAdminPubKey.h"
 #include "SuperAdminManager.h"
 #if PISO_HAS_PHONES
 #include "LicensePubKey.h"
+#endif
 #endif
 #include "Security.h"
 #include "HardwareManager.h"
@@ -257,6 +259,7 @@ void handleApiSecuritySwitchKey() {
                    String("{\"success\":true,\"was_legacy\":") + (wasLegacy ? "true" : "false") + "}");
 }
 
+#if PISO_HAS_SHOP_EXTRAS
 // The phone slots this box has unlocked (SlotLicense.h).
 static String licenseJson(const char* extra = "") {
     return String("{\"success\":true,\"cap\":") + String(getDeviceCap()) +
@@ -302,6 +305,7 @@ void handleApiLicenseSet() {
     }
     webServer.send(200, "application/json", licenseJson());
 }
+#endif
 
 void handleApiSlotCloudSync() {
     if (!checkAdminAuth()) return;

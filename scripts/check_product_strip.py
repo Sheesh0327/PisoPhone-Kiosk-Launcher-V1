@@ -20,20 +20,20 @@ ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "esp32_fir
 # product -> (PISO_HAS_GATEWAY, PISO_HAS_PHONES, source files left out, words that must not appear, files whose text is checked)
 PRODUCTS = {
     "phone": {
-        "has": {"PISO_HAS_GATEWAY": 0, "PISO_HAS_PHONES": 1},
+        "has": {"PISO_HAS_GATEWAY": 0, "PISO_HAS_PHONES": 1, "PISO_IS_HOME": 0, "PISO_HAS_SHOP_EXTRAS": 1},
         "defined": {"PISO_PRODUCT_PHONE"},
         "skip": [],
-        "skip_headers": ["Gateway*.h", "WebServerGateway.h"],   # (not compiled: nothing includes them in this image)
+        "skip_headers": ["Gateway*.h", "WebServerGateway.h", "WebServerChores.h"],   # (not compiled: nothing includes them in this image)
         "words": r"gateway|openwrt|opennds|pisowifi|voucher|captive",
     },
     "wifi": {
-        "has": {"PISO_HAS_GATEWAY": 1, "PISO_HAS_PHONES": 0},
+        "has": {"PISO_HAS_GATEWAY": 1, "PISO_HAS_PHONES": 0, "PISO_IS_HOME": 0, "PISO_HAS_SHOP_EXTRAS": 1},
         "defined": {"PISO_PRODUCT_WIFI"},
         "skip": [],   # filled from envs/products.ini
         "skip_headers": ["Accounts.h", "AccountProtocol.h", "AccountStorage.h", "PhoneProfiles.h", "PhoneProfileStore.h", "DeviceLabel.h", "SlotLicense.h",
                          "CardCodec.h", "CardPubKey.h", "DeviceManager.h", "WebSocketsUdp.h", "ControllerWebSocket.h",
                          "WebAssetsPhones.h", "WebServerAccounts.h", "WebServerProfiles.h", "WebServerTelemetry.h", "WebServerCoinslot.h", "ReplayCheck.h",
-                         "VoiceClip.h", "VoiceFrames.h", "VoiceRelay.h", "WebServerVoice.h"],
+                         "VoiceClip.h", "VoiceFrames.h", "VoiceRelay.h", "WebServerVoice.h", "WebServerChores.h"],
         "words": r"phone|kiosk|rental|licen[cs]e|slotlic|profile|account|\bpair|android|\bapp\b|trackeddevice|deviceslot|deviceconfig|devicetelemetry|devicecap|websocket|discovery|slotnum|slotactiv|slotcloud",
         # (kiosk_cfg is only the name of the saved-settings area on the chip: boxes of the full product use it too, so the update path and a
         # factory reset keep working the same way; it is not shown anywhere and does not do anything phone related)
@@ -42,6 +42,19 @@ PRODUCTS = {
         "allow": [r'\b(totalPhoneCoinsLifetime|lastSavedTotalPhoneCoins|NVS_KEY_TOTAL_PHONE_COINS|unsyncedPhonePesos|phonePesos|outPhone|isPhone|hasPhoneCoins|phoneCoins|K_PHONE_COINS|lifetime_phone_coins|lifetime_phone_pulses|tot_phone_coins)\b', r'\\"phone\\":', r'"kiosk_cfg"', r'pisophone\.pages\.dev', r'\b(TPL|MODAL|ICON)_[A-Z_]+', r'LicensePubKey\.h', r'LICENSE_PUBKEY_\w+', r'LICENSE_PUB_KEY_H', r'pisophone-(admin|fw)-v1'],
         # (the owner's public key file keeps its name, and the signed texts of the owner's tools keep their tags: both are shared by
         # every product, the same signing tools make them)
+    },
+    "home": {
+        "has": {"PISO_HAS_GATEWAY": 0, "PISO_HAS_PHONES": 1, "PISO_IS_HOME": 1, "PISO_HAS_SHOP_EXTRAS": 0},
+        "defined": {"PISO_PRODUCT_HOME"},
+        "skip": [],
+        "skip_headers": [
+            "Gateway*.h", "WebServerGateway.h", "Accounts.h", "AccountProtocol.h",
+            "AccountStorage.h", "WebServerAccounts.h", "ShopBrandingStore.h",
+            "WebServerBranding.h", "SuperAdminManager.h", "SuperAdminSession.h",
+            "SuperAdminTemplate.h", "RevenueVault.h"
+        ],
+        "words": r"gateway|openwrt|opennds|pisowifi|voucher|captive",
+        "allow": [r'pisophone\.pages\.dev', r'LicensePubKey\.h', r'LICENSE_PUBKEY_\w+', r'pisophone-(admin|fw)-v1'],
     },
 }
 
@@ -83,7 +96,7 @@ def strip_comments(text):
 def read_skip(product):
     """The files a product leaves out, from build_src_filter in envs/products.ini."""
     text = open(os.path.join(ROOT, "envs", "products.ini"), encoding="utf-8").read()
-    section = {"phone": "phone_only", "wifi": "wifi_only"}[product]
+    section = {"phone": "phone_only", "wifi": "wifi_only", "home": "home_only"}[product]
     m = re.search(r"\[" + section + r"\](.*?)(?=\n\[|\Z)", text, re.S)
     if not m:
         return []

@@ -9,8 +9,10 @@
 #include <esp_task_wdt.h>
 #include "Product.h"
 #if PISO_HAS_PHONES
+#if PISO_HAS_SHOP_EXTRAS
 #include "AccountStorage.h"
 #include "WebServerAccounts.h"
+#endif
 #endif
 #include "esp_wifi.h"
 #include "Config.h"
@@ -22,7 +24,9 @@
 #endif
 #include "DeviceNetwork.h"
 #include "WebServerModule.h"
+#if PISO_HAS_SHOP_EXTRAS
 #include "SuperAdminManager.h"
+#endif
 #if PISO_HAS_GATEWAY
 #include "GatewayCoinslot.h"
 #endif
@@ -33,7 +37,12 @@
 #include "HealthPolicy.h"
 #include "WorkerLiveness.h"
 #include "WifiLink.h"
+#if PISO_HAS_SHOP_EXTRAS
 #include "RevenueVault.h"
+#endif
+#if PISO_IS_HOME
+#include "WebServerChores.h"
+#endif
 #include "OtaRollback.h"
 #include "OrphanPayments.h"
 
@@ -199,9 +208,14 @@ void setup() {
     // Load NVS Configuration & Lifetime Vault Revenue safely
     loadAllConfig();
     orphansBegin(); // payments the box gave up on, kept until the operator deals with them
+#if PISO_HAS_SHOP_EXTRAS
     vaultBegin();   // after the counters are loaded: the vault is the lifetime total less the last collection
-#if PISO_HAS_PHONES
+#endif
+#if PISO_HAS_PHONES && PISO_HAS_SHOP_EXTRAS
     accountsBegin();
+#endif
+#if PISO_IS_HOME
+    initHomeChores();
 #endif
 #if PISO_HAS_GATEWAY
     gatewayInit();
@@ -286,19 +300,23 @@ void loop() {
         time_t sntpNow = time(nullptr);
         if (sntpNow >= (time_t)1700000000UL) {
             updateMasterTime((uint64_t)sntpNow * 1000ULL, "SNTP");
+#if PISO_HAS_SHOP_EXTRAS
             vaultAnchorTime((uint32_t)sntpNow);
+#endif
         }
     }
 
     // 0. Process Debounced Hardware-Conservative NVS Revenue Persistence
     processRevenuePersistence();
-#if PISO_HAS_PHONES
+#if PISO_HAS_PHONES && PISO_HAS_SHOP_EXTRAS
     accountsLoop();
     accountsWatchdogLoop();
 #endif
 
+#if PISO_HAS_SHOP_EXTRAS
     // 0. Process Super Admin 5-minute auto-reset retrieval window
     processSuperAdminLoop();
+#endif
 
     // 0. Process Hardware Fallback Reset Pin (GPIO 2 -> GND for 5 seconds)
     processHardwareResetPin();

@@ -45,6 +45,18 @@ android {
         buildConfigField("String", "OWNER_PUBKEY_B64", "\"$ownerPublicKey\"")
     }
 
+    flavorDimensions += "product"
+    productFlavors {
+        create("commercial") {
+            dimension = "product"
+            buildConfigField("Boolean", "IS_HOME_PRODUCT", "false")
+        }
+        create("home") {
+            dimension = "product"
+            buildConfigField("Boolean", "IS_HOME_PRODUCT", "true")
+        }
+    }
+
     signingConfigs {
         if (file("$rootDir/debug.keystore").exists()) {
             create("debugConfig") {
@@ -186,4 +198,29 @@ gradle.taskGraph.whenReady {
             )
         }
     }
+}
+
+tasks.withType<JavaCompile>().configureEach {
+    enabled = false
+}
+
+tasks.register("testDebugUnitTest") {
+    dependsOn("testCommercialDebugUnitTest", "testHomeDebugUnitTest")
+}
+
+tasks.register("lintDebug") {
+    dependsOn("lintCommercialDebug")
+}
+
+tasks.register("createDebugUnitTestCoverageReport") {
+    dependsOn("createCommercialDebugUnitTestCoverageReport")
+}
+
+tasks.register<Copy>("copyReleaseApkForCi") {
+    from(layout.buildDirectory.dir("outputs/apk/commercial/release"))
+    into(layout.buildDirectory.dir("outputs/apk/release"))
+    include("*.apk")
+}
+tasks.matching { it.name == "assembleRelease" || it.name == "assembleCommercialRelease" }.configureEach {
+    finalizedBy("copyReleaseApkForCi")
 }

@@ -137,6 +137,7 @@ fun FloatingPill(
     onBrightnessChange: (Float) -> Unit = {},
     onDrag: (Float, Float) -> Unit,
     onDragEnd: () -> Unit = {},
+    onPauseClick: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val controller = systemController ?: remember(context) { AndroidKioskSystemController(context) }
@@ -611,6 +612,32 @@ fun FloatingPill(
                             }
                         },
                         style = if (confirmSignOut) PisoButtonStyle.Danger else PisoButtonStyle.Outline,
+                        size = PisoButtonSize.Small,
+                    )
+                }
+
+                if (onPauseClick != null) {
+                    var confirmPause by remember { mutableStateOf(false) }
+                    LaunchedEffect(confirmPause) {
+                        if (confirmPause) {
+                            delay(4000L)
+                            confirmPause = false
+                        }
+                    }
+                    PisoButton(
+                        text = stringResource(
+                            if (confirmPause) R.string.pill_pause_confirm else R.string.pill_pause_save_time,
+                        ),
+                        onClick = {
+                            if (!confirmPause) {
+                                confirmPause = true
+                            } else {
+                                confirmPause = false
+                                expanded = false
+                                onPauseClick()
+                            }
+                        },
+                        style = if (confirmPause) PisoButtonStyle.Danger else PisoButtonStyle.Tonal,
                         size = PisoButtonSize.Small,
                     )
                 }

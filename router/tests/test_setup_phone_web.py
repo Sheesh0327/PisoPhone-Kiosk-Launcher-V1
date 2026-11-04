@@ -293,5 +293,20 @@ check(not s2.p["erase_needed"] and any("never joined" in l and "password was wro
 c3, s3 = run_install_on(dict(STATUS))   # a working box (setup=done) still needs the owner's yes
 check(not s3.p["install"]["ok"] and s3.p["erase_needed"] and not c3.calls, "a working box still asks first and writes nothing")
 
+# ---- feature: PisoHome mode setup ----
+c_home = FakeCore()
+s_home = ps.Session(c_home, "main", os.path.join(tmp, "out_home"), system, install_deps=lambda emit: emit("x"))
+s_home.do_set_mode({"mode": "home"})
+check(s_home.mode == "home" and s_home.steps() == ps.PHONE_STEPS, "PisoHome mode uses PHONE_STEPS")
+s_home.p["values"].update(WIFI_NAME="Home-WiFi", WIFI_PASSWORD="home-password-123", ADMIN_PASSWORD="Parent-Admin-2026")
+s_home.step = [k for k, _label in s_home.steps()].index("p_install")
+s_home.do_pstart_install({})
+end = time.time() + 8
+while time.time() < end and (s_home.p["install"]["running"] or s_home.p["install"]["stage"] < 0):
+    time.sleep(0.05)
+check(s_home.p["install"]["ok"] and c_home.products == ["home"], "PisoHome mode flashes the home product image: " + str(getattr(c_home, "products", None)))
+home_summary = os.path.join(tmp, "out_home", "pisophone-box-aabbcc001122.txt")
+check(os.path.exists(home_summary) and "PisoHome coin box" in open(home_summary).read(), "PisoHome summary describes a PisoHome box")
+
 print(f"{checks} checks, {failures} failures")
 sys.exit(1 if failures else 0)

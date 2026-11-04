@@ -8,7 +8,9 @@
 #include "Diagnostics.h"
 #include "ReplayCheck.h"
 #include "SecretMode.h"
+#if PISO_HAS_SHOP_EXTRAS
 #include "ShopBrandingStore.h"
+#endif
 #include "CoinSlotManager.h"
 #include "HardwareManager.h"
 #include "Security.h"
@@ -48,6 +50,7 @@ bool pairDeviceToSlot(int slotNum, String devId, String ip, String name) {
     devId.trim();
     ip.trim();
 
+#if !PISO_IS_HOME
     // The slot licenses set how many phones the box may pair (SlotLicense.h). A phone that is already paired, or that takes over an
     // occupied slot, adds none.
     {
@@ -65,6 +68,7 @@ bool pairDeviceToSlot(int slotNum, String devId, String ip, String name) {
             return false;
         }
     }
+#endif
 
     // Clear devId from any other slot to avoid duplicates
     for (int i = 0; i < MAX_SUPPORTED_SLOTS; i++) {
@@ -92,7 +96,9 @@ bool pairDeviceToSlot(int slotNum, String devId, String ip, String name) {
         if (secretmode::mayPushAdminPassword(isLegacyKeyMode(), webPassword.c_str()))
             pushParams += "&admin_pin=" + webPassword;
         sendAuthenticated(ip, targetPort, "/config", "/challenge", pushParams, 1000);
+#if PISO_HAS_SHOP_EXTRAS
         pushBrandingToIp(ip); // the shop's look in a push of its own, if the owner set one
+#endif
         pushDeviceLabelToSlotIndex(targetIdx,
                                    false); // its profile's name as its title, if its slot has a profile (feature 024)
     }

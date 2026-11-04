@@ -104,7 +104,7 @@
         async connect(log) {
             const { Adb, AdbDaemonTransport, AdbDaemonWebUsbDeviceManager, AdbCredentialWeb } = await loadAdb();
             const manager = AdbDaemonWebUsbDeviceManager.BROWSER;
-            if (!manager) throw new Error("This browser cannot use USB. Use Google Chrome or Microsoft Edge on a computer.");
+            if (!manager) throw new Error("This browser cannot use USB. Use Google Chrome or Microsoft Edge on a computer or Android phone (USB-C OTG).");
             let device = null, connection = null;
             for (const d of (await manager.getDevices().catch(() => [])) || []) {
                 try { connection = await d.connect(); device = d; break; } catch (e) {}
