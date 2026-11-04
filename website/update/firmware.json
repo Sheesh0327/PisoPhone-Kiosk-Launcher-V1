@@ -1,20 +1,20 @@
 {
   "version": "3.13.0",
-  "build": 340,
-  "releaseDate": "2026-11-03",
+  "build": 341,
+  "releaseDate": "2026-11-04",
   "changelog": "Slot licensing removed: all 10 phone slots are available",
   "chips": {
     "esp32c3": {
       "url": "https://pisophone.pages.dev/update/firmware-esp32c3.bin",
-      "sha256": "48f487670b9a23cef6b4cf45b8301077beb98bed2efc9ca2ca9250bc43c64f85",
-      "size": 1387008,
-      "sig": "MEQCIEN+4zPm6gsImV+MvUgJFPg7GiNx8csghM3XDGms7eroAiBb81ClLmZ662q1ykpzMhblbZHxwvuCv1PWY9g5V6OFTw=="
+      "sha256": "d2bb9a8770c729806eaeb06ff337370b7d07c79123e3e28e2e724ef8b3d0e5ad",
+      "size": 1387344,
+      "sig": "MEYCIQCqgOumKwzU0+net2SAxoQAkVd26kljbC8n7Hbt3hS6jAIhAP3iqWZYHaXKRHKu2yx8w1u4LWzd/uMPW6GY3CjwbD3V"
     },
     "esp32": {
       "url": "https://pisophone.pages.dev/update/firmware-esp32.bin",
-      "sha256": "7e4cb84f0820135a33a0c7a7e0e314d917f7f9113ec1f1fbfc781a1b97c8e9d8",
-      "size": 1377424,
-      "sig": "MEUCIQCEbDQhT2DhtEk7iUptQQKCyDsg0uH1Cqfw+9512Qv0hQIgPQPMJ5tHUXdxjUcyZmzeX/SIwXTZLtDD1x1lTL1GqLs="
+      "sha256": "2153e6a03d00091f4b5d1fb8328ca27ac2401856f7e8f961350b0e578be5a54e",
+      "size": 1377776,
+      "sig": "MEUCIBhzQmUHRY+40NyOCZqL8or0qCdBpSA+uOmYcaw4qNMhAiEAkVsYHFeCsAtP20A40X10dWqwRghb+JNVl2j/s2k/LF8="
     }
   }
 }
