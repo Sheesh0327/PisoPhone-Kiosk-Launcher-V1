@@ -1,17 +1,17 @@
 {
-  "build": 301,
+  "build": 302,
   "chips": {
     "esp32c3": {
       "url": "https://pisophone.pages.dev/update/home/firmware-esp32c3.bin",
-      "sha256": "202bfaeb528dec95fda1c39786bbb3c0862838eb53f16816f61e012286d4e88e",
-      "size": 1291504,
-      "sig": "MEQCIAq+h7wzqaNv2tJiocmVeYGK7/ja/cSJnjHkXuo074x5AiAC7nGAZoNP3A2sZMJI9+g96dQfgo11kxqdl2cFkQv8sQ=="
+      "sha256": "13f749cf366d32c165da23bd9261fa45cb25b56e2b856b4c83f63491511d097f",
+      "size": 1291248,
+      "sig": "MEUCIQDcijuUd9b0gj5wMz/nmdc77jqCpsEvWEDnMquq/YzMRQIgIocI3Gu8jQhsfWyd+M+Fgf9vO7pkUTJSZmvEZHyGKv4="
     },
     "esp32": {
       "url": "https://pisophone.pages.dev/update/home/firmware-esp32.bin",
-      "sha256": "5e90b572f34dfa09e102a327a1dc97451cc33527437f0b3ffd6728234b3d959c",
-      "size": 1292640,
-      "sig": "MEUCIFS203Hzdu8NVUS3o66w1QYp8UrfkymzTCgwnsy9YL/aAiEAr5SsKsP7DUI9cLN4klGJe9zo9cMptpLZ9Q46zlNTOCA="
+      "sha256": "3ad8b94a033e712327852564351bd27ce3092f53eea510ab416dd8b29fb76c84",
+      "size": 1292368,
+      "sig": "MEQCICNFrzQ5dYS57fPvZUPVz7R4QxczE87azjOLkFO7DtuaAiBUmp/Xb8zw+tpzfYKnhpqTLz02NGvjMdEpSfiP+NnwpQ=="
     }
   },
   "version": "3.13.0",
