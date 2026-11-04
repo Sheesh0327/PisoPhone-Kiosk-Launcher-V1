@@ -729,8 +729,8 @@ core, session, server = start(mode=None)
 check(session.mode is None and not session.can_next(), "nothing is preselected: the first step waits for the choice")
 status, page, _r = Client(server).call("GET", "/", login=False)
 page = page.decode() if isinstance(page, bytes) else page
-check('id="kioskPw"' in page and "S.mode==='wifi'" in page and page.count('name="mode"') == 3 and "checked" not in page.split('name="mode"')[1].split(">")[0],
-      "the page has the three choices, none checked, and hides the rental-phone password for PisoWiFi only")
+check('id="kioskPw"' in page and "S.mode==='wifi'" in page and page.count('name="mode"') == 4 and "checked" not in page.split('name="mode"')[1].split(">")[0],
+      "the page has the four choices, none checked, and hides the rental-phone password for PisoWiFi only")
 server.shutdown()
 # ---- feature 045 (SU-18): the setup log file, so a failed real run leaves evidence to send ----------------------------------------------
 import glob, stat
