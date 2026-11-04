@@ -6,9 +6,10 @@ Read this first. It is short on purpose: the details are in the documents it poi
 today (`specs/RELEASE_STATE.md`); update that file whenever a release goes out.
 
 ## 1. What this project is, and the goal
-**TechNet PisoHub** sells time with a coin slot, for real shops that run it every day. One ESP32 coin box serves two products:
+**TechNet PisoHub** sells time with a coin slot, for real shops that run it every day. One ESP32 coin box serves three products:
 - **PisoPhone**: rental Android phones (the kiosk app) that lock and unlock by the minute, with prepaid QR time cards.
 - **PisoWiFi**: customer Wi-Fi sold by the coin through an OpenWrt router running openNDS and the `pisoportal` program.
+- **PisoHome (`PisoKids`)**: parental screen-time, chore rewards, and piggy-bank allowances.
 
 Parts: `app/` (Kotlin kiosk), `esp32_firmware/` (coin box), `tools/pisoportal/` + `router/` + `setup/` (router add-on and its
 installer), `website/` (setup pages and the signed update feeds), `scripts/` (owner and release tools). How they fit:

@@ -4,9 +4,9 @@
 
 [![Code quality](https://github.com/Sheesh0327/PisoPhone-Kiosk-Launcher-V1/actions/workflows/quality.yml/badge.svg)](https://github.com/Sheesh0327/PisoPhone-Kiosk-Launcher-V1/actions/workflows/quality.yml)
 
-**Coin-operated Wi-Fi and phone rental**, from TechNet Solutions. One ESP32 coin box serves a whole shop with two services:
-**PisoWiFi**, customer Wi-Fi sold by the coin through an OpenWrt router running openNDS, and **PisoPhone**, rental Android phones that lock and
-unlock by the minute, with prepaid QR time cards. Both are run from the box's owner dashboard and one setup program. Time is sold in
+**Coin-operated Wi-Fi and phone rental**, from TechNet Solutions. One ESP32 coin box serves three services:
+**PisoWiFi**, customer Wi-Fi sold by the coin through an OpenWrt router running openNDS, **PisoPhone**, rental Android phones that lock and
+unlock by the minute, with prepaid QR time cards, and **PisoHome (`PisoKids`)**, parental screen-time and chore management. Both are run from the box's owner dashboard and one setup program. Time is sold in
 real shops every day, so two rules decide every change: money and time are never wrong, and only software the owner signed is installed.
 
 ## Start here

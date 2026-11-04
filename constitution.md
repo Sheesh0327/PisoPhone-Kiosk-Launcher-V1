@@ -64,7 +64,7 @@ last_reviewed: 2026-10-21
 
 - **No code without an approved spec.** Work is a feature: a folder `specs/features/NNN-name/` with `spec.md` (intent, constraints, success criteria), `plan.md` (small task groups) and `validation.md` (acceptance checks and evidence). The owner approves the spec and plan before the agent writes code.
 - **The spec is the contract.** If the work needs something the spec does not say, stop and change the spec first (small, precise edit), then continue. Code that no spec asks for is removed.
-- **One feature, one branch, one area**: `feat/NNN-name` from `beta`. Loop: plan, implement, validate. A feature is done only when `validation.md` is filled with evidence and `specs/STATUS.md` is updated.
+- **One feature, one branch, one area**: `feat/NNN-name` from `main` (router binary releases through `beta`). Loop: plan, implement, validate. A feature is done only when `validation.md` is filled with evidence and `specs/STATUS.md` is updated.
 - **Replan between features** (`specs/REPLAN.md`): update the constitution, roadmap and workflow before starting the next one.
 
 ## 9. Human in the Loop
