@@ -432,7 +432,7 @@ class KioskEngine(
             deadlineMs = 0L,
             remainingSeconds = paused.sessionTimeRemaining,
             revision = paused.revision,
-            targetAppState = SessionRules.afterPause(cur),
+            targetAppState = SessionRules.afterPause(),
         )
         stateManager.saveState()
         onSessionLocked(cancelArm = true)

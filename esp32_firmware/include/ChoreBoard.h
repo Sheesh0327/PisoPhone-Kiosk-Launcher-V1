@@ -11,16 +11,9 @@ namespace choreboard {
 static constexpr size_t MAX_CHORES = 12;
 static constexpr size_t MAX_TITLE_LEN = 32;
 
-enum ChoreStatus : uint8_t {
-    STATUS_TODO = 0,
-    STATUS_DONE = 1,
-    STATUS_APPROVED = 2
-};
+enum ChoreStatus : uint8_t { STATUS_TODO = 0, STATUS_DONE = 1, STATUS_APPROVED = 2 };
 
-enum RewardType : uint8_t {
-    REWARD_MINUTES = 0,
-    REWARD_PESOS = 1
-};
+enum RewardType : uint8_t { REWARD_MINUTES = 0, REWARD_PESOS = 1 };
 
 struct PiggyGoal {
     uint32_t targetPesos = 500;
@@ -84,7 +77,8 @@ inline ChoreItem* findChore(ChoreBoard* b, uint8_t id) {
     return nullptr;
 }
 
-inline int addChore(ChoreBoard* b, const char* title, uint8_t rewardType, uint16_t rewardValue, bool repeatDaily, uint8_t targetSlot) {
+inline int addChore(ChoreBoard* b, const char* title, uint8_t rewardType, uint16_t rewardValue, bool repeatDaily,
+                    uint8_t targetSlot) {
     if (!b || b->count >= MAX_CHORES) {
         return -1;
     }
@@ -153,15 +147,15 @@ inline size_t serializeBoard(const ChoreBoard* b, char* out, size_t outSize) {
     if (!b || !out || outSize == 0) return 0;
     out[0] = '\0';
 
-    int written = std::snprintf(out, outSize, "GOAL|%u|%s\n", (unsigned int)b->piggyGoal.targetPesos, b->piggyGoal.title);
+    int written =
+        std::snprintf(out, outSize, "GOAL|%u|%s\n", (unsigned int)b->piggyGoal.targetPesos, b->piggyGoal.title);
     if (written < 0 || (size_t)written >= outSize) return 0;
 
     size_t total = (size_t)written;
     for (size_t i = 0; i < b->count; i++) {
         const ChoreItem& c = b->chores[i];
-        int n = std::snprintf(out + total, outSize - total, "CHORE|%u|%u|%u|%u|%u|%u|%s\n",
-                              c.id, c.rewardType, c.rewardValue, c.status,
-                              c.repeatDaily ? 1 : 0, c.targetSlot, c.title);
+        int n = std::snprintf(out + total, outSize - total, "CHORE|%u|%u|%u|%u|%u|%u|%s\n", c.id, c.rewardType,
+                              c.rewardValue, c.status, c.repeatDaily ? 1 : 0, c.targetSlot, c.title);
         if (n < 0 || (size_t)n >= outSize - total) {
             break;
         }

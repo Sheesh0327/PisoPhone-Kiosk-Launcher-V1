@@ -7,19 +7,15 @@
 
 namespace curfewrules {
 
-enum CurfewReason {
-    CURFEW_NONE = 0,
-    CURFEW_BEDTIME = 1,
-    CURFEW_STUDY = 2
-};
+enum CurfewReason { CURFEW_NONE = 0, CURFEW_BEDTIME = 1, CURFEW_STUDY = 2 };
 
 struct CurfewConfig {
     bool bedtimeEnabled = true;
     int bedtimeStartMin = 1260; // 21:00 (9:00 PM)
     int bedtimeEndMin = 420;    // 07:00 (7:00 AM)
     bool studyEnabled = false;
-    int studyStartMin = 960;    // 16:00 (4:00 PM)
-    int studyEndMin = 1080;     // 18:00 (6:00 PM)
+    int studyStartMin = 960; // 16:00 (4:00 PM)
+    int studyEndMin = 1080;  // 18:00 (6:00 PM)
 };
 
 inline int parseMinutes(const char* str) {

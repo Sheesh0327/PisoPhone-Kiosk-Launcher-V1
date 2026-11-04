@@ -32,8 +32,8 @@ static void loadHomeChoresFromNvs() {
         gCurfewConfig.bedtimeStartMin = prefs.getInt("bed_s", 1260); // 21:00
         gCurfewConfig.bedtimeEndMin = prefs.getInt("bed_e", 420);    // 07:00
         gCurfewConfig.studyEnabled = prefs.getBool("std_en", false);
-        gCurfewConfig.studyStartMin = prefs.getInt("std_s", 960);    // 16:00
-        gCurfewConfig.studyEndMin = prefs.getInt("std_e", 1080);    // 18:00
+        gCurfewConfig.studyStartMin = prefs.getInt("std_s", 960); // 16:00
+        gCurfewConfig.studyEndMin = prefs.getInt("std_e", 1080);  // 18:00
 
         gPiggyCoinsBase = prefs.getULong("piggy_base", 0);
         prefs.end();
@@ -110,7 +110,11 @@ void handleApiPhoneChores() {
         json += "\"title\":\"" + escapeHtmlText(String(c.title)) + "\",";
         json += "\"reward_type\":\"" + String(c.rewardType == choreboard::REWARD_PESOS ? "pesos" : "minutes") + "\",";
         json += "\"reward_value\":" + String(c.rewardValue) + ",";
-        json += "\"status\":\"" + String(c.status == choreboard::STATUS_APPROVED ? "approved" : (c.status == choreboard::STATUS_DONE ? "done" : "todo")) + "\",";
+        json +=
+            "\"status\":\"" +
+            String(c.status == choreboard::STATUS_APPROVED ? "approved"
+                                                           : (c.status == choreboard::STATUS_DONE ? "done" : "todo")) +
+            "\",";
         json += "\"repeat_daily\":" + String(c.repeatDaily ? "true" : "false") + ",";
         json += "\"target_slot\":" + String(c.targetSlot) + "}";
     }
@@ -131,7 +135,8 @@ void handleApiPhoneChoreDone() {
     uint8_t id = (uint8_t)webServer.arg("id").toInt();
     if (choreboard::markChoreDone(&gChoreBoard, id)) {
         saveHomeChoresToNvs();
-        webServer.send(200, "application/json", "{\"status\":\"ok\",\"id\":" + String(id) + ",\"chore_status\":\"done\"}");
+        webServer.send(200, "application/json",
+                       "{\"status\":\"ok\",\"id\":" + String(id) + ",\"chore_status\":\"done\"}");
     } else {
         webServer.send(404, "application/json", "{\"error\":\"chore not found or already done\"}");
     }
@@ -159,7 +164,7 @@ void handleApiChoreApprove() {
         if (item->rewardType == choreboard::REWARD_MINUTES && item->rewardValue > 0) {
             String targetIp = "ALL";
             if (item->targetSlot > 0) {
-                for (int i = 0; i < MAX_SLOTS; i++) {
+                for (int i = 0; i < MAX_SUPPORTED_SLOTS; i++) {
                     if (phoneSlots[i].slotNum == item->targetSlot && phoneSlots[i].ip.length() > 0) {
                         targetIp = phoneSlots[i].ip;
                         break;
@@ -169,7 +174,8 @@ void handleApiChoreApprove() {
             sendAddTime(item->rewardValue, targetIp);
         }
 
-        webServer.send(200, "application/json", "{\"status\":\"ok\",\"id\":" + String(id) + ",\"chore_status\":\"approved\"}");
+        webServer.send(200, "application/json",
+                       "{\"status\":\"ok\",\"id\":" + String(id) + ",\"chore_status\":\"approved\"}");
     } else {
         webServer.send(400, "application/json", "{\"error\":\"chore not in done state\"}");
     }
@@ -179,9 +185,12 @@ void handleApiChoreAdd() {
     if (!checkAdminAuth()) return;
     initHomeChores();
     String title = webServer.hasArg("title") ? webServer.arg("title") : "";
-    uint8_t rewType = (webServer.hasArg("reward_type") && webServer.arg("reward_type") == "pesos") ? choreboard::REWARD_PESOS : choreboard::REWARD_MINUTES;
+    uint8_t rewType = (webServer.hasArg("reward_type") && webServer.arg("reward_type") == "pesos")
+                          ? choreboard::REWARD_PESOS
+                          : choreboard::REWARD_MINUTES;
     uint16_t rewVal = webServer.hasArg("reward_val") ? (uint16_t)webServer.arg("reward_val").toInt() : 15;
-    bool repeatDaily = !webServer.hasArg("repeat_daily") || webServer.arg("repeat_daily") == "1" || webServer.arg("repeat_daily") == "true";
+    bool repeatDaily = !webServer.hasArg("repeat_daily") || webServer.arg("repeat_daily") == "1" ||
+                       webServer.arg("repeat_daily") == "true";
     uint8_t targetSlot = webServer.hasArg("target_slot") ? (uint8_t)webServer.arg("target_slot").toInt() : 0;
 
     int id = choreboard::addChore(&gChoreBoard, title.c_str(), rewType, rewVal, repeatDaily, targetSlot);
@@ -254,7 +263,8 @@ void handleResetPiggy() {
 void handleSaveCurfew() {
     if (!checkAdminAuth()) return;
     initHomeChores();
-    gCurfewConfig.bedtimeEnabled = (webServer.hasArg("bedtime_enabled") && (webServer.arg("bedtime_enabled") == "1" || webServer.arg("bedtime_enabled") == "on"));
+    gCurfewConfig.bedtimeEnabled = (webServer.hasArg("bedtime_enabled") && (webServer.arg("bedtime_enabled") == "1" ||
+                                                                            webServer.arg("bedtime_enabled") == "on"));
     if (webServer.hasArg("bedtime_start")) {
         int m = curfewrules::parseMinutes(webServer.arg("bedtime_start").c_str());
         if (m >= 0) gCurfewConfig.bedtimeStartMin = m;
@@ -263,7 +273,8 @@ void handleSaveCurfew() {
         int m = curfewrules::parseMinutes(webServer.arg("bedtime_end").c_str());
         if (m >= 0) gCurfewConfig.bedtimeEndMin = m;
     }
-    gCurfewConfig.studyEnabled = (webServer.hasArg("study_enabled") && (webServer.arg("study_enabled") == "1" || webServer.arg("study_enabled") == "on"));
+    gCurfewConfig.studyEnabled = (webServer.hasArg("study_enabled") &&
+                                  (webServer.arg("study_enabled") == "1" || webServer.arg("study_enabled") == "on"));
     if (webServer.hasArg("study_start")) {
         int m = curfewrules::parseMinutes(webServer.arg("study_start").c_str());
         if (m >= 0) gCurfewConfig.studyStartMin = m;
@@ -289,9 +300,14 @@ void handleApiCurfew() {
 
     String json = "{";
     json += "\"active\":" + String(active ? "true" : "false") + ",";
-    json += "\"reason\":\"" + String(reason == curfewrules::CURFEW_BEDTIME ? "bedtime" : (reason == curfewrules::CURFEW_STUDY ? "study" : "none")) + "\",";
-    json += "\"bedtime\":{\"enabled\":" + String(gCurfewConfig.bedtimeEnabled ? "true" : "false") + ",\"start\":\"" + String(bStart) + "\",\"end\":\"" + String(bEnd) + "\"},";
-    json += "\"study\":{\"enabled\":" + String(gCurfewConfig.studyEnabled ? "true" : "false") + ",\"start\":\"" + String(sStart) + "\",\"end\":\"" + String(sEnd) + "\"}";
+    json += "\"reason\":\"" +
+            String(reason == curfewrules::CURFEW_BEDTIME ? "bedtime"
+                                                         : (reason == curfewrules::CURFEW_STUDY ? "study" : "none")) +
+            "\",";
+    json += "\"bedtime\":{\"enabled\":" + String(gCurfewConfig.bedtimeEnabled ? "true" : "false") + ",\"start\":\"" +
+            String(bStart) + "\",\"end\":\"" + String(bEnd) + "\"},";
+    json += "\"study\":{\"enabled\":" + String(gCurfewConfig.studyEnabled ? "true" : "false") + ",\"start\":\"" +
+            String(sStart) + "\",\"end\":\"" + String(sEnd) + "\"}";
     json += "}";
     webServer.send(200, "application/json", json);
 }

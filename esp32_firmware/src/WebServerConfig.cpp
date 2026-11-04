@@ -387,7 +387,9 @@ void handleSave() {
         }
         return true;
     });
+#if PISO_HAS_SHOP_EXTRAS
     pushBrandingToPhones(); // so a phone that missed a branding push catches up; nothing is sent while none was saved
+#endif
 #else
     Serial.println("\n[+] Config updated and saved.");
 #endif

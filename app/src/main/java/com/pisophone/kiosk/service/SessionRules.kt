@@ -115,5 +115,5 @@ object SessionRules {
     /**
      * Session paused by the child or bedtime curfew: returns phone to locked state while preserving remaining seconds.
      */
-    fun afterPause(current: Int): Int = LOCKED
+    fun afterPause(): Int = LOCKED
 }

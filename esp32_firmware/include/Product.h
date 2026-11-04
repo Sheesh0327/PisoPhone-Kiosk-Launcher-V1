@@ -5,8 +5,8 @@
 // has no router gateway code at all and the PisoWiFi-only image (PISO_PRODUCT_WIFI) has no phone code at all: those files are not
 // compiled in (envs/products.ini), so the other product leaves no trace in the binary.
 
-#if (defined(PISO_PRODUCT_PHONE) && defined(PISO_PRODUCT_WIFI)) || \
-    (defined(PISO_PRODUCT_PHONE) && defined(PISO_PRODUCT_HOME)) || \
+#if (defined(PISO_PRODUCT_PHONE) && defined(PISO_PRODUCT_WIFI)) ||                                                     \
+    (defined(PISO_PRODUCT_PHONE) && defined(PISO_PRODUCT_HOME)) ||                                                     \
     (defined(PISO_PRODUCT_WIFI) && defined(PISO_PRODUCT_HOME))
 #error "an image is for one product: define PISO_PRODUCT_PHONE, PISO_PRODUCT_WIFI, or PISO_PRODUCT_HOME, not multiple"
 #endif

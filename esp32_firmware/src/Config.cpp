@@ -690,7 +690,9 @@ void loadAllConfig() {
     minutesPerCoin = clampMinutesPerCoin(minutesPerCoin); // 1..1440, also for a value saved by an older version
 #if PISO_HAS_PHONES
     loadPhoneProfilesFromPrefs();
+#if PISO_HAS_SHOP_EXTRAS
     loadShopBrandingFromPrefs();
+#endif
 #endif
 
     webPassword = prefs.getString(NVS_KEY_ADMIN_PW, webPassword);
@@ -789,7 +791,9 @@ void factoryResetDefaults(bool ownerWipe) {
     if (!ownerWipe) ownerdata::restore(keepStore, owner); // an operator can never reset the revenue
     prefs.end();
     if (ownerWipe) {
-        vaultOnOwnerWipe();   // the owner's full wipe also starts a new collection log
+#if PISO_HAS_SHOP_EXTRAS
+        vaultOnOwnerWipe(); // the owner's full wipe also starts a new collection log
+#endif
         orphansOnOwnerWipe(); // ... and a new list of orphaned payments
         // (an operator reset keeps unacknowledged payments: that money was already collected)
         clearPaymentQueue(false); // the ledger was just wiped as well, so nothing is written to it
@@ -818,7 +822,9 @@ void factoryResetDefaults(bool ownerWipe) {
     minutesPerCoin = DEFAULT_MINUTES_PER_COIN;
 #if PISO_HAS_PHONES
     resetPhoneProfiles();
+#if PISO_HAS_SHOP_EXTRAS
     resetShopBranding();
+#endif
     p1Ip = "";
     p2Ip = "";
     matchMinutes = 15;
@@ -845,7 +851,9 @@ void factoryResetDefaults(bool ownerWipe) {
     lastSavedTotalWifiCoins = totalWifiCoinsLifetime;
     lastSavedTotalPhoneCoins = totalPhoneCoinsLifetime;
     lastSavedTotalCentavos = totalCentavosLifetime;
+#if PISO_HAS_SHOP_EXTRAS
     if (ownerWipe) vendorRevenueSplitPercent = DEFAULT_VENDOR_SPLIT_PERCENT;
+#endif
 
     for (int i = 0; i < 10; i++) {
         setLedHardware(true);

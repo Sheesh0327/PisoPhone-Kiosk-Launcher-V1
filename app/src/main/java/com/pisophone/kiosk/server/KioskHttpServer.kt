@@ -6,8 +6,6 @@ import com.pisophone.kiosk.network.BoxClock
 import com.pisophone.kiosk.repository.PaymentResult
 import com.pisophone.kiosk.security.KioskSecurity
 import com.pisophone.kiosk.security.TailscalePolicy
-import com.pisophone.kiosk.util.AllowedAppsPolicy
-import com.pisophone.kiosk.util.ChoreBoardCodec
 import com.pisophone.kiosk.util.ChoreItem
 import com.pisophone.kiosk.util.ChoreStatus
 import com.pisophone.kiosk.util.CurfewSchedule
@@ -474,25 +472,33 @@ class KioskHttpServer(
                     put("device_name", KioskSecurity.getDeviceAlias(context).ifBlank { "PisoKid" })
                     put("state", delegate.getAppState())
                     put("time_remaining_sec", delegate.getSessionTimeRemaining())
-                    put("curfew", JSONObject().apply {
-                        put("enabled", curfew.enabled)
-                        put("start_min", curfew.startMinuteOfDay)
-                        put("end_min", curfew.endMinuteOfDay)
-                        put("is_active", curfew.isCurfewActive(minOfDay))
-                    })
-                    put("piggy", JSONObject().apply {
-                        put("target_pesos", goal.targetPesos)
-                        put("label", goal.label)
-                    })
+                    put(
+                        "curfew",
+                        JSONObject().apply {
+                            put("enabled", curfew.enabled)
+                            put("start_min", curfew.startMinuteOfDay)
+                            put("end_min", curfew.endMinuteOfDay)
+                            put("is_active", curfew.isCurfewActive(minOfDay))
+                        },
+                    )
+                    put(
+                        "piggy",
+                        JSONObject().apply {
+                            put("target_pesos", goal.targetPesos)
+                            put("label", goal.label)
+                        },
+                    )
                     val choresArr = JSONArray()
                     for (c in chores) {
-                        choresArr.put(JSONObject().apply {
-                            put("id", c.id)
-                            put("title", c.title)
-                            put("reward_min", c.rewardMinutes)
-                            put("status", c.status.name)
-                            put("repeat", c.repeatDaily)
-                        })
+                        choresArr.put(
+                            JSONObject().apply {
+                                put("id", c.id)
+                                put("title", c.title)
+                                put("reward_min", c.rewardMinutes)
+                                put("status", c.status.name)
+                                put("repeat", c.repeatDaily)
+                            },
+                        )
                     }
                     put("chores", choresArr)
                     put("allowed_apps", JSONArray(allowed.toList()))
@@ -590,11 +596,10 @@ class KioskHttpServer(
             </div>
             </body>
             </html>
-        """.trimIndent()
+            """.trimIndent()
     }
 
-    private fun renderParentDashboardHtml(pin: String): String {
-        return """
+    private fun renderParentDashboardHtml(pin: String): String = """
             <!DOCTYPE html>
             <html lang="en">
             <head>
@@ -801,5 +806,4 @@ class KioskHttpServer(
             </body>
             </html>
         """.trimIndent()
-    }
 }

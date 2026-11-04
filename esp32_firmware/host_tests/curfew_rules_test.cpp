@@ -64,10 +64,10 @@ int main() {
     CurfewConfig cfg;
     cfg.bedtimeEnabled = true;
     cfg.bedtimeStartMin = 1260; // 21:00
-    cfg.bedtimeEndMin = 420;   // 07:00
+    cfg.bedtimeEndMin = 420;    // 07:00
     cfg.studyEnabled = true;
-    cfg.studyStartMin = 960;   // 16:00
-    cfg.studyEndMin = 1080;    // 18:00
+    cfg.studyStartMin = 960; // 16:00
+    cfg.studyEndMin = 1080;  // 18:00
 
     CurfewReason reason = CURFEW_NONE;
     CHECK(isAnyCurfewActive(cfg, 1300, &reason) && reason == CURFEW_BEDTIME, "bedtime detected at 21:40");

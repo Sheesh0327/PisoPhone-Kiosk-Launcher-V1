@@ -123,7 +123,7 @@ class KioskSessionSupervisor(
                                         deadlineMs = 0L,
                                         remainingSeconds = paused.sessionTimeRemaining,
                                         revision = paused.revision,
-                                        targetAppState = SessionRules.afterPause(curState),
+                                        targetAppState = SessionRules.afterPause(),
                                     )
                                     stateManager.saveState()
                                     onSessionExpired(true)

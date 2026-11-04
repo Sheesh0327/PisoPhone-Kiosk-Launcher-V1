@@ -209,7 +209,7 @@ void setup() {
     loadAllConfig();
     orphansBegin(); // payments the box gave up on, kept until the operator deals with them
 #if PISO_HAS_SHOP_EXTRAS
-    vaultBegin();   // after the counters are loaded: the vault is the lifetime total less the last collection
+    vaultBegin(); // after the counters are loaded: the vault is the lifetime total less the last collection
 #endif
 #if PISO_HAS_PHONES && PISO_HAS_SHOP_EXTRAS
     accountsBegin();

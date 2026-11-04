@@ -6,7 +6,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TailscalePolicyTest {
-
     @Test
     fun tailscalePackageConstantMatchesOfficialApp() {
         assertEquals("com.tailscale.ipn", TailscalePolicy.TAILSCALE_PACKAGE)

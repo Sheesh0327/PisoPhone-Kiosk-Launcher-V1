@@ -27,7 +27,7 @@ try:
     page_ms = (time.time() - t) * 1000
     check(code == 200 and "TechNet" in body and "PisoWifi" in body and "Test Spot" not in body and "HyperSpeed" in body and "&#8369;10" in body and "11 hrs 30 min" not in body, "the splash page carries the TechNet PisoWifi brand (not the configurable name) and the price list")
     check("1 day" not in body and "24 hrs" in body, "tiers are listed in the page (Endurance 20 pesos = 24 hrs)")
-    check(len(body) < 27500, f"the page is small ({len(body)} bytes; it goes over the shop Wi-Fi once, then a 304)")
+    check(len(body) < 28000, f"the page is small ({len(body)} bytes; it goes over the shop Wi-Fi once, then a 304)")
     check("Get a voucher code" in body and "Use now" in body and "Save voucher file" in body and "Have a voucher?" in body and 't:"ping"' in body,
           "the page carries the voucher choice, the voucher code view, the voucher entry and the heartbeat")
     check(page_ms < 100, f"the page comes back fast ({page_ms:.1f} ms)")

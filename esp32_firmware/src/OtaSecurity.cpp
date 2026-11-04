@@ -73,7 +73,8 @@ void handleApiOtaManifest() {
         }
 #else
         if (!checkAdminAuth()) {
-            webServer.send(403, "application/json", "{\"status\":\"error\",\"message\":\"Admin session required for downgrade.\"}");
+            webServer.send(403, "application/json",
+                           "{\"status\":\"error\",\"message\":\"Admin session required for downgrade.\"}");
             return;
         }
 #endif

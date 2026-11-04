@@ -9,7 +9,6 @@ import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class ParentalRulesTest {
-
     @Test
     fun overnightCurfewActiveBetweenStartAndEnd() {
         // Curfew 21:00 (9:00 PM = 1260 min) to 06:00 (6:00 AM = 360 min)

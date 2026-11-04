@@ -10,7 +10,7 @@ import org.json.JSONObject
 data class CurfewSchedule(
     val enabled: Boolean = false,
     val startMinuteOfDay: Int = 21 * 60, // 21:00 (9:00 PM) default
-    val endMinuteOfDay: Int = 6 * 60,    // 06:00 (6:00 AM) default
+    val endMinuteOfDay: Int = 6 * 60, // 06:00 (6:00 AM) default
 ) {
     /**
      * Evaluates if curfew is currently active at [currentMinuteOfDay].
@@ -98,10 +98,8 @@ object ChoreBoardCodec {
      * Resets daily repeating chores back to [ChoreStatus.TODO] (called at midnight),
      * leaving one-time quests in their approved/archived state.
      */
-    fun resetDailyChores(chores: List<ChoreItem>): List<ChoreItem> {
-        return chores.map { chore ->
-            if (chore.repeatDaily) chore.copy(status = ChoreStatus.TODO) else chore
-        }
+    fun resetDailyChores(chores: List<ChoreItem>): List<ChoreItem> = chores.map { chore ->
+        if (chore.repeatDaily) chore.copy(status = ChoreStatus.TODO) else chore
     }
 }
 

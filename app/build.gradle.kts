@@ -208,6 +208,10 @@ tasks.register("testDebugUnitTest") {
     dependsOn("testCommercialDebugUnitTest", "testHomeDebugUnitTest")
 }
 
+tasks.register("connectedDebugAndroidTest") {
+    dependsOn("connectedCommercialDebugAndroidTest")
+}
+
 tasks.register("lintDebug") {
     dependsOn("lintCommercialDebug")
 }

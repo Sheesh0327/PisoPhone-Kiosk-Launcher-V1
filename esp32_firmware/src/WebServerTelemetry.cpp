@@ -3,9 +3,14 @@
 
 #include "InputSafety.h"
 #include <string.h>
+#include "Product.h"
 #include "WebServerTelemetry.h"
 #if PISO_HAS_SHOP_EXTRAS
 #include "WebServerAccounts.h"
+#endif
+#if PISO_IS_HOME
+#include "CurfewRules.h"
+#include "WebServerChores.h"
 #endif
 #include "WebServerModule.h"
 #include "WebServerAuth.h"
@@ -122,7 +127,10 @@ void handleHeartbeat() {
     curfewrules::CurfewReason cReason = curfewrules::CURFEW_NONE;
     bool cActive = isCurfewActiveNow(&cReason);
     json += ",\"curfew_active\":" + String(cActive ? "true" : "false");
-    json += ",\"curfew_reason\":\"" + String(cReason == curfewrules::CURFEW_BEDTIME ? "bedtime" : (cReason == curfewrules::CURFEW_STUDY ? "study" : "none")) + "\"";
+    json += ",\"curfew_reason\":\"" +
+            String(cReason == curfewrules::CURFEW_BEDTIME ? "bedtime"
+                                                          : (cReason == curfewrules::CURFEW_STUDY ? "study" : "none")) +
+            "\"";
 #endif
     // The admin password reaches a phone only under this box's OWN key. In legacy mode the key is the old public one, so
     // anyone on the network could sign a heartbeat, decrypt this and own the box.

@@ -348,7 +348,11 @@ void handleApiStatus() {
     static String json;
     json = "{";
     json.reserve(3072);
+#if PISO_HAS_SHOP_EXTRAS
     json += "\"admin_qr\":" + String(SUPER_ADMIN_PUBKEY_LEN > 0 ? "true" : "false") + ",";
+#else
+    json += "\"admin_qr\":false,";
+#endif
     json += "\"default_credentials\":" + String(defaultCredentialsActive() ? "true" : "false") + ",";
 #if PISO_HAS_PHONES
     json += "\"legacy_key\":" + String(isLegacyKeyMode() ? "true" : "false") + ",";

@@ -190,8 +190,8 @@ void handleApiCoinslotArm() {
     if (isCurfewActiveNow(&curfewReason)) {
         const char* rStr = (curfewReason == curfewrules::CURFEW_BEDTIME) ? "CURFEW_BEDTIME" : "CURFEW_STUDY";
         const char* msg = (curfewReason == curfewrules::CURFEW_BEDTIME)
-            ? "Bedtime curfew is active. Coin inserting is locked."
-            : "Study curfew is active. Coin inserting is locked.";
+                              ? "Bedtime curfew is active. Coin inserting is locked."
+                              : "Study curfew is active. Coin inserting is locked.";
         String json = String("{\"success\":false,\"status\":\"locked\",\"error\":\"CURFEW_ACTIVE\",\"reason\":\"") +
                       rStr + "\",\"message\":\"" + msg + "\"}";
         webServer.send(423, "application/json", json);

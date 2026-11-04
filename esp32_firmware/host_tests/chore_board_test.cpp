@@ -103,7 +103,8 @@ int main() {
     CHECK(restored.count == board.count, "restored count matches");
     CHECK(restored.piggyGoal.targetPesos == 1000, "restored goal target matches");
     CHECK(std::string(restored.piggyGoal.title) == "Weekend Pizza & Ice Cream", "restored goal title matches");
-    CHECK(std::string(restored.chores[0].title) == std::string(board.chores[0].title), "restored chore 0 title matches");
+    CHECK(std::string(restored.chores[0].title) == std::string(board.chores[0].title),
+          "restored chore 0 title matches");
     CHECK(restored.chores[0].rewardValue == board.chores[0].rewardValue, "restored chore 0 reward matches");
 
     if (failures > 0) {

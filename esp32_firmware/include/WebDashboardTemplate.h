@@ -368,7 +368,7 @@ R"HTML(                                <span class="hint">This is the Standard r
 R"HTML(                            </div>
                         </div>
                     </div>
-
+)HTML"
 #if PISO_IS_HOME
 R"HTML(                    <details class="panel" style="grid-column: 1 / -1;">
                         <summary class="panel-head" style="cursor: pointer;"><h2><svg class="ic"><use href="#i-chip"/></svg>Advanced Hardware (GPIO &amp; Pulse Guard)</h2></summary>
