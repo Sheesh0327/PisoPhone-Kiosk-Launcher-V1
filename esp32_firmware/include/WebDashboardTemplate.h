@@ -58,7 +58,21 @@ R"HTML(            <div class="topbar-end">
         <!-- OVERVIEW -->
         <section id="tab-dashboard" class="tab-content active">
             <div class="stats">
+)HTML"
+#if PISO_IS_HOME
+R"HTML(                <div class="stat">
+                    <span class="stat-label">Total Saved (Alkansya)</span>
+                    <span class="stat-value">₱{TOTAL_COINS}</span>
+                    <span class="stat-sub">₱{SESSION_COINS} added today</span>
+                </div>
                 <div class="stat">
+                    <span class="stat-label">Kids' Devices</span>
+                    <span class="stat-value"><span id="stat_phones">–</span> <small>of {MAX_SLOTS}</small></span>
+                    <span id="stat_phones_sub" class="stat-sub">Checking…</span>
+                </div>
+)HTML"
+#else
+R"HTML(                <div class="stat">
                     <span class="stat-label">Revenue</span>
                     <span class="stat-value">₱{TOTAL_COINS}</span>
                     <span class="stat-sub">₱{SESSION_COINS} this session</span>
@@ -71,6 +85,7 @@ R"HTML(                <div class="stat">
                     <span id="stat_phones_sub" class="stat-sub">Checking…</span>
                 </div>
 )HTML"
+#endif
 #endif
 R"HTML(                <div id="wifi_stat" class="stat">
                     <span class="stat-label">Wi-Fi signal</span>
@@ -98,15 +113,24 @@ R"HTML(            <div class="panel" id="pending_chores_panel">
 #endif
 R"HTML(            <div class="panel">
                 <div class="panel-head">
-                    <h2>Phones
+)HTML"
+#if PISO_IS_HOME
+R"HTML(                    <h2>Kids' Devices
                         <span id="pending_requests_badge" class="tag warn hidden"></span>
                     </h2>
-                    <div class="actions">
+)HTML"
+#else
+R"HTML(                    <h2>Phones
+                        <span id="pending_requests_badge" class="tag warn hidden"></span>
+                    </h2>
+)HTML"
+#endif
+R"HTML(                    <div class="actions">
                         <button type="button" class="btn sm" onclick="fetchDeviceStatus()"><svg class="ic"><use href="#i-refresh"/></svg>Refresh</button>
                     </div>
                 </div>
                 <div id="live_devices_container" class="rows">
-                    <div class="row-empty-msg">Loading phones…</div>
+                    <div class="row-empty-msg">Loading devices…</div>
                 </div>
             </div>
 
@@ -116,12 +140,23 @@ R"HTML(            <div class="panel">
                     {QUICK_TIME_ALERT}
                     <div class="grid">
                         <div class="field">
-                            <label for="quick_adjust_target">Phone</label>
+)HTML"
+#if PISO_IS_HOME
+R"HTML(                            <label for="quick_adjust_target">Child's device</label>
+                            <select id="quick_adjust_target" name="target_ip" onchange="checkQuickAdjustInactive()">
+                                <option value="ALL">All kids' devices</option>
+                                {DEVICE_OPTIONS}
+                            </select>
+)HTML"
+#else
+R"HTML(                            <label for="quick_adjust_target">Phone</label>
                             <select id="quick_adjust_target" name="target_ip" onchange="checkQuickAdjustInactive()">
                                 <option value="ALL">All phones</option>
                                 {DEVICE_OPTIONS}
                             </select>
-                        </div>
+)HTML"
+#endif
+R"HTML(                        </div>
                         <div class="field">
                             <label for="quick_adjust_minutes">Minutes</label>
                             <input id="quick_adjust_minutes" type="number" name="add_minutes" value="60" min="1">
@@ -446,6 +481,29 @@ R"HTML(                </div>
 
 )HTML"
 #if PISO_HAS_PHONES
+#if PISO_IS_HOME
+R"HTML(            <div class="panel" id="profiles_panel">
+                <div class="panel-head"><h2><svg class="ic"><use href="#i-users"/></svg>Child &amp; device profiles</h2></div>
+                <div class="panel-body">
+                    <span class="hint">Assign each child's phone or tablet their own name and screen time rate (minutes per ₱1). Devices without a profile use the Standard coin rate above.</span>
+                    <div id="profiles_list"></div>
+                    <div class="actions">
+                        <span class="hint">Quick add:</span>
+                        <button type="button" class="btn sm" onclick="addPresetProfile('Kuya')">Kuya</button>
+                        <button type="button" class="btn sm" onclick="addPresetProfile('Ate')">Ate</button>
+                        <button type="button" class="btn sm" onclick="addPresetProfile('Bunso')">Bunso</button>
+                        <button type="button" class="btn sm" onclick="addPresetProfile('Kid\'s Tablet')">Kid's Tablet</button>
+                    </div>
+                    <div class="actions">
+                        <button type="button" class="btn sm" id="profile_add" onclick="addProfileRow()">Add a profile</button>
+                        <button type="button" class="btn primary sm" id="profile_save" onclick="saveProfiles()">Save profiles</button>
+                    </div>
+                    <h3 class="muted" style="margin-top:16px">Assigned profile for each device slot</h3>
+                    <div id="profile_slots"></div>
+                </div>
+            </div>
+)HTML"
+#elif PISO_HAS_SHOP_EXTRAS
 R"HTML(            <div class="panel" id="profiles_panel">
                 <div class="panel-head"><h2><svg class="ic"><use href="#i-coin"/></svg>Phone profiles</h2></div>
                 <div class="panel-body">
@@ -499,6 +557,7 @@ R"HTML(            <div class="panel" id="profiles_panel">
             </div>
 )HTML"
 #endif
+#endif
 R"HTML(        </section>
 
         <!-- TOOLS -->
@@ -507,7 +566,9 @@ R"HTML(        </section>
 #if PISO_HAS_PHONES
 R"HTML(            {DEVICE_SLOTS_MANAGER}
 
-            <div class="panel grid-full {MATCH_CARD_CLASS}" id="match_card_box">
+)HTML"
+#if PISO_HAS_SHOP_EXTRAS
+R"HTML(            <div class="panel grid-full {MATCH_CARD_CLASS}" id="match_card_box">
                 <div class="panel-head">
                     <h2><svg class="ic"><use href="#i-users"/></svg>1v1 match mode {MATCH_STATUS_BADGE}</h2>
                     {MATCH_HEADER_ACTION}
@@ -536,8 +597,8 @@ R"HTML(            {DEVICE_SLOTS_MANAGER}
                     <div id="match_qual_result" class="note hidden"></div>
                 </div>
             </div>
-
 )HTML"
+#endif
 #endif
 R"HTML(
             <div class="grid">
@@ -575,8 +636,15 @@ R"HTML({SUPER_ADMIN_TAB}
 )HTML"
 #endif
 R"HTML(    </main>
-    <footer class="foot"><span>{PRODUCT_NAME} &middot; Coin box</span><span><a href="https://pisophone.pages.dev/manual.html" target="_blank" rel="noopener">Owner manual</a></span></footer>
-
+)HTML"
+#if PISO_IS_HOME
+R"HTML(    <footer class="foot"><span>{PRODUCT_NAME} &middot; Parental Coin Box</span><span>Family Alkansya &middot; PisoHome</span></footer>
+)HTML"
+#else
+R"HTML(    <footer class="foot"><span>{PRODUCT_NAME} &middot; Coin box</span><span><a href="https://pisophone.pages.dev/manual.html" target="_blank" rel="noopener">Owner manual</a></span></footer>
+)HTML"
+#endif
+R"HTML(
 {PORTAL_MODALS}
 
 )HTML"

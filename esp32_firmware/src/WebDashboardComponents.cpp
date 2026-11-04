@@ -83,9 +83,15 @@ String renderPhoneSlotsHtml() {
     String html = "<div class=\"panel\">";
 
     // Head: title and the two setup links
+#if PISO_IS_HOME
+    html += "<div class=\"panel-head\"><h2>" + icon("phone") + "Kids' device slots <span class=\"panel-sub\">" +
+            String(installedCount) + " of " + String(MAX_SUPPORTED_SLOTS) +
+            " active</span></h2><div class=\"actions\">";
+#else
     html += "<div class=\"panel-head\"><h2>" + icon("phone") + "Phone slots <span class=\"panel-sub\">" +
             String(getDeviceCap()) + " of " + String(MAX_SUPPORTED_SLOTS) +
             " unlocked</span></h2><div class=\"actions\">";
+#endif
     // the router gives the box the phones' Wi-Fi password, so the setup page needs no typing
     // The box secret and the Wi-Fi password go after the "#": a browser never sends that part to the website's server, so it
     // stays out of the host's logs, and the setup page removes it from the address bar as soon as it has read it.
@@ -117,11 +123,17 @@ String renderPhoneSlotsHtml() {
     html += "<div class=\"panel-body\">";
 
     html += "<div class=\"mini-stats\">";
+#if PISO_IS_HOME
+    html += miniStat("Devices paired",
+                     String(installedCount) + " <small class=\"muted\">of " + String(MAX_SUPPORTED_SLOTS) + "</small>");
+#else
     html += miniStat("Phones paired",
                      String(installedCount) + " <small class=\"muted\">of " + String(getDeviceCap()) + "</small>");
+#endif
     if (unassignedCount > 0) html += miniStat("Waiting to connect", String(unassignedCount));
     html += "</div>";
 
+#if !PISO_IS_HOME
     // Slot licenses (SlotLicense.h): two slots are free, every other one needs a key the owner made for this box's code
     bool full = installedCount >= getDeviceCap();
     html +=
@@ -135,6 +147,7 @@ String renderPhoneSlotsHtml() {
         " Give your vendor this <b>box code</b> when you buy one: <b class=\"mono\">" + macAddressStr +
         "</b><span class=\"licrow\"><span class=\"field\"><input type=\"text\" id=\"lic_token\" placeholder=\"Paste the license key (PSLOT1...)\" autocomplete=\"off\" spellcheck=\"false\"></span>"
         "<button type=\"button\" class=\"btn sm primary\" onclick=\"redeemSlotLicense()\">Add slot</button></span></span></div>";
+#endif
 
     if (unassignedCount > 0) {
         html += "<div class=\"note warn\">" + icon("phone") + "<span class=\"grow\"><b>" + String(unassignedCount) +
