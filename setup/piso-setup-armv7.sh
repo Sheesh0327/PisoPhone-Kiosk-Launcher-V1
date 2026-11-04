@@ -29,7 +29,7 @@
 
 VERSION="dev"
 # the release of this file (setup/RELEASE): routers install only a higher release that the owner signed
-PISO_RELEASE='1.5.36'
+PISO_RELEASE='1.5.37'
 # the CPU family the portal program in this file is built for (router_family below names the family of the router it runs on)
 PISO_ARCH='armv7'
 
@@ -1120,7 +1120,7 @@ add_list opennds.@opennds[0].users_to_router='allow tcp port $PORTAL_PORT'
 delete opennds.@opennds[0].authenticated_users
 set opennds.@opennds[0].download_unrestricted_bursting='1'
 set opennds.@opennds[0].upload_unrestricted_bursting='1'
-set opennds.@opennds[0].checkinterval='15'
+set opennds.@opennds[0].checkinterval='5'
 set opennds.@opennds[0].ratecheckwindow='1'
 EOT
 }

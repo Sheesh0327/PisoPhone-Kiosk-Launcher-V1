@@ -1120,7 +1120,7 @@ add_list opennds.@opennds[0].users_to_router='allow tcp port $PORTAL_PORT'
 delete opennds.@opennds[0].authenticated_users
 set opennds.@opennds[0].download_unrestricted_bursting='1'
 set opennds.@opennds[0].upload_unrestricted_bursting='1'
-set opennds.@opennds[0].checkinterval='15'
+set opennds.@opennds[0].checkinterval='5'
 set opennds.@opennds[0].ratecheckwindow='1'
 EOT
 }
