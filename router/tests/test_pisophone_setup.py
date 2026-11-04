@@ -582,7 +582,7 @@ try:
     ps.product_choice(ns(yes=True))
     check(False, "--yes without a product is refused")
 except ps.SetupError as e:
-    check("choose the product: --product wifi, phone or both" in str(e), "--yes without a product stops and says what to choose: " + str(e))
+    check("choose the product: --product wifi, phone, both, home" in str(e), "--yes without a product stops and says what to choose: " + str(e))
 asked = []
 sys.stdout = io.StringIO()
 try:
@@ -632,7 +632,7 @@ finally:
     sys.stdout, sys.stderr = sys.__stdout__, sys.__stderr__
     ps.run_phone_setup, ps.ensure_dependencies = saved_run, saved_dep
 check(rc_phone == 0 and called == [True], "--product phone runs the --phone-only path: " + str(called))
-check(rc_yes == 1 and "choose the product: --product wifi, phone or both" in out_yes and called == [True], "--yes without --product: stops, nothing runs: " + out_yes)
+check(rc_yes == 1 and "choose the product: --product wifi, phone, both, home" in out_yes and called == [True], "--yes without --product: stops, nothing runs: " + out_yes)
 # the router setup carries the product
 for prod, kiosk_secrets in (("wifi", ()), ("both", ("kioskpass1", "kioskpass1"))):
     secrets_ = ("routerpass1", "routerpass1") + kiosk_secrets + ("boxadmin99", "boxadmin99")
