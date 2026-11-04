@@ -286,8 +286,10 @@ build = ps.choose_build(manifest, "ESP32-C3")
 three = {"version": "1.0.0", "builds": [
     {"env": "esp32-c3-dev", "product": "full", "chip": "ESP32-C3", "file": "f.bin", "offset": 0, "size": 1, "sha256": "a" * 64},
     {"env": "esp32-c3-dev-phone", "product": "phone", "chip": "ESP32-C3", "file": "p.bin", "offset": 0, "size": 1, "sha256": "b" * 64},
-    {"env": "esp32-c3-dev-wifi", "product": "wifi", "chip": "ESP32-C3", "file": "w.bin", "offset": 0, "size": 1, "sha256": "c" * 64}]}
+    {"env": "esp32-c3-dev-wifi", "product": "wifi", "chip": "ESP32-C3", "file": "w.bin", "offset": 0, "size": 1, "sha256": "c" * 64},
+    {"env": "esp32-c3-dev-home", "product": "home", "chip": "ESP32-C3", "file": "h.bin", "offset": 0, "size": 1, "sha256": "d" * 64}]}
 check(ps.choose_build(three, "ESP32-C3", "phone")["file"] == "p.bin" and ps.choose_build(three, "ESP32-C3", "wifi")["file"] == "w.bin"
+      and ps.choose_build(three, "ESP32-C3", "home")["file"] == "h.bin"
       and ps.choose_build(three, "ESP32-C3", "full")["file"] == "f.bin" and ps.choose_build(three, "ESP32-C3")["file"] == "f.bin",
       "each product gets its own image from the flash list (the full one by default)")
 check(ps.choose_build(three, "ESP32", "phone") is None and ps.choose_build(manifest, "ESP32-C3", "wifi") is None,

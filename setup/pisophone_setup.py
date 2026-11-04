@@ -2572,7 +2572,103 @@ def flash_manifest(branch, cache_dir, opener=urllib.request.urlopen, emit=say):
             raise SetupError("the coin box software list could not be downloaded. This computer needs internet for this step.")
     if not isinstance(manifest.get("builds"), list) or not manifest["builds"]:
         raise SetupError("the website has no coin box software for this branch.")
+    # Ensure local builds (e.g. for products like home or locally built firmware) are visible in manifest
+    existing_pairs = {(str(b.get("chip", "")).upper(), b.get("product") or "full") for b in manifest["builds"]}
+    for c_cand in ("ESP32-C3", "ESP32"):
+        for p_cand in ("home", "phone", "wifi", "full"):
+            if (c_cand, p_cand) not in existing_pairs:
+                loc = find_local_firmware(c_cand, p_cand, cache_dir)
+                if loc:
+                    manifest["builds"].append(loc)
     return manifest
+
+
+def find_local_firmware(chip, product, cache_dir=None):
+    """Finds a locally built or cached merged firmware image for the given chip and product, or None."""
+    chip_upper = (chip or "").upper()
+    if "C3" in chip_upper:
+        c_name, env_chip, offset = "ESP32-C3", "esp32-c3", 0
+    elif "ESP32" in chip_upper:
+        c_name, env_chip, offset = "ESP32", "esp32dev", 0x1000
+    else:
+        return None
+
+    prod_suffix = "" if product == "full" else f"-{product}"
+    env = f"{env_chip}-dev{prod_suffix}"
+    filename = f"{env}.bin"
+
+    repo_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    candidates = [
+        os.path.join(cache_dir or "", filename),
+        os.path.join(repo_dir, "esp32_firmware", ".pio", "build", filename),
+        os.path.join(repo_dir, "setup", "flash", filename),
+        os.path.join(repo_dir, "website", "flash", filename),
+        os.path.join(".", "esp32_firmware", ".pio", "build", filename),
+        os.path.join(".", "setup", "flash", filename),
+        os.path.join(".", "flash", filename),
+    ]
+    for path in candidates:
+        if path and os.path.isfile(path) and os.path.getsize(path) > 0:
+            return {
+                "env": env,
+                "product": product,
+                "chip": c_name,
+                "file": filename,
+                "offset": offset,
+                "size": os.path.getsize(path),
+                "local_path": os.path.abspath(path),
+            }
+
+    # If not yet merged, but the .pio/build/<env>/ has all partition files:
+    for base in [os.path.join(repo_dir, "esp32_firmware", ".pio", "build", env),
+                 os.path.join(".", "esp32_firmware", ".pio", "build", env)]:
+        fw = os.path.join(base, "firmware.bin")
+        boot = os.path.join(base, "bootloader.bin")
+        part = os.path.join(base, "partitions.bin")
+        if os.path.isfile(fw) and os.path.isfile(boot) and os.path.isfile(part):
+            out = base + ".bin"
+            app0 = _find_boot_app0()
+            if app0 and _merge_local_firmware(env_chip, offset, boot, part, app0, fw, out):
+                return {
+                    "env": env,
+                    "product": product,
+                    "chip": c_name,
+                    "file": filename,
+                    "offset": offset,
+                    "size": os.path.getsize(out),
+                    "local_path": os.path.abspath(out),
+                }
+
+    return None
+
+
+def _find_boot_app0():
+    pio_pkgs = os.path.expanduser("~/.platformio/packages")
+    if os.path.isdir(pio_pkgs):
+        for root, _dirs, files in os.walk(pio_pkgs):
+            if "boot_app0.bin" in files and "partitions" in root:
+                return os.path.join(root, "boot_app0.bin")
+    return None
+
+
+def _merge_local_firmware(chip_family, offset, boot, part, app0, fw, out):
+    try:
+        chip_flag = "esp32c3" if "c3" in chip_family else "esp32"
+        tool = esptool_module()
+        if tool:
+            major = esptool_major(tool)
+            cmd = (["merge-bin", "-o", out, "--target-offset", hex(offset),
+                    "--flash-mode", "keep", "--flash-freq", "keep", "--flash-size", "keep",
+                    hex(offset), boot, "0x8000", part, "0xe000", app0, "0x10000", fw]
+                   if major >= 5 else
+                   ["merge_bin", "-o", out, "--target-offset", hex(offset),
+                    "--flash_mode", "keep", "--flash_freq", "keep", "--flash_size", "keep",
+                    hex(offset), boot, "0x8000", part, "0xe000", app0, "0x10000", fw])
+            tool.main(["--chip", chip_flag] + cmd)
+            return os.path.isfile(out)
+    except Exception:
+        pass
+    return False
 
 
 def choose_build(manifest, chip, product="full"):
@@ -2585,6 +2681,8 @@ def choose_build(manifest, chip, product="full"):
 
 def fetch_image(branch, build, cache_dir, opener=urllib.request.urlopen):
     """The path of the image, downloaded and checked against the manifest's size and sha256 (kept for next time)."""
+    if build.get("local_path") and os.path.isfile(build["local_path"]):
+        return build["local_path"]
     path = os.path.join(cache_dir, f"{build['sha256'][:16]}-{build['file']}")
     if re.search(r"[/\\]", build["file"]):
         raise SetupError("the website's software list is not valid.")
@@ -2639,9 +2737,15 @@ def flash_box(branch, port, emit, cache_dir, opener=urllib.request.urlopen, tool
         manifest = flash_manifest(branch, cache_dir, opener, emit)
         build = choose_build(manifest, chip, product)
         if not build:
+            loc = find_local_firmware(chip, product, cache_dir)
+            if loc:
+                build = loc
+                manifest.setdefault("builds", []).append(loc)
+        if not build:
             chips = list(dict.fromkeys(b["chip"] for b in manifest["builds"] if (b.get("product") or "full") == product))
             raise SetupError(f"this board is an {chip}; PisoPhone software exists for {' and '.join(chips) or 'no board'}.")
-        emit(f"{chip} found. Software version {manifest.get('version', '?')} ({build['size'] / 1048576:.2f} MB).")
+        version_str = "local build" if build.get("local_path") else manifest.get('version', '?')
+        emit(f"{chip} found. Software version {version_str} ({build['size'] / 1048576:.2f} MB).")
         image = fetch_image(branch, build, cache_dir, opener)
     emit("== Writing the coin box software (erasing the board first; about a minute)")
     last = [-10]

@@ -46,6 +46,7 @@ __pycache__/
 build/
 target/
 node_modules/
+setup/flash/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
