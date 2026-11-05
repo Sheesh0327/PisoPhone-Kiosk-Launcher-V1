@@ -94,7 +94,7 @@ What it covers: the words the guest page writes by itself when the customer taps
 
 | # | English pattern | Filipino draft | OK? |
 |---|---|---|---|
-| 1 | `Full speed · slows after (\d+) GB` | Buong bilis · bumabagal pagkatapos ng $1 GB | |
+| 1 | `Full speed · Fair usage applies after (\d+)\+? GB` | Buong bilis · patas na paggamit pagkatapos ng $1+ GB | |
 | 2 | `Up to (\d+)\/(\d+) Mbps · much more time per peso` | Hanggang $1/$2 Mbps · mas mahabang oras kada piso | |
 | 3 | `Insert within (\d+) s` | Magpasok sa loob ng $1 s | |
 | 4 | `(\d+) MB used` | $1 MB ang nagamit | |

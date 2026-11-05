@@ -83,7 +83,7 @@ var X={
 };
 var P="(Endurance|HyperSpeed)";
 var R=[
-[/^Full speed · slows after (\d+) GB$/,"Buong bilis · bumabagal pagkatapos ng $1 GB"],
+[/^Full speed · [Ff]air usage applies after (\d+)\+?\s*GB$/,"Buong bilis · patas na paggamit pagkatapos ng $1+ GB"],
 [/^Up to (\d+)\/(\d+) Mbps · much more time per peso$/,"Hanggang $1/$2 Mbps · mas mahabang oras kada piso"],
 [/^Insert within (\d+) s$/,"Magpasok sa loob ng $1 s"],
 [/^(\d+) MB used$/,"$1 MB ang nagamit"],
