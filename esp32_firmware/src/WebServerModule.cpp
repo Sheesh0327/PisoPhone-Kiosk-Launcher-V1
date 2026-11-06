@@ -68,10 +68,10 @@ void setupWebServer() {
     registerWifiConsoleRoutes();
 #else
     webServer.on("/", HTTP_GET, handlePortalRoot);
+#endif
     webServer.on("/logout", HTTP_GET, handleLogout);
     webServer.on("/signin", HTTP_GET, handleSignIn);
     webServer.on("/save", HTTP_POST, handleSave);
-#endif
     webServer.on("/reboot", HTTP_POST, handleReboot);
     webServer.on("/factory_reset", HTTP_POST, handleFactoryReset);
 #if PISO_HAS_PHONES
