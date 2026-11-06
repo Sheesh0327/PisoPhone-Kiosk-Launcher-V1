@@ -1967,9 +1967,17 @@ def installer_command(branch, *args):
     failed download is reported (a pipe into sh would run nothing and report success)."""
     url = f"{site_url(branch)}/install.sh"
     run = " ".join(shlex.quote(a) for a in ("--branch", branch, "--yes", *args))
-    return (f"rm -f /tmp/piso-install.sh; if ! wget -q -T 60 -O /tmp/piso-install.sh {shlex.quote(url)}; then "
+    if os.environ.get("PISO_SSH"):
+        return (f"rm -f /tmp/piso-install.sh; if ! wget -q -T 60 -O /tmp/piso-install.sh {shlex.quote(url)}; then "
+                f"echo 'ERROR: the router could not download the installer. The router needs internet for the first setup: plug the modem into its WAN port, wait a minute until it is online, then try again.'; "
+                f"exit 3; fi; sh /tmp/piso-install.sh {run}")
+    return (f"if [ ! -s /tmp/piso-install.sh ] || head -n 1 /tmp/piso-install.sh 2>/dev/null | grep -q '<!DOCTYPE'; then "
+            f"rm -f /tmp/piso-install.sh; if ! wget -q -T 60 -O /tmp/piso-install.sh {shlex.quote(url)}; then "
             f"echo 'ERROR: the router could not download the installer. The router needs internet for the first setup: plug the modem into its WAN port, wait a minute until it is online, then try again.'; "
-            f"exit 3; fi; sh /tmp/piso-install.sh {run}")
+            f"exit 3; fi; "
+            f"if head -n 1 /tmp/piso-install.sh 2>/dev/null | grep -q '<!DOCTYPE'; then "
+            f"echo 'ERROR: installer not found on website (received HTML).'; exit 3; fi; fi; "
+            f"sh /tmp/piso-install.sh {run}")
 
 
 def move_command(target_ip=TARGET_IP):
@@ -2165,6 +2173,30 @@ def install(ssh, host, answers, branch, out_dir, emit, wait_move, stage=lambda n
                          "router's WAN port, wait a minute until the modem is online, then try again.")
     values = "".join(answers.get(key, "") + "\n" for key in ANSWER_ORDER)
     save_router_password(out_dir, answers.get("ROOT_PASSWORD"), host)   # before the router changes it: a repeat can log in
+
+    # Stage local installer and setup bundle to the router if available (real router, not fake SSH tests)
+    if not os.environ.get("PISO_SSH"):
+        setup_dir = os.path.dirname(__file__)
+        install_path = os.path.join(setup_dir, "install.sh")
+        if os.path.isfile(install_path):
+            try:
+                with open(install_path, "rb") as f:
+                    run_remote(ssh, host, "cat > /tmp/piso-install.sh && chmod 755 /tmp/piso-install.sh", lambda l: None, data=f.read())
+            except Exception:
+                pass
+
+        product = answers.get("SHOP_PRODUCT", "")
+        bundle_name = "piso-setup-wifi.sh" if product == "wifi" else "piso-setup.sh"
+        bundle_path = os.path.join(setup_dir, bundle_name)
+        if not os.path.isfile(bundle_path):
+            bundle_path = os.path.join(setup_dir, "piso-setup.sh")
+        if os.path.isfile(bundle_path):
+            try:
+                with open(bundle_path, "rb") as f:
+                    run_remote(ssh, host, "cat > /tmp/piso-setup.sh && chmod 755 /tmp/piso-setup.sh && touch /tmp/piso-setup.local", lambda l: None, data=f.read())
+            except Exception:
+                pass
+
     result = run_remote(ssh, host, setup_command(branch), emit, data=values)
 
     saved = []
