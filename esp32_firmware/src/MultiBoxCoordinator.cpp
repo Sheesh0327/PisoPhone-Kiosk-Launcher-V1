@@ -297,6 +297,43 @@ bool grantRouterAccess(const String& mac, int minutes, uint32_t upKbps, uint32_t
     IPAddress gw = WiFi.gatewayIP();
     String routerIp = (gw[0] != 0) ? gw.toString() : "10.0.0.1";
 
+    String clientMac = mac;
+    clientMac.trim();
+    if (clientMac.indexOf(':') < 0 && clientMac.length() > 0) {
+        HTTPClient arpHttp;
+        String cUrl = String("http://") + routerIp + "/cgi-bin/piso-nds?action=challenge";
+        arpHttp.begin(cUrl);
+        arpHttp.setTimeout(2500);
+        int cCode = arpHttp.GET();
+        String aNonce = "";
+        if (cCode == 200) {
+            StaticJsonDocument<256> cDoc;
+            if (!deserializeJson(cDoc, arpHttp.getString()) && cDoc.containsKey("nonce")) {
+                aNonce = cDoc["nonce"].as<String>();
+            }
+        }
+        arpHttp.end();
+
+        if (aNonce.length() > 0) {
+            std::string key = gatewayKey().c_str();
+            std::string aPayload = aNonce.c_str() + std::string("|arp|") + clientMac.c_str() + "|" + key;
+            std::string aSig = sha256Hex(aPayload);
+
+            String aUrl = String("http://") + routerIp + "/cgi-bin/piso-nds?action=arp&ip=" + clientMac +
+                          "&nonce=" + aNonce + "&sig=" + aSig.c_str();
+            arpHttp.begin(aUrl);
+            arpHttp.setTimeout(2500);
+            int aCode = arpHttp.GET();
+            if (aCode == 200) {
+                StaticJsonDocument<256> aDoc;
+                if (!deserializeJson(aDoc, arpHttp.getString()) && aDoc.containsKey("mac")) {
+                    clientMac = aDoc["mac"].as<String>();
+                }
+            }
+            arpHttp.end();
+        }
+    }
+
     // 1. Fetch challenge nonce from router uhttpd CGI
     HTTPClient http;
     String cUrl = String("http://") + routerIp + "/cgi-bin/piso-nds?action=challenge";
@@ -321,7 +358,7 @@ bool grantRouterAccess(const String& mac, int minutes, uint32_t upKbps, uint32_t
     // 2. Sign canonical payload: nonce|action|param|key
     // For grant action, param is mac
     std::string key = gatewayKey().c_str();
-    std::string payload = nonce.c_str() + std::string("|grant|") + mac.c_str() + "|" + key;
+    std::string payload = nonce.c_str() + std::string("|grant|") + clientMac.c_str() + "|" + key;
     std::string sig = sha256Hex(payload);
 
     // 3. POST grant request
@@ -330,7 +367,7 @@ bool grantRouterAccess(const String& mac, int minutes, uint32_t upKbps, uint32_t
     http.setTimeout(4000);
     http.addHeader("Content-Type", "application/x-www-form-urlencoded");
 
-    String postBody = "action=grant&mac=" + mac + "&mins=" + String(minutes) +
+    String postBody = "action=grant&mac=" + clientMac + "&mins=" + String(minutes) +
                       "&up=" + String(upKbps) + "&down=" + String(downKbps) +
                       "&nonce=" + nonce + "&sig=" + sig.c_str();
 

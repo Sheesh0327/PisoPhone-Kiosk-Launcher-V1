@@ -947,7 +947,8 @@ set wireless.box_ap.encryption='psk2'
 set wireless.box_ap.key='$(box_wifi_key)'
 set wireless.box_ap.isolate='0'
 EOT
-	if [ -f "$PISO_ROOT/etc/coinslot.d/boxes.conf" ] && grep -q '^[1-4]|' "$PISO_ROOT/etc/coinslot.d/boxes.conf" 2>/dev/null; then
+	_boxes_conf="${PISO_BOXES_CONF:-$PISO_ROOT/etc/coinslot.d/boxes.conf}"
+	if [ -f "$_boxes_conf" ] && grep -q '^[1-4]|' "$_boxes_conf" 2>/dev/null; then
 		cat << EOT
 set wireless.box_ap.macfilter='allow'
 delete wireless.box_ap.maclist
@@ -964,7 +965,7 @@ set dhcp.pisocoinbox$_slot.name='pisocoinbox$_slot'
 set dhcp.pisocoinbox$_slot.mac='$_mac'
 set dhcp.pisocoinbox$_slot.ip='$_ip'
 EOT
-		done < "$PISO_ROOT/etc/coinslot.d/boxes.conf"
+		done < "$_boxes_conf"
 	elif [ -n "$BOX_MAC" ]; then
 		cat << EOT
 set wireless.box_ap.macfilter='allow'
@@ -972,6 +973,10 @@ delete wireless.box_ap.maclist
 add_list wireless.box_ap.maclist='$BOX_MAC'
 delete dhcp.pisocoinbox
 delete dhcp.pisocoinbox1
+set dhcp.pisocoinbox=host
+set dhcp.pisocoinbox.name='pisocoinbox'
+set dhcp.pisocoinbox.mac='$BOX_MAC'
+set dhcp.pisocoinbox.ip='$BOX_IP'
 set dhcp.pisocoinbox1=host
 set dhcp.pisocoinbox1.name='pisocoinbox1'
 set dhcp.pisocoinbox1.mac='$BOX_MAC'
@@ -1499,7 +1504,12 @@ lock_box_network() {  # lock_box_network <mac>: admit only this MAC (none at all
 		done < "$PISO_ROOT/etc/coinslot.d/boxes.conf"
 	elif [ -n "$1" ]; then
 		uci add_list wireless.box_ap.maclist="$1"
+		uci -q delete dhcp.pisocoinbox
 		uci -q delete dhcp.pisocoinbox1
+		uci set dhcp.pisocoinbox=host
+		uci set dhcp.pisocoinbox.name='pisocoinbox'
+		uci set dhcp.pisocoinbox.mac="$1"
+		uci set dhcp.pisocoinbox.ip="$BOX_IP"
 		uci set dhcp.pisocoinbox1=host
 		uci set dhcp.pisocoinbox1.name='pisocoinbox1'
 		uci set dhcp.pisocoinbox1.mac="$1"
@@ -2289,12 +2299,12 @@ cmd_update() {
 }
 
 cmd_pair_add() {
-	[ "$(id -u)" = 0 ] || die "run as root"
+	[ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"
 	pair_add_box
 }
 
 cmd_box_role() {
-	[ "$(id -u)" = 0 ] || die "run as root"
+	[ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"
 	_slot="$1"; _role="$2"
 	[ -n "$_slot" ] && [ -n "$_role" ] || die "usage: piso-setup box-role <slot 1-4> <primary|standby>"
 	set_box_role "$_slot" "$_role"
@@ -2653,7 +2663,9 @@ cmd_box_update() {
 		_why=$(sed -n 's/.*"message": *"\([^"]*\)".*/\1/p' "$_work/manifest.out" 2> /dev/null | head -n 1)
 		log "The coin box refused the update (HTTP $_r): $_why"; record_update_state box failed "$_new" "$BOX_FW" "the coin box refused the update (${_why:-HTTP $_r})"; notify "box update REFUSED by the box (${_why:-HTTP $_r}): it stays on firmware $BOX_FW"; return 1
 	fi
-	_r=$(curl -s -m 240 -o "$_work/upload.out" -w '%{http_code}' -u "admin:$_pw" -H 'Expect:' -F "update=@$_work/box.bin;filename=firmware.bin" "http://$BOX_IP/update" 2> /dev/null)
+	_up_file="$_work/box.bin"
+	command -v cygpath > /dev/null 2>&1 && _up_file=$(cygpath -m "$_up_file")
+	_r=$(curl -s -m 240 -o "$_work/upload.out" -w '%{http_code}' -u "admin:$_pw" -H 'Expect:' -F "update=@$_up_file;filename=firmware.bin" "http://$BOX_IP/update" 2> /dev/null)
 	if [ "$_r" != 200 ]; then
 		log "The coin box did not take the firmware (HTTP $_r): $(head -c 200 "$_work/upload.out" 2> /dev/null)"
 		record_update_state box failed "$_new" "$BOX_FW" "the coin box did not take the firmware (HTTP $_r): $(head -c 100 "$_work/upload.out" 2> /dev/null)"
@@ -2954,11 +2966,14 @@ cmd_forget_summary() {
 cmd_export() {
 	[ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"
 	_out="${1:-/tmp/piso-backup-$(date +%Y%m%d-%H%M%S).tar.gz}"
+	command -v cygpath > /dev/null 2>&1 && _out=$(cygpath -u "$_out")
+	_root="${PISO_ROOT:-/}"
+	command -v cygpath > /dev/null 2>&1 && [ -n "$PISO_ROOT" ] && _root=$(cygpath -u "$_root")
 	_list=""
 	for _p in /etc/piso-setup.conf /etc/coinslot.conf /etc/coinslot.d /etc/piso-monitor.conf; do [ -e "$PISO_ROOT$_p" ] && _list="$_list ${_p#/}"; done
 	[ -n "$_list" ] || die "nothing to back up: no PisoPhone settings found"
 	# shellcheck disable=SC2086 # one argument per file
-	( umask 077; tar -C "${PISO_ROOT:-/}" -czf "$_out" $_list ) || die "could not write $_out"
+	( umask 077; tar -C "$_root" -czf "$_out" $_list ) || die "could not write $_out"
 	echo "Backup written: $_out  ($(( ($(wc -c < "$_out") + 1023) / 1024 )) KB). It holds your passwords and keys: keep it private."
 	echo "Copy it to your computer:  scp root@$LAN_IP:$_out ."
 }
@@ -2967,6 +2982,9 @@ cmd_export() {
 cmd_import() {
 	[ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"
 	_in="$1"; [ -f "$_in" ] || die "usage: piso-setup import <backup file>"
+	command -v cygpath > /dev/null 2>&1 && _in=$(cygpath -u "$_in")
+	_root="${PISO_ROOT:-/}"
+	command -v cygpath > /dev/null 2>&1 && [ -n "$PISO_ROOT" ] && _root=$(cygpath -u "$_root")
 	_lst=$(mktemp 2> /dev/null) || die "cannot make a temporary file"
 	tar -tzf "$_in" > "$_lst" 2> /dev/null || { rm -f "$_lst"; die "that is not a PisoPhone backup"; }
 	# only these paths, and no ".." part anywhere (etc/coinslot.d/../x would pass the pattern and leave the folder)
@@ -2976,7 +2994,7 @@ cmd_import() {
 	rm -f "$_lst"
 	if [ "$ASSUME_YES" != 1 ]; then printf 'Replace this router'"'"'s PisoPhone settings and ledger with the backup? [y/N] '; read -r _a; case "$_a" in y | Y) ;; *) echo "Cancelled."; return 0 ;; esac; fi
 	[ -x /etc/init.d/pisoportal ] && /etc/init.d/pisoportal stop > /dev/null 2>&1
-	tar -C "${PISO_ROOT:-/}" -xzf "$_in" || die "could not unpack the backup"
+	tar -C "$_root" -xzf "$_in" || die "could not unpack the backup"
 	chmod 600 "$PISO_ROOT/etc/piso-setup.conf" 2> /dev/null
 	[ -x /etc/init.d/pisoportal ] && /etc/init.d/pisoportal start > /dev/null 2>&1
 	echo "Restored. Run: piso-setup status"
@@ -3050,7 +3068,7 @@ cmd_console() {
 	esac
 }
 cmd_pair() {
-	DRY=0; [ "$(id -u)" = 0 ] || die "run as root"
+	DRY=0; [ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"
 	conf_set BOX_MAC ""
 	pair_box
 	write_coinslot_conf "$(conf_get GW_KEY)" "$BOX_MAC"
@@ -3221,7 +3239,7 @@ main() {
 		status) cmd_status ;;
 		wan-clash) cmd_wan_clash ;;
 		wifi-name) cmd_wifi_name "$ARG" ;;
-		guest-port) [ "$(id -u)" = 0 ] || [ "$DRY" = 1 ] || die "run as root"; cmd_guest_port "$ARG" ;;
+		guest-port) [ "$(id -u)" = 0 ] || [ "$DRY" = 1 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"; cmd_guest_port "$ARG" ;;
 		pair) cmd_pair ;;
 		pair-add) cmd_pair_add ;;
 		box-role) cmd_box_role $ARGS ;;
@@ -3254,12 +3272,12 @@ main() {
 		verify) cmd_verify ;;
 		kiosk-wifi)
 			if wifi_only; then echo "this shop has no rental phones (PisoWiFi only)"; return 0; fi
-			DRY=0; [ "$(id -u)" = 0 ] || die "run as root"
+			DRY=0; [ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"
 			push_kiosk_wifi
 			if kiosk_wifi_on_box; then log "checked: the box's \"Set up a phone\" link carries the password"
 			else log "the box's link does not show it yet (a box with firmware before 3.3.3 cannot: it updates itself, then run this again)"; fi ;;
-		box-wifi-name) DRY=0; [ "$(id -u)" = 0 ] || die "run as root"; own_box_wifi_name ;;
-		rotate-box-wifi) DRY=0; [ "$(id -u)" = 0 ] || die "run as root"; rotate_box_wifi force ;;
+		box-wifi-name) DRY=0; [ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"; own_box_wifi_name ;;
+		rotate-box-wifi) DRY=0; [ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"; rotate_box_wifi force ;;
 		set-password) cmd_set_password ;;
 		summary) cat "$SUMMARY" ;;
 		uninstall-info) echo "To undo: sysupgrade -n (factory reset) the router. Nothing else is changed outside the files listed in $0." ;;
@@ -3412,11 +3430,11 @@ failover_fas() {
 	_cand_ip=""
 	_cand_name=""
 	if [ -r "$BOXES_CONF" ]; then
-		while IFS=: read -r b_slot b_mac b_ip b_name b_role b_status || [ -n "$b_slot" ]; do
+		while IFS='|' read -r b_slot b_mac b_ip b_name b_role b_status || [ -n "$b_slot" ]; do
 			case "$b_slot" in "#"* | "") continue ;; esac
 			[ "$b_ip" != "$_cur_ip" ] || continue
 			case "$b_role" in
-				wifi | hub)
+				standby | primary | wifi | hub)
 					if curl -s -m 3 "http://$b_ip:2080/ping" 2>/dev/null | grep -q ok \
 					   || curl -s -m 3 "http://$b_ip/api/gateway/challenge" 2>/dev/null | grep -q '{'; then
 						_cand_ip="$b_ip"
@@ -3432,7 +3450,7 @@ failover_fas() {
 		_ep=$(active_epoch)
 		_new_ep=$((_ep + 1))
 		mkdir -p "$(dirname "$EPOCH_CONF")" 2>/dev/null
-		printf "ACTIVE_FAS_IP='%s'\nCURRENT_EPOCH='%s'\n" "$_cand_ip" "$_new_ep" > "$EPOCH_CONF"
+		printf "ACTIVE_FAS_IP='%s'\nACTIVE_FAS_PORT='2080'\nACTIVE_FAS_NAME='%s'\nCURRENT_EPOCH='%s'\n" "$_cand_ip" "$_cand_name" "$_new_ep" > "$EPOCH_CONF"
 		uci set opennds.@opennds[0].fasremoteip="$_cand_ip" 2>/dev/null
 		uci set opennds.@opennds[0].fasport='2080' 2>/dev/null
 		uci set opennds.@opennds[0].faspath='/' 2>/dev/null
@@ -3865,7 +3883,13 @@ if [ -d "$SYS/$LAN_BR" ]; then
 	case "$LAN_IP" in *[!0-9.]*) LAN_IP="" ;; esac
 	ALL_BOX_MACS=""
 	ALL_BOX_IPS=""
-	_bconf="${PISO_ROOT}/etc/coinslot.d/boxes.conf"
+	if [ -n "$PISO_BOXES_CONF" ]; then
+		_bconf="$PISO_BOXES_CONF"
+	elif [ -n "$PISO_COINSLOT_CONF" ]; then
+		_bconf="$(dirname "$PISO_COINSLOT_CONF")/coinslot.d/boxes.conf"
+	else
+		_bconf="${PISO_ROOT}/etc/coinslot.d/boxes.conf"
+	fi
 	if [ -f "$_bconf" ]; then
 		while IFS='|' read -r _s _m _i _n _r _e; do
 			[ -z "$_m" ] && continue
@@ -3913,8 +3937,15 @@ if [ -d "$SYS/$LAN_BR" ]; then
 		echo "		type filter hook prerouting priority -200; policy accept;"
 		for _p in $WIFI_PORTS; do
 			if [ -n "$ALL_BOX_MACS" ]; then
-				_mac_set=$(echo "$ALL_BOX_MACS" | tr ' ' ', ')
-				echo "		iifname \"$_p\" ether saddr != { $_mac_set } meta mark set meta mark | $MARK"
+				case "$ALL_BOX_MACS" in
+					*" "*)
+						_mac_set=$(echo "$ALL_BOX_MACS" | sed 's/  */, /g')
+						echo "		iifname \"$_p\" ether saddr != { $_mac_set } meta mark set meta mark | $MARK"
+						;;
+					*)
+						echo "		iifname \"$_p\" ether saddr != $ALL_BOX_MACS meta mark set meta mark | $MARK"
+						;;
+				esac
 			else
 				echo "		iifname \"$_p\" meta mark set meta mark | $MARK"
 			fi
@@ -3952,7 +3983,7 @@ send_err() {
 # Parameter extraction from QUERY_STRING or POST body
 get_param() {
 	key="$1"; str="${2:-$QUERY_STRING}"
-	printf '%s' "$str" | sed -n "s/^.*[?&]${key}=\\([^&]*\\).*/\\1/p" | head -n 1 | sed 's/+/ /g;s/%\([0-9A-Fa-f]\{2\}\)/\\x\1/g' | xargs -0 printf '%b' 2>/dev/null
+	printf '&%s' "$str" | sed -n "s/^.*[?&]${key}=\\([^&]*\\).*/\\1/p" | head -n 1 | sed 's/+/ /g;s/%\([0-9A-Fa-f]\{2\}\)/\\x\1/g' | xargs -0 printf '%b' 2>/dev/null
 }
 
 ACTION=$(get_param "action")
@@ -3986,11 +4017,11 @@ find "$NONCE_DIR" -type f -mmin +1 -delete 2>/dev/null
 if [ "$ACTION" = "challenge" ] || [ "$ACTION" = "ping" ]; then
 	NOW=$(date +%s)
 	EPOCH="1"
-	[ -r "$EPOCH_CONF" ] && EPOCH=$(cat "$EPOCH_CONF" 2>/dev/null | tr -dc '0-9')
+	[ -r "$EPOCH_CONF" ] && EPOCH=$(sed -n "s/^CURRENT_EPOCH=['\"]\{0,1\}\([0-9]*\)['\"]\{0,1\}.*/\1/p" "$EPOCH_CONF" 2>/dev/null | tail -n 1)
 	EPOCH="${EPOCH:-1}"
 
 	if [ "$ACTION" = "ping" ]; then
-		send_json "{\"ok\":true,\"time\":$NOW,\"epoch\":$EPOCH}" "200 OK"
+		send_json "{\"ok\":true,\"status\":\"ok\",\"time\":$NOW,\"epoch\":$EPOCH}" "200 OK"
 	fi
 
 	# Generate 32-char hex nonce
@@ -4051,7 +4082,14 @@ case "$ACTION" in
 
 		case "$MAC" in
 			[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]) ;;
-			*) send_err "invalid_mac" "400 Bad Request" ;;
+			*)
+				_resolved=$(awk -v ip="$MAC" '$1 == ip && $4 ~ /^[0-9a-fA-F:]+$/ { print tolower($4); exit }' /proc/net/arp 2>/dev/null)
+				if [ -n "$_resolved" ] && [ "$_resolved" != "00:00:00:00:00:00" ]; then
+					MAC="$_resolved"
+				else
+					send_err "invalid_mac" "400 Bad Request"
+				fi
+				;;
 		esac
 		case "$MINS" in
 			"" | *[!0-9]*) send_err "invalid_minutes" "400 Bad Request" ;;
@@ -4076,7 +4114,14 @@ case "$ACTION" in
 		MAC=$(get_param "mac" | tr '[:upper:]' '[:lower:]')
 		case "$MAC" in
 			[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]) ;;
-			*) send_err "invalid_mac" "400 Bad Request" ;;
+			*)
+				_resolved=$(awk -v ip="$MAC" '$1 == ip && $4 ~ /^[0-9a-fA-F:]+$/ { print tolower($4); exit }' /proc/net/arp 2>/dev/null)
+				if [ -n "$_resolved" ] && [ "$_resolved" != "00:00:00:00:00:00" ]; then
+					MAC="$_resolved"
+				else
+					send_err "invalid_mac" "400 Bad Request"
+				fi
+				;;
 		esac
 		"$NDSCTL" deauth "$MAC" >/dev/null 2>&1
 		send_json "{\"ok\":true,\"action\":\"deauth\",\"mac\":\"$MAC\"}" "200 OK"
@@ -4096,7 +4141,9 @@ case "$ACTION" in
 
 	status)
 		NDS_JSON=$("$NDSCTL" json 2>/dev/null)
-		EPOCH=$(cat "$EPOCH_CONF" 2>/dev/null | tr -dc '0-9')
+		[ -n "$NDS_JSON" ] || NDS_JSON="{}"
+		EPOCH="1"
+		[ -r "$EPOCH_CONF" ] && EPOCH=$(sed -n "s/^CURRENT_EPOCH=['\"]\{0,1\}\([0-9]*\)['\"]\{0,1\}.*/\1/p" "$EPOCH_CONF" 2>/dev/null | tail -n 1)
 		EPOCH="${EPOCH:-1}"
 		NOW=$(date +%s)
 		send_json "{\"ok\":true,\"time\":$NOW,\"epoch\":$EPOCH,\"nds\":$NDS_JSON}" "200 OK"
@@ -4107,8 +4154,9 @@ case "$ACTION" in
 			send_json "{\"ok\":true,\"boxes\":[]}" "200 OK"
 		fi
 		JSON_ITEMS=""
-		while IFS=: read -r b_slot b_mac b_ip b_name b_role b_status || [ -n "$b_slot" ]; do
+		while IFS='|' read -r b_slot b_mac b_ip b_name b_role b_status || [ -n "$b_slot" ]; do
 			case "$b_slot" in "#"* | "") continue ;; esac
+			b_status=$(printf '%s' "$b_status" | tr -d '\r\n')
 			[ -z "$JSON_ITEMS" ] || JSON_ITEMS="$JSON_ITEMS,"
 			JSON_ITEMS="$JSON_ITEMS{\"slot\":$b_slot,\"mac\":\"$b_mac\",\"ip\":\"$b_ip\",\"name\":\"$b_name\",\"role\":\"$b_role\",\"status\":\"$b_status\"}"
 		done < "$BOXES_CONF"
@@ -4119,11 +4167,11 @@ case "$ACTION" in
 		SLOT=$(get_param "slot")
 		ROLE=$(get_param "role")
 		case "$SLOT" in 1 | 2 | 3 | 4) ;; *) send_err "invalid_slot" "400 Bad Request" ;; esac
-		case "$ROLE" in wifi | phone | hub) ;; *) send_err "invalid_role" "400 Bad Request" ;; esac
+		case "$ROLE" in primary | standby | wifi | phone | hub) ;; *) send_err "invalid_role" "400 Bad Request" ;; esac
 
 		TMP_B="$BOXES_CONF.tmp.$$"
 		if [ -r "$BOXES_CONF" ]; then
-			awk -v slot="$SLOT" -v role="$ROLE" -F: 'BEGIN { OFS=":" } $1 == slot { $5 = role } { print }' "$BOXES_CONF" > "$TMP_B" && mv "$TMP_B" "$BOXES_CONF"
+			awk -v slot="$SLOT" -v role="$ROLE" -F'|' 'BEGIN { OFS="|" } $1 == slot { $5 = role } { print }' "$BOXES_CONF" > "$TMP_B" && mv "$TMP_B" "$BOXES_CONF"
 		fi
 		send_json "{\"ok\":true,\"slot\":$SLOT,\"role\":\"$ROLE\"}" "200 OK"
 		;;
@@ -4132,10 +4180,20 @@ case "$ACTION" in
 		SET_EPOCH=$(get_param "set")
 		if [ -n "$SET_EPOCH" ]; then
 			case "$SET_EPOCH" in *[!0-9]*) send_err "invalid_epoch" "400 Bad Request" ;; esac
-			echo "$SET_EPOCH" > "$EPOCH_CONF" 2>/dev/null
+			if [ -f "$EPOCH_CONF" ]; then
+				if grep -q "^CURRENT_EPOCH=" "$EPOCH_CONF" 2>/dev/null; then
+					sed -i "s/^CURRENT_EPOCH=.*/CURRENT_EPOCH=$SET_EPOCH/" "$EPOCH_CONF" 2>/dev/null
+				else
+					echo "CURRENT_EPOCH=$SET_EPOCH" >> "$EPOCH_CONF" 2>/dev/null
+				fi
+			else
+				mkdir -p "$(dirname "$EPOCH_CONF")" 2>/dev/null
+				echo "CURRENT_EPOCH=$SET_EPOCH" > "$EPOCH_CONF" 2>/dev/null
+			fi
 			send_json "{\"ok\":true,\"epoch\":$SET_EPOCH}" "200 OK"
 		fi
-		CUR_EPOCH=$(cat "$EPOCH_CONF" 2>/dev/null | tr -dc '0-9')
+		CUR_EPOCH="1"
+		[ -r "$EPOCH_CONF" ] && CUR_EPOCH=$(sed -n "s/^CURRENT_EPOCH=['\"]\{0,1\}\([0-9]*\)['\"]\{0,1\}.*/\1/p" "$EPOCH_CONF" 2>/dev/null | tail -n 1)
 		CUR_EPOCH="${CUR_EPOCH:-1}"
 		send_json "{\"ok\":true,\"epoch\":$CUR_EPOCH}" "200 OK"
 		;;

@@ -94,7 +94,13 @@ if [ -d "$SYS/$LAN_BR" ]; then
 	case "$LAN_IP" in *[!0-9.]*) LAN_IP="" ;; esac
 	ALL_BOX_MACS=""
 	ALL_BOX_IPS=""
-	_bconf="${PISO_ROOT}/etc/coinslot.d/boxes.conf"
+	if [ -n "$PISO_BOXES_CONF" ]; then
+		_bconf="$PISO_BOXES_CONF"
+	elif [ -n "$PISO_COINSLOT_CONF" ]; then
+		_bconf="$(dirname "$PISO_COINSLOT_CONF")/coinslot.d/boxes.conf"
+	else
+		_bconf="${PISO_ROOT}/etc/coinslot.d/boxes.conf"
+	fi
 	if [ -f "$_bconf" ]; then
 		while IFS='|' read -r _s _m _i _n _r _e; do
 			[ -z "$_m" ] && continue
@@ -142,8 +148,15 @@ if [ -d "$SYS/$LAN_BR" ]; then
 		echo "		type filter hook prerouting priority -200; policy accept;"
 		for _p in $WIFI_PORTS; do
 			if [ -n "$ALL_BOX_MACS" ]; then
-				_mac_set=$(echo "$ALL_BOX_MACS" | tr ' ' ', ')
-				echo "		iifname \"$_p\" ether saddr != { $_mac_set } meta mark set meta mark | $MARK"
+				case "$ALL_BOX_MACS" in
+					*" "*)
+						_mac_set=$(echo "$ALL_BOX_MACS" | sed 's/  */, /g')
+						echo "		iifname \"$_p\" ether saddr != { $_mac_set } meta mark set meta mark | $MARK"
+						;;
+					*)
+						echo "		iifname \"$_p\" ether saddr != $ALL_BOX_MACS meta mark set meta mark | $MARK"
+						;;
+				esac
 			else
 				echo "		iifname \"$_p\" meta mark set meta mark | $MARK"
 			fi

@@ -65,7 +65,7 @@ saved_header = open(real_header).read()
 try:
     r = run()
     check(r.returncode == 0 and os.path.exists(key_file) and os.path.exists(picture) and "commit it" in r.stdout, "first run: a key and a picture: " + r.stdout + r.stderr)
-    check(oct(os.stat(key_file).st_mode & 0o777) == "0o600" and oct(os.stat(picture).st_mode & 0o777) == "0o600", "both files are private")
+    check(os.name == "nt" or (oct(os.stat(key_file).st_mode & 0o777) == "0o600" and oct(os.stat(picture).st_mode & 0o777) == "0o600"), "both files are private")
     first = open(key_file, "rb").read()
     r = run()
     check(r.returncode == 0 and open(key_file, "rb").read() == first and "WARNING" not in r.stdout and "New key" not in r.stdout, "second run: the same key, no warning: " + r.stdout)

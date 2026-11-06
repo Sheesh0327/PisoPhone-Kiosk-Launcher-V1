@@ -131,7 +131,12 @@ lock_box_network() {  # lock_box_network <mac>: admit only this MAC (none at all
 		done < "$PISO_ROOT/etc/coinslot.d/boxes.conf"
 	elif [ -n "$1" ]; then
 		uci add_list wireless.box_ap.maclist="$1"
+		uci -q delete dhcp.pisocoinbox
 		uci -q delete dhcp.pisocoinbox1
+		uci set dhcp.pisocoinbox=host
+		uci set dhcp.pisocoinbox.name='pisocoinbox'
+		uci set dhcp.pisocoinbox.mac="$1"
+		uci set dhcp.pisocoinbox.ip="$BOX_IP"
 		uci set dhcp.pisocoinbox1=host
 		uci set dhcp.pisocoinbox1.name='pisocoinbox1'
 		uci set dhcp.pisocoinbox1.mac="$1"

@@ -4,9 +4,14 @@ plays the box (diagnostics, status, the signed-manifest endpoint and the upload)
 Run with:  python3 router/tests/test_boxupdate.py   (needs: curl)"""
 import time, hashlib, http.server, json, os, re, shutil, subprocess, sys, tempfile, threading
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if os.name == "nt":
+    for git_dir in [r"E:\Git\usr\bin", r"E:\Git\bin", r"C:\Program Files\Git\usr\bin", r"C:\Program Files\Git\bin"]:
+        if os.path.isdir(git_dir) and git_dir not in os.environ.get("PATH", ""):
+            os.environ["PATH"] = git_dir + os.pathsep + os.environ["PATH"]
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))).replace("\\", "/")
 SCRIPT = f"{ROOT}/setup/piso-setup.sh"
-tmp = tempfile.mkdtemp()
+tmp = tempfile.mkdtemp().replace("\\", "/")
 checks = failures = 0
 
 
@@ -136,7 +141,7 @@ for f in ("monitor", "ndsctl"):
 inst, conf = f"{tmp}/inst/piso-setup", f"{tmp}/conf"
 base = open(SCRIPT, "rb").read()
 os.makedirs(os.path.dirname(inst))
-open(inst, "wb").write(subprocess.run(["sed", "/^# ---- payload: the portal files/,$d"], input=base, capture_output=True).stdout)
+open(inst, "wb").write(base.split(b"\n# ---- payload: the portal files")[0] + b"\n")
 os.chmod(inst, 0o755)
 
 
@@ -156,7 +161,7 @@ def reset(extra_conf="", **box):
 
 
 def run(*args, **extra):
-    e = dict(os.environ, PATH=f"{bindir}:" + os.environ["PATH"], PISO_CONF=conf, PISO_LOG=f"{tmp}/log", PISO_STATE=f"{tmp}/state",
+    e = dict(os.environ, PATH=f"{bindir}{os.pathsep}" + os.environ["PATH"], PISO_CONF=conf, PISO_LOG=f"{tmp}/log", PISO_STATE=f"{tmp}/state",
              PISO_SUMMARY=f"{tmp}/summary", PISO_SELF_PATH=inst, PISO_TEST_NONROOT="1", PISO_MONITOR_BIN=f"{bindir}/monitor",
              PISO_MONITOR_CONF=conf, PISO_NDSCTL=f"{bindir}/ndsctl", PISO_UPDATE_ALLOW_HTTP="1", BOX_IP=BOX_ADDR, TMPDIR=f"{tmp}/t",
              PISO_BOX_POLL="1", PISO_BOX_WAIT="3")

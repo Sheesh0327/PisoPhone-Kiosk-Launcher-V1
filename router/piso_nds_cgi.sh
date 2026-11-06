@@ -24,7 +24,7 @@ send_err() {
 # Parameter extraction from QUERY_STRING or POST body
 get_param() {
 	key="$1"; str="${2:-$QUERY_STRING}"
-	printf '%s' "$str" | sed -n "s/^.*[?&]${key}=\\([^&]*\\).*/\\1/p" | head -n 1 | sed 's/+/ /g;s/%\([0-9A-Fa-f]\{2\}\)/\\x\1/g' | xargs -0 printf '%b' 2>/dev/null
+	printf '&%s' "$str" | sed -n "s/^.*[?&]${key}=\\([^&]*\\).*/\\1/p" | head -n 1 | sed 's/+/ /g;s/%\([0-9A-Fa-f]\{2\}\)/\\x\1/g' | xargs -0 printf '%b' 2>/dev/null
 }
 
 ACTION=$(get_param "action")
@@ -58,11 +58,11 @@ find "$NONCE_DIR" -type f -mmin +1 -delete 2>/dev/null
 if [ "$ACTION" = "challenge" ] || [ "$ACTION" = "ping" ]; then
 	NOW=$(date +%s)
 	EPOCH="1"
-	[ -r "$EPOCH_CONF" ] && EPOCH=$(cat "$EPOCH_CONF" 2>/dev/null | tr -dc '0-9')
+	[ -r "$EPOCH_CONF" ] && EPOCH=$(sed -n "s/^CURRENT_EPOCH=['\"]\{0,1\}\([0-9]*\)['\"]\{0,1\}.*/\1/p" "$EPOCH_CONF" 2>/dev/null | tail -n 1)
 	EPOCH="${EPOCH:-1}"
 
 	if [ "$ACTION" = "ping" ]; then
-		send_json "{\"ok\":true,\"time\":$NOW,\"epoch\":$EPOCH}" "200 OK"
+		send_json "{\"ok\":true,\"status\":\"ok\",\"time\":$NOW,\"epoch\":$EPOCH}" "200 OK"
 	fi
 
 	# Generate 32-char hex nonce
@@ -123,7 +123,14 @@ case "$ACTION" in
 
 		case "$MAC" in
 			[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]) ;;
-			*) send_err "invalid_mac" "400 Bad Request" ;;
+			*)
+				_resolved=$(awk -v ip="$MAC" '$1 == ip && $4 ~ /^[0-9a-fA-F:]+$/ { print tolower($4); exit }' /proc/net/arp 2>/dev/null)
+				if [ -n "$_resolved" ] && [ "$_resolved" != "00:00:00:00:00:00" ]; then
+					MAC="$_resolved"
+				else
+					send_err "invalid_mac" "400 Bad Request"
+				fi
+				;;
 		esac
 		case "$MINS" in
 			"" | *[!0-9]*) send_err "invalid_minutes" "400 Bad Request" ;;
@@ -148,7 +155,14 @@ case "$ACTION" in
 		MAC=$(get_param "mac" | tr '[:upper:]' '[:lower:]')
 		case "$MAC" in
 			[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]) ;;
-			*) send_err "invalid_mac" "400 Bad Request" ;;
+			*)
+				_resolved=$(awk -v ip="$MAC" '$1 == ip && $4 ~ /^[0-9a-fA-F:]+$/ { print tolower($4); exit }' /proc/net/arp 2>/dev/null)
+				if [ -n "$_resolved" ] && [ "$_resolved" != "00:00:00:00:00:00" ]; then
+					MAC="$_resolved"
+				else
+					send_err "invalid_mac" "400 Bad Request"
+				fi
+				;;
 		esac
 		"$NDSCTL" deauth "$MAC" >/dev/null 2>&1
 		send_json "{\"ok\":true,\"action\":\"deauth\",\"mac\":\"$MAC\"}" "200 OK"
@@ -168,7 +182,9 @@ case "$ACTION" in
 
 	status)
 		NDS_JSON=$("$NDSCTL" json 2>/dev/null)
-		EPOCH=$(cat "$EPOCH_CONF" 2>/dev/null | tr -dc '0-9')
+		[ -n "$NDS_JSON" ] || NDS_JSON="{}"
+		EPOCH="1"
+		[ -r "$EPOCH_CONF" ] && EPOCH=$(sed -n "s/^CURRENT_EPOCH=['\"]\{0,1\}\([0-9]*\)['\"]\{0,1\}.*/\1/p" "$EPOCH_CONF" 2>/dev/null | tail -n 1)
 		EPOCH="${EPOCH:-1}"
 		NOW=$(date +%s)
 		send_json "{\"ok\":true,\"time\":$NOW,\"epoch\":$EPOCH,\"nds\":$NDS_JSON}" "200 OK"
@@ -179,8 +195,9 @@ case "$ACTION" in
 			send_json "{\"ok\":true,\"boxes\":[]}" "200 OK"
 		fi
 		JSON_ITEMS=""
-		while IFS=: read -r b_slot b_mac b_ip b_name b_role b_status || [ -n "$b_slot" ]; do
+		while IFS='|' read -r b_slot b_mac b_ip b_name b_role b_status || [ -n "$b_slot" ]; do
 			case "$b_slot" in "#"* | "") continue ;; esac
+			b_status=$(printf '%s' "$b_status" | tr -d '\r\n')
 			[ -z "$JSON_ITEMS" ] || JSON_ITEMS="$JSON_ITEMS,"
 			JSON_ITEMS="$JSON_ITEMS{\"slot\":$b_slot,\"mac\":\"$b_mac\",\"ip\":\"$b_ip\",\"name\":\"$b_name\",\"role\":\"$b_role\",\"status\":\"$b_status\"}"
 		done < "$BOXES_CONF"
@@ -191,11 +208,11 @@ case "$ACTION" in
 		SLOT=$(get_param "slot")
 		ROLE=$(get_param "role")
 		case "$SLOT" in 1 | 2 | 3 | 4) ;; *) send_err "invalid_slot" "400 Bad Request" ;; esac
-		case "$ROLE" in wifi | phone | hub) ;; *) send_err "invalid_role" "400 Bad Request" ;; esac
+		case "$ROLE" in primary | standby | wifi | phone | hub) ;; *) send_err "invalid_role" "400 Bad Request" ;; esac
 
 		TMP_B="$BOXES_CONF.tmp.$$"
 		if [ -r "$BOXES_CONF" ]; then
-			awk -v slot="$SLOT" -v role="$ROLE" -F: 'BEGIN { OFS=":" } $1 == slot { $5 = role } { print }' "$BOXES_CONF" > "$TMP_B" && mv "$TMP_B" "$BOXES_CONF"
+			awk -v slot="$SLOT" -v role="$ROLE" -F'|' 'BEGIN { OFS="|" } $1 == slot { $5 = role } { print }' "$BOXES_CONF" > "$TMP_B" && mv "$TMP_B" "$BOXES_CONF"
 		fi
 		send_json "{\"ok\":true,\"slot\":$SLOT,\"role\":\"$ROLE\"}" "200 OK"
 		;;
@@ -204,10 +221,20 @@ case "$ACTION" in
 		SET_EPOCH=$(get_param "set")
 		if [ -n "$SET_EPOCH" ]; then
 			case "$SET_EPOCH" in *[!0-9]*) send_err "invalid_epoch" "400 Bad Request" ;; esac
-			echo "$SET_EPOCH" > "$EPOCH_CONF" 2>/dev/null
+			if [ -f "$EPOCH_CONF" ]; then
+				if grep -q "^CURRENT_EPOCH=" "$EPOCH_CONF" 2>/dev/null; then
+					sed -i "s/^CURRENT_EPOCH=.*/CURRENT_EPOCH=$SET_EPOCH/" "$EPOCH_CONF" 2>/dev/null
+				else
+					echo "CURRENT_EPOCH=$SET_EPOCH" >> "$EPOCH_CONF" 2>/dev/null
+				fi
+			else
+				mkdir -p "$(dirname "$EPOCH_CONF")" 2>/dev/null
+				echo "CURRENT_EPOCH=$SET_EPOCH" > "$EPOCH_CONF" 2>/dev/null
+			fi
 			send_json "{\"ok\":true,\"epoch\":$SET_EPOCH}" "200 OK"
 		fi
-		CUR_EPOCH=$(cat "$EPOCH_CONF" 2>/dev/null | tr -dc '0-9')
+		CUR_EPOCH="1"
+		[ -r "$EPOCH_CONF" ] && CUR_EPOCH=$(sed -n "s/^CURRENT_EPOCH=['\"]\{0,1\}\([0-9]*\)['\"]\{0,1\}.*/\1/p" "$EPOCH_CONF" 2>/dev/null | tail -n 1)
 		CUR_EPOCH="${CUR_EPOCH:-1}"
 		send_json "{\"ok\":true,\"epoch\":$CUR_EPOCH}" "200 OK"
 		;;

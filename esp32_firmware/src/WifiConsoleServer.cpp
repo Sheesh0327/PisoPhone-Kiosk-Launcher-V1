@@ -352,7 +352,7 @@ static void handleConsoleLogin() {
     pass.trim();
 
     String storedPass = webPassword;
-    if (pass.length() > 0 && (pass == storedPass || pass == "Coinslot@Setup")) {
+    if (pass.length() > 0 && pass == storedPass) {
         consoleAuthToken = String(esp_random(), HEX) + String(millis(), HEX);
         StaticJsonDocument<256> doc;
         doc["success"] = true;

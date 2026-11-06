@@ -1,5 +1,5 @@
 cmd_pair() {
-	DRY=0; [ "$(id -u)" = 0 ] || die "run as root"
+	DRY=0; [ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"
 	conf_set BOX_MAC ""
 	pair_box
 	write_coinslot_conf "$(conf_get GW_KEY)" "$BOX_MAC"
@@ -170,7 +170,7 @@ main() {
 		status) cmd_status ;;
 		wan-clash) cmd_wan_clash ;;
 		wifi-name) cmd_wifi_name "$ARG" ;;
-		guest-port) [ "$(id -u)" = 0 ] || [ "$DRY" = 1 ] || die "run as root"; cmd_guest_port "$ARG" ;;
+		guest-port) [ "$(id -u)" = 0 ] || [ "$DRY" = 1 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"; cmd_guest_port "$ARG" ;;
 		pair) cmd_pair ;;
 		pair-add) cmd_pair_add ;;
 		box-role) cmd_box_role $ARGS ;;
@@ -203,12 +203,12 @@ main() {
 		verify) cmd_verify ;;
 		kiosk-wifi)
 			if wifi_only; then echo "this shop has no rental phones (PisoWiFi only)"; return 0; fi
-			DRY=0; [ "$(id -u)" = 0 ] || die "run as root"
+			DRY=0; [ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"
 			push_kiosk_wifi
 			if kiosk_wifi_on_box; then log "checked: the box's \"Set up a phone\" link carries the password"
 			else log "the box's link does not show it yet (a box with firmware before 3.3.3 cannot: it updates itself, then run this again)"; fi ;;
-		box-wifi-name) DRY=0; [ "$(id -u)" = 0 ] || die "run as root"; own_box_wifi_name ;;
-		rotate-box-wifi) DRY=0; [ "$(id -u)" = 0 ] || die "run as root"; rotate_box_wifi force ;;
+		box-wifi-name) DRY=0; [ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"; own_box_wifi_name ;;
+		rotate-box-wifi) DRY=0; [ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"; rotate_box_wifi force ;;
 		set-password) cmd_set_password ;;
 		summary) cat "$SUMMARY" ;;
 		uninstall-info) echo "To undo: sysupgrade -n (factory reset) the router. Nothing else is changed outside the files listed in $0." ;;

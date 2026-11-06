@@ -138,7 +138,7 @@ with tempfile.TemporaryDirectory() as tmp:
     kp, hp = os.path.join(tmp, "card.pem"), os.path.join(tmp, "CardPubKey.h")
     r = run(os.path.join(SCRIPTS, "make_card_key.py"), kp, "--header", hp)
     check(r.returncode == 0 and os.path.exists(kp) and "CARD_PUBKEY_DER" in open(hp).read(), "key script writes key and header")
-    check(oct(os.stat(kp).st_mode & 0o777) == "0o600", "private key is owner-only")
+    check(os.name == "nt" or oct(os.stat(kp).st_mode & 0o777) == "0o600", "private key is owner-only")
     r = run(os.path.join(SCRIPTS, "make_card_key.py"), kp, "--header", hp, expect_ok=False)
     check(r.returncode != 0, "key script refuses to overwrite")
     r = run(os.path.join(SCRIPTS, "make_card_key.py"), os.path.join(SCRIPTS, "oops.pem"), "--header", hp, expect_ok=False)

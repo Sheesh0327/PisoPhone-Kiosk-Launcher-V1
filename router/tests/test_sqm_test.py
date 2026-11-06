@@ -8,7 +8,12 @@ import subprocess
 import sys
 import tempfile
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if os.name == "nt":
+    for git_dir in [r"E:\Git\usr\bin", r"E:\Git\bin", r"C:\Program Files\Git\usr\bin", r"C:\Program Files\Git\bin"]:
+        if os.path.isdir(git_dir) and git_dir not in os.environ.get("PATH", ""):
+            os.environ["PATH"] = git_dir + os.pathsep + os.environ["PATH"]
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))).replace("\\", "/")
 SCRIPT = f"{ROOT}/setup/piso-setup.sh"
 failures = checks = 0
 
@@ -21,7 +26,7 @@ def check(cond, msg):
         print("FAIL:", msg)
 
 
-tmp = tempfile.mkdtemp()
+tmp = tempfile.mkdtemp().replace("\\", "/")
 bindir = f"{tmp}/bin"
 os.makedirs(bindir)
 # The fake curl: four streams; a stream of B bytes at T_DOWN_MBPS / T_UP_MBPS in total takes 4*B*8/rate seconds. It prints what -w asks for:
@@ -42,17 +47,18 @@ exit 0
 ''')
 os.chmod(f"{bindir}/curl", 0o755)
 
-STUBS = r'''
-sqm_wan_dev() { echo eth1; }
-kernel_has() { return 1; }
-pkg_installed() { return 1; }
-sqm_active() { [ "${T_ACTIVE:-0}" = 1 ]; }
-guests_online() { if [ -n "$T_GUESTS_FILE" ] && [ -s "$T_GUESTS_FILE" ]; then echo 1; else echo "${T_GUESTS:-0}"; fi; }
+STUBS = f'''
+sqm_wan_dev() {{ echo eth1; }}
+kernel_has() {{ return 1; }}
+pkg_installed() {{ return 1; }}
+sqm_active() {{ [ "${{T_ACTIVE:-0}}" = 1 ]; }}
+guests_online() {{ if [ -n "$T_GUESTS_FILE" ] && [ -s "$T_GUESTS_FILE" ]; then echo 1; else echo "${{T_GUESTS:-0}}"; fi; }}
+curl() {{ sh "{bindir}/curl" "$@"; }}
 '''
 
 
 def run(code="cmd_sqm test; echo rc=$?", settings=None, sqm_installed=True, **env):
-    root = tempfile.mkdtemp(dir=tmp)
+    root = tempfile.mkdtemp(dir=tmp).replace("\\", "/")
     for d in ("etc/coinslot.d", "etc/init.d", "tmp", "proc"):
         os.makedirs(f"{root}/{d}")
     pathlib.Path(f"{root}/proc/stat").write_text("cpu 100 0 100 800 0 0 0 0\n")
@@ -63,7 +69,7 @@ def run(code="cmd_sqm test; echo rc=$?", settings=None, sqm_installed=True, **en
     if sqm_installed:
         pathlib.Path(f"{root}/etc/init.d/sqm").write_text(f'#!/bin/sh\necho "sqm-init $*" >> "{log}"\n')
         os.chmod(f"{root}/etc/init.d/sqm", 0o755)
-    e = dict(os.environ, PATH=f"{bindir}:" + os.environ["PATH"], PISO_SETUP_SOURCE_ONLY="1", PISO_CONF=f"{tmp}/conf", PISO_LOG=f"{tmp}/log", PISO_STATE=f"{tmp}/state",
+    e = dict(os.environ, PATH=f"{bindir}{os.pathsep}" + os.environ["PATH"], PISO_SETUP_SOURCE_ONLY="1", PISO_CONF=f"{tmp}/conf", PISO_LOG=f"{tmp}/log", PISO_STATE=f"{tmp}/state",
              PISO_ROUTER_ID="a1b2", PISO_ROOT=root, T_LOG=log, T_STAT=f"{root}/proc/stat", T_GUESTS_FILE="")
     e.update(env)
     r = subprocess.run(["sh", "-c", f". {SCRIPT}; {STUBS}\n{code}"], env=e, capture_output=True, text=True, timeout=120, check=False)

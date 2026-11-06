@@ -947,7 +947,8 @@ set wireless.box_ap.encryption='psk2'
 set wireless.box_ap.key='$(box_wifi_key)'
 set wireless.box_ap.isolate='0'
 EOT
-	if [ -f "$PISO_ROOT/etc/coinslot.d/boxes.conf" ] && grep -q '^[1-4]|' "$PISO_ROOT/etc/coinslot.d/boxes.conf" 2>/dev/null; then
+	_boxes_conf="${PISO_BOXES_CONF:-$PISO_ROOT/etc/coinslot.d/boxes.conf}"
+	if [ -f "$_boxes_conf" ] && grep -q '^[1-4]|' "$_boxes_conf" 2>/dev/null; then
 		cat << EOT
 set wireless.box_ap.macfilter='allow'
 delete wireless.box_ap.maclist
@@ -964,7 +965,7 @@ set dhcp.pisocoinbox$_slot.name='pisocoinbox$_slot'
 set dhcp.pisocoinbox$_slot.mac='$_mac'
 set dhcp.pisocoinbox$_slot.ip='$_ip'
 EOT
-		done < "$PISO_ROOT/etc/coinslot.d/boxes.conf"
+		done < "$_boxes_conf"
 	elif [ -n "$BOX_MAC" ]; then
 		cat << EOT
 set wireless.box_ap.macfilter='allow'
@@ -972,6 +973,10 @@ delete wireless.box_ap.maclist
 add_list wireless.box_ap.maclist='$BOX_MAC'
 delete dhcp.pisocoinbox
 delete dhcp.pisocoinbox1
+set dhcp.pisocoinbox=host
+set dhcp.pisocoinbox.name='pisocoinbox'
+set dhcp.pisocoinbox.mac='$BOX_MAC'
+set dhcp.pisocoinbox.ip='$BOX_IP'
 set dhcp.pisocoinbox1=host
 set dhcp.pisocoinbox1.name='pisocoinbox1'
 set dhcp.pisocoinbox1.mac='$BOX_MAC'
@@ -1499,7 +1504,12 @@ lock_box_network() {  # lock_box_network <mac>: admit only this MAC (none at all
 		done < "$PISO_ROOT/etc/coinslot.d/boxes.conf"
 	elif [ -n "$1" ]; then
 		uci add_list wireless.box_ap.maclist="$1"
+		uci -q delete dhcp.pisocoinbox
 		uci -q delete dhcp.pisocoinbox1
+		uci set dhcp.pisocoinbox=host
+		uci set dhcp.pisocoinbox.name='pisocoinbox'
+		uci set dhcp.pisocoinbox.mac="$1"
+		uci set dhcp.pisocoinbox.ip="$BOX_IP"
 		uci set dhcp.pisocoinbox1=host
 		uci set dhcp.pisocoinbox1.name='pisocoinbox1'
 		uci set dhcp.pisocoinbox1.mac="$1"
@@ -2289,12 +2299,12 @@ cmd_update() {
 }
 
 cmd_pair_add() {
-	[ "$(id -u)" = 0 ] || die "run as root"
+	[ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"
 	pair_add_box
 }
 
 cmd_box_role() {
-	[ "$(id -u)" = 0 ] || die "run as root"
+	[ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"
 	_slot="$1"; _role="$2"
 	[ -n "$_slot" ] && [ -n "$_role" ] || die "usage: piso-setup box-role <slot 1-4> <primary|standby>"
 	set_box_role "$_slot" "$_role"
@@ -2653,7 +2663,9 @@ cmd_box_update() {
 		_why=$(sed -n 's/.*"message": *"\([^"]*\)".*/\1/p' "$_work/manifest.out" 2> /dev/null | head -n 1)
 		log "The coin box refused the update (HTTP $_r): $_why"; record_update_state box failed "$_new" "$BOX_FW" "the coin box refused the update (${_why:-HTTP $_r})"; notify "box update REFUSED by the box (${_why:-HTTP $_r}): it stays on firmware $BOX_FW"; return 1
 	fi
-	_r=$(curl -s -m 240 -o "$_work/upload.out" -w '%{http_code}' -u "admin:$_pw" -H 'Expect:' -F "update=@$_work/box.bin;filename=firmware.bin" "http://$BOX_IP/update" 2> /dev/null)
+	_up_file="$_work/box.bin"
+	command -v cygpath > /dev/null 2>&1 && _up_file=$(cygpath -m "$_up_file")
+	_r=$(curl -s -m 240 -o "$_work/upload.out" -w '%{http_code}' -u "admin:$_pw" -H 'Expect:' -F "update=@$_up_file;filename=firmware.bin" "http://$BOX_IP/update" 2> /dev/null)
 	if [ "$_r" != 200 ]; then
 		log "The coin box did not take the firmware (HTTP $_r): $(head -c 200 "$_work/upload.out" 2> /dev/null)"
 		record_update_state box failed "$_new" "$BOX_FW" "the coin box did not take the firmware (HTTP $_r): $(head -c 100 "$_work/upload.out" 2> /dev/null)"
@@ -2954,11 +2966,14 @@ cmd_forget_summary() {
 cmd_export() {
 	[ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"
 	_out="${1:-/tmp/piso-backup-$(date +%Y%m%d-%H%M%S).tar.gz}"
+	command -v cygpath > /dev/null 2>&1 && _out=$(cygpath -u "$_out")
+	_root="${PISO_ROOT:-/}"
+	command -v cygpath > /dev/null 2>&1 && [ -n "$PISO_ROOT" ] && _root=$(cygpath -u "$_root")
 	_list=""
 	for _p in /etc/piso-setup.conf /etc/coinslot.conf /etc/coinslot.d /etc/piso-monitor.conf; do [ -e "$PISO_ROOT$_p" ] && _list="$_list ${_p#/}"; done
 	[ -n "$_list" ] || die "nothing to back up: no PisoPhone settings found"
 	# shellcheck disable=SC2086 # one argument per file
-	( umask 077; tar -C "${PISO_ROOT:-/}" -czf "$_out" $_list ) || die "could not write $_out"
+	( umask 077; tar -C "$_root" -czf "$_out" $_list ) || die "could not write $_out"
 	echo "Backup written: $_out  ($(( ($(wc -c < "$_out") + 1023) / 1024 )) KB). It holds your passwords and keys: keep it private."
 	echo "Copy it to your computer:  scp root@$LAN_IP:$_out ."
 }
@@ -2967,6 +2982,9 @@ cmd_export() {
 cmd_import() {
 	[ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"
 	_in="$1"; [ -f "$_in" ] || die "usage: piso-setup import <backup file>"
+	command -v cygpath > /dev/null 2>&1 && _in=$(cygpath -u "$_in")
+	_root="${PISO_ROOT:-/}"
+	command -v cygpath > /dev/null 2>&1 && [ -n "$PISO_ROOT" ] && _root=$(cygpath -u "$_root")
 	_lst=$(mktemp 2> /dev/null) || die "cannot make a temporary file"
 	tar -tzf "$_in" > "$_lst" 2> /dev/null || { rm -f "$_lst"; die "that is not a PisoPhone backup"; }
 	# only these paths, and no ".." part anywhere (etc/coinslot.d/../x would pass the pattern and leave the folder)
@@ -2976,7 +2994,7 @@ cmd_import() {
 	rm -f "$_lst"
 	if [ "$ASSUME_YES" != 1 ]; then printf 'Replace this router'"'"'s PisoPhone settings and ledger with the backup? [y/N] '; read -r _a; case "$_a" in y | Y) ;; *) echo "Cancelled."; return 0 ;; esac; fi
 	[ -x /etc/init.d/pisoportal ] && /etc/init.d/pisoportal stop > /dev/null 2>&1
-	tar -C "${PISO_ROOT:-/}" -xzf "$_in" || die "could not unpack the backup"
+	tar -C "$_root" -xzf "$_in" || die "could not unpack the backup"
 	chmod 600 "$PISO_ROOT/etc/piso-setup.conf" 2> /dev/null
 	[ -x /etc/init.d/pisoportal ] && /etc/init.d/pisoportal start > /dev/null 2>&1
 	echo "Restored. Run: piso-setup status"
@@ -3050,7 +3068,7 @@ cmd_console() {
 	esac
 }
 cmd_pair() {
-	DRY=0; [ "$(id -u)" = 0 ] || die "run as root"
+	DRY=0; [ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"
 	conf_set BOX_MAC ""
 	pair_box
 	write_coinslot_conf "$(conf_get GW_KEY)" "$BOX_MAC"
@@ -3221,7 +3239,7 @@ main() {
 		status) cmd_status ;;
 		wan-clash) cmd_wan_clash ;;
 		wifi-name) cmd_wifi_name "$ARG" ;;
-		guest-port) [ "$(id -u)" = 0 ] || [ "$DRY" = 1 ] || die "run as root"; cmd_guest_port "$ARG" ;;
+		guest-port) [ "$(id -u)" = 0 ] || [ "$DRY" = 1 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"; cmd_guest_port "$ARG" ;;
 		pair) cmd_pair ;;
 		pair-add) cmd_pair_add ;;
 		box-role) cmd_box_role $ARGS ;;
@@ -3254,12 +3272,12 @@ main() {
 		verify) cmd_verify ;;
 		kiosk-wifi)
 			if wifi_only; then echo "this shop has no rental phones (PisoWiFi only)"; return 0; fi
-			DRY=0; [ "$(id -u)" = 0 ] || die "run as root"
+			DRY=0; [ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"
 			push_kiosk_wifi
 			if kiosk_wifi_on_box; then log "checked: the box's \"Set up a phone\" link carries the password"
 			else log "the box's link does not show it yet (a box with firmware before 3.3.3 cannot: it updates itself, then run this again)"; fi ;;
-		box-wifi-name) DRY=0; [ "$(id -u)" = 0 ] || die "run as root"; own_box_wifi_name ;;
-		rotate-box-wifi) DRY=0; [ "$(id -u)" = 0 ] || die "run as root"; rotate_box_wifi force ;;
+		box-wifi-name) DRY=0; [ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"; own_box_wifi_name ;;
+		rotate-box-wifi) DRY=0; [ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"; rotate_box_wifi force ;;
 		set-password) cmd_set_password ;;
 		summary) cat "$SUMMARY" ;;
 		uninstall-info) echo "To undo: sysupgrade -n (factory reset) the router. Nothing else is changed outside the files listed in $0." ;;

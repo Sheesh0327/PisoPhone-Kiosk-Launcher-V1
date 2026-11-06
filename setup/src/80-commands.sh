@@ -265,12 +265,12 @@ cmd_update() {
 }
 
 cmd_pair_add() {
-	[ "$(id -u)" = 0 ] || die "run as root"
+	[ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"
 	pair_add_box
 }
 
 cmd_box_role() {
-	[ "$(id -u)" = 0 ] || die "run as root"
+	[ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"
 	_slot="$1"; _role="$2"
 	[ -n "$_slot" ] && [ -n "$_role" ] || die "usage: piso-setup box-role <slot 1-4> <primary|standby>"
 	set_box_role "$_slot" "$_role"

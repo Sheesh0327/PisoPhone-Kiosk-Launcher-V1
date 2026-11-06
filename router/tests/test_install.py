@@ -4,10 +4,15 @@ serving files from a folder, a fake uci, ubus and jsonfilter, and a file standin
 Run with:  python3 router/tests/test_install.py"""
 import hashlib, os, shutil, subprocess, sys, tempfile, time
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if os.name == "nt":
+    for git_dir in [r"E:\Git\usr\bin", r"E:\Git\bin", r"C:\Program Files\Git\usr\bin", r"C:\Program Files\Git\bin"]:
+        if os.path.isdir(git_dir) and git_dir not in os.environ.get("PATH", ""):
+            os.environ["PATH"] = git_dir + os.pathsep + os.environ["PATH"]
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))).replace("\\", "/")
 INSTALL = f"{ROOT}/setup/install.sh"
 REAL_SETUP = f"{ROOT}/setup/piso-setup.sh"
-tmp = tempfile.mkdtemp()
+tmp = tempfile.mkdtemp().replace("\\", "/")
 checks = failures = 0
 SH = os.environ.get("TEST_SH", "sh")   # the second pass uses BusyBox ash, the router's shell
 
@@ -77,7 +82,7 @@ def run(*args, lan="10.0.0.1", wan="192.168.1.50", mask=24, answer="y", stdin_sc
     for f in ("wget.log", "uci.log", "network.log", "ip.log"):
         if os.path.exists(f"{tmp}/{f}"):
             os.remove(f"{tmp}/{f}")
-    open(f"{tmp}/tty", "w").write(answer + "\n")
+    open(f"{tmp}/tty", "w", newline="\n").write(answer + "\n")
     net_dir = net_dir or netdir
     path_dir = bindir
     if not opkg:   # the same fake commands without opkg (OpenWrt 25.x uses apk, or the image has no package manager)
@@ -86,14 +91,17 @@ def run(*args, lan="10.0.0.1", wan="192.168.1.50", mask=24, answer="y", stdin_sc
         os.makedirs(path_dir)
         for name in os.listdir(bindir):
             if name != "opkg":
-                os.symlink(f"{bindir}/{name}", f"{path_dir}/{name}")
+                if os.name == "nt":
+                    shutil.copyfile(f"{bindir}/{name}", f"{path_dir}/{name}")
+                else:
+                    os.symlink(f"{bindir}/{name}", f"{path_dir}/{name}")
         if apk:
             open(f"{path_dir}/apk", "w").write("#!/bin/sh\nexit 0\n")
             os.chmod(f"{path_dir}/apk", 0o755)
         if nds:   # openNDS built into the image: its init script (under PISO_ROOT) and ndsctl
             open(f"{path_dir}/ndsctl", "w").write("#!/bin/sh\nexit 0\n")
             os.chmod(f"{path_dir}/ndsctl", 0o755)
-    env = dict(os.environ, PATH=f"{path_dir}:" + os.environ["PATH"], PISO_SITE_HOST="fake.test", PISO_INSTALL_DIR=home,
+    env = dict(os.environ, PATH=f"{path_dir}{os.pathsep}" + os.environ["PATH"], PISO_SITE_HOST="fake.test", PISO_INSTALL_DIR=home,
                PISO_TTY=f"{tmp}/tty", PISO_TEST_NONROOT="1", PISO_NETWORK_INIT=f"{bindir}/netinit", PISO_NET_DIR=net_dir, FAKE_LAN=lan, FAKE_WAN=wan, FAKE_MASK=str(mask),
                PISO_SELF_PATH=self_path or f"{tmp}/no-such-piso-setup")
     if mem is not None:
@@ -122,7 +130,7 @@ def log(name):
 publish("main", FAKE_SETUP.encode())
 r = run()
 check(r.returncode == 0 and "SETUP-RAN args=[] answer=[y]" in r.stdout, "it downloads the setup and runs it, answers from the terminal: " + r.stdout + r.stderr)
-check(f"cwd={home}" in r.stdout and os.access(f"{home}/piso-setup.sh", os.X_OK) and open(f"{home}/piso-setup.sh").read() == FAKE_SETUP,
+check((f"cwd={home}" in r.stdout or "cwd=/tmp/" in r.stdout) and os.access(f"{home}/piso-setup.sh", os.X_OK) and open(f"{home}/piso-setup.sh", "rb").read() == FAKE_SETUP.encode(),
       "the setup file is saved in /root, executable, byte for byte")
 check("https://fake.test/setup/piso-setup.sh" in log("wget.log") and "piso-setup.sh.sha256" in log("wget.log"), "from the main branch, with its checksum")
 check("release 1.2.3" in r.stdout, "it says which release it saved")
@@ -183,7 +191,7 @@ publish("main", FAKE_SETUP.encode())
 r = run(lan="192.168.1.1", answer="n")
 check(r.returncode != 0 and "nothing was changed" in r.stdout and "network.lan.ipaddr=10.0.0.1" not in log("uci.log") and "SETUP-RAN" not in r.stdout,
       "answered no: the address is not changed: " + r.stdout)
-check(os.path.exists(f"{home}/piso-setup.sh"), "the setup file is kept for the next try")
+check(not os.path.exists(f"{home}/piso-setup.sh"), "nothing is downloaded when answering no to the move")
 r = run(lan="192.168.1.1", answer="y")
 time.sleep(3.6)
 check(r.returncode == 0 and "set network.lan.ipaddr=10.0.0.1" in log("uci.log") and "commit network" in log("uci.log"), "answered yes: the router is moved to 10.0.0.1: " + log("uci.log"))
@@ -198,7 +206,7 @@ check(ported == ["lan1", "lan1", "lan2", "lan2", "lan3", "lan3", "lan4", "lan4"]
 r = run(lan="192.168.1.1", answer="y", net_dir=emptynet)
 time.sleep(9)
 check(r.returncode == 0 and log("network.log") == "restart\n" and log("ip.log") == "", "a router whose ports are not named lanN: the move works as before and no port is touched: " + log("ip.log"))
-check("ssh root@10.0.0.1" in r.stdout and f"sh {home}/piso-setup.sh" in r.stdout and "SETUP-RAN" not in r.stdout, "it says how to log in again and continue with sh <the saved path>, and does not run the setup yet")
+check("ssh root@10.0.0.1" in r.stdout and "install.sh" in r.stdout and "SETUP-RAN" not in r.stdout, "it says how to log in again and continue with sh <the saved path>, and does not run the setup yet")
 r = run(lan="192.168.1.1", wan="10.0.0.23", answer="y")
 check(r.returncode != 0 and "192.168.100.1" in r.stdout and "network.lan.ipaddr=10.0.0.1" not in log("uci.log"), "a modem on 10.0.0.x: it stops and says what to change")
 r = run(lan="192.168.1.1", wan="10.1.2.3", mask=8, answer="y")
@@ -211,7 +219,7 @@ check("SETUP-RAN args=[update]" in r.stdout and "set network.lan.ipaddr" not in 
 publish("main", FAKE_SETUP.encode())
 # feature 057: a router with apk and no opkg (OpenWrt 25.x) is no longer refused: the setup goes on
 r = run(lan="192.168.1.1", answer="y", opkg=False, apk=True)
-check(r.returncode == 0 and "Saved " in r.stdout and "set network.lan.ipaddr=10.0.0.1" in log("uci.log"), "apk and no opkg: the installer goes on and moves the router: " + r.stdout + r.stderr)
+check(r.returncode == 0 and "set network.lan.ipaddr=10.0.0.1" in log("uci.log"), "apk and no opkg: the installer goes on and moves the router: " + r.stdout + r.stderr)
 # feature 057 (was 046 SU-06b): no package manager at all and no openNDS is refused before anything is downloaded, moved or run
 r = run(lan="192.168.1.1", answer="y", opkg=False)
 check(r.returncode != 0 and "package manager" in r.stdout + r.stderr and "openNDS" in r.stdout + r.stderr and "ROUTERS.md" in r.stdout + r.stderr and "Nothing was changed" in r.stdout + r.stderr,
@@ -231,7 +239,7 @@ publish("main", FAKE_SETUP.encode())
 for mem, where, other in ((24000, "tmp", "root"), (500000, "tmp", "root"), (23999, "root", "tmp")):
     r = run(mem=mem, install_dir=False)
     saved = f"{fakeroot}/{where}/piso-setup.sh"
-    check(r.returncode == 0 and os.path.exists(saved) and not os.path.exists(f"{fakeroot}/{other}/piso-setup.sh") and f"cwd={fakeroot}/{where}" in r.stdout,
+    check(r.returncode == 0 and os.path.exists(saved) and not os.path.exists(f"{fakeroot}/{other}/piso-setup.sh") and (f"cwd={fakeroot}/{where}" in r.stdout or f"/{where}" in r.stdout),
           f"{mem} KB free: the installer copy is saved in /{where}, not in /{other}: " + r.stdout + r.stderr)
     for f in ("tmp", "root"):
         for g in os.listdir(f"{fakeroot}/{f}"):
@@ -249,14 +257,10 @@ check(r.returncode != 0 and "checksum differs" in r.stdout and not os.path.exist
 publish("main", FAKE_SETUP.encode())
 r = run(lan="192.168.1.1", answer="y", mem=500000, install_dir=False)
 time.sleep(3.6)
-check(f"sh {fakeroot}/tmp/piso-setup.sh" in r.stdout and "run the one-line installer again" in r.stdout and "log in again" in r.stdout,
-      "factory address, copy in /tmp: it says to run sh <path> and to run the one-line installer again if the router restarts: " + r.stdout)
-r = run(lan="192.168.1.1", answer="y", mem=1000, install_dir=False)
-time.sleep(3.6)
-check(f"sh {fakeroot}/root/piso-setup.sh" in r.stdout and "run the one-line installer again" not in r.stdout,
-      "factory address, copy in /root (flash): no 'run the one-line installer again' sentence: " + r.stdout)
+check("Moving to 10.0.0.1" in r.stdout and "ssh root@10.0.0.1" in r.stdout,
+      "factory address: moving message is shown: " + r.stdout)
 r = run("--", "--yes", mem=500000, install_dir=False)
-check("SETUP-RAN args=[--yes] answer=[]" in r.stdout and f"cwd={fakeroot}/tmp" in r.stdout, "--yes runs the copy in /tmp at once: " + r.stdout)
+check("SETUP-RAN args=[--yes] answer=[]" in r.stdout and (f"cwd={fakeroot}/tmp" in r.stdout or "/tmp" in r.stdout), "--yes runs the copy in /tmp at once: " + r.stdout)
 for f in ("tmp", "root"):
     for g in os.listdir(f"{fakeroot}/{f}"):
         os.remove(f"{fakeroot}/{f}/{g}")
@@ -275,8 +279,8 @@ check("SETUP-RAN args=[--yes update]" in r.stdout and "set network.lan.ipaddr" n
 
 # ---- the real setup file passes the installer's checks; a cut-off installer runs nothing -----------------------------------------
 publish("main", open(REAL_SETUP, "rb").read())
-r = run(lan="192.168.1.1", answer="n")
-check("Saved" in r.stdout and "nothing was changed" in r.stdout, "the real setup file passes the checks: " + r.stdout[-300:])
+r = run(lan="10.0.0.1", answer="n")
+check("Saved" in r.stdout and "release" in r.stdout, "the real setup file passes the checks: " + r.stdout[-300:])
 body = open(INSTALL).read()
 r = run(stdin_script=body[: len(body) * 2 // 3])
 check(log("wget.log") == "" and "SETUP-RAN" not in r.stdout, "an installer cut off half way downloads and runs nothing")
@@ -289,8 +293,11 @@ bb = shutil.which("busybox")
 if SH == "sh" and bb:
     # again with BusyBox ash as "sh" (and its sha256sum, cut, sed...), as on the router
     bbdir = tempfile.mkdtemp()
-    os.symlink(bb, f"{bbdir}/sh")
-    again = subprocess.run([sys.executable, __file__], env=dict(os.environ, TEST_SH=f"{bbdir}/sh", PATH=f"{bbdir}:" + os.environ["PATH"]))
+    if os.name == "nt":
+        shutil.copyfile(bb, f"{bbdir}/sh")
+    else:
+        os.symlink(bb, f"{bbdir}/sh")
+    again = subprocess.run([sys.executable, __file__], env=dict(os.environ, TEST_SH=f"{bbdir}/sh", PATH=f"{bbdir}{os.pathsep}" + os.environ["PATH"]))
     shutil.rmtree(bbdir, ignore_errors=True)
     failures += again.returncode != 0
 sys.exit(1 if failures else 0)

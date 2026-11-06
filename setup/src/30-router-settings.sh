@@ -75,7 +75,8 @@ set wireless.box_ap.encryption='psk2'
 set wireless.box_ap.key='$(box_wifi_key)'
 set wireless.box_ap.isolate='0'
 EOT
-	if [ -f "$PISO_ROOT/etc/coinslot.d/boxes.conf" ] && grep -q '^[1-4]|' "$PISO_ROOT/etc/coinslot.d/boxes.conf" 2>/dev/null; then
+	_boxes_conf="${PISO_BOXES_CONF:-$PISO_ROOT/etc/coinslot.d/boxes.conf}"
+	if [ -f "$_boxes_conf" ] && grep -q '^[1-4]|' "$_boxes_conf" 2>/dev/null; then
 		cat << EOT
 set wireless.box_ap.macfilter='allow'
 delete wireless.box_ap.maclist
@@ -92,7 +93,7 @@ set dhcp.pisocoinbox$_slot.name='pisocoinbox$_slot'
 set dhcp.pisocoinbox$_slot.mac='$_mac'
 set dhcp.pisocoinbox$_slot.ip='$_ip'
 EOT
-		done < "$PISO_ROOT/etc/coinslot.d/boxes.conf"
+		done < "$_boxes_conf"
 	elif [ -n "$BOX_MAC" ]; then
 		cat << EOT
 set wireless.box_ap.macfilter='allow'
@@ -100,6 +101,10 @@ delete wireless.box_ap.maclist
 add_list wireless.box_ap.maclist='$BOX_MAC'
 delete dhcp.pisocoinbox
 delete dhcp.pisocoinbox1
+set dhcp.pisocoinbox=host
+set dhcp.pisocoinbox.name='pisocoinbox'
+set dhcp.pisocoinbox.mac='$BOX_MAC'
+set dhcp.pisocoinbox.ip='$BOX_IP'
 set dhcp.pisocoinbox1=host
 set dhcp.pisocoinbox1.name='pisocoinbox1'
 set dhcp.pisocoinbox1.mac='$BOX_MAC'

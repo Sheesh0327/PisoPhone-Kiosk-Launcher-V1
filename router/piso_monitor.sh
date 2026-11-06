@@ -137,11 +137,11 @@ failover_fas() {
 	_cand_ip=""
 	_cand_name=""
 	if [ -r "$BOXES_CONF" ]; then
-		while IFS=: read -r b_slot b_mac b_ip b_name b_role b_status || [ -n "$b_slot" ]; do
+		while IFS='|' read -r b_slot b_mac b_ip b_name b_role b_status || [ -n "$b_slot" ]; do
 			case "$b_slot" in "#"* | "") continue ;; esac
 			[ "$b_ip" != "$_cur_ip" ] || continue
 			case "$b_role" in
-				wifi | hub)
+				standby | primary | wifi | hub)
 					if curl -s -m 3 "http://$b_ip:2080/ping" 2>/dev/null | grep -q ok \
 					   || curl -s -m 3 "http://$b_ip/api/gateway/challenge" 2>/dev/null | grep -q '{'; then
 						_cand_ip="$b_ip"
@@ -157,7 +157,7 @@ failover_fas() {
 		_ep=$(active_epoch)
 		_new_ep=$((_ep + 1))
 		mkdir -p "$(dirname "$EPOCH_CONF")" 2>/dev/null
-		printf "ACTIVE_FAS_IP='%s'\nCURRENT_EPOCH='%s'\n" "$_cand_ip" "$_new_ep" > "$EPOCH_CONF"
+		printf "ACTIVE_FAS_IP='%s'\nACTIVE_FAS_PORT='2080'\nACTIVE_FAS_NAME='%s'\nCURRENT_EPOCH='%s'\n" "$_cand_ip" "$_cand_name" "$_new_ep" > "$EPOCH_CONF"
 		uci set opennds.@opennds[0].fasremoteip="$_cand_ip" 2>/dev/null
 		uci set opennds.@opennds[0].fasport='2080' 2>/dev/null
 		uci set opennds.@opennds[0].faspath='/' 2>/dev/null

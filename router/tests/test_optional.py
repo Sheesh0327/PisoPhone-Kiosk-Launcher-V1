@@ -6,7 +6,12 @@ import subprocess
 import sys
 import tempfile
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if os.name == "nt":
+    for git_dir in [r"E:\Git\usr\bin", r"E:\Git\bin", r"C:\Program Files\Git\usr\bin", r"C:\Program Files\Git\bin"]:
+        if os.path.isdir(git_dir) and git_dir not in os.environ.get("PATH", ""):
+            os.environ["PATH"] = git_dir + os.pathsep + os.environ["PATH"]
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))).replace("\\", "/")
 SCRIPT = f"{ROOT}/setup/piso-setup.sh"
 failures = checks = 0
 
@@ -19,7 +24,7 @@ def check(cond, msg):
         print("FAIL:", msg)
 
 
-tmp = tempfile.mkdtemp()
+tmp = tempfile.mkdtemp().replace("\\", "/")
 
 STUBS = r'''
 pkg_manager() { echo "${T_MGR:-opkg}"; }
@@ -38,7 +43,7 @@ FULL = "sqm-scripts kmod-ifb tc-full kmod-sched-cake irqbalance"
 
 
 def run(code, **env):
-    root = tempfile.mkdtemp(dir=tmp)
+    root = tempfile.mkdtemp(dir=tmp).replace("\\", "/")
     log = f"{root}/calls.log"
     pathlib.Path(log).write_text("")
     e = dict(os.environ, PISO_SETUP_SOURCE_ONLY="1", PISO_CONF=f"{tmp}/conf", PISO_LOG=f"{tmp}/log", PISO_STATE=f"{tmp}/state", PISO_ROUTER_ID="a1b2",

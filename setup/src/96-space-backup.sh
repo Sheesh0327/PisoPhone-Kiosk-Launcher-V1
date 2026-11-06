@@ -80,11 +80,14 @@ cmd_forget_summary() {
 cmd_export() {
 	[ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"
 	_out="${1:-/tmp/piso-backup-$(date +%Y%m%d-%H%M%S).tar.gz}"
+	command -v cygpath > /dev/null 2>&1 && _out=$(cygpath -u "$_out")
+	_root="${PISO_ROOT:-/}"
+	command -v cygpath > /dev/null 2>&1 && [ -n "$PISO_ROOT" ] && _root=$(cygpath -u "$_root")
 	_list=""
 	for _p in /etc/piso-setup.conf /etc/coinslot.conf /etc/coinslot.d /etc/piso-monitor.conf; do [ -e "$PISO_ROOT$_p" ] && _list="$_list ${_p#/}"; done
 	[ -n "$_list" ] || die "nothing to back up: no PisoPhone settings found"
 	# shellcheck disable=SC2086 # one argument per file
-	( umask 077; tar -C "${PISO_ROOT:-/}" -czf "$_out" $_list ) || die "could not write $_out"
+	( umask 077; tar -C "$_root" -czf "$_out" $_list ) || die "could not write $_out"
 	echo "Backup written: $_out  ($(( ($(wc -c < "$_out") + 1023) / 1024 )) KB). It holds your passwords and keys: keep it private."
 	echo "Copy it to your computer:  scp root@$LAN_IP:$_out ."
 }
@@ -93,6 +96,9 @@ cmd_export() {
 cmd_import() {
 	[ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"
 	_in="$1"; [ -f "$_in" ] || die "usage: piso-setup import <backup file>"
+	command -v cygpath > /dev/null 2>&1 && _in=$(cygpath -u "$_in")
+	_root="${PISO_ROOT:-/}"
+	command -v cygpath > /dev/null 2>&1 && [ -n "$PISO_ROOT" ] && _root=$(cygpath -u "$_root")
 	_lst=$(mktemp 2> /dev/null) || die "cannot make a temporary file"
 	tar -tzf "$_in" > "$_lst" 2> /dev/null || { rm -f "$_lst"; die "that is not a PisoPhone backup"; }
 	# only these paths, and no ".." part anywhere (etc/coinslot.d/../x would pass the pattern and leave the folder)
@@ -102,7 +108,7 @@ cmd_import() {
 	rm -f "$_lst"
 	if [ "$ASSUME_YES" != 1 ]; then printf 'Replace this router'"'"'s PisoPhone settings and ledger with the backup? [y/N] '; read -r _a; case "$_a" in y | Y) ;; *) echo "Cancelled."; return 0 ;; esac; fi
 	[ -x /etc/init.d/pisoportal ] && /etc/init.d/pisoportal stop > /dev/null 2>&1
-	tar -C "${PISO_ROOT:-/}" -xzf "$_in" || die "could not unpack the backup"
+	tar -C "$_root" -xzf "$_in" || die "could not unpack the backup"
 	chmod 600 "$PISO_ROOT/etc/piso-setup.conf" 2> /dev/null
 	[ -x /etc/init.d/pisoportal ] && /etc/init.d/pisoportal start > /dev/null 2>&1
 	echo "Restored. Run: piso-setup status"

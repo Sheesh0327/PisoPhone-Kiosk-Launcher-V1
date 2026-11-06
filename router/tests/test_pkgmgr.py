@@ -5,7 +5,12 @@ import subprocess
 import sys
 import tempfile
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if os.name == "nt":
+    for git_dir in [r"E:\Git\usr\bin", r"E:\Git\bin", r"C:\Program Files\Git\usr\bin", r"C:\Program Files\Git\bin"]:
+        if os.path.isdir(git_dir) and git_dir not in os.environ.get("PATH", ""):
+            os.environ["PATH"] = git_dir + os.pathsep + os.environ["PATH"]
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))).replace("\\", "/")
 SCRIPT = f"{ROOT}/setup/piso-setup.sh"
 failures = checks = 0
 
@@ -18,7 +23,7 @@ def check(cond, msg):
         print("FAIL:", msg)
 
 
-tmp = tempfile.mkdtemp()
+tmp = tempfile.mkdtemp().replace("\\", "/")
 
 
 def bindir(name, **tools):
@@ -35,14 +40,17 @@ def sh(code, path_dir=None, root=None):
     """Run shell code with the script's functions loaded. PATH holds only the fake commands and the system's basics."""
     e = dict(os.environ, PISO_SETUP_SOURCE_ONLY="1", PISO_CONF=f"{tmp}/conf", PISO_LOG=f"{tmp}/log", PISO_STATE=f"{tmp}/state",
              PISO_SUMMARY=f"{tmp}/summary", PISO_ROUTER_ID="a1b2", PISO_ROOT=root or "")
-    base = f"{tmp}/basic"
-    if not os.path.isdir(base):
-        os.makedirs(base)
-        for c in ("sed", "grep", "sort", "head", "cat", "awk", "df", "tr", "cut", "date", "id", "uname", "sh", "dirname", "basename", "tail", "chmod", "touch", "rm", "mv", "mkdir", "wc", "tee", "cp"):
-            p = subprocess.run(["sh", "-c", f"command -v {c}"], capture_output=True, text=True).stdout.strip()
-            if p:
-                os.symlink(p, f"{base}/{c}")
-    e["PATH"] = (path_dir + ":" if path_dir else "") + base
+    if os.name == "nt":
+        e["PATH"] = (path_dir + os.pathsep if path_dir else "") + os.environ["PATH"]
+    else:
+        base = f"{tmp}/basic"
+        if not os.path.isdir(base):
+            os.makedirs(base)
+            for c in ("sed", "grep", "sort", "head", "cat", "awk", "df", "tr", "cut", "date", "id", "uname", "sh", "dirname", "basename", "tail", "chmod", "touch", "rm", "mv", "mkdir", "wc", "tee", "cp"):
+                p = subprocess.run(["sh", "-c", f"command -v {c}"], capture_output=True, text=True).stdout.strip()
+                if p:
+                    os.symlink(p, f"{base}/{c}")
+        e["PATH"] = (path_dir + ":" if path_dir else "") + base
     return subprocess.run(["sh", "-c", f". {SCRIPT}; {code}"], env=e, capture_output=True, text=True, timeout=60)
 
 

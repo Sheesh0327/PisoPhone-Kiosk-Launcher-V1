@@ -133,7 +133,9 @@ cmd_box_update() {
 		_why=$(sed -n 's/.*"message": *"\([^"]*\)".*/\1/p' "$_work/manifest.out" 2> /dev/null | head -n 1)
 		log "The coin box refused the update (HTTP $_r): $_why"; record_update_state box failed "$_new" "$BOX_FW" "the coin box refused the update (${_why:-HTTP $_r})"; notify "box update REFUSED by the box (${_why:-HTTP $_r}): it stays on firmware $BOX_FW"; return 1
 	fi
-	_r=$(curl -s -m 240 -o "$_work/upload.out" -w '%{http_code}' -u "admin:$_pw" -H 'Expect:' -F "update=@$_work/box.bin;filename=firmware.bin" "http://$BOX_IP/update" 2> /dev/null)
+	_up_file="$_work/box.bin"
+	command -v cygpath > /dev/null 2>&1 && _up_file=$(cygpath -m "$_up_file")
+	_r=$(curl -s -m 240 -o "$_work/upload.out" -w '%{http_code}' -u "admin:$_pw" -H 'Expect:' -F "update=@$_up_file;filename=firmware.bin" "http://$BOX_IP/update" 2> /dev/null)
 	if [ "$_r" != 200 ]; then
 		log "The coin box did not take the firmware (HTTP $_r): $(head -c 200 "$_work/upload.out" 2> /dev/null)"
 		record_update_state box failed "$_new" "$BOX_FW" "the coin box did not take the firmware (HTTP $_r): $(head -c 100 "$_work/upload.out" 2> /dev/null)"

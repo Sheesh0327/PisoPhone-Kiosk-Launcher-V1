@@ -4,11 +4,10 @@ import json, os, shutil, subprocess, sys, tempfile, threading, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
-if os.name == "nt" and not shutil.which("sh"):
-    for git_dir in [r"C:\Program Files\Git\bin", r"E:\Git\bin", r"C:\Program Files\Git\usr\bin", r"E:\Git\usr\bin"]:
-        if os.path.isdir(git_dir):
+if os.name == "nt":
+    for git_dir in [r"E:\Git\usr\bin", r"E:\Git\bin", r"C:\Program Files\Git\usr\bin", r"C:\Program Files\Git\bin"]:
+        if os.path.isdir(git_dir) and git_dir not in os.environ.get("PATH", ""):
             os.environ["PATH"] = git_dir + os.pathsep + os.environ["PATH"]
-            break
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 MON = os.path.join(os.path.dirname(HERE), "piso_monitor.sh").replace("\\", "/")

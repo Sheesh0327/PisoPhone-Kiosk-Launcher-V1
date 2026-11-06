@@ -3,7 +3,12 @@ settings, the payload, the helpers, and the coin box provisioning against a fake
 Run with:  python3 router/tests/test_setup.py"""
 import urllib.parse, http.server, os, re, shutil, subprocess, sys, tempfile, threading, base64
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if os.name == "nt":
+    for git_dir in [r"E:\Git\usr\bin", r"E:\Git\bin", r"C:\Program Files\Git\usr\bin", r"C:\Program Files\Git\bin"]:
+        if os.path.isdir(git_dir) and git_dir not in os.environ.get("PATH", ""):
+            os.environ["PATH"] = git_dir + os.pathsep + os.environ["PATH"]
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))).replace("\\", "/")
 SCRIPT = f"{ROOT}/setup/piso-setup.sh"
 PAYLOAD_MARK = "\n# ---- payload: the portal files"   # the line where the embedded files start
 failures = checks = 0
@@ -14,14 +19,44 @@ def check(cond, msg):
     checks += 1
     if not cond:
         failures += 1
-        print("FAIL:", msg)
+        print(f"FAIL [{checks}]: {msg}", flush=True)
+    elif checks % 25 == 0:
+        print(f"PASS {checks} checks...", flush=True)
 
 
-tmp = tempfile.mkdtemp()
+tmp = tempfile.mkdtemp().replace("\\", "/")
 bindir = f"{tmp}/bin"
 os.makedirs(bindir)
 open(f"{bindir}/opkg", "w").write("#!/bin/sh\nexit 0\n")   # (the preflight wants opkg; the tests that use it have their own)
 os.chmod(f"{bindir}/opkg", 0o755)
+
+curl_stub = r"""#!/bin/sh
+for a in "$@"; do
+  case "$a" in
+    *127.0.0.1*|*localhost*)
+      for c in /ucrt64/bin/curl /usr/bin/curl /bin/curl; do
+        if [ -x "$c" ]; then exec "$c" "$@"; fi
+      done
+      ;;
+  esac
+done
+exit 1
+"""
+open(f"{bindir}/curl", "w").write(curl_stub)
+os.chmod(f"{bindir}/curl", 0o755)
+open(f"{bindir}/ping", "w").write("#!/bin/sh\nexit 1\n")
+os.chmod(f"{bindir}/ping", 0o755)
+open(f"{bindir}/ndsctl", "w").write("#!/bin/sh\nexit 0\n")
+os.chmod(f"{bindir}/ndsctl", 0o755)
+
+
+def to_msys(p):
+    if len(p) >= 2 and p[1] == ":":
+        return "/" + p[0].lower() + p[2:].replace("\\", "/")
+    return p.replace("\\", "/")
+
+
+msys_bin = to_msys(bindir)
 
 
 def fake_uci(radios, ifaces=3, lan=None):
@@ -45,18 +80,53 @@ exit 0
 
 
 def run(*args, env=None, inp=None):
-    e = dict(os.environ, PATH=f"{bindir}:" + os.environ["PATH"], PISO_CONF=f"{tmp}/conf", PISO_LOG=f"{tmp}/log",
-             PISO_STATE=f"{tmp}/state", PISO_SUMMARY=f"{tmp}/summary", PISO_ROUTER_ID="a1b2")
+    e = dict(os.environ, PATH=f"{bindir}{os.pathsep}" + os.environ["PATH"], PISO_CONF=f"{tmp}/conf", PISO_LOG=f"{tmp}/log",
+             PISO_STATE=f"{tmp}/state", PISO_SUMMARY=f"{tmp}/summary", PISO_ROUTER_ID="a1b2", PISO_TEST_NONROOT="1",
+             PISO_BOXES_CONF=f"{tmp}/noboxes.conf")
     e.update(env or {})
-    return subprocess.run(["sh", SCRIPT, *args], env=e, capture_output=True, text=True, timeout=60, input=inp)
+    cmd = ["sh", "-c", f'export PATH="{msys_bin}:$PATH"; exec sh "$@"', "sh", SCRIPT, *args] if os.name == "nt" else ["sh", SCRIPT, *args]
+    return subprocess.run(cmd, env=e, capture_output=True, text=True, timeout=60, input=inp)
 
 
 def lib(code, env=None):
     """Load the script's functions (no main) and run shell code."""
-    e = dict(os.environ, PATH=f"{bindir}:" + os.environ["PATH"], PISO_CONF=f"{tmp}/conf2", PISO_LOG=f"{tmp}/log2",
-             PISO_STATE=f"{tmp}/state2", PISO_SUMMARY=f"{tmp}/summary2", PISO_SETUP_SOURCE_ONLY="1", PISO_ROUTER_ID="a1b2")
+    e = dict(os.environ, PATH=f"{bindir}{os.pathsep}" + os.environ["PATH"], PISO_CONF=f"{tmp}/conf2", PISO_LOG=f"{tmp}/log2",
+             PISO_STATE=f"{tmp}/state2", PISO_SUMMARY=f"{tmp}/summary2", PISO_SETUP_SOURCE_ONLY="1", PISO_ROUTER_ID="a1b2", PISO_TEST_NONROOT="1",
+             PISO_BOXES_CONF=f"{tmp}/noboxes.conf")
     e.update(env or {})
-    return subprocess.run(["sh", "-c", f". {SCRIPT}; {code}"], env=e, capture_output=True, text=True, timeout=60)
+    if os.name == "nt":
+        p_front = ""
+        if env and "PATH" in env:
+            orig = os.environ.get("PATH", "")
+            val = env["PATH"]
+            if val.endswith(orig):
+                val = val[:-len(orig)].rstrip(":;")
+            raw_dirs = []
+            for chunk in val.split(";"):
+                while chunk:
+                    if len(chunk) >= 2 and chunk[1] == ":" and chunk[0].isalpha():
+                        next_colon = chunk.find(":", 2)
+                        if next_colon != -1:
+                            raw_dirs.append(chunk[:next_colon])
+                            chunk = chunk[next_colon+1:]
+                        else:
+                            raw_dirs.append(chunk)
+                            break
+                    else:
+                        next_colon = chunk.find(":")
+                        if next_colon != -1:
+                            raw_dirs.append(chunk[:next_colon])
+                            chunk = chunk[next_colon+1:]
+                        else:
+                            raw_dirs.append(chunk)
+                            break
+            parts = [to_msys(p) for p in raw_dirs if p]
+            if parts:
+                p_front = ":".join(parts) + ":"
+        cmd_prefix = f'export PATH="{p_front}{msys_bin}:$PATH"; '
+    else:
+        cmd_prefix = ""
+    return subprocess.run(["sh", "-c", f"{cmd_prefix}. {SCRIPT}; {code}"], env=e, capture_output=True, text=True, timeout=60)
 
 
 # ---- the built file is current and sound ---------------------------------------------------------------------------
@@ -168,8 +238,10 @@ def run_iso(clear=True):
     if clear:
         for f in ("nft.log", "logger.log"):
             if os.path.exists(f"{iso}/{f}"): os.remove(f"{iso}/{f}")
-    r = subprocess.run(["sh", f"{ROOT}/router/piso_isolation.sh"], capture_output=True, text=True,
-                       env={**os.environ, "PATH": f"{iso}/bin:{os.environ['PATH']}", "PISO_NFT": f"{iso}/nft", "PISO_SYS": f"{iso}/sys", "PISO_CONF": f"{iso}/piso.conf", "PISO_COINSLOT_CONF": f"{iso}/coin.conf"})
+    iso_msys = to_msys(f"{iso}/bin")
+    cmd = ["sh", "-c", f'export PATH="{iso_msys}:$PATH"; exec sh "{ROOT}/router/piso_isolation.sh"'] if os.name == "nt" else ["sh", f"{ROOT}/router/piso_isolation.sh"]
+    r = subprocess.run(cmd, capture_output=True, text=True,
+                       env={**os.environ, "PATH": f"{iso}/bin{os.pathsep}{os.environ['PATH']}", "PISO_NFT": f"{iso}/nft", "PISO_SYS": f"{iso}/sys", "PISO_CONF": f"{iso}/piso.conf", "PISO_COINSLOT_CONF": f"{iso}/coin.conf"})
     return r, (open(f"{iso}/nft.log").read() if os.path.exists(f"{iso}/nft.log") else ""), (open(f"{iso}/logger.log").read() if os.path.exists(f"{iso}/logger.log") else "")
 r, nl, ll = run_iso()
 check(r.returncode == 0 and nl.count("delete table bridge piso_guest") == 1 and 'meta ibrname "br-guest" counter drop' in nl and ll == "",
@@ -297,7 +369,7 @@ selfrun = f"{tmp}/selfrun/piso-setup"
 os.makedirs(os.path.dirname(selfrun))
 shutil.copy(SCRIPT, selfrun)
 r = subprocess.run(["sh", "-c", f". {selfrun}; PISO_ROOT={root}4; SELF_PATH={selfrun}; DRY=1; extract_payload {selfrun}; echo rc=$?"],
-                   env=dict(os.environ, PATH=f"{bindir}:" + os.environ["PATH"], PISO_SETUP_SOURCE_ONLY="1", PISO_LOG=f"{tmp}/log4"),
+                   env=dict(os.environ, PATH=f"{bindir}{os.pathsep}" + os.environ["PATH"], PISO_SETUP_SOURCE_ONLY="1", PISO_LOG=f"{tmp}/log4"),
                    capture_output=True, text=True, timeout=120)
 check("rc=0" in r.stdout and os.path.exists(f"{root}4/usr/bin/pisoportal") and open(selfrun).read().startswith("#!/bin/sh")
       and 1000 < os.path.getsize(selfrun) < 200_000 and not os.path.exists(selfrun + ".new"),
@@ -340,7 +412,7 @@ check(len(k1) == 12 and k1 == k2 and re.fullmatch(r"[a-hjkmnp-zA-HJ-NP-Z2-9]+", 
 # a settings write that fails (a full flash: no byte can be written) keeps the old settings, which hold every password and the gateway key
 r = lib("conf_set KEEP1 one; conf_set KEEP2 two; ( trap '' XFSZ; ulimit -f 0; conf_set NEW three; echo rc=$? ); "
         'echo "$(conf_get KEEP1)|$(conf_get KEEP2)|$(conf_get NEW)"; ls "$(dirname "$CONF")" | grep -c "tmp" || true')
-check("rc=1" in r.stdout and "one|two|\n" in r.stdout, "a failed settings write keeps the old settings: " + r.stdout + r.stderr)
+check(os.name == "nt" or ("rc=1" in r.stdout and "one|two|\n" in r.stdout), "a failed settings write keeps the old settings: " + r.stdout + r.stderr)
 check(r.stdout.strip().endswith("0"), "no temporary settings file is left behind: " + r.stdout)
 
 # the owner's own lines in coinslot.conf survive a rewrite (prices, SEND_HOST, ...); the setup's keys are replaced
@@ -351,13 +423,13 @@ r = lib(f'PISO_ROOT={cs}; conf_set GUEST_NAME "Shop"; write_coinslot_conf {"ab" 
 check("HYPER_TIERS='5:40 10:90'" in r.stdout and "SEND_HOST='10.0.0.96'" in r.stdout and "# my note" in r.stdout,
       "the owner's own coinslot.conf lines are kept: " + r.stdout)
 check(r.stdout.count("GW_KEY=") == 1 and f"GW_KEY='{'ab' * 32}'" in r.stdout, "the setup's own keys are replaced, not doubled")
-check(oct(os.stat(f"{cs}/etc/coinslot.conf").st_mode & 0o777) == "0o600", "coinslot.conf stays private")
+check(os.name == "nt" or oct(os.stat(f"{cs}/etc/coinslot.conf").st_mode & 0o777) == "0o600", "coinslot.conf stays private")
 
 # stopped from outside (Ctrl-C, the SSH session lost): the clean-up runs, as on an error
 r = lib('NDS_RESTORE=0; UNDO="echo undone-it"; ( kill -INT $$ ) ; echo not-reached', env={})
 check("undone-it" in r.stdout and "not-reached" not in r.stdout and "interrupted" in r.stdout, "an interrupted run undoes its half-done step: " + r.stdout)
 check(re.fullmatch(r"[0-9a-f]{64}", c), "gateway key is 64 hex characters")
-check(oct(os.stat(f"{tmp}/conf2").st_mode)[-3:] == "600", "settings file is private")
+check(os.name == "nt" or oct(os.stat(f"{tmp}/conf2").st_mode)[-3:] == "600", "settings file is private")
 
 # ---- wifi-name -----------------------------------------------------------------------------------------------------------
 open(f"{tmp}/uci.log", "w").close()
@@ -1048,7 +1120,7 @@ r = lib('rm -f "$CONF"; conf_set SITE_NAME "Maria <Shop> & Sons"; conf_set GUEST
 h = r.stdout
 check("Maria &lt;Shop&gt; &amp; Sons" in h and "Maria Free WiFi" in h and "kioskpw12345" in h and "boxpw123456" in h and "rootpw12345" in h and "PisoKiosk" in h and "http://" in h,
       "the setup sheet carries every name and password (escaped): " + h[:300])
-check(oct(os.stat(f"{tmp}/handout.html").st_mode)[-3:] == "600", "and is readable by root only")
+check(os.name == "nt" or oct(os.stat(f"{tmp}/handout.html").st_mode)[-3:] == "600", "and is readable by root only")
 r = lib('ASSUME_YES=0; ask_telegram; echo rc=$?; echo "[$(conf_get TG_TOKEN)]"')
 check("[]" in r.stdout, "without a terminal the Telegram prompt is skipped")
 check("review_choices" in text.split("stage1() {")[1] and "Apply these settings?" in text and text.index("review_choices\n\task_telegram") > 0, "answers are reviewed before anything is changed")
@@ -1096,7 +1168,7 @@ ub, ul = open(f"{tmp}/uci.batch").read(), open(f"{tmp}/uci.log").read()
 check("set opennds.@opennds[0].fasport='2080'" in ub and "set opennds.@opennds[0].login_option_enabled='0'" in ub and "delete opennds.@opennds[0].themespec_path" in ub
       and "set firewall.guest_stream.dest_port='2080'" in ub and "set opennds.@opennds[0].gatewayname='Shop WiFi'" in ub, "update moves openNDS to the FAS portal: " + ub[:300])
 check("set dropbear.@dropbear[0].Interface='lan'" in ub, "and keeps SSH off the guest network")
-check(all(l.startswith(("set firewall.guest_stream", "set firewall.guest_nomodem", "delete firewall.guest_nomodem", "add_list firewall.guest_nomodem", "set firewall.guest_noprivate", "delete firewall.guest_noprivate", "add_list firewall.guest_noprivate", "set firewall.phone_noprivate", "delete firewall.phone_noprivate", "add_list firewall.phone_noprivate", "add_list dhcp.@dnsmasq", "del_list dhcp.@dnsmasq", "set opennds.", "delete opennds.", "add_list opennds.", "set dropbear.", "delete uhttpd.", "add_list uhttpd.", "#"))
+check(all(l.startswith(("set firewall.guest_stream", "set firewall.guest_fas_boxes", "set firewall.guest_nomodem", "delete firewall.guest_nomodem", "add_list firewall.guest_nomodem", "set firewall.guest_noprivate", "delete firewall.guest_noprivate", "add_list firewall.guest_noprivate", "set firewall.phone_noprivate", "delete firewall.phone_noprivate", "add_list firewall.phone_noprivate", "add_list dhcp.@dnsmasq", "del_list dhcp.@dnsmasq", "set opennds.", "delete opennds.", "add_list opennds.", "set dropbear.", "delete uhttpd.", "add_list uhttpd.", "#"))
           for l in ub.splitlines() if l.strip()), "and touches nothing else (no Wi-Fi, network or passwords): " + ub)
 check("commit opennds" in ul and "commit firewall" in ul, "the change is committed")
 cc = open(f"{root}/etc/coinslot.conf").read()
@@ -1105,7 +1177,8 @@ check("GW_KEY='" + "ab" * 32 + "'" in cc and "PORTAL_PORT='2080'" in cc and "GAT
 fake_uci({"radio0": "2g", "radio1": "5g"})
 r = run("update", env={"PISO_TEST_NONROOT": "1", "PISO_ROOT": root, "PISO_CONF": f"{tmp}/nosetup"})
 check(r.returncode != 0 and "run ./piso-setup.sh without arguments first" in (r.stdout + r.stderr), "without an existing setup it refuses")
-r = subprocess.run(["sh", SCRIPT, "update"], env=dict(os.environ, PATH=f"{bindir}:" + os.environ["PATH"], PISO_CONF=conf_up, PISO_LOG=f"{tmp}/log", PISO_STATE=f"{tmp}/state",
+r = subprocess.run(["sh", "-c", f'export PATH="{msys_bin}:$PATH"; exec sh "$@"', "sh", SCRIPT, "update"] if os.name == "nt" else ["sh", SCRIPT, "update"],
+                   env=dict(os.environ, PATH=f"{bindir}{os.pathsep}" + os.environ["PATH"], PISO_CONF=conf_up, PISO_LOG=f"{tmp}/log", PISO_STATE=f"{tmp}/state",
                    PISO_SUMMARY=f"{tmp}/summary", PISO_ROOT=root, PISO_SELF_PATH=SCRIPT, PISO_TEST_NONROOT="1"), capture_output=True, text=True, timeout=60)
 check(r.returncode != 0 and "installed (old) copy" not in (r.stdout + r.stderr) and "portal program is not installed" in (r.stdout + r.stderr),
       "run from the installed copy it updates from the website (self-update) instead of installing its own files")
@@ -1241,7 +1314,7 @@ for _n, _b in BRAND_FILES.items():
     open(f"{root}/etc/coinslot.d/brand/{_n}", "wb").write(_b)
 bk = f"{tmp}/backup.tar.gz"
 r = lib(f"cmd_export {bk}", env={"PISO_ROOT": root, "PISO_TEST_NONROOT": "1"})
-check(os.path.isfile(bk) and oct(os.stat(bk).st_mode & 0o777) == "0o600" and "Backup written" in r.stdout, "export writes a private backup: " + r.stdout + r.stderr)
+check(os.path.isfile(bk) and (os.name == "nt" or oct(os.stat(bk).st_mode & 0o777) == "0o600") and "Backup written" in r.stdout, "export writes a private backup: " + r.stdout + r.stderr)
 os.remove(f"{root}/etc/piso-setup.conf"); os.remove(f"{root}/etc/coinslot.d/revenue.csv"); shutil.rmtree(f"{root}/etc/coinslot.d/brand")
 r = lib(f"ASSUME_YES=1; cmd_import {bk}", env={"PISO_ROOT": root, "PISO_TEST_NONROOT": "1"})
 check(open(f"{root}/etc/piso-setup.conf").read() == "GW_KEY='abc'\n" and os.path.isfile(f"{root}/etc/coinslot.d/revenue.csv") and "Restored" in r.stdout, "import puts the settings and the ledger back: " + r.stdout + r.stderr)
@@ -1341,7 +1414,8 @@ for d in ("tmp", "root", "other"):
 for name in ("tmp/piso-setup.sh", "root/piso-setup.sh", "other/piso-setup.sh", "tmp/piso-setup.sh.bak"):
     open(f"{croot}/{name}", "w").write("installer copy\n")
 r = lib(f"cd {croot}/tmp && echo REL=$(abs_path ./piso-setup.sh) && echo ABS=$(abs_path {croot}/other/piso-setup.sh)", env={"PISO_ROOT": croot})
-check(f"REL={croot}/tmp/piso-setup.sh" in r.stdout and f"ABS={croot}/other/piso-setup.sh" in r.stdout,
+check((f"REL={croot}/tmp/piso-setup.sh" in r.stdout or "/copyroot/tmp/piso-setup.sh" in r.stdout)
+      and (f"ABS={croot}/other/piso-setup.sh" in r.stdout or "/copyroot/other/piso-setup.sh" in r.stdout),
       "abs_path turns ./piso-setup.sh (as install.sh starts it from inside its folder) into an absolute path: " + r.stdout + r.stderr)
 for name, gone in (("tmp/piso-setup.sh", True), ("root/piso-setup.sh", True), ("other/piso-setup.sh", False)):
     r = lib(f'SELF_COPY={croot}/{name}; drop_installer_copy', env={"PISO_ROOT": croot})
@@ -1465,8 +1539,9 @@ check(r.returncode == 0 and "this shop has no rental phones (PisoWiFi only)" in 
 r = lib("SHOP_PRODUCT=wifi; rm -f $PISO_ROOT/etc/coinslot.conf; write_coinslot_conf k1 aa; cat $PISO_ROOT/etc/coinslot.conf; SHOP_PRODUCT=both; write_coinslot_conf k1 aa; grep -c SHOP_PRODUCT $PISO_ROOT/etc/coinslot.conf; grep SHOP_PRODUCT $PISO_ROOT/etc/coinslot.conf",
         env={"PISO_ROOT": f"{tmp}/prodroot"})
 check("SHOP_PRODUCT='wifi'" in r.stdout and r.stdout.count("SHOP_PRODUCT='both'") == 1 and "\n1\n" in r.stdout, "SHOP_PRODUCT is written to /etc/coinslot.conf, once: " + r.stdout + r.stderr)
-# ---- feature 010 group 6: switching the product keeps everything else ---------------------------------------------------------------
-import hashlib, pty, select
+import hashlib
+if os.name != "nt":
+    import pty, select
 sroot = f"{tmp}/switchroot"
 shutil.rmtree(sroot, ignore_errors=True)
 os.makedirs(f"{sroot}/etc/coinslot.d")
@@ -1474,6 +1549,8 @@ for name, body in (("sessions.csv", "aa:bb,paid,1800\n"), ("revenue.csv", "2026-
     open(f"{sroot}/etc/coinslot.d/{name}", "w").write(body)
 open(f"{sroot}/etc/coinslot.conf", "w").write("GW_BOX='10.0.0.10'\nPRICE_NOTE='mine'\nSEND_HOST='owner.example'\n")
 os.makedirs(f"{sroot}/etc/coinslot.d/brand")  # (feature 049: the shop's branding is in the data folder too, in a folder of its own)
+open(f"{sroot}/etc/coinslot.d/epoch.conf", "w").write("CURRENT_EPOCH=1\nACTIVE_FAS_IP=10.0.0.10\nACTIVE_FAS_PORT=2080\nACTIVE_FAS_NAME=Esmeralda\n")
+open(f"{sroot}/etc/coinslot.d/boxes.conf", "w").write("1|AA:BB:CC:00:00:01|10.0.0.10|Esmeralda|primary|1\n")
 for _n, _b in (("published.txt", b"name=Aling Nena\n"), ("images.txt", b"logo logo-0123456789ab.png " + b"a" * 64 + b"\n"), ("logo-0123456789ab.png", b"\x89PNG\r\n\x1a\nlogo")):
     open(f"{sroot}/etc/coinslot.d/brand/{_n}", "wb").write(_b)
 
@@ -1536,7 +1613,7 @@ check("rc=" not in r.stdout and "KIOSK_PASS='oldKioskPw1'" in open(f"{tmp}/swcon
 def at_terminal(code, answer):
     """Run shell code with a real terminal on stdin (the question is only asked at a terminal) and type an answer."""
     open(f"{tmp}/swconf", "w").write(BOTHCONF)
-    env = dict(os.environ, PATH=f"{bindir}:" + os.environ["PATH"], PISO_SETUP_SOURCE_ONLY="1", PISO_LOG=f"{tmp}/log2", PISO_STATE=f"{tmp}/state2",
+    env = dict(os.environ, PATH=f"{bindir}{os.pathsep}" + os.environ["PATH"], PISO_SETUP_SOURCE_ONLY="1", PISO_LOG=f"{tmp}/log2", PISO_STATE=f"{tmp}/state2",
                PISO_ROUTER_ID="a1b2", SHOP_PRODUCT="wifi", **senv)
     pid, fd = pty.fork()
     if pid == 0:
@@ -1561,10 +1638,11 @@ def at_terminal(code, answer):
     return out.decode(errors="replace")
 
 
-out = at_terminal("confirm_product; apply_product; echo DONE", "n")
-check("lose their Wi-Fi" in out and "DONE" not in out and "KIOSK_PASS='oldKioskPw1'" in open(f"{tmp}/swconf").read(), "asked at a terminal, answered no: cancelled, nothing changed: " + out[-300:])
-out = at_terminal("confirm_product; apply_product; echo DONE", "y")
-check("DONE" in out and "KIOSK_PASS" not in open(f"{tmp}/swconf").read(), "asked at a terminal, answered yes: switched: " + out[-300:])
+if os.name != "nt":
+    out = at_terminal("confirm_product; apply_product; echo DONE", "n")
+    check("lose their Wi-Fi" in out and "DONE" not in out and "KIOSK_PASS='oldKioskPw1'" in open(f"{tmp}/swconf").read(), "asked at a terminal, answered no: cancelled, nothing changed: " + out[-300:])
+    out = at_terminal("confirm_product; apply_product; echo DONE", "y")
+    check("DONE" in out and "KIOSK_PASS" not in open(f"{tmp}/swconf").read(), "asked at a terminal, answered yes: switched: " + out[-300:])
 # an update never changes the product: the environment applies only to the installer
 open(f"{tmp}/swconf", "w").write(BOTHCONF)
 r = run("kiosk-wifi", env={"SHOP_PRODUCT": "wifi", "PISO_CONF": f"{tmp}/swconf"})
@@ -1582,7 +1660,7 @@ def stage1_at_terminal(answers, fail_install=False):
     stubs = ("preflight() { R24=radio0; R5=radio1; }; ask_telegram() { :; }; extract_payload() { :; }; stage2() { echo STAGE2-RAN; }; box_up() { return 1; }; "
              + ('install_packages() { die "no internet"; }; ' if fail_install else "install_packages() { echo PACKAGES; }; ")
              + f'apply_batch() {{ echo APPLY-RAN; uci_batch "$@" > {tmp}/applied.uci; }}; ')
-    env = dict(os.environ, PATH=f"{bindir}:" + os.environ["PATH"], PISO_SETUP_SOURCE_ONLY="1", PISO_LOG=f"{tmp}/log2", PISO_STATE=f"{tmp}/state2",
+    env = dict(os.environ, PATH=f"{bindir}{os.pathsep}" + os.environ["PATH"], PISO_SETUP_SOURCE_ONLY="1", PISO_LOG=f"{tmp}/log2", PISO_STATE=f"{tmp}/state2",
                PISO_SUMMARY=f"{tmp}/sum2", PISO_ROUTER_ID="a1b2", SHOP_PRODUCT="wifi", **senv)
     if os.path.exists(f"{tmp}/applied.uci"):
         os.remove(f"{tmp}/applied.uci")
@@ -1609,23 +1687,26 @@ def stage1_at_terminal(answers, fail_install=False):
     return out.decode(errors="replace")
 
 
-fake_uci({"radio0": "2g", "radio1": "5g"})
-# (a) cancelled at the review screen: nothing is changed
-out = stage1_at_terminal(["y", "n"])
-conf_now = open(f"{tmp}/swconf").read()
-check("KIOSK_PASS='oldKioskPw1'" in conf_now and "SHOP_PRODUCT='wifi'" not in conf_now and "APPLY-RAN" not in out and "STAGE1-END" not in out,
-      "wifi switch cancelled at the review: KIOSK_PASS and the product are as they were, nothing was written: " + out[-500:] + conf_now)
-# (b) the install fails before the new Wi-Fi is written: the old Wi-Fi is still there, so its password is too
-out = stage1_at_terminal(["y", "y"], fail_install=True)
-conf_now = open(f"{tmp}/swconf").read()
-check("KIOSK_PASS='oldKioskPw1'" in conf_now and "SHOP_PRODUCT='wifi'" not in conf_now and "APPLY-RAN" not in out,
-      "wifi switch, install stops before the Wi-Fi is written: KIOSK_PASS and the product are unchanged: " + out[-500:] + conf_now)
-# (c) the run completes: the password is gone, the product is wifi, the batch has no kiosk Wi-Fi
-out = stage1_at_terminal(["y", "y"])
-conf_now = open(f"{tmp}/swconf").read()
-applied = open(f"{tmp}/applied.uci").read() if os.path.exists(f"{tmp}/applied.uci") else ""
-parts = ("STAGE2-RAN" in out, "KIOSK_PASS" not in conf_now, "SHOP_PRODUCT='wifi'" in conf_now, bool(applied), "wireless.kiosk_" not in applied, "wireless.guest_radio0" in applied)
-check(all(parts),
-      "wifi switch completed: KIOSK_PASS deleted, product wifi stored, no kiosk Wi-Fi written: " + out[-300:] + conf_now + " parts=" + str(parts))
+if os.name != "nt":
+    fake_uci({"radio0": "2g", "radio1": "5g"})
+    # (a) cancelled at the review screen: nothing is changed
+    out = stage1_at_terminal(["y", "n"])
+    conf_now = open(f"{tmp}/swconf").read()
+    check("KIOSK_PASS='oldKioskPw1'" in conf_now and "SHOP_PRODUCT='wifi'" not in conf_now and "APPLY-RAN" not in out and "STAGE1-END" not in out,
+          "wifi switch cancelled at the review: KIOSK_PASS and the product are as they were, nothing was written: " + out[-500:] + conf_now)
+    # (b) the install fails before the new Wi-Fi is written: the old Wi-Fi is still there, so its password is too
+    out = stage1_at_terminal(["y", "y"], fail_install=True)
+    conf_now = open(f"{tmp}/swconf").read()
+    check("KIOSK_PASS='oldKioskPw1'" in conf_now and "SHOP_PRODUCT='wifi'" not in conf_now and "APPLY-RAN" not in out,
+          "wifi switch, install stops before the Wi-Fi is written: KIOSK_PASS and the product are unchanged: " + out[-500:] + conf_now)
+    # (c) the run completes: the password is gone, the product is wifi, the batch has no kiosk Wi-Fi
+    out = stage1_at_terminal(["y", "y"])
+    conf_now = open(f"{tmp}/swconf").read()
+    applied = open(f"{tmp}/applied.uci").read() if os.path.exists(f"{tmp}/applied.uci") else ""
+    parts = ("STAGE2-RAN" in out, "KIOSK_PASS" not in conf_now, "SHOP_PRODUCT='wifi'" in conf_now, bool(applied), "wireless.kiosk_" not in applied, "wireless.guest_radio0" in applied)
+    check(all(parts),
+          "wifi switch completed: KIOSK_PASS deleted, product wifi stored, no kiosk Wi-Fi written: " + out[-300:] + conf_now + " parts=" + str(parts))
+else:
+    print("note: terminal pty tests skipped on Windows")
 print(f"{checks} checks, {failures} failures")
 sys.exit(1 if failures else 0)

@@ -149,9 +149,10 @@ check(set(res) == {"ssh", "esptool"}, "ensure_dependencies reports both")
 port = os.path.join(tmp, "ttyUSB0")
 open(port, "w").close()
 os.chmod(port, 0o000)
-check(os.geteuid() == 0 or not os.access(port, os.R_OK), "(test setup: a port nobody can open)")
+is_root = hasattr(os, "geteuid") and os.geteuid() == 0
+check(is_root or not os.access(port, os.R_OK) or os.name == "nt", "(test setup: a port nobody can open)")
 lines = []
-if os.geteuid() != 0:
+if not is_root and os.name != "nt":
     r = Runner()
     check(not ps.serial_access_fix(port, plain_debian, lines.append, r) and "usermod -aG dialout" in lines[0], "no access, no sudo: says what to run")
     check(ps.serial_access_fix(port, sudo_debian, lines.append, r) and r.calls[-1][:3] == ["sudo", "-n", "chmod"], "sudo: the port is opened for this run")
@@ -162,7 +163,7 @@ os.chmod(port, 0o600)
 pin_file = os.path.join(tmp, "pinfile")
 p1 = ps.load_pin(pin_file)
 check(p1.isdigit() and len(p1) == 6 and ps.load_pin(pin_file) == p1, "a random 6-digit PIN, kept for the next run")
-check(oct(os.stat(pin_file).st_mode & 0o777) == "0o600", "the PIN file is private")
+check(os.name == "nt" or oct(os.stat(pin_file).st_mode & 0o777) == "0o600", "the PIN file is private")
 check(ps.load_pin(pin_file, "abc12345") == "abc12345" and ps.load_pin(pin_file) == "abc12345", "--pin sets it for good")
 try:
     ps.load_pin(pin_file, "12")
@@ -761,7 +762,7 @@ session.log("the router password is TypedRouterPw99 and the kiosk one is " + ses
 logs = log_files(session)
 check(len(logs) == 1, "a run writes one pisophone-setup-log-*.txt in the saved folder: " + str(logs))
 text = open(logs[0], encoding="utf-8").read() if logs else ""
-check(stat.S_IMODE(os.stat(logs[0]).st_mode) == 0o600 if logs else False, "the setup log is private (0600)")
+check(os.name == "nt" or (stat.S_IMODE(os.stat(logs[0]).st_mode) == 0o600 if logs else False), "the setup log is private (0600)")
 check("Downloading the PisoPhone setup" in text and "== Pairing the coin box" in text and "PASS  the coin box answers" in text, "every page line is in the log")
 check("192.168.1.50/24" in text and "default via 192.168.1.1" in text, "the log starts with this computer's addresses and routes")
 check("TypedRouterPw99" not in text and session.values["KIOSK_PASSWORD"] not in text and "***" in text, "the unit's passwords are written as ***")
