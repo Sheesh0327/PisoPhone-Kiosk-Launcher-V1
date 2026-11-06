@@ -2836,7 +2836,8 @@ def run_setup(args, ssh, read=input, read_secret=getpass.getpass, probe=port_ope
               board_finder=usb_boards, flasher=None, mac_reader=None):
     if flasher is None:
         def flasher(port, emit):
-            return flash_box(args.branch, port, emit, flash_cache_dir(), product="wifi" if getattr(args, "product", None) == "wifi" else "full")
+            prod = getattr(args, "product", None) or (answers.get("SHOP_PRODUCT") if "answers" in locals() else None) or "full"
+            return flash_box(args.branch, port, emit, flash_cache_dir(), product=prod if prod in ("phone", "wifi", "home") else "full")
     host = args.router or find_router(probe)
     if not host:
         raise SetupError(
@@ -4948,7 +4949,7 @@ class Session:
                     if len(boards) > 1:
                         raise SetupError("several USB boards are connected: unplug all but the coin box.")
                     stage(0)
-                    self.core.flash_box(boards[0][0], self.log)
+                    self.core.flash_box(boards[0][0], self.log, product=self.mode if self.mode in ("phone", "wifi", "home") else "full")
                     try:
                         mac = self.core.board_mac(boards[0][0])
                     except Exception:
