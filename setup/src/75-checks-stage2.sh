@@ -8,8 +8,15 @@ check_all() {  # prints PASS/FAIL lines, returns the number of failures
 	_ck "the coin box has its own Wi-Fi password (not the published default)" "[ \"\$(uci -q get wireless.box_ap.key)\" != '$BOX_DEFAULT_WIFI' ]"
 	_ck "hidden Wi-Fi $BOX_SSID is on and locked to the box" "[ \"\$(uci -q get wireless.box_ap.macfilter)\" = allow ] && [ -n \"\$(uci -q get wireless.box_ap.maclist)\" ]"
 	_ck "coin box answers at $BOX_IP" box_up
-	_ck "the portal is running and answers guests on $GUEST_IP:$PORTAL_PORT" "curl -s -m 4 http://$GUEST_IP:$PORTAL_PORT/ping | grep -q ok"
-	_ck "the portal can talk to the box (signed request)" "/usr/bin/pisoportal box | grep -qi answers"
+	if wifi_only || [ ! -x "$PORTAL_BIN" ]; then
+		_fas_ip=$(sed -n "s/^ACTIVE_FAS_IP='\\?\\([^'\" ]*\\)'\\?.*/\\1/p" "$PISO_ROOT/etc/coinslot.d/epoch.conf" 2>/dev/null | tail -n 1)
+		_fas_ip="${_fas_ip:-10.0.0.10}"
+		_ck "the portal is running on coin box and answers guests on $_fas_ip:$PORTAL_PORT" "curl -s -m 4 http://$_fas_ip:$PORTAL_PORT/ping | grep -q ok"
+		_ck "the router uhttpd CGI endpoint answers coin boxes" "curl -s -m 4 'http://127.0.0.1/cgi-bin/piso-nds?action=ping' | grep -q '\"status\":\"ok\"'"
+	else
+		_ck "the portal is running and answers guests on $GUEST_IP:$PORTAL_PORT" "curl -s -m 4 http://$GUEST_IP:$PORTAL_PORT/ping | grep -q ok"
+		_ck "the portal can talk to the box (signed request)" "/usr/bin/pisoportal box | grep -qi answers"
+	fi
 	_gp=$(conf_get GUEST_PORT)
 	[ -z "$_gp" ] || _ck "router port $_gp is on the guest network (an access point plugged in there is gated)" "uci -q get \$(net_section br-guest).ports | grep -qw '$_gp'"
 	isolation_on || log "WARN  guests can still reach each other and rental phones can still reach each other and the router's login pages: this router cannot load the bridge rules (install kmod-nft-bridge, then run piso-setup update)"
@@ -48,7 +55,9 @@ stage2() {
 
 	step "Starting the services"
 	remove_old_portal
-	/etc/init.d/pisoportal enable; /etc/init.d/pisoportal restart
+	if ! wifi_only && [ -x "$PISO_ROOT/usr/bin/pisoportal" ]; then
+		/etc/init.d/pisoportal enable; /etc/init.d/pisoportal restart
+	fi
 	install_update_timer
 	keep_across_upgrades
 	[ -x /etc/init.d/piso_monitor ] && { /etc/init.d/piso_monitor enable; /etc/init.d/piso_monitor restart; }

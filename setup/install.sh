@@ -92,7 +92,7 @@ bounce_ports() {
 	for _d in $_bp; do ip link set "$_d" up; done
 }
 
-# move_lan: the setup expects the router at 10.0.0.1. Changing it cuts this SSH session, so it is done last, after asking.
+# move_lan: the setup expects the router at 10.0.0.1. Changing it cuts this SSH session, so it is done first before downloading anything.
 move_lan() {
 	_lan="$1"
 	_wan=$(wan_ip)
@@ -105,20 +105,20 @@ move_lan() {
 	say ""
 	say "This router is at $_lan. PisoPhone needs it at $LAN_TARGET (the kiosk network is 10.0.0.x)."
 	if [ -z "$ASSUME_YES" ]; then
-		say "Changing it ends this SSH session. Afterwards: unplug and replug your computer's network cable (or wait a minute),"
+		say "Changing it ends this SSH session and avoids IP conflicts with modems at 192.168.1.1."
+		say "Afterwards: unplug and replug your computer's network cable (or wait a minute),"
 		say "then log in again and start the setup:"
 		say ""
 		say "    ssh root@$LAN_TARGET"
-		say "    sh $DIR/piso-setup.sh"
+		say "    wget -qO- https://$SITE_HOST/install.sh | sh"
 		say ""
-		if [ -n "$IN_RAM" ]; then say "(The setup file is kept in the router's memory. If the router restarts before that, run the one-line installer again.)"; say ""; fi
 	fi
-	ask "Move the router to $LAN_TARGET now?" || fail "nothing was changed. Run this again when you are ready (the setup file is kept in $DIR)."
+	ask "Move the router to $LAN_TARGET now?" || fail "nothing was changed. Run this again when you are ready."
 	if ! uci set network.lan.ipaddr="$LAN_TARGET" || ! uci commit network; then fail "could not change the LAN address"; fi
 	if [ -n "$ASSUME_YES" ]; then
 		say "Moving to $LAN_TARGET in 3 seconds (this connection ends)."
 	else
-		say "Moving to $LAN_TARGET in 3 seconds. Log in again with: ssh root@$LAN_TARGET   then run: sh $DIR/piso-setup.sh"
+		say "Moving to $LAN_TARGET in 3 seconds to avoid modem IP conflicts. Log in again with: ssh root@$LAN_TARGET"
 	fi
 	# (the dropped SSH connection must not stop it half way)
 	(trap '' HUP; sleep 3; "$NETWORK_INIT" restart; sleep 5; bounce_ports) > /dev/null 2>&1 &
@@ -151,6 +151,11 @@ main() {
 	fi
 	if [ "$1" = update ]; then say "NOTE: the setup file of branch '$branch' is not signed by the owner. Use it for testing only."; fi
 
+	lan=$(lan_ip)
+	if [ "$1" != update ] && [ -n "$lan" ] && [ "$lan" != "$LAN_TARGET" ]; then
+		move_lan "$lan"
+	fi
+
 	pick_dir
 	base="$(site_for "$branch")/setup"
 	# the setup file carries a portal program built for one CPU family: mipsel is piso-setup.sh (as it always was), the others have their own
@@ -181,10 +186,6 @@ main() {
 	if ! chmod 755 "$tmp" || ! mv "$tmp" "$DIR/piso-setup.sh"; then fail "could not save $DIR/piso-setup.sh (is the router's flash full?)"; fi
 	say "Saved $DIR/piso-setup.sh ($(sed -n "s/^PISO_RELEASE='\\(.*\\)'\$/release \\1/p" "$DIR/piso-setup.sh" | head -n 1))."
 
-	lan=$(lan_ip)
-	if [ "$1" != update ] && [ -n "$lan" ] && [ "$lan" != "$LAN_TARGET" ]; then
-		move_lan "$lan"
-	fi
 	rm -f "$tmp.sha256"
 	cd "$DIR" || fail "cannot enter $DIR"
 	if [ -n "$ASSUME_YES" ]; then

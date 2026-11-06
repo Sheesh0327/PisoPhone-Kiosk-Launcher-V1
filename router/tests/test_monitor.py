@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
 """Tests for piso_monitor.sh against a fake Telegram server, a fake portal program and a fake openNDS."""
-import json, os, subprocess, sys, tempfile, threading, time
+import json, os, shutil, subprocess, sys, tempfile, threading, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+if os.name == "nt" and not shutil.which("sh"):
+    for git_dir in [r"C:\Program Files\Git\bin", r"E:\Git\bin", r"C:\Program Files\Git\usr\bin", r"E:\Git\usr\bin"]:
+        if os.path.isdir(git_dir):
+            os.environ["PATH"] = git_dir + os.pathsep + os.environ["PATH"]
+            break
+
 HERE = os.path.dirname(os.path.abspath(__file__))
-MON = os.path.join(os.path.dirname(HERE), "piso_monitor.sh")
-tmp = tempfile.mkdtemp()
+MON = os.path.join(os.path.dirname(HERE), "piso_monitor.sh").replace("\\", "/")
+tmp = tempfile.mkdtemp().replace("\\", "/")
 checks = failures = 0
 sent, queue, hits = [], [], []
 
@@ -64,11 +70,11 @@ case "$1" in
 esac
 """)
 os.chmod(fake, 0o755)
-logf = os.path.join(tmp, "log.txt"); open(logf, "w").close()
-fakelog = os.path.join(tmp, "logread.sh")
+logf = os.path.join(tmp, "log.txt").replace("\\", "/"); open(logf, "w").close()
+fakelog = os.path.join(tmp, "logread.sh").replace("\\", "/")
 open(fakelog, "w").write(f"#!/bin/sh\ncat {logf}\n"); os.chmod(fakelog, 0o755)
-fakesetup = os.path.join(tmp, "setup.sh"); open(fakesetup, "w").write(f"#!/bin/sh\n[ \"$1\" = self-update ] && {{ echo \"$*\" >> {tmp}/setup.calls; exit 0; }}\n[ \"$1\" = wan-clash ] && {{ [ -e {tmp}/wanclash ] && {{ cat {tmp}/wanclash; exit 1; }}; exit 0; }}\necho DIAGTEXT\n"); os.chmod(fakesetup, 0o755)
-fakesvc = os.path.join(tmp, "pisoportal.init"); open(fakesvc, "w").write(f"#!/bin/sh\necho \"$1\" >> {tmp}/service.log\n"); os.chmod(fakesvc, 0o755)
+fakesetup = os.path.join(tmp, "setup.sh").replace("\\", "/"); open(fakesetup, "w").write(f"#!/bin/sh\n[ \"$1\" = self-update ] && {{ echo \"$*\" >> {tmp}/setup.calls; exit 0; }}\n[ \"$1\" = wan-clash ] && {{ [ -e {tmp}/wanclash ] && {{ cat {tmp}/wanclash; exit 1; }}; exit 0; }}\necho DIAGTEXT\n"); os.chmod(fakesetup, 0o755)
+fakesvc = os.path.join(tmp, "pisoportal.init").replace("\\", "/"); open(fakesvc, "w").write(f"#!/bin/sh\necho \"$1\" >> {tmp}/service.log\n"); os.chmod(fakesvc, 0o755)
 fakends = os.path.join(tmp, "ndsctl"); open(fakends, "w").write("""#!/bin/sh
 [ "$1" = json ] && printf '{"client_list_length":"3","clients":{\n"aa":{\n  "state":"Authenticated",\n},\n"bb":{\n  "state":"Preauthenticated",\n},\n"cc":{\n  "state":"Authenticated",\n}}}\n'
 """)
@@ -280,11 +286,11 @@ def listening(host):
 
 
 def own_run(name, conf_lines):
-    d = os.path.join(tmp, name); os.makedirs(d, exist_ok=True)
-    cc = os.path.join(d, "coinslot.conf"); open(cc, "w").write("".join(l + "\n" for l in conf_lines))
-    svc = os.path.join(d, "svc.sh"); open(svc, "w").write(f"#!/bin/sh\necho \"$1\" >> {d}/service.log\n"); os.chmod(svc, 0o755)
+    d = os.path.join(tmp, name).replace("\\", "/"); os.makedirs(d, exist_ok=True)
+    cc = os.path.join(d, "coinslot.conf").replace("\\", "/"); open(cc, "w").write("".join(l + "\n" for l in conf_lines))
+    svc = os.path.join(d, "svc.sh").replace("\\", "/"); open(svc, "w").write(f"#!/bin/sh\necho \"$1\" >> {d}/service.log\n"); os.chmod(svc, 0o755)
     e2 = {k: v for k, v in env.items() if k not in ("PING_URL", "PORTAL_PORT")}
-    e2.update(COINSLOT_CONF=cc, MON_STATE=f"{d}/state", ALERTS_FILE=f"{d}/alerts.txt", PORTAL_SERVICE=svc, PISO_MONITOR_CONF=os.path.join(d, "none.conf"))
+    e2.update(COINSLOT_CONF=cc, MON_STATE=f"{d}/state", ALERTS_FILE=f"{d}/alerts.txt", PORTAL_SERVICE=svc, PISO_MONITOR_CONF=os.path.join(d, "none.conf").replace("\\", "/"))
 
     def run(n=1):
         for _ in range(n):

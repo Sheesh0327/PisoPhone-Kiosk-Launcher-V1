@@ -92,16 +92,32 @@ if [ -d "$SYS/$LAN_BR" ]; then
 	case "$BOX_MAC" in [0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]) ;; *) BOX_MAC="" ;; esac
 	case "$BOX_IP" in *[!0-9.]*) BOX_IP="" ;; esac
 	case "$LAN_IP" in *[!0-9.]*) LAN_IP="" ;; esac
+	ALL_BOX_MACS=""
+	ALL_BOX_IPS=""
+	_bconf="${PISO_ROOT}/etc/coinslot.d/boxes.conf"
+	if [ -f "$_bconf" ]; then
+		while IFS='|' read -r _s _m _i _n _r _e; do
+			[ -z "$_m" ] && continue
+			[ "$_e" = "0" ] && continue
+			_m=$(echo "$_m" | tr 'A-F' 'a-f')
+			ALL_BOX_MACS="${ALL_BOX_MACS:+$ALL_BOX_MACS }$_m"
+			[ -n "$_i" ] && ALL_BOX_IPS="${ALL_BOX_IPS:+$ALL_BOX_IPS }$_i"
+		done < "$_bconf"
+	fi
+	[ -n "$ALL_BOX_MACS" ] || ALL_BOX_MACS="$BOX_MAC"
+	[ -n "$ALL_BOX_IPS" ] || ALL_BOX_IPS="$BOX_IP"
 	{
 		echo "table bridge piso_kiosk {"
 		echo "	chain forward {"
 		echo "		type filter hook forward priority -200; policy accept;"
 		# the coin box talks to phones and phones to the coin box (ARP included); everything else on a Wi-Fi port is dropped
-		if [ -n "$BOX_MAC" ]; then
-			echo "		ether saddr $BOX_MAC accept"
-			echo "		ether daddr $BOX_MAC accept"
-		fi
-		[ -z "$BOX_IP" ] || echo "		arp daddr ip $BOX_IP accept"
+		for _bm in $ALL_BOX_MACS; do
+			echo "		ether saddr $_bm accept"
+			echo "		ether daddr $_bm accept"
+		done
+		for _bi in $ALL_BOX_IPS; do
+			echo "		arp daddr ip $_bi accept"
+		done
 		for _p in $WIFI_PORTS; do
 			echo "		iifname \"$_p\" counter drop comment \"a Wi-Fi client reaches the router and the coin box only\""
 			echo "		oifname \"$_p\" counter drop"
@@ -125,8 +141,9 @@ if [ -d "$SYS/$LAN_BR" ]; then
 		echo "	chain prerouting {"
 		echo "		type filter hook prerouting priority -200; policy accept;"
 		for _p in $WIFI_PORTS; do
-			if [ -n "$BOX_MAC" ]; then
-				echo "		iifname \"$_p\" ether saddr != $BOX_MAC meta mark set meta mark | $MARK"
+			if [ -n "$ALL_BOX_MACS" ]; then
+				_mac_set=$(echo "$ALL_BOX_MACS" | tr ' ' ', ')
+				echo "		iifname \"$_p\" ether saddr != { $_mac_set } meta mark set meta mark | $MARK"
 			else
 				echo "		iifname \"$_p\" meta mark set meta mark | $MARK"
 			fi

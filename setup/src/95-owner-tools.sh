@@ -1,6 +1,19 @@
 # piso-setup reconcile [rebase]: the box's own coin count against the router's revenue ledger (also checks the ledger
 # chain). The box's count restarts when its revenue is collected, which is noticed by itself; "rebase" compares from now on.
-cmd_reconcile() { /usr/bin/pisoportal reconcile "$@"; }
+cmd_reconcile() {
+	if [ -x /usr/bin/pisoportal ]; then
+		/usr/bin/pisoportal reconcile "$@"
+	else
+		echo "PisoWiFi only: coin counters are maintained directly on each coin box."
+		if [ -f "$PISO_ROOT/etc/coinslot.d/boxes.conf" ]; then
+			while IFS='|' read -r _slot _mac _ip _name _role _en; do
+				[ -z "$_mac" ] && continue
+				echo "Slot $_slot ($_name at $_ip):"
+				curl -s -m 3 "http://$_ip/api/diagnostics" 2>/dev/null | grep -iE 'coins|total|pulse' | sed 's/^/  /' || echo "  (offline)"
+			done < "$PISO_ROOT/etc/coinslot.d/boxes.conf"
+		fi
+	fi
+}
 
 # piso-setup telegram: connect the Telegram bot (alerts and remote commands). The token comes from @BotFather.
 # telegram_connect <token> <site name>: pairs the bot with the first chat that writes to it and starts the monitor.

@@ -22,9 +22,9 @@ The setup page's steps, in order:
   1. Start        checks this computer (ssh, the website, esptool) and installs what is missing
   2. Router       finds the factory-reset router by itself (192.168.1.1 or 10.0.0.1)
   3. Settings     the shop's name and public Wi-Fi name (asked every time), the country and the passwords (new ones every time)
-  4. Install      writes the PisoPhone software to the coin box over USB (esptool, checked against the website's checksums), runs
-                  the one-line installer on the router unattended (it checks the setup file's sha256), waits for the router to
-                  move to 10.0.0.1, runs the setup, pairs the coin box, saves the summary and the setup sheet
+  4. Install      writes the PisoPhone software to the coin box over USB (esptool, checked against the website's checksums),
+                  moves the router to 10.0.0.1 before anything else to avoid modem IP conflicts, runs the one-line installer
+                  on the router unattended (it checks the setup file's sha256), pairs the coin box, saves summary & sheet
   5. Phones       the link to the phone setup page (Set up a phone), already filled in: open it on a phone or laptop with
                   internet and scan its QR code with the rental phone
   6. Finish       tests a real coin, checks the customer Wi-Fi, offers Telegram alerts; "Set up the next unit" starts over
@@ -1972,6 +1972,16 @@ def installer_command(branch, *args):
             f"exit 3; fi; sh /tmp/piso-install.sh {run}")
 
 
+def move_command(target_ip=TARGET_IP):
+    """The remote command: move the router's LAN address to target_ip before anything else (avoids modem IP conflict)."""
+    return (
+        f"uci set network.lan.ipaddr='{target_ip}' && uci commit network && "
+        f"(trap '' HUP; sleep 2; ${{PISO_NETWORK_INIT:-/etc/init.d/network}} restart; sleep 5; "
+        f"for d in ${{PISO_NET_DIR:-/sys/class/net}}/lan[0-9]*; do case \"${{d##*/}}\" in *.*) continue ;; esac; [ -e \"$d\" ] && ip link set \"${{d##*/}}\" down; done; "
+        f"sleep 3; for d in ${{PISO_NET_DIR:-/sys/class/net}}/lan[0-9]*; do case \"${{d##*/}}\" in *.*) continue ;; esac; [ -e \"$d\" ] && ip link set \"${{d##*/}}\" up; done) >/dev/null 2>&1 &"
+    )
+
+
 def setup_command(branch):
     """The remote command for the setup itself: the answers are read from the connection's input (never on a command line,
     where any process on the router could read them), then the installer runs the setup, then the results are sent back
@@ -2124,20 +2134,20 @@ def renew_address():
 
 
 def install(ssh, host, answers, branch, out_dir, emit, wait_move, stage=lambda n: None):
-    """The installation: on a factory router the installer first moves it to 10.0.0.1 (wait_move() waits for that), then
-    the setup runs with the answers. Returns the result (ok, state, saved files, summary); raises SetupError when it could
-    not run to its end.
+    """The installation: on a factory router the router is first moved to 10.0.0.1 (wait_move() waits for that)
+    before anything else to avoid IP conflicts with modems on 192.168.1.1, then the setup runs with the answers.
+    Returns the result (ok, state, saved files, summary); raises SetupError when it could not run to its end.
 
     The router needs internet for the first setup: it downloads the installer and its packages itself. Before the setup runs
     the router's internet is tested, and without it the setup stops with a message that names the requirement."""
     moved = False
-    if host != TARGET_IP:   # (the factory address, or the one this router started at: the installer moves it)
+    if host != TARGET_IP:   # (the factory address, or the one this router started at: moved to 10.0.0.1 first)
         check_router_packager(ssh, host)
         stage(0)
-        emit(f"Downloading the setup to the router and moving it to {TARGET_IP}...")
-        r = run_remote(ssh, host, installer_command(branch), emit)
+        emit(f"Moving router from {host} to {TARGET_IP} before anything else (moving it to {TARGET_IP} avoids modem IP conflict)...")
+        r = run_remote(ssh, host, move_command(), emit)
         if r["exit"] != 0:
-            raise SetupError("the router could not be prepared (see the messages above). Nothing else was changed; try again.")
+            raise SetupError(f"could not change the router address to {TARGET_IP}. Nothing else was changed; try again.")
         stage(1)
         if not wait_move():
             raise SetupError(
@@ -2175,6 +2185,8 @@ def install(ssh, host, answers, branch, out_dir, emit, wait_move, stage=lambda n
         save_private(path, wifi_card_html(site, found.get("KIOSK_SSID_NAME") or KIOSK_SSID, found["KIOSK_PASSWORD"], stamp=time.strftime("%Y-%m-%d")))
         saved.append(("Wi-Fi join card (print it for your manual)", os.path.abspath(path)))
     if result["rc"] is None:
+        if result.get("exit") != 0:
+            raise SetupError("the router could not be prepared (see the messages above). Nothing else was changed; try again.")
         raise SetupError("the connection to the router was lost before the setup finished. Try again: it continues where it "
                          "stopped (the router keeps what is done).")
     stage(3)
@@ -2189,7 +2201,9 @@ def failure_message(result):
     if state.startswith("DONE"):
         return (f"the setup finished, but some checks failed ({state}). Read the messages above; after fixing the cause run "
                 "it again (it continues where it stopped).")
-    reason = state.replace("FAILED ", "", 1) if state else "see the messages above"
+    if not state:
+        return "the router could not be prepared (see the messages above). Nothing else was changed; try again."
+    reason = state.replace("FAILED ", "", 1)
     more = ""
     if "box" in reason.lower():
         more = (" The report above (ending in a line that starts with \"verdict:\") says where the link to the coin box breaks; "
@@ -2868,7 +2882,7 @@ def run_setup(args, ssh, read=input, read_secret=getpass.getpass, probe=port_ope
                 pass
     say()
     if host != TARGET_IP:
-        say(f"Step 1 of 2: downloading the setup to the router and moving it to {TARGET_IP}...")
+        say(f"Step 1 of 2: moving it to {TARGET_IP} before anything else (avoids modem IP conflict)...")
     else:
         say("Step 1 of 2: the router is at its address already.")
 
@@ -4298,9 +4312,9 @@ def serial_access_advice(port):
 
 STEPS = [("welcome", "Start"), ("router", "Router"), ("settings", "Settings"), ("install", "Install"), ("phones", "Phones"),
          ("finish", "Finish")]
-INSTALL_STAGES = ["Write the coin box software (USB)", "Prepare the router", f"Move it to {TARGET_IP}", "Install and set up",
+INSTALL_STAGES = ["Write the coin box software (USB)", f"Move router to {TARGET_IP}", f"Wait for {TARGET_IP}", "Install and set up",
                   "Check everything"]
-STAGE_ACTIVITY = ["Writing the coin box software", "Downloading the setup to the router", f"Waiting for the router at {TARGET_IP}",
+STAGE_ACTIVITY = ["Writing the coin box software", f"Moving router to {TARGET_IP}", f"Waiting for the router at {TARGET_IP}",
                   "Installing on the router", "Checking"]
 WIFI_STEPS = [step for step in STEPS if step[0] != "phones"]   # PisoWiFi only: the same router and coin box, no rental phones
 PHONE_STEPS = [("welcome", "Start"), ("p_settings", "Settings"), ("p_install", "Install"), ("p_phones", "Phones"), ("p_finish", "Finish")]

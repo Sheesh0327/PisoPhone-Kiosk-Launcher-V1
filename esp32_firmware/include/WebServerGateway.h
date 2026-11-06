@@ -9,5 +9,7 @@ void handleGatewayStatus();
 void handleGatewayRelease();
 void handleGatewayAck();
 void handleGatewayConfig();
+void handleGatewayPersona();
+void handleGatewayBoxes();
 
 #endif // WEB_SERVER_GATEWAY_H

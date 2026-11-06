@@ -17,6 +17,10 @@ FILES = [  # (source in the repository, destination on the router, mode)
     ("router/pisoportal.init", "/etc/init.d/pisoportal", "755"),
     ("router/pisoportal_status.sh", "/usr/lib/opennds/pisoportal_status.sh", "755"),
     ("router/piso_isolation.sh", "/etc/hotplug.d/firewall/50-piso-isolation", "755"),
+    ("router/piso_nds_cgi.sh", "/www/cgi-bin/piso-nds", "755"),
+]
+B64_COMMON = [
+    ("router/offline.html", "/www/offline.html", "644"),
 ]
 DEFAULT_ARCH = "mipsel"   # its setup file is setup/piso-setup.sh (as it always was); the other families have setup/piso-setup-<family>.sh
 ARCHES = ["mipsel", "mips", "aarch64", "armv7", "x86_64"]
@@ -44,32 +48,43 @@ def template():
     return "".join(open(os.path.join(src, n)).read() for n in names)
 
 
-def build(arch=DEFAULT_ARCH):
+def build(arch=DEFAULT_ARCH, wifi_only=False):
     version = os.environ.get("SETUP_VERSION") or "dev"
     release = open(os.path.join(ROOT, "setup/RELEASE")).read().strip()
     assert re.fullmatch(r"\d{1,5}\.\d{1,5}\.\d{1,5}", release), "setup/RELEASE must look like 1.2.3"
-    out = template().replace("@VERSION@", version).replace("@RELEASE@", release).replace("@ARCH@", arch)
+    effective_arch = "wifi" if wifi_only else arch
+    out = template().replace("@VERSION@", version).replace("@RELEASE@", release).replace("@ARCH@", effective_arch)
+    if wifi_only:
+        out = out.replace('SHOP_PRODUCT="${SHOP_PRODUCT:-$(conf_get SHOP_PRODUCT)}"', 'SHOP_PRODUCT="${SHOP_PRODUCT:-wifi}"')
     for src, dest, mode in FILES:
         body = open(os.path.join(ROOT, src)).read()
         assert "\n#@@" not in body and "\r" not in body, src
         if not body.endswith("\n"):
             body += "\n"
         out += f"#@@FILE {dest} {mode}\n{body}"
-    for src, dest, mode in binary_for(arch):
+    for src, dest, mode in B64_COMMON:
         raw = open(os.path.join(ROOT, src), "rb").read()
         b64 = base64.b64encode(raw).decode()
-        # the checksum lets the router verify whichever decoder it used
         out += f"#@@B64 {dest} {mode} {hashlib.sha256(raw).hexdigest()}\n" + "".join(b64[i:i + 76] + "\n" for i in range(0, len(b64), 76))
+    if not wifi_only:
+        for src, dest, mode in binary_for(arch):
+            raw = open(os.path.join(ROOT, src), "rb").read()
+            b64 = base64.b64encode(raw).decode()
+            # the checksum lets the router verify whichever decoder it used
+            out += f"#@@B64 {dest} {mode} {hashlib.sha256(raw).hexdigest()}\n" + "".join(b64[i:i + 76] + "\n" for i in range(0, len(b64), 76))
     return out
 
 
 def outputs(text):
     """Every generated file and its content: the setup file and its sha256 (the one-line installer checks the download against
     it). The other CPU families get setup/piso-setup-<family>.sh for every family whose portal program CI has built."""
+    wifi_text = build(wifi_only=True)
     out = {
         "setup/piso-setup.sh.in": template(),
         "setup/piso-setup.sh": text,
         "setup/piso-setup.sh.sha256": hashlib.sha256(text.encode()).hexdigest() + "  piso-setup.sh\n",
+        "setup/piso-setup-wifi.sh": wifi_text,
+        "setup/piso-setup-wifi.sh.sha256": hashlib.sha256(wifi_text.encode()).hexdigest() + "  piso-setup-wifi.sh\n",
     }
     for arch in built_arches():
         if arch == DEFAULT_ARCH:

@@ -36,7 +36,9 @@
 #if PISO_HAS_SHOP_EXTRAS
 #include "SuperAdminManager.h"
 #endif
+#if !defined(PISO_PRODUCT_WIFI)
 #include "WebDashboardHtml.h"
+#endif
 #include "WebDashboardIcons.h"
 #include "WebDashboardOta.h"
 #include <WiFi.h>
@@ -132,7 +134,9 @@ void handlePortalRoot() {
     }
 #endif
 
+#if !defined(PISO_PRODUCT_WIFI)
     streamPortalHtml();
+#endif
 }
 
 // Writes the revenue counters to flash if they changed since the last write.

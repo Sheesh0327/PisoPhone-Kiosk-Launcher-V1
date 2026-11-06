@@ -74,6 +74,10 @@ extract_payload() {
 	# shellcheck disable=SC2013 # one word per program: path|mode|sha256
 	for _e in $(sed -n 's/^#@@B64 \([^ ]*\) \([^ ]*\) *\([^ ]*\).*/\1|\2|\3/p' "$_self"); do
 		_dest="${_e%%|*}"; _r="${_e#*|}"; _mode="${_r%%|*}"; _sum="${_r#*|}"
+		if wifi_only && [ "$_dest" = "/usr/bin/pisoportal" ]; then
+			log "skipping $_dest (FAS offloaded to ESP32 for PisoWiFi-only)"
+			continue
+		fi
 		f="$PISO_ROOT$_dest"; _t="$_tmpd/${_dest##*/}"
 		[ -s "$_t.b64" ] || { rm -rf "$_tmpd"; die "could not unpack $_dest"; }
 		tr -d '\r' < "$_t.b64" > "$_t.clean"
@@ -83,6 +87,14 @@ extract_payload() {
 		log "installed $f"
 	done
 	rm -rf "$_tmpd"
+
+	if wifi_only; then
+		if [ -f "$PISO_ROOT/usr/bin/pisoportal" ]; then
+			log "PisoWiFi only: removing legacy /usr/bin/pisoportal to free flash space"
+			[ -x /etc/init.d/pisoportal ] && { /etc/init.d/pisoportal stop > /dev/null 2>&1; /etc/init.d/pisoportal disable > /dev/null 2>&1; rm -f /etc/init.d/pisoportal; }
+			rm -f "$PISO_ROOT/usr/bin/pisoportal"
+		fi
+	fi
 	# the installed command without the payload (about 1 MB of flash): it is only used for the commands, never to install
 	# (written next to it and renamed: this file may be the one being run, and the shell is still reading it)
 	if sed '/^# ---- payload: the portal files/,$d' "$_self" > "$SELF_PATH.new" 2> /dev/null; then
@@ -104,7 +116,20 @@ remove_old_portal() {
 
 write_coinslot_conf() {  # write_coinslot_conf <gateway key> <box mac>
 	umask 077
-	mkdir -p "$PISO_ROOT/etc"
+	mkdir -p "$PISO_ROOT/etc" "$PISO_ROOT/etc/coinslot.d"
+	if [ ! -f "$PISO_ROOT/etc/coinslot.d/epoch.conf" ]; then
+		cat << EOT > "$PISO_ROOT/etc/coinslot.d/epoch.conf"
+CURRENT_EPOCH=1
+ACTIVE_FAS_IP=10.0.0.10
+ACTIVE_FAS_PORT=2080
+ACTIVE_FAS_NAME=Esmeralda
+EOT
+	fi
+	if [ ! -f "$PISO_ROOT/etc/coinslot.d/boxes.conf" ] && [ -n "$2" ]; then
+		cat << EOT > "$PISO_ROOT/etc/coinslot.d/boxes.conf"
+1|$2|$BOX_IP|Esmeralda|primary|1
+EOT
+	fi
 	_cf="$PISO_ROOT/etc/coinslot.conf"
 	{
 		cat << EOT

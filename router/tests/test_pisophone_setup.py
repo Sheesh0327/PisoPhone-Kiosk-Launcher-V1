@@ -927,7 +927,7 @@ check("Router alerts" not in checkup(up={("192.168.1.1", 22)}, alerts=lambda: ["
 class FakeRouterSsh:
     """Runs the commands against a folder that stands in for /etc/coinslot.d."""
     def __init__(self, folder, fail_cat=False):
-        self.folder, self.fail_cat, self.commands = folder, fail_cat, []
+        self.folder, self.fail_cat, self.commands = folder.replace("\\", "/"), fail_cat, []
 
     def run(self, host, cmd, *flags, **kw):
         self.commands.append(cmd)

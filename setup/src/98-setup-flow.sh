@@ -61,7 +61,12 @@ ask_password() {
 choose_passwords() {
 	ask_password ROOT_PASS "router password (SSH and LuCI login)" 8 63 "$ROOT_PASSWORD"
 	wifi_only || ask_password KIOSK_PASS "PisoKiosk Wi-Fi password (typed once into each rental phone's setup page)" 8 63 "$KIOSK_PASSWORD"
-	ask_password BOX_ADMIN_PASS_NEW "coin box admin password (the box's web page; also the phones' admin PIN)" 8 32 "$BOX_NEW_ADMIN_PASSWORD"
+	if wifi_only; then
+		_def_box_pass=$(conf_get ROOT_PASS)
+		ask_password BOX_ADMIN_PASS_NEW "coin box admin password (the box's web page and console login)" 8 32 "${BOX_NEW_ADMIN_PASSWORD:-$_def_box_pass}"
+	else
+		ask_password BOX_ADMIN_PASS_NEW "coin box admin password (the box's web page; also the phones' admin PIN)" 8 32 "$BOX_NEW_ADMIN_PASSWORD"
+	fi
 }
 
 # review_choices: what will be applied, before anything is changed (with a terminal only).
@@ -127,7 +132,12 @@ stage1() {
 	review_choices
 	ask_telegram
 	KIOSK_PASS=$(kiosk_pass)
-	secret ROOT_PASS 14 > /dev/null; secret GW_KEY 64 hex > /dev/null; secret BOX_ADMIN_PASS_NEW 16 > /dev/null
+	secret ROOT_PASS 14 > /dev/null; secret GW_KEY 64 hex > /dev/null
+	if wifi_only && [ -z "$(conf_get BOX_ADMIN_PASS_NEW)" ]; then
+		conf_set BOX_ADMIN_PASS_NEW "$(conf_get ROOT_PASS)"
+	else
+		secret BOX_ADMIN_PASS_NEW 16 > /dev/null
+	fi
 	BOX_MAC=$(conf_get BOX_MAC)
 	if [ "$DRY" = 1 ]; then uci_batch "<kiosk password>" "$GUEST_NAME" "$BOX_MAC"; return 0; fi
 
@@ -149,7 +159,7 @@ main() {
 		case "$1" in
 			--dry-run) DRY=1 ;;
 			--yes | -y) ASSUME_YES=1 ;;
-			status | wan-clash | pair | summary | wifi-name | guest-port | kiosk-wifi | verify | uninstall-info | test-coin | diag | box-diag | set-password | reconcile | telegram | rotate-box-wifi | box-wifi-name | handout | console | export | import | space | forget-summary | lock-admin | lock-admin-confirm | unlock-admin | wifi-admin | update | self-update | box-update | auto-update | voucher-choice | brand-pack | sqm) CMD="$1"; shift; ARG="$1"; ARGS="$*"; break ;;
+			status | wan-clash | pair | pair-add | box-role | summary | wifi-name | guest-port | kiosk-wifi | verify | uninstall-info | test-coin | diag | box-diag | set-password | reconcile | telegram | rotate-box-wifi | box-wifi-name | handout | console | export | import | space | forget-summary | lock-admin | lock-admin-confirm | unlock-admin | wifi-admin | update | self-update | box-update | auto-update | voucher-choice | brand-pack | sqm) CMD="$1"; shift; ARG="$1"; ARGS="$*"; break ;;
 			-h | --help) sed -n '2,/^# Options:/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 			*) echo "unknown option: $1 (try --help)" >&2; exit 1 ;;
 		esac
@@ -162,6 +172,8 @@ main() {
 		wifi-name) cmd_wifi_name "$ARG" ;;
 		guest-port) [ "$(id -u)" = 0 ] || [ "$DRY" = 1 ] || die "run as root"; cmd_guest_port "$ARG" ;;
 		pair) cmd_pair ;;
+		pair-add) cmd_pair_add ;;
+		box-role) cmd_box_role $ARGS ;;
 		test-coin) cmd_test_coin ;;
 		diag) cmd_diag ;;
 		box-diag) cmd_box_diag ;;
