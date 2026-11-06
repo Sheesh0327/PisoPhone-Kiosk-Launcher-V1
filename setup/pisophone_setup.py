@@ -2185,8 +2185,23 @@ def install(ssh, host, answers, branch, out_dir, emit, wait_move, stage=lambda n
             except Exception:
                 pass
 
-        product = answers.get("SHOP_PRODUCT", "")
-        bundle_name = "piso-setup-wifi.sh" if product == "wifi" else "piso-setup.sh"
+        # Detect router CPU architecture to pick the matching setup bundle (defaulting to mipsel / piso-setup.sh)
+        arch = "mipsel"
+        try:
+            r = run_remote(ssh, host, "sed -n \"s/^DISTRIB_ARCH=['\\\"]\\{0,1\\}\\([^'\\\"]*\\).*/\\1/p\" /etc/openwrt_release 2>/dev/null | head -n 1", lambda l: None)
+            pkg = (r.get("output") or "").strip()
+            if pkg.startswith("mips_"):
+                arch = "mips"
+            elif pkg.startswith("aarch64_"):
+                arch = "aarch64"
+            elif any(pkg.startswith(x) for x in ("arm_cortex-a7", "arm_cortex-a15", "arm_cortex-a9")):
+                arch = "armv7"
+            elif pkg == "x86_64":
+                arch = "x86_64"
+        except Exception:
+            pass
+
+        bundle_name = f"piso-setup-{arch}.sh" if arch != "mipsel" else "piso-setup.sh"
         bundle_path = os.path.join(setup_dir, bundle_name)
         if not os.path.isfile(bundle_path):
             bundle_path = os.path.join(setup_dir, "piso-setup.sh")
