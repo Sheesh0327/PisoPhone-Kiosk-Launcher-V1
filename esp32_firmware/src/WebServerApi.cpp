@@ -9,7 +9,9 @@
 #if PISO_HAS_PHONES
 #include "PhoneProfileStore.h"
 #endif
+#if !defined(PISO_PRODUCT_WIFI)
 #include "WebDashboardHtml.h"
+#endif
 #if PISO_HAS_SHOP_EXTRAS
 #include "SuperAdminPubKey.h"
 #include "SuperAdminManager.h"

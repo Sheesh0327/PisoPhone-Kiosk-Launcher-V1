@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="refresh" content="6">
+<title>PisoWiFi &middot; Reconnecting</title>
+<style>
+:root{--bg:#09090b;--card:#18181b;--tx:#fafafa;--mut:#a1a1aa;--acc:#0f9f7a;--ln:#27272a}
+*{box-sizing:border-box}
+body{margin:0;padding:24px 16px;background:var(--bg);color:var(--tx);font:15px/22px system-ui,-apple-system,BlinkMacSystemFont,sans-serif;text-align:center;min-height:100vh;display:flex;align-items:center;justify-content:center}
+.card{background:var(--card);border:1px solid var(--ln);border-radius:18px;padding:32px 24px;max-width:380px;width:100%;box-shadow:0 12px 32px rgba(0,0,0,.4)}
+.spin{width:44px;height:44px;margin:0 auto 20px;border:3px solid var(--ln);border-top-color:var(--acc);border-radius:50%;animation:s 1s linear infinite}
+@keyframes s{to{transform:rotate(360deg)}}
+h1{font-size:19px;font-weight:700;margin:0 0 10px;letter-spacing:-.01em}
+p{color:var(--mut);margin:0 0 20px;font-size:14px}
+.btn{display:inline-block;padding:12px 24px;border-radius:10px;background:var(--acc);color:#fff;font-weight:600;text-decoration:none;border:0;cursor:pointer;width:100%;font-size:14px}
+.fil{font-size:12px;color:var(--mut);margin-top:16px}
+</style>
+</head>
+<body>
+<div class="card">
+<div class="spin" aria-hidden="true"></div>
+<h1>Coin Box Reconnecting</h1>
+<p>The coin box is starting up or reconnecting to the router. This page will refresh automatically in a few seconds.</p>
+<button class="btn" onclick="location.reload()">Check Again</button>
+<div class="fil">
+<b>Muling Kumokonekta:</b> Nagsisimula o muling kumokonekta ang coin box. Kusa itong magre-refresh sa loob ng ilang segundo.
+</div>
+</div>
+</body>
+</html>

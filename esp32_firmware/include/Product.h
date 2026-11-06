@@ -20,7 +20,7 @@
 #define PISO_FEED_PATH "/update/home"
 #define PISO_SITE_NAME "PisoHome"
 #elif defined(PISO_PRODUCT_PHONE)
-#define PISO_HAS_GATEWAY 0
+#define PISO_HAS_GATEWAY 1
 #define PISO_HAS_PHONES 1
 #define PISO_IS_HOME 0
 #define PISO_HAS_SHOP_EXTRAS 1

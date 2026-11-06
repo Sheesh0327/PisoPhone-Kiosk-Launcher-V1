@@ -264,3 +264,16 @@ cmd_update() {
 	return 0
 }
 
+cmd_pair_add() {
+	[ "$(id -u)" = 0 ] || die "run as root"
+	pair_add_box
+}
+
+cmd_box_role() {
+	[ "$(id -u)" = 0 ] || die "run as root"
+	_slot="$1"; _role="$2"
+	[ -n "$_slot" ] && [ -n "$_role" ] || die "usage: piso-setup box-role <slot 1-4> <primary|standby>"
+	set_box_role "$_slot" "$_role"
+}
+
+

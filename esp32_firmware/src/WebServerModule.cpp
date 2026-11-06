@@ -32,7 +32,11 @@
 #if PISO_IS_HOME
 #include "WebServerChores.h"
 #endif
+#if defined(PISO_PRODUCT_WIFI)
+#include "WifiConsoleServer.h"
+#else
 #include "WebDashboardHtml.h"
+#endif
 #include <WiFi.h>
 #include <WebServer.h>
 #include <HTTPClient.h>
@@ -60,10 +64,14 @@ void setupWebServer() {
 #endif
 
     // Port 80: HTTP Portal & API routes
+#if defined(PISO_PRODUCT_WIFI)
+    registerWifiConsoleRoutes();
+#else
     webServer.on("/", HTTP_GET, handlePortalRoot);
     webServer.on("/logout", HTTP_GET, handleLogout);
     webServer.on("/signin", HTTP_GET, handleSignIn);
     webServer.on("/save", HTTP_POST, handleSave);
+#endif
     webServer.on("/reboot", HTTP_POST, handleReboot);
     webServer.on("/factory_reset", HTTP_POST, handleFactoryReset);
 #if PISO_HAS_PHONES
@@ -149,6 +157,8 @@ void setupWebServer() {
     webServer.on("/api/gateway/release", HTTP_ANY, handleGatewayRelease);
     webServer.on("/api/gateway/ack", HTTP_ANY, handleGatewayAck);
     webServer.on("/api/gateway/config", HTTP_ANY, handleGatewayConfig);
+    webServer.on("/api/gateway/persona", HTTP_ANY, handleGatewayPersona);
+    webServer.on("/api/gateway/boxes", HTTP_GET, handleGatewayBoxes);
 #endif
 
     webServer.on("/api/relay", HTTP_ANY, []() {

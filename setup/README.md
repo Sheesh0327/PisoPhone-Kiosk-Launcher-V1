@@ -172,12 +172,12 @@ python3 pisophone_setup.py --cli            (Windows: py pisophone_setup.py --cl
 python3 pisophone_setup.py --cli --branch beta    (the beta branch's setup, for testing)
 ```
 It asks for the public Wi-Fi name, the site name and the three passwords (Enter generates them), shows everything on a review
-screen, and after you answer `y` it does the rest by itself: it finds the router (192.168.1.1 or 10.0.0.1), runs the one-line
-installer there unattended (`install.sh --yes`, which checks the setup file's sha256), waits for the router to come back at
-10.0.0.1 (if it does not within half a minute it tells you to unplug and replug the cable; Windows renews its address by
-itself), runs the setup with your answers while you watch its output, and saves **the summary (every password) and the
-printable setup sheet** in the current folder (only you can read them), then opens the coin box's phone setup page in your
-browser, already filled in. At the end it offers to connect Telegram alerts.
+screen, and after you answer `y` it does the rest by itself: it finds the router (192.168.1.1 or 10.0.0.1), moves the router
+to 10.0.0.1 before anything else to avoid IP subnet conflicts with upstream modems at 192.168.1.1, waits for the router to
+come back at 10.0.0.1 (if it does not within half a minute it tells you to unplug and replug the cable; Windows renews its address
+by itself), downloads the installer and runs the setup with your answers while you watch its output, and saves **the summary
+(every password) and the printable setup sheet** in the current folder (only you can read them), then opens the coin box's phone setup
+page in your browser, already filled in. At the end it offers to connect Telegram alerts.
 
 It needs Python 3.8 or newer and the `ssh` command (installed for you on Linux when it runs as root; Windows: Settings > Apps
 > Optional features > OpenSSH Client, if it is missing) and, to write the coin box over USB, `esptool` (installed for you with pip; `--no-flash` skips the box, `--no-install` installs nothing). The passwords travel over the SSH connection's input, never on a
@@ -190,20 +190,18 @@ the names, `--out <folder>` chooses where the files go. If it stops with an erro
 The steps below are the same thing by hand.
 
 ### Step 1: one line on the router
-Plug your computer into a LAN port of the factory-reset router, log in and paste one line:
+Factory-reset OpenWrt routers start at `192.168.1.1`. Upstream ISP modems (PLDT, Converge, Globe, etc.) also use `192.168.1.1`. To prevent subnet routing conflicts, the router moves to `10.0.0.1` before downloading setup payloads over WAN.
+Plug your computer into a LAN port of the factory-reset router, log in and move the router to `10.0.0.1`:
 ```
 ssh root@192.168.1.1
-wget -qO- https://pisophone.pages.dev/install.sh | sh
+uci set network.lan.ipaddr='10.0.0.1' && uci commit network && /etc/init.d/network restart
 ```
-It downloads the current setup file to `/tmp/piso-setup.sh` (the router's memory; to `/root/piso-setup.sh` on flash when the router has under 24 MB of free memory), checks it (its published sha256, that it is complete and readable),
-then asks to move the router from `192.168.1.1` to **10.0.0.1** (the kiosk network). Answer `y`: the SSH session ends, which is
-expected. Unplug and replug the computer's cable (or wait a minute), then continue:
+The SSH session ends as the network restarts. Unplug and replug the computer's network cable (or wait a minute for DHCP), then log in at `10.0.0.1` and run the installer:
 ```
 ssh root@10.0.0.1
-sh /tmp/piso-setup.sh
+wget -qO- https://pisophone.pages.dev/install.sh | sh
 ```
-(The installer prints the exact path. If the router restarts before you log in again, the copy in `/tmp` is gone: run the one-line installer again. After a good install the setup deletes its copy, so the 1.6 MB never stays on flash; after a failed one the copy stays, so you can run it again. A router that is already at 10.0.0.1 goes straight on to the setup.) If the modem itself uses `10.0.0.x`, the installer stops and
-tells you to change the modem's address first.
+It downloads the setup file to `/tmp/piso-setup.sh` (or `/root/piso-setup.sh` when free RAM is under 24 MB), verifies its published SHA256 checksum, and starts the setup. If the modem itself assigns a `10.0.0.x` lease, the installer stops and warns you to adjust the modem's address range.
 
 Other uses of the same line: `... | sh -s update` installs new software on a router that is set up already, and
 `... | sh -s -- --branch beta` uses the setup file of another branch (testing); `... | sh -s -- --yes` asks nothing (it moves the

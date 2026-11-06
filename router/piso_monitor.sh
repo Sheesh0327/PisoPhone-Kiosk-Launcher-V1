@@ -35,6 +35,8 @@ LOGREAD="${LOGREAD:-logread}"
 ALERTS_FILE="${ALERTS_FILE:-/etc/coinslot.d/alerts.txt}"
 COINSLOT_CONF="${COINSLOT_CONF:-/etc/coinslot.conf}"
 SETUP_CONF="${PISO_SETUP_CONF:-/etc/piso-setup.conf}"
+BOXES_CONF="${PISO_BOXES_CONF:-/etc/coinslot.d/boxes.conf}"
+EPOCH_CONF="${PISO_EPOCH_CONF:-/etc/coinslot.d/epoch.conf}"
 UPDATE_GRACE="${UPDATE_GRACE:-86400}"                  # seconds an update may wait before it is a warning
 [ -n "$PORTAL_PORT" ] || PORTAL_PORT=$(sed -n "s/^PORTAL_PORT=['\"]\{0,1\}\([0-9]*\).*/\1/p" "$COINSLOT_CONF" 2> /dev/null | head -n 1)
 # Where the portal listens: the installer binds it to the guest network's address only (PORTAL_BIND), where 127.0.0.1 never answers. Asking
@@ -88,7 +90,27 @@ check_wan() {
 	return 0
 }
 
-box_ok() { "$PORTAL" box > /dev/null 2>&1; }
+active_fas_ip() {
+	_a=""
+	[ -r "$EPOCH_CONF" ] && _a=$(sed -n "s/^ACTIVE_FAS_IP='\{0,1\}\([^']*\)'\{0,1\}\$/\1/p" "$EPOCH_CONF" 2>/dev/null | head -n 1)
+	[ -n "$_a" ] || _a=$(uci -q get opennds.@opennds[0].fasremoteip 2>/dev/null)
+	echo "${_a:-10.0.0.10}"
+}
+
+active_epoch() {
+	_e=""
+	[ -r "$EPOCH_CONF" ] && _e=$(sed -n "s/^CURRENT_EPOCH='\{0,1\}\([^']*\)'\{0,1\}\$/\1/p" "$EPOCH_CONF" 2>/dev/null | head -n 1)
+	echo "${_e:-1}"
+}
+
+box_ok() {
+	if [ -e "$PORTAL" ]; then
+		"$PORTAL" box > /dev/null 2>&1
+		return $?
+	fi
+	_bip=$(active_fas_ip)
+	curl -s -m 3 "http://$_bip/api/gateway/challenge" 2>/dev/null | grep -q '{'
+}
 
 check_box() {
 	_fails=$(cat "$S/boxfails" 2> /dev/null); _fails=${_fails:-0}
@@ -101,10 +123,69 @@ check_box() {
 	fi
 }
 
-# The portal program itself: /ping with a time limit. After PING_FAILS_TO_RESTART failures in a row it is restarted (procd only
-# restarts one that died; this catches one that hangs), at most once in RESTART_GAP seconds. A coin window that was open is settled
-# from its record when the portal starts. One alert when it is restarted, one note when it answers again.
-portal_ok() { [ "$(curl -s -m "$PING_TIMEOUT" "$PING_URL" 2> /dev/null)" = ok ]; }
+portal_ok() {
+	if [ -e "$PORTAL" ]; then
+		[ "$(curl -s -m "$PING_TIMEOUT" "$PING_URL" 2> /dev/null)" = ok ]
+		return $?
+	fi
+	_bip=$(active_fas_ip)
+	[ "$(curl -s -m "$PING_TIMEOUT" "http://$_bip:2080/ping" 2> /dev/null)" = ok ]
+}
+
+failover_fas() {
+	_cur_ip=$(active_fas_ip)
+	_cand_ip=""
+	_cand_name=""
+	if [ -r "$BOXES_CONF" ]; then
+		while IFS=: read -r b_slot b_mac b_ip b_name b_role b_status || [ -n "$b_slot" ]; do
+			case "$b_slot" in "#"* | "") continue ;; esac
+			[ "$b_ip" != "$_cur_ip" ] || continue
+			case "$b_role" in
+				wifi | hub)
+					if curl -s -m 3 "http://$b_ip:2080/ping" 2>/dev/null | grep -q ok \
+					   || curl -s -m 3 "http://$b_ip/api/gateway/challenge" 2>/dev/null | grep -q '{'; then
+						_cand_ip="$b_ip"
+						_cand_name="$b_name"
+						break
+					fi
+					;;
+			esac
+		done < "$BOXES_CONF"
+	fi
+
+	if [ -n "$_cand_ip" ]; then
+		_ep=$(active_epoch)
+		_new_ep=$((_ep + 1))
+		mkdir -p "$(dirname "$EPOCH_CONF")" 2>/dev/null
+		printf "ACTIVE_FAS_IP='%s'\nCURRENT_EPOCH='%s'\n" "$_cand_ip" "$_new_ep" > "$EPOCH_CONF"
+		uci set opennds.@opennds[0].fasremoteip="$_cand_ip" 2>/dev/null
+		uci set opennds.@opennds[0].fasport='2080' 2>/dev/null
+		uci set opennds.@opennds[0].faspath='/' 2>/dev/null
+		uci commit opennds 2>/dev/null
+		# Update admin.hub DNS mapping
+		for _a in $(uci -q get dhcp.@dnsmasq[0].address 2>/dev/null); do
+			case "$_a" in /admin.hub/*) uci del_list dhcp.@dnsmasq[0].address="$_a" 2>/dev/null ;; esac
+		done
+		uci add_list dhcp.@dnsmasq[0].address="/admin.hub/$_cand_ip" 2>/dev/null
+		uci commit dhcp 2>/dev/null
+		/etc/init.d/dnsmasq restart > /dev/null 2>&1
+		/etc/init.d/opennds restart > /dev/null 2>&1
+		note "FAILOVER: Box $_cur_ip offline. Promoted $_cand_name ($_cand_ip) to active FAS (epoch $_new_ep)."
+		tg_send "FAILOVER: Box $_cur_ip offline. Promoted $_cand_name ($_cand_ip) to active FAS (epoch $_new_ep)."
+		return 0
+	fi
+
+	# No online candidate boxes found: fallback to local offline HTML
+	if [ -r "/www/offline.html" ]; then
+		uci set opennds.@opennds[0].fasremoteip="" 2>/dev/null
+		uci set opennds.@opennds[0].faspath='/offline.html' 2>/dev/null
+		uci commit opennds 2>/dev/null
+		/etc/init.d/opennds restart > /dev/null 2>&1
+		note "ALL COIN BOXES OFFLINE: Switched openNDS to offline fallback."
+		tg_send "ALL COIN BOXES OFFLINE: Switched openNDS to offline fallback."
+	fi
+	return 1
+}
 
 check_portal() {
 	_fails=$(cat "$S/pingfails" 2> /dev/null); _fails=${_fails:-0}
@@ -117,8 +198,12 @@ check_portal() {
 	_last=$(cat "$S/portal.restarted" 2> /dev/null); _last=${_last:-0}
 	if [ $(($(now) - _last)) -ge "$RESTART_GAP" ]; then
 		now > "$S/portal.restarted"; : > "$S/portal.down"
-		"$PORTAL_SERVICE" restart > /dev/null 2>&1
-		alert portal 3600 "the portal program did not answer for $_fails minutes and was restarted (a coin window that was open is settled from its record)."
+		if [ -e "$PORTAL" ]; then
+			"$PORTAL_SERVICE" restart > /dev/null 2>&1
+			alert portal 3600 "the portal program did not answer for $_fails minutes and was restarted (a coin window that was open is settled from its record)."
+		else
+			failover_fas
+		fi
 		echo 0 > "$S/pingfails"   # the minutes count from the restart, so a portal that keeps failing does not report ever larger numbers
 	fi
 }
@@ -140,6 +225,7 @@ check_ledger() {  # at most once an hour
 	_f="$S/lastreconcile"; _n=$(now)
 	[ -r "$_f" ] && [ $((_n - $(cat "$_f"))) -lt 3600 ] && return 0
 	echo "$_n" > "$_f"
+	[ -e "$PORTAL" ] || return 0
 	_o=$("$PORTAL" reconcile 2>&1); _rc=$?
 	case "$_rc" in
 		1) alert ledger 21600 "REVENUE MISMATCH: $_o
@@ -199,8 +285,15 @@ check_report() {  # the daily report, once, from REPORT_HOUR on
 	_day=$(date +%F); [ "$(cat "$S/lastreport" 2> /dev/null)" = "$_day" ] && return 0
 	[ "$(date +%H | sed 's/^0//')" -ge "$REPORT_HOUR" ] || return 0
 	echo "$_day" > "$S/lastreport"
-	tg_send "daily report $_day
+	if [ -e "$PORTAL" ]; then
+		tg_send "daily report $_day
 $("$PORTAL" report 1 2>&1)"
+	else
+		_bip=$(active_fas_ip)
+		_rep=$(curl -s -m 5 "http://$_bip/api/wifi/report?days=1" 2>/dev/null)
+		tg_send "daily report $_day (${_bip})
+${_rep:-No report data available from coin box.}"
+	fi
 }
 
 do_tick() {
@@ -214,9 +307,11 @@ do_tick() {
 cmd_status_text() {
 	echo "uptime: $(uptime 2> /dev/null | sed 's/^ *//')"
 	echo "memory free: $(awk '/MemAvailable/ {printf "%d MB", $2/1024}' /proc/meminfo 2> /dev/null)"
-	box_ok && echo "box: answers" || echo "box: DOES NOT ANSWER"
+	box_ok && echo "box: answers ($(active_fas_ip))" || echo "box: DOES NOT ANSWER"
 	echo "guests online: $("$NDSCTL" json 2> /dev/null | grep -c '"state":"Authenticated"')"
-	"$PORTAL" reconcile 2>&1 | head -2
+	if [ -e "$PORTAL" ]; then
+		"$PORTAL" reconcile 2>&1 | head -2
+	fi
 }
 
 handle_command() {  # handle_command <chat> <text>
@@ -228,8 +323,23 @@ handle_command() {  # handle_command <chat> <text>
 	_cmd="${1%%@*}"; _arg="$2"
 	case "$_cmd" in
 		/status | /start) tg_send "$(cmd_status_text)" ;;
-		/report) case "$_arg" in "" | *[!0-9]*) _arg=1 ;; esac; tg_send "$("$PORTAL" report "$_arg" 2>&1)" ;;
-		/reconcile) tg_send "$("$PORTAL" reconcile 2>&1)" ;;
+		/report)
+			case "$_arg" in "" | *[!0-9]*) _arg=1 ;; esac
+			if [ -e "$PORTAL" ]; then
+				tg_send "$("$PORTAL" report "$_arg" 2>&1)"
+			else
+				_bip=$(active_fas_ip)
+				tg_send "$(curl -s -m 5 "http://$_bip/api/wifi/report?days=$_arg" 2>/dev/null)"
+			fi
+			;;
+		/reconcile)
+			if [ -e "$PORTAL" ]; then
+				tg_send "$("$PORTAL" reconcile 2>&1)"
+			else
+				_bip=$(active_fas_ip)
+				tg_send "$(curl -s -m 5 "http://$_bip/api/wifi/reconcile" 2>/dev/null)"
+			fi
+			;;
 		/diag) tg_send "$("$SETUP" diag 2>&1 | tail -c 3600)" ;;
 		/update) tg_send "looking for an update the owner signed (the router, then the coin box); the result follows."; { "$SETUP" box-update > /dev/null 2>&1; "$SETUP" self-update > /dev/null 2>&1; } & ;;   # (each tells you itself; the router's update restarts this monitor, so it goes last)
 		/restart) "$PORTAL_SERVICE" restart > /dev/null 2>&1; note "portal restarted by the owner."; tg_send "portal restarted (a coin window that was open is settled from its record)." ;;

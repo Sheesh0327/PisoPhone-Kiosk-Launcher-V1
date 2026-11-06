@@ -98,18 +98,194 @@ pair_box() {
 	log "the coin box answers at $BOX_IP"
 }
 
+box_persona_name() {
+	case "$1" in
+		1) echo "Esmeralda" ;;
+		2) echo "Valentina" ;;
+		3) echo "Isabella" ;;
+		4) echo "Magdalena" ;;
+		*) echo "Slot$1" ;;
+	esac
+}
+
 lock_box_network() {  # lock_box_network <mac>: admit only this MAC (none at all when empty: the network is closed)
 	uci -q delete wireless.box_ap.maclist
 	uci set wireless.box_ap.macfilter='allow'
-	[ -n "$1" ] && uci add_list wireless.box_ap.maclist="$1"
-	if [ -n "$1" ]; then
-		uci -q delete dhcp.pisocoinbox
-		uci set dhcp.pisocoinbox=host; uci set dhcp.pisocoinbox.name='pisocoinbox'
-		uci set dhcp.pisocoinbox.mac="$1"; uci set dhcp.pisocoinbox.ip="$BOX_IP"
+	mkdir -p "$PISO_ROOT/etc/coinslot.d"
+	# if boxes.conf doesn't exist and a MAC is provided, create box 1
+	if [ ! -f "$PISO_ROOT/etc/coinslot.d/boxes.conf" ] && [ -n "$1" ]; then
+		echo "1|$1|$BOX_IP|Esmeralda|primary|1" > "$PISO_ROOT/etc/coinslot.d/boxes.conf"
+	fi
+	# delete legacy dhcp entry
+	uci -q delete dhcp.pisocoinbox
+	if [ -f "$PISO_ROOT/etc/coinslot.d/boxes.conf" ]; then
+		while IFS='|' read -r _slot _mac _ip _name _role _en; do
+			[ -z "$_mac" ] && continue
+			[ "$_en" = "0" ] && continue
+			uci add_list wireless.box_ap.maclist="$_mac"
+			uci -q delete "dhcp.pisocoinbox$_slot"
+			uci set "dhcp.pisocoinbox$_slot=host"
+			uci set "dhcp.pisocoinbox$_slot.name=pisocoinbox$_slot"
+			uci set "dhcp.pisocoinbox$_slot.mac=$_mac"
+			uci set "dhcp.pisocoinbox$_slot.ip=$_ip"
+		done < "$PISO_ROOT/etc/coinslot.d/boxes.conf"
+	elif [ -n "$1" ]; then
+		uci add_list wireless.box_ap.maclist="$1"
+		uci -q delete dhcp.pisocoinbox1
+		uci set dhcp.pisocoinbox1=host
+		uci set dhcp.pisocoinbox1.name='pisocoinbox1'
+		uci set dhcp.pisocoinbox1.mac="$1"
+		uci set dhcp.pisocoinbox1.ip="$BOX_IP"
 	fi
 	uci commit wireless; uci commit dhcp
 	/etc/init.d/dnsmasq restart > /dev/null 2>&1
 	wifi reload > /dev/null 2>&1
+}
+
+pair_add_box() {
+	step "Pairing an additional coin box (power on the new ESP32 now)"
+	mkdir -p "$PISO_ROOT/etc/coinslot.d"
+	_count=$(grep -c '^[1-4]|' "$PISO_ROOT/etc/coinslot.d/boxes.conf" 2>/dev/null || echo 0)
+	if [ "$_count" -ge 4 ]; then
+		die "Maximum limit of 4 coin boxes reached on this router."
+	fi
+	# Find next available slot
+	_next_slot=""
+	for _s in 1 2 3 4; do
+		if ! grep -q "^$_s|" "$PISO_ROOT/etc/coinslot.d/boxes.conf" 2>/dev/null; then
+			_next_slot="$_s"
+			break
+		fi
+	done
+	[ -n "$_next_slot" ] || die "No available coin slot found (1-4)."
+	_persona=$(box_persona_name "$_next_slot")
+	_target_ip="${LAN_IP%.*}.$((9 + _next_slot))"
+	log "Assigning Slot $_next_slot: Persona '$_persona' at target IP $_target_ip (role: standby)"
+
+	# Collect known MACs to ignore existing boxes
+	_known_macs=$(awk -F'|' '{print toupper($2)}' "$PISO_ROOT/etc/coinslot.d/boxes.conf" 2>/dev/null)
+
+	_old=$(box_wifi_key); _was=$(conf_get BOX_WIFI_ROTATED); _old_ssid=$(box_net_ssid)
+	_key="$BOX_DEFAULT_WIFI"
+	set_box_key "$_key" "$BOX_PAIR_SSID"
+
+	_t=0; NEW_MAC=""; _mm0=$(psk_mismatches); _refused=""
+	while [ "$_t" -lt "$PAIR_WAIT" ]; do
+		_candidates=$(iwinfo "$(box_ifname)" assoclist 2>/dev/null | awk 'toupper($1) ~ /^[0-9A-F][0-9A-F]:[0-9A-F:]+$/ { print toupper($1) }')
+		for _c in $_candidates; do
+			case " $_known_macs " in
+				*" $_c "*) ;; # already known box
+				*) NEW_MAC="$_c"; break ;;
+			esac
+		done
+		if [ -n "$NEW_MAC" ] && [ "$(psk_mismatches)" -gt "$_mm0" ]; then _refused=1; NEW_MAC=""; fi
+		[ -n "$NEW_MAC" ] && break
+		sleep 5; _t=$((_t + 5))
+		if [ $((_t % 30)) -eq 0 ]; then
+			log "  still waiting for the new coin box ($_t of $PAIR_WAIT s)..."
+		fi
+		if [ "$_old" != "$BOX_DEFAULT_WIFI" ] && [ $((_t % PAIR_SWAP)) -eq 0 ]; then
+			if [ "$_key" = "$BOX_DEFAULT_WIFI" ]; then _key="$_old"; _ns="$_old_ssid"; else _key="$BOX_DEFAULT_WIFI"; _ns="$BOX_PAIR_SSID"; fi
+			set_box_key "$_key" "$_ns"
+		fi
+	done
+
+	if [ -z "$NEW_MAC" ]; then
+		uci set wireless.box_ap.key="$_old"; uci set wireless.box_ap.ssid="$_old_ssid"
+		lock_box_network ""
+		die "Timeout waiting for new coin box to join."
+	fi
+
+	log "New coin box joined: $NEW_MAC (Slot $_next_slot, $_persona)"
+	echo "$_next_slot|$NEW_MAC|$_target_ip|$_persona|standby|1" >> "$PISO_ROOT/etc/coinslot.d/boxes.conf"
+	lock_box_network "$NEW_MAC"
+
+	_t=0
+	while [ "$_t" -lt 180 ]; do
+		curl -s -m 4 "http://$_target_ip/api/gateway/challenge" 2>/dev/null | grep -q '{' && break
+		sleep 5; _t=$((_t + 5))
+	done
+
+	_new_pw=$(conf_get BOX_ADMIN_PASS_NEW)
+	_gw_key=$(conf_get GW_KEY)
+	log "Provisioning Slot $_next_slot ($_persona) at $_target_ip..."
+
+	curl -s -m 10 -u "admin:$BOX_DEFAULT_ADMIN" -X POST "http://$_target_ip/save" --data-urlencode "admin_pw=$_new_pw" >/dev/null 2>&1
+	sleep 2
+	curl -s -m 10 -u "admin:$_new_pw" -X POST "http://$_target_ip/api/gateway/config" --data-urlencode "key=$_gw_key" >/dev/null 2>&1
+	curl -s -m 10 -u "admin:$_new_pw" -X POST "http://$_target_ip/api/gateway/persona" --data-urlencode "name=$_persona" --data-urlencode "slot=$_next_slot" --data-urlencode "role=standby" >/dev/null 2>&1
+
+	if [ "$(conf_get BOX_WIFI_ROTATED)" = 1 ] && [ -n "$(conf_get BOX_WIFI_PASS_NEW)" ]; then
+		_w_pass=$(conf_get BOX_WIFI_PASS_NEW)
+		curl -s -m 10 -u "admin:$_new_pw" -X POST "http://$_target_ip/save" --data-urlencode "wifi_pass=$_w_pass" --data-urlencode "wifi_ssid=$BOX_SSID" >/dev/null 2>&1
+	fi
+
+	log "SUCCESS: Coin box Slot $_next_slot ($_persona) paired at $_target_ip. Role: standby."
+}
+
+set_box_role() {
+	_slot="$1"; _role="$2"
+	case "$_slot" in 1|2|3|4) ;; *) die "Invalid slot number '$_slot' (must be 1-4)" ;; esac
+	case "$_role" in primary|standby) ;; *) die "Invalid role '$_role' (must be primary or standby)" ;; esac
+	[ -f "$PISO_ROOT/etc/coinslot.d/boxes.conf" ] || die "No coin boxes configured in /etc/coinslot.d/boxes.conf"
+	_entry=$(grep "^$_slot|" "$PISO_ROOT/etc/coinslot.d/boxes.conf")
+	[ -n "$_entry" ] || die "No box found at slot $_slot"
+	IFS='|' read -r _s _mac _ip _name _cur_role _en << EOF
+$_entry
+EOF
+	if [ "$_role" = "primary" ]; then
+		curl -s -m 4 "http://$_ip/api/gateway/challenge" 2>/dev/null | grep -q '{' || die "Box at slot $_slot ($_name at $_ip) is not responding; cannot promote offline box"
+
+		_tmp_conf="$PISO_ROOT/etc/coinslot.d/boxes.tmp.$$"
+		while IFS='|' read -r s m i n r e; do
+			[ -z "$s" ] && continue
+			if [ "$s" = "$_slot" ]; then
+				echo "$s|$m|$i|$n|primary|$e"
+			elif [ "$r" = "primary" ]; then
+				echo "$s|$m|$i|$n|standby|$e"
+			else
+				echo "$s|$m|$i|$n|$r|$e"
+			fi
+		done < "$PISO_ROOT/etc/coinslot.d/boxes.conf" > "$_tmp_conf"
+		mv "$_tmp_conf" "$PISO_ROOT/etc/coinslot.d/boxes.conf"
+
+		_cur_ep=$(sed -n "s/^CURRENT_EPOCH='\\?\\([0-9]*\\)'\\?.*/\\1/p" "$PISO_ROOT/etc/coinslot.d/epoch.conf" 2>/dev/null | tail -n 1)
+		_next_ep=$((${_cur_ep:-0} + 1))
+		cat << EOT > "$PISO_ROOT/etc/coinslot.d/epoch.conf"
+CURRENT_EPOCH=$_next_ep
+ACTIVE_FAS_IP=$_ip
+ACTIVE_FAS_PORT=2080
+ACTIVE_FAS_NAME=$_name
+EOT
+		_pw=$(conf_get BOX_ADMIN_PASS_NEW)
+		curl -s -m 5 -u "admin:$_pw" -X POST "http://$_ip/api/gateway/persona" --data-urlencode "role=primary" --data-urlencode "epoch=$_next_ep" >/dev/null 2>&1
+
+		uci set opennds.@opennds[0].fasremoteip="$_ip"
+		uci commit opennds
+		/etc/init.d/opennds restart >/dev/null 2>&1
+
+		_have=$(uci -q get dhcp.@dnsmasq[0].address 2>/dev/null)
+		for _a in $_have; do
+			case "$_a" in /admin.hub/*) uci del_list dhcp.@dnsmasq[0].address="$_a" ;; esac
+		done
+		uci add_list dhcp.@dnsmasq[0].address="/admin.hub/$_ip"
+		uci commit dhcp
+		/etc/init.d/dnsmasq restart >/dev/null 2>&1
+
+		log "Role updated: Slot $_slot ($_name at $_ip) is now primary FAS (Epoch $_next_ep)."
+	else
+		_tmp_conf="$PISO_ROOT/etc/coinslot.d/boxes.tmp.$$"
+		while IFS='|' read -r s m i n r e; do
+			[ -z "$s" ] && continue
+			if [ "$s" = "$_slot" ]; then
+				echo "$s|$m|$i|$n|standby|$e"
+			else
+				echo "$s|$m|$i|$n|$r|$e"
+			fi
+		done < "$PISO_ROOT/etc/coinslot.d/boxes.conf" > "$_tmp_conf"
+		mv "$_tmp_conf" "$PISO_ROOT/etc/coinslot.d/boxes.conf"
+		log "Role updated: Slot $_slot ($_name) set to standby."
+	fi
 }
 
 box_curl() {  # box_curl <admin password> <path> [curl args]: HTTP status and body in BOXOUT / BOXCODE

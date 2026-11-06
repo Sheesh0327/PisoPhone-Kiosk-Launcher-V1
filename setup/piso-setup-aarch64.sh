@@ -21,7 +21,7 @@
 # Everything is generated here (Wi-Fi password, box admin password, gateway key) and printed once at the end and saved in
 # /root/piso-setup-summary.txt. Running the file again is safe: it keeps what it already made.
 #
-# Other commands (after setup): piso-setup status | wifi-name "<name>" | guest-port [lanN|off] | voucher-choice [on|off] | brand-pack <file> | sqm apply|install|status|test | pair | summary | test-coin | diag | box-diag | set-password | box-wifi-name | reconcile [rebase] | telegram | rotate-box-wifi | export [file] | import <file> | space | forget-summary | kiosk-wifi | verify | handout | lock-admin | unlock-admin | wifi-admin [on|off] | update [check] (installs the newest release from the website; same as self-update) | self-update [check] | box-update [check] (installs the coin box's newest firmware) | auto-update on|off
+# Other commands (after setup): piso-setup status | wifi-name "<name>" | guest-port [lanN|off] | voucher-choice [on|off] | brand-pack <file> | sqm apply|install|status|test | pair | pair-add | box-role <slot> <role> | summary | test-coin | diag | box-diag | set-password | box-wifi-name | reconcile [rebase] | telegram | rotate-box-wifi | export [file] | import <file> | space | forget-summary | kiosk-wifi | verify | handout | lock-admin | unlock-admin | wifi-admin [on|off] | update [check] (installs the newest release from the website; same as self-update) | self-update [check] | box-update [check] (installs the coin box's newest firmware) | auto-update on|off
 #
 # Options:  --dry-run  print the router settings instead of applying them (needs nothing but the uci command)
 #           --yes      do not ask for confirmation
@@ -824,9 +824,9 @@ preflight() {
 # preflight_network: the router's WAN address and internet, and that its LAN and WAN ranges do not clash. The router needs internet for
 # the first setup: it downloads its packages itself (opkg or apk, against the router's own signed feeds).
 preflight_network() {
+	[ "$LAN_IP" = 10.0.0.1 ] || die "the router's LAN address is $LAN_IP, but it must be 10.0.0.1 before anything else to avoid IP conflicts with upstream modems on 192.168.1.1. Run the installer, which moves it for you: wget -qO- https://pisophone.pages.dev/install.sh | sh   (or by hand: uci set network.lan.ipaddr=10.0.0.1 && uci commit network && reboot), then log in again at 10.0.0.1 and re-run. See setup/README.md."
 	WAN=$(wan_ip)
 	[ -n "$WAN" ] || die "the router has no WAN address, and it needs internet for the first setup: plug the modem into the WAN port and wait a minute, then run this again"
-	[ "$LAN_IP" = 10.0.0.1 ] || die "the router's LAN address is $LAN_IP, but this setup expects 10.0.0.1. Run the installer, which moves it for you: wget -qO- https://pisophone.pages.dev/install.sh | sh   (or by hand: uci set network.lan.ipaddr=10.0.0.1 && uci commit network && reboot), then log in again at 10.0.0.1 and re-run. See setup/README.md."
 	case "$(wan_clash)" in
 		"") ;;
 		"$LAN_IP") die "the modem's network ($WAN/$(wan_prefix)) overlaps (the same range as) the router's LAN ($LAN_IP). Change the modem's own LAN address (for example to 192.168.100.1) and run this again" ;;
@@ -947,16 +947,35 @@ set wireless.box_ap.encryption='psk2'
 set wireless.box_ap.key='$(box_wifi_key)'
 set wireless.box_ap.isolate='0'
 EOT
-	if [ -n "$BOX_MAC" ]; then
+	if [ -f "$PISO_ROOT/etc/coinslot.d/boxes.conf" ] && grep -q '^[1-4]|' "$PISO_ROOT/etc/coinslot.d/boxes.conf" 2>/dev/null; then
+		cat << EOT
+set wireless.box_ap.macfilter='allow'
+delete wireless.box_ap.maclist
+delete dhcp.pisocoinbox
+EOT
+		while IFS='|' read -r _slot _mac _ip _name _role _en; do
+			[ -z "$_mac" ] && continue
+			[ "$_en" = "0" ] && continue
+			cat << EOT
+add_list wireless.box_ap.maclist='$_mac'
+delete dhcp.pisocoinbox$_slot
+set dhcp.pisocoinbox$_slot=host
+set dhcp.pisocoinbox$_slot.name='pisocoinbox$_slot'
+set dhcp.pisocoinbox$_slot.mac='$_mac'
+set dhcp.pisocoinbox$_slot.ip='$_ip'
+EOT
+		done < "$PISO_ROOT/etc/coinslot.d/boxes.conf"
+	elif [ -n "$BOX_MAC" ]; then
 		cat << EOT
 set wireless.box_ap.macfilter='allow'
 delete wireless.box_ap.maclist
 add_list wireless.box_ap.maclist='$BOX_MAC'
 delete dhcp.pisocoinbox
-set dhcp.pisocoinbox=host
-set dhcp.pisocoinbox.name='pisocoinbox'
-set dhcp.pisocoinbox.mac='$BOX_MAC'
-set dhcp.pisocoinbox.ip='$BOX_IP'
+delete dhcp.pisocoinbox1
+set dhcp.pisocoinbox1=host
+set dhcp.pisocoinbox1.name='pisocoinbox1'
+set dhcp.pisocoinbox1.mac='$BOX_MAC'
+set dhcp.pisocoinbox1.ip='$BOX_IP'
 EOT
 	fi
 	cat << EOT
@@ -994,14 +1013,19 @@ EOT
 # admin_name_uci: the router answers the name admin.hub with its kiosk LAN address (its own DNS, no mDNS): the owner's one admin page. The
 # owner's other dnsmasq address entries stay; an old address of the name (the router's address was changed) is replaced.
 admin_name_uci() {
+	_target_ip="$LAN_IP"
+	if wifi_only; then
+		_epoch_ip=$(sed -n "s/^ACTIVE_FAS_IP='\\?\\([^'\" ]*\\)'\\?.*/\\1/p" "$PISO_ROOT/etc/coinslot.d/epoch.conf" 2>/dev/null | tail -n 1)
+		_target_ip="${_epoch_ip:-${ACTIVE_FAS_IP:-10.0.0.10}}"
+	fi
 	_have=$(uci -q get dhcp.@dnsmasq[0].address 2> /dev/null)
 	for _a in $_have; do
-		case "$_a" in "/admin.hub/$LAN_IP") return 0 ;; esac
+		case "$_a" in "/admin.hub/$_target_ip") return 0 ;; esac
 	done
 	for _a in $_have; do
 		case "$_a" in /admin.hub/*) echo "del_list dhcp.@dnsmasq[0].address='$_a'" ;; esac
 	done
-	echo "add_list dhcp.@dnsmasq[0].address='/admin.hub/$LAN_IP'"
+	echo "add_list dhcp.@dnsmasq[0].address='/admin.hub/$_target_ip'"
 }
 
 # router_access_uci: the router's own logins (SSH, LuCI) only on the kiosk LAN address. openNDS always lets guests reach
@@ -1061,6 +1085,14 @@ set firewall.guest_stream.src='guest'
 set firewall.guest_stream.proto='tcp'
 set firewall.guest_stream.dest_port='$PORTAL_PORT'
 set firewall.guest_stream.target='ACCEPT'
+set firewall.guest_fas_boxes=rule
+set firewall.guest_fas_boxes.name='Guest-FAS-Boxes'
+set firewall.guest_fas_boxes.src='guest'
+set firewall.guest_fas_boxes.dest='lan'
+set firewall.guest_fas_boxes.dest_ip='10.0.0.8/29'
+set firewall.guest_fas_boxes.proto='tcp'
+set firewall.guest_fas_boxes.dest_port='$PORTAL_PORT'
+set firewall.guest_fas_boxes.target='ACCEPT'
 # guests reach the internet, not the modem's own pages (its login page, its settings): traffic from the guest network to the modem's
 # addresses is refused. It is one narrow rule in the router's firewall; the withdrawn 1.5.5 attempt blocked whole private ranges in
 # openNDS's list.
@@ -1110,7 +1142,29 @@ set opennds.@opennds[0].login_option_enabled='0'
 set opennds.@opennds[0].fasport='$PORTAL_PORT'
 set opennds.@opennds[0].faspath='/'
 set opennds.@opennds[0].fas_secure_enabled='1'
+EOT
+	if wifi_only; then
+		_fas_ip=$(sed -n "s/^ACTIVE_FAS_IP='\\?\\([^'\" ]*\\)'\\?.*/\\1/p" "$PISO_ROOT/etc/coinslot.d/epoch.conf" 2>/dev/null | tail -n 1)
+		_fas_ip="${_fas_ip:-${ACTIVE_FAS_IP:-10.0.0.10}}"
+		cat << EOT
+set opennds.@opennds[0].fasremoteip='$_fas_ip'
+delete opennds.@opennds[0].preauthenticated_users
+add_list opennds.@opennds[0].preauthenticated_users='allow tcp port 2080 to 10.0.0.10'
+add_list opennds.@opennds[0].preauthenticated_users='allow tcp port 2080 to 10.0.0.11'
+add_list opennds.@opennds[0].preauthenticated_users='allow tcp port 2080 to 10.0.0.12'
+add_list opennds.@opennds[0].preauthenticated_users='allow tcp port 2080 to 10.0.0.13'
+EOT
+	else
+		cat << EOT
 delete opennds.@opennds[0].fasremoteip
+delete opennds.@opennds[0].preauthenticated_users
+add_list opennds.@opennds[0].preauthenticated_users='allow tcp port 2080 to 10.0.0.10'
+add_list opennds.@opennds[0].preauthenticated_users='allow tcp port 2080 to 10.0.0.11'
+add_list opennds.@opennds[0].preauthenticated_users='allow tcp port 2080 to 10.0.0.12'
+add_list opennds.@opennds[0].preauthenticated_users='allow tcp port 2080 to 10.0.0.13'
+EOT
+	fi
+	cat << EOT
 delete opennds.@opennds[0].themespec_path
 set opennds.@opennds[0].statuspath='/usr/lib/opennds/pisoportal_status.sh'
 delete opennds.@opennds[0].users_to_router
@@ -1215,6 +1269,10 @@ extract_payload() {
 	# shellcheck disable=SC2013 # one word per program: path|mode|sha256
 	for _e in $(sed -n 's/^#@@B64 \([^ ]*\) \([^ ]*\) *\([^ ]*\).*/\1|\2|\3/p' "$_self"); do
 		_dest="${_e%%|*}"; _r="${_e#*|}"; _mode="${_r%%|*}"; _sum="${_r#*|}"
+		if wifi_only && [ "$_dest" = "/usr/bin/pisoportal" ]; then
+			log "skipping $_dest (FAS offloaded to ESP32 for PisoWiFi-only)"
+			continue
+		fi
 		f="$PISO_ROOT$_dest"; _t="$_tmpd/${_dest##*/}"
 		[ -s "$_t.b64" ] || { rm -rf "$_tmpd"; die "could not unpack $_dest"; }
 		tr -d '\r' < "$_t.b64" > "$_t.clean"
@@ -1224,6 +1282,14 @@ extract_payload() {
 		log "installed $f"
 	done
 	rm -rf "$_tmpd"
+
+	if wifi_only; then
+		if [ -f "$PISO_ROOT/usr/bin/pisoportal" ]; then
+			log "PisoWiFi only: removing legacy /usr/bin/pisoportal to free flash space"
+			[ -x /etc/init.d/pisoportal ] && { /etc/init.d/pisoportal stop > /dev/null 2>&1; /etc/init.d/pisoportal disable > /dev/null 2>&1; rm -f /etc/init.d/pisoportal; }
+			rm -f "$PISO_ROOT/usr/bin/pisoportal"
+		fi
+	fi
 	# the installed command without the payload (about 1 MB of flash): it is only used for the commands, never to install
 	# (written next to it and renamed: this file may be the one being run, and the shell is still reading it)
 	if sed '/^# ---- payload: the portal files/,$d' "$_self" > "$SELF_PATH.new" 2> /dev/null; then
@@ -1245,7 +1311,20 @@ remove_old_portal() {
 
 write_coinslot_conf() {  # write_coinslot_conf <gateway key> <box mac>
 	umask 077
-	mkdir -p "$PISO_ROOT/etc"
+	mkdir -p "$PISO_ROOT/etc" "$PISO_ROOT/etc/coinslot.d"
+	if [ ! -f "$PISO_ROOT/etc/coinslot.d/epoch.conf" ]; then
+		cat << EOT > "$PISO_ROOT/etc/coinslot.d/epoch.conf"
+CURRENT_EPOCH=1
+ACTIVE_FAS_IP=10.0.0.10
+ACTIVE_FAS_PORT=2080
+ACTIVE_FAS_NAME=Esmeralda
+EOT
+	fi
+	if [ ! -f "$PISO_ROOT/etc/coinslot.d/boxes.conf" ] && [ -n "$2" ]; then
+		cat << EOT > "$PISO_ROOT/etc/coinslot.d/boxes.conf"
+1|$2|$BOX_IP|Esmeralda|primary|1
+EOT
+	fi
 	_cf="$PISO_ROOT/etc/coinslot.conf"
 	{
 		cat << EOT
@@ -1387,18 +1466,194 @@ pair_box() {
 	log "the coin box answers at $BOX_IP"
 }
 
+box_persona_name() {
+	case "$1" in
+		1) echo "Esmeralda" ;;
+		2) echo "Valentina" ;;
+		3) echo "Isabella" ;;
+		4) echo "Magdalena" ;;
+		*) echo "Slot$1" ;;
+	esac
+}
+
 lock_box_network() {  # lock_box_network <mac>: admit only this MAC (none at all when empty: the network is closed)
 	uci -q delete wireless.box_ap.maclist
 	uci set wireless.box_ap.macfilter='allow'
-	[ -n "$1" ] && uci add_list wireless.box_ap.maclist="$1"
-	if [ -n "$1" ]; then
-		uci -q delete dhcp.pisocoinbox
-		uci set dhcp.pisocoinbox=host; uci set dhcp.pisocoinbox.name='pisocoinbox'
-		uci set dhcp.pisocoinbox.mac="$1"; uci set dhcp.pisocoinbox.ip="$BOX_IP"
+	mkdir -p "$PISO_ROOT/etc/coinslot.d"
+	# if boxes.conf doesn't exist and a MAC is provided, create box 1
+	if [ ! -f "$PISO_ROOT/etc/coinslot.d/boxes.conf" ] && [ -n "$1" ]; then
+		echo "1|$1|$BOX_IP|Esmeralda|primary|1" > "$PISO_ROOT/etc/coinslot.d/boxes.conf"
+	fi
+	# delete legacy dhcp entry
+	uci -q delete dhcp.pisocoinbox
+	if [ -f "$PISO_ROOT/etc/coinslot.d/boxes.conf" ]; then
+		while IFS='|' read -r _slot _mac _ip _name _role _en; do
+			[ -z "$_mac" ] && continue
+			[ "$_en" = "0" ] && continue
+			uci add_list wireless.box_ap.maclist="$_mac"
+			uci -q delete "dhcp.pisocoinbox$_slot"
+			uci set "dhcp.pisocoinbox$_slot=host"
+			uci set "dhcp.pisocoinbox$_slot.name=pisocoinbox$_slot"
+			uci set "dhcp.pisocoinbox$_slot.mac=$_mac"
+			uci set "dhcp.pisocoinbox$_slot.ip=$_ip"
+		done < "$PISO_ROOT/etc/coinslot.d/boxes.conf"
+	elif [ -n "$1" ]; then
+		uci add_list wireless.box_ap.maclist="$1"
+		uci -q delete dhcp.pisocoinbox1
+		uci set dhcp.pisocoinbox1=host
+		uci set dhcp.pisocoinbox1.name='pisocoinbox1'
+		uci set dhcp.pisocoinbox1.mac="$1"
+		uci set dhcp.pisocoinbox1.ip="$BOX_IP"
 	fi
 	uci commit wireless; uci commit dhcp
 	/etc/init.d/dnsmasq restart > /dev/null 2>&1
 	wifi reload > /dev/null 2>&1
+}
+
+pair_add_box() {
+	step "Pairing an additional coin box (power on the new ESP32 now)"
+	mkdir -p "$PISO_ROOT/etc/coinslot.d"
+	_count=$(grep -c '^[1-4]|' "$PISO_ROOT/etc/coinslot.d/boxes.conf" 2>/dev/null || echo 0)
+	if [ "$_count" -ge 4 ]; then
+		die "Maximum limit of 4 coin boxes reached on this router."
+	fi
+	# Find next available slot
+	_next_slot=""
+	for _s in 1 2 3 4; do
+		if ! grep -q "^$_s|" "$PISO_ROOT/etc/coinslot.d/boxes.conf" 2>/dev/null; then
+			_next_slot="$_s"
+			break
+		fi
+	done
+	[ -n "$_next_slot" ] || die "No available coin slot found (1-4)."
+	_persona=$(box_persona_name "$_next_slot")
+	_target_ip="${LAN_IP%.*}.$((9 + _next_slot))"
+	log "Assigning Slot $_next_slot: Persona '$_persona' at target IP $_target_ip (role: standby)"
+
+	# Collect known MACs to ignore existing boxes
+	_known_macs=$(awk -F'|' '{print toupper($2)}' "$PISO_ROOT/etc/coinslot.d/boxes.conf" 2>/dev/null)
+
+	_old=$(box_wifi_key); _was=$(conf_get BOX_WIFI_ROTATED); _old_ssid=$(box_net_ssid)
+	_key="$BOX_DEFAULT_WIFI"
+	set_box_key "$_key" "$BOX_PAIR_SSID"
+
+	_t=0; NEW_MAC=""; _mm0=$(psk_mismatches); _refused=""
+	while [ "$_t" -lt "$PAIR_WAIT" ]; do
+		_candidates=$(iwinfo "$(box_ifname)" assoclist 2>/dev/null | awk 'toupper($1) ~ /^[0-9A-F][0-9A-F]:[0-9A-F:]+$/ { print toupper($1) }')
+		for _c in $_candidates; do
+			case " $_known_macs " in
+				*" $_c "*) ;; # already known box
+				*) NEW_MAC="$_c"; break ;;
+			esac
+		done
+		if [ -n "$NEW_MAC" ] && [ "$(psk_mismatches)" -gt "$_mm0" ]; then _refused=1; NEW_MAC=""; fi
+		[ -n "$NEW_MAC" ] && break
+		sleep 5; _t=$((_t + 5))
+		if [ $((_t % 30)) -eq 0 ]; then
+			log "  still waiting for the new coin box ($_t of $PAIR_WAIT s)..."
+		fi
+		if [ "$_old" != "$BOX_DEFAULT_WIFI" ] && [ $((_t % PAIR_SWAP)) -eq 0 ]; then
+			if [ "$_key" = "$BOX_DEFAULT_WIFI" ]; then _key="$_old"; _ns="$_old_ssid"; else _key="$BOX_DEFAULT_WIFI"; _ns="$BOX_PAIR_SSID"; fi
+			set_box_key "$_key" "$_ns"
+		fi
+	done
+
+	if [ -z "$NEW_MAC" ]; then
+		uci set wireless.box_ap.key="$_old"; uci set wireless.box_ap.ssid="$_old_ssid"
+		lock_box_network ""
+		die "Timeout waiting for new coin box to join."
+	fi
+
+	log "New coin box joined: $NEW_MAC (Slot $_next_slot, $_persona)"
+	echo "$_next_slot|$NEW_MAC|$_target_ip|$_persona|standby|1" >> "$PISO_ROOT/etc/coinslot.d/boxes.conf"
+	lock_box_network "$NEW_MAC"
+
+	_t=0
+	while [ "$_t" -lt 180 ]; do
+		curl -s -m 4 "http://$_target_ip/api/gateway/challenge" 2>/dev/null | grep -q '{' && break
+		sleep 5; _t=$((_t + 5))
+	done
+
+	_new_pw=$(conf_get BOX_ADMIN_PASS_NEW)
+	_gw_key=$(conf_get GW_KEY)
+	log "Provisioning Slot $_next_slot ($_persona) at $_target_ip..."
+
+	curl -s -m 10 -u "admin:$BOX_DEFAULT_ADMIN" -X POST "http://$_target_ip/save" --data-urlencode "admin_pw=$_new_pw" >/dev/null 2>&1
+	sleep 2
+	curl -s -m 10 -u "admin:$_new_pw" -X POST "http://$_target_ip/api/gateway/config" --data-urlencode "key=$_gw_key" >/dev/null 2>&1
+	curl -s -m 10 -u "admin:$_new_pw" -X POST "http://$_target_ip/api/gateway/persona" --data-urlencode "name=$_persona" --data-urlencode "slot=$_next_slot" --data-urlencode "role=standby" >/dev/null 2>&1
+
+	if [ "$(conf_get BOX_WIFI_ROTATED)" = 1 ] && [ -n "$(conf_get BOX_WIFI_PASS_NEW)" ]; then
+		_w_pass=$(conf_get BOX_WIFI_PASS_NEW)
+		curl -s -m 10 -u "admin:$_new_pw" -X POST "http://$_target_ip/save" --data-urlencode "wifi_pass=$_w_pass" --data-urlencode "wifi_ssid=$BOX_SSID" >/dev/null 2>&1
+	fi
+
+	log "SUCCESS: Coin box Slot $_next_slot ($_persona) paired at $_target_ip. Role: standby."
+}
+
+set_box_role() {
+	_slot="$1"; _role="$2"
+	case "$_slot" in 1|2|3|4) ;; *) die "Invalid slot number '$_slot' (must be 1-4)" ;; esac
+	case "$_role" in primary|standby) ;; *) die "Invalid role '$_role' (must be primary or standby)" ;; esac
+	[ -f "$PISO_ROOT/etc/coinslot.d/boxes.conf" ] || die "No coin boxes configured in /etc/coinslot.d/boxes.conf"
+	_entry=$(grep "^$_slot|" "$PISO_ROOT/etc/coinslot.d/boxes.conf")
+	[ -n "$_entry" ] || die "No box found at slot $_slot"
+	IFS='|' read -r _s _mac _ip _name _cur_role _en << EOF
+$_entry
+EOF
+	if [ "$_role" = "primary" ]; then
+		curl -s -m 4 "http://$_ip/api/gateway/challenge" 2>/dev/null | grep -q '{' || die "Box at slot $_slot ($_name at $_ip) is not responding; cannot promote offline box"
+
+		_tmp_conf="$PISO_ROOT/etc/coinslot.d/boxes.tmp.$$"
+		while IFS='|' read -r s m i n r e; do
+			[ -z "$s" ] && continue
+			if [ "$s" = "$_slot" ]; then
+				echo "$s|$m|$i|$n|primary|$e"
+			elif [ "$r" = "primary" ]; then
+				echo "$s|$m|$i|$n|standby|$e"
+			else
+				echo "$s|$m|$i|$n|$r|$e"
+			fi
+		done < "$PISO_ROOT/etc/coinslot.d/boxes.conf" > "$_tmp_conf"
+		mv "$_tmp_conf" "$PISO_ROOT/etc/coinslot.d/boxes.conf"
+
+		_cur_ep=$(sed -n "s/^CURRENT_EPOCH='\\?\\([0-9]*\\)'\\?.*/\\1/p" "$PISO_ROOT/etc/coinslot.d/epoch.conf" 2>/dev/null | tail -n 1)
+		_next_ep=$((${_cur_ep:-0} + 1))
+		cat << EOT > "$PISO_ROOT/etc/coinslot.d/epoch.conf"
+CURRENT_EPOCH=$_next_ep
+ACTIVE_FAS_IP=$_ip
+ACTIVE_FAS_PORT=2080
+ACTIVE_FAS_NAME=$_name
+EOT
+		_pw=$(conf_get BOX_ADMIN_PASS_NEW)
+		curl -s -m 5 -u "admin:$_pw" -X POST "http://$_ip/api/gateway/persona" --data-urlencode "role=primary" --data-urlencode "epoch=$_next_ep" >/dev/null 2>&1
+
+		uci set opennds.@opennds[0].fasremoteip="$_ip"
+		uci commit opennds
+		/etc/init.d/opennds restart >/dev/null 2>&1
+
+		_have=$(uci -q get dhcp.@dnsmasq[0].address 2>/dev/null)
+		for _a in $_have; do
+			case "$_a" in /admin.hub/*) uci del_list dhcp.@dnsmasq[0].address="$_a" ;; esac
+		done
+		uci add_list dhcp.@dnsmasq[0].address="/admin.hub/$_ip"
+		uci commit dhcp
+		/etc/init.d/dnsmasq restart >/dev/null 2>&1
+
+		log "Role updated: Slot $_slot ($_name at $_ip) is now primary FAS (Epoch $_next_ep)."
+	else
+		_tmp_conf="$PISO_ROOT/etc/coinslot.d/boxes.tmp.$$"
+		while IFS='|' read -r s m i n r e; do
+			[ -z "$s" ] && continue
+			if [ "$s" = "$_slot" ]; then
+				echo "$s|$m|$i|$n|standby|$e"
+			else
+				echo "$s|$m|$i|$n|$r|$e"
+			fi
+		done < "$PISO_ROOT/etc/coinslot.d/boxes.conf" > "$_tmp_conf"
+		mv "$_tmp_conf" "$PISO_ROOT/etc/coinslot.d/boxes.conf"
+		log "Role updated: Slot $_slot ($_name) set to standby."
+	fi
 }
 
 box_curl() {  # box_curl <admin password> <path> [curl args]: HTTP status and body in BOXOUT / BOXCODE
@@ -1670,8 +1925,15 @@ check_all() {  # prints PASS/FAIL lines, returns the number of failures
 	_ck "the coin box has its own Wi-Fi password (not the published default)" "[ \"\$(uci -q get wireless.box_ap.key)\" != '$BOX_DEFAULT_WIFI' ]"
 	_ck "hidden Wi-Fi $BOX_SSID is on and locked to the box" "[ \"\$(uci -q get wireless.box_ap.macfilter)\" = allow ] && [ -n \"\$(uci -q get wireless.box_ap.maclist)\" ]"
 	_ck "coin box answers at $BOX_IP" box_up
-	_ck "the portal is running and answers guests on $GUEST_IP:$PORTAL_PORT" "curl -s -m 4 http://$GUEST_IP:$PORTAL_PORT/ping | grep -q ok"
-	_ck "the portal can talk to the box (signed request)" "/usr/bin/pisoportal box | grep -qi answers"
+	if wifi_only || [ ! -x "$PORTAL_BIN" ]; then
+		_fas_ip=$(sed -n "s/^ACTIVE_FAS_IP='\\?\\([^'\" ]*\\)'\\?.*/\\1/p" "$PISO_ROOT/etc/coinslot.d/epoch.conf" 2>/dev/null | tail -n 1)
+		_fas_ip="${_fas_ip:-10.0.0.10}"
+		_ck "the portal is running on coin box and answers guests on $_fas_ip:$PORTAL_PORT" "curl -s -m 4 http://$_fas_ip:$PORTAL_PORT/ping | grep -q ok"
+		_ck "the router uhttpd CGI endpoint answers coin boxes" "curl -s -m 4 'http://127.0.0.1/cgi-bin/piso-nds?action=ping' | grep -q '\"status\":\"ok\"'"
+	else
+		_ck "the portal is running and answers guests on $GUEST_IP:$PORTAL_PORT" "curl -s -m 4 http://$GUEST_IP:$PORTAL_PORT/ping | grep -q ok"
+		_ck "the portal can talk to the box (signed request)" "/usr/bin/pisoportal box | grep -qi answers"
+	fi
 	_gp=$(conf_get GUEST_PORT)
 	[ -z "$_gp" ] || _ck "router port $_gp is on the guest network (an access point plugged in there is gated)" "uci -q get \$(net_section br-guest).ports | grep -qw '$_gp'"
 	isolation_on || log "WARN  guests can still reach each other and rental phones can still reach each other and the router's login pages: this router cannot load the bridge rules (install kmod-nft-bridge, then run piso-setup update)"
@@ -1710,7 +1972,9 @@ stage2() {
 
 	step "Starting the services"
 	remove_old_portal
-	/etc/init.d/pisoportal enable; /etc/init.d/pisoportal restart
+	if ! wifi_only && [ -x "$PISO_ROOT/usr/bin/pisoportal" ]; then
+		/etc/init.d/pisoportal enable; /etc/init.d/pisoportal restart
+	fi
 	install_update_timer
 	keep_across_upgrades
 	[ -x /etc/init.d/piso_monitor ] && { /etc/init.d/piso_monitor enable; /etc/init.d/piso_monitor restart; }
@@ -2023,6 +2287,19 @@ cmd_update() {
 	cmd_status || log "Some of the checks above failed: see them. The update itself is complete."
 	return 0
 }
+
+cmd_pair_add() {
+	[ "$(id -u)" = 0 ] || die "run as root"
+	pair_add_box
+}
+
+cmd_box_role() {
+	[ "$(id -u)" = 0 ] || die "run as root"
+	_slot="$1"; _role="$2"
+	[ -n "$_slot" ] && [ -n "$_role" ] || die "usage: piso-setup box-role <slot 1-4> <primary|standby>"
+	set_box_role "$_slot" "$_role"
+}
+
 
 # ---------------------------------------------------------------------------------------------------------------------
 # Updates from the website. The owner signs a release (scripts/sign_router.py) and publishes router.json + router-setup.sh;
@@ -2403,7 +2680,20 @@ cmd_box_update() {
 }
 # piso-setup reconcile [rebase]: the box's own coin count against the router's revenue ledger (also checks the ledger
 # chain). The box's count restarts when its revenue is collected, which is noticed by itself; "rebase" compares from now on.
-cmd_reconcile() { /usr/bin/pisoportal reconcile "$@"; }
+cmd_reconcile() {
+	if [ -x /usr/bin/pisoportal ]; then
+		/usr/bin/pisoportal reconcile "$@"
+	else
+		echo "PisoWiFi only: coin counters are maintained directly on each coin box."
+		if [ -f "$PISO_ROOT/etc/coinslot.d/boxes.conf" ]; then
+			while IFS='|' read -r _slot _mac _ip _name _role _en; do
+				[ -z "$_mac" ] && continue
+				echo "Slot $_slot ($_name at $_ip):"
+				curl -s -m 3 "http://$_ip/api/diagnostics" 2>/dev/null | grep -iE 'coins|total|pulse' | sed 's/^/  /' || echo "  (offline)"
+			done < "$PISO_ROOT/etc/coinslot.d/boxes.conf"
+		fi
+	fi
+}
 
 # piso-setup telegram: connect the Telegram bot (alerts and remote commands). The token comes from @BotFather.
 # telegram_connect <token> <site name>: pairs the bot with the first chat that writes to it and starts the monitor.
@@ -2822,7 +3112,12 @@ ask_password() {
 choose_passwords() {
 	ask_password ROOT_PASS "router password (SSH and LuCI login)" 8 63 "$ROOT_PASSWORD"
 	wifi_only || ask_password KIOSK_PASS "PisoKiosk Wi-Fi password (typed once into each rental phone's setup page)" 8 63 "$KIOSK_PASSWORD"
-	ask_password BOX_ADMIN_PASS_NEW "coin box admin password (the box's web page; also the phones' admin PIN)" 8 32 "$BOX_NEW_ADMIN_PASSWORD"
+	if wifi_only; then
+		_def_box_pass=$(conf_get ROOT_PASS)
+		ask_password BOX_ADMIN_PASS_NEW "coin box admin password (the box's web page and console login)" 8 32 "${BOX_NEW_ADMIN_PASSWORD:-$_def_box_pass}"
+	else
+		ask_password BOX_ADMIN_PASS_NEW "coin box admin password (the box's web page; also the phones' admin PIN)" 8 32 "$BOX_NEW_ADMIN_PASSWORD"
+	fi
 }
 
 # review_choices: what will be applied, before anything is changed (with a terminal only).
@@ -2888,7 +3183,12 @@ stage1() {
 	review_choices
 	ask_telegram
 	KIOSK_PASS=$(kiosk_pass)
-	secret ROOT_PASS 14 > /dev/null; secret GW_KEY 64 hex > /dev/null; secret BOX_ADMIN_PASS_NEW 16 > /dev/null
+	secret ROOT_PASS 14 > /dev/null; secret GW_KEY 64 hex > /dev/null
+	if wifi_only && [ -z "$(conf_get BOX_ADMIN_PASS_NEW)" ]; then
+		conf_set BOX_ADMIN_PASS_NEW "$(conf_get ROOT_PASS)"
+	else
+		secret BOX_ADMIN_PASS_NEW 16 > /dev/null
+	fi
 	BOX_MAC=$(conf_get BOX_MAC)
 	if [ "$DRY" = 1 ]; then uci_batch "<kiosk password>" "$GUEST_NAME" "$BOX_MAC"; return 0; fi
 
@@ -2910,7 +3210,7 @@ main() {
 		case "$1" in
 			--dry-run) DRY=1 ;;
 			--yes | -y) ASSUME_YES=1 ;;
-			status | wan-clash | pair | summary | wifi-name | guest-port | kiosk-wifi | verify | uninstall-info | test-coin | diag | box-diag | set-password | reconcile | telegram | rotate-box-wifi | box-wifi-name | handout | console | export | import | space | forget-summary | lock-admin | lock-admin-confirm | unlock-admin | wifi-admin | update | self-update | box-update | auto-update | voucher-choice | brand-pack | sqm) CMD="$1"; shift; ARG="$1"; ARGS="$*"; break ;;
+			status | wan-clash | pair | pair-add | box-role | summary | wifi-name | guest-port | kiosk-wifi | verify | uninstall-info | test-coin | diag | box-diag | set-password | reconcile | telegram | rotate-box-wifi | box-wifi-name | handout | console | export | import | space | forget-summary | lock-admin | lock-admin-confirm | unlock-admin | wifi-admin | update | self-update | box-update | auto-update | voucher-choice | brand-pack | sqm) CMD="$1"; shift; ARG="$1"; ARGS="$*"; break ;;
 			-h | --help) sed -n '2,/^# Options:/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 			*) echo "unknown option: $1 (try --help)" >&2; exit 1 ;;
 		esac
@@ -2923,6 +3223,8 @@ main() {
 		wifi-name) cmd_wifi_name "$ARG" ;;
 		guest-port) [ "$(id -u)" = 0 ] || [ "$DRY" = 1 ] || die "run as root"; cmd_guest_port "$ARG" ;;
 		pair) cmd_pair ;;
+		pair-add) cmd_pair_add ;;
+		box-role) cmd_box_role $ARGS ;;
 		test-coin) cmd_test_coin ;;
 		diag) cmd_diag ;;
 		box-diag) cmd_box_diag ;;
@@ -3008,6 +3310,8 @@ LOGREAD="${LOGREAD:-logread}"
 ALERTS_FILE="${ALERTS_FILE:-/etc/coinslot.d/alerts.txt}"
 COINSLOT_CONF="${COINSLOT_CONF:-/etc/coinslot.conf}"
 SETUP_CONF="${PISO_SETUP_CONF:-/etc/piso-setup.conf}"
+BOXES_CONF="${PISO_BOXES_CONF:-/etc/coinslot.d/boxes.conf}"
+EPOCH_CONF="${PISO_EPOCH_CONF:-/etc/coinslot.d/epoch.conf}"
 UPDATE_GRACE="${UPDATE_GRACE:-86400}"                  # seconds an update may wait before it is a warning
 [ -n "$PORTAL_PORT" ] || PORTAL_PORT=$(sed -n "s/^PORTAL_PORT=['\"]\{0,1\}\([0-9]*\).*/\1/p" "$COINSLOT_CONF" 2> /dev/null | head -n 1)
 # Where the portal listens: the installer binds it to the guest network's address only (PORTAL_BIND), where 127.0.0.1 never answers. Asking
@@ -3061,7 +3365,27 @@ check_wan() {
 	return 0
 }
 
-box_ok() { "$PORTAL" box > /dev/null 2>&1; }
+active_fas_ip() {
+	_a=""
+	[ -r "$EPOCH_CONF" ] && _a=$(sed -n "s/^ACTIVE_FAS_IP='\{0,1\}\([^']*\)'\{0,1\}\$/\1/p" "$EPOCH_CONF" 2>/dev/null | head -n 1)
+	[ -n "$_a" ] || _a=$(uci -q get opennds.@opennds[0].fasremoteip 2>/dev/null)
+	echo "${_a:-10.0.0.10}"
+}
+
+active_epoch() {
+	_e=""
+	[ -r "$EPOCH_CONF" ] && _e=$(sed -n "s/^CURRENT_EPOCH='\{0,1\}\([^']*\)'\{0,1\}\$/\1/p" "$EPOCH_CONF" 2>/dev/null | head -n 1)
+	echo "${_e:-1}"
+}
+
+box_ok() {
+	if [ -e "$PORTAL" ]; then
+		"$PORTAL" box > /dev/null 2>&1
+		return $?
+	fi
+	_bip=$(active_fas_ip)
+	curl -s -m 3 "http://$_bip/api/gateway/challenge" 2>/dev/null | grep -q '{'
+}
 
 check_box() {
 	_fails=$(cat "$S/boxfails" 2> /dev/null); _fails=${_fails:-0}
@@ -3074,10 +3398,69 @@ check_box() {
 	fi
 }
 
-# The portal program itself: /ping with a time limit. After PING_FAILS_TO_RESTART failures in a row it is restarted (procd only
-# restarts one that died; this catches one that hangs), at most once in RESTART_GAP seconds. A coin window that was open is settled
-# from its record when the portal starts. One alert when it is restarted, one note when it answers again.
-portal_ok() { [ "$(curl -s -m "$PING_TIMEOUT" "$PING_URL" 2> /dev/null)" = ok ]; }
+portal_ok() {
+	if [ -e "$PORTAL" ]; then
+		[ "$(curl -s -m "$PING_TIMEOUT" "$PING_URL" 2> /dev/null)" = ok ]
+		return $?
+	fi
+	_bip=$(active_fas_ip)
+	[ "$(curl -s -m "$PING_TIMEOUT" "http://$_bip:2080/ping" 2> /dev/null)" = ok ]
+}
+
+failover_fas() {
+	_cur_ip=$(active_fas_ip)
+	_cand_ip=""
+	_cand_name=""
+	if [ -r "$BOXES_CONF" ]; then
+		while IFS=: read -r b_slot b_mac b_ip b_name b_role b_status || [ -n "$b_slot" ]; do
+			case "$b_slot" in "#"* | "") continue ;; esac
+			[ "$b_ip" != "$_cur_ip" ] || continue
+			case "$b_role" in
+				wifi | hub)
+					if curl -s -m 3 "http://$b_ip:2080/ping" 2>/dev/null | grep -q ok \
+					   || curl -s -m 3 "http://$b_ip/api/gateway/challenge" 2>/dev/null | grep -q '{'; then
+						_cand_ip="$b_ip"
+						_cand_name="$b_name"
+						break
+					fi
+					;;
+			esac
+		done < "$BOXES_CONF"
+	fi
+
+	if [ -n "$_cand_ip" ]; then
+		_ep=$(active_epoch)
+		_new_ep=$((_ep + 1))
+		mkdir -p "$(dirname "$EPOCH_CONF")" 2>/dev/null
+		printf "ACTIVE_FAS_IP='%s'\nCURRENT_EPOCH='%s'\n" "$_cand_ip" "$_new_ep" > "$EPOCH_CONF"
+		uci set opennds.@opennds[0].fasremoteip="$_cand_ip" 2>/dev/null
+		uci set opennds.@opennds[0].fasport='2080' 2>/dev/null
+		uci set opennds.@opennds[0].faspath='/' 2>/dev/null
+		uci commit opennds 2>/dev/null
+		# Update admin.hub DNS mapping
+		for _a in $(uci -q get dhcp.@dnsmasq[0].address 2>/dev/null); do
+			case "$_a" in /admin.hub/*) uci del_list dhcp.@dnsmasq[0].address="$_a" 2>/dev/null ;; esac
+		done
+		uci add_list dhcp.@dnsmasq[0].address="/admin.hub/$_cand_ip" 2>/dev/null
+		uci commit dhcp 2>/dev/null
+		/etc/init.d/dnsmasq restart > /dev/null 2>&1
+		/etc/init.d/opennds restart > /dev/null 2>&1
+		note "FAILOVER: Box $_cur_ip offline. Promoted $_cand_name ($_cand_ip) to active FAS (epoch $_new_ep)."
+		tg_send "FAILOVER: Box $_cur_ip offline. Promoted $_cand_name ($_cand_ip) to active FAS (epoch $_new_ep)."
+		return 0
+	fi
+
+	# No online candidate boxes found: fallback to local offline HTML
+	if [ -r "/www/offline.html" ]; then
+		uci set opennds.@opennds[0].fasremoteip="" 2>/dev/null
+		uci set opennds.@opennds[0].faspath='/offline.html' 2>/dev/null
+		uci commit opennds 2>/dev/null
+		/etc/init.d/opennds restart > /dev/null 2>&1
+		note "ALL COIN BOXES OFFLINE: Switched openNDS to offline fallback."
+		tg_send "ALL COIN BOXES OFFLINE: Switched openNDS to offline fallback."
+	fi
+	return 1
+}
 
 check_portal() {
 	_fails=$(cat "$S/pingfails" 2> /dev/null); _fails=${_fails:-0}
@@ -3090,8 +3473,12 @@ check_portal() {
 	_last=$(cat "$S/portal.restarted" 2> /dev/null); _last=${_last:-0}
 	if [ $(($(now) - _last)) -ge "$RESTART_GAP" ]; then
 		now > "$S/portal.restarted"; : > "$S/portal.down"
-		"$PORTAL_SERVICE" restart > /dev/null 2>&1
-		alert portal 3600 "the portal program did not answer for $_fails minutes and was restarted (a coin window that was open is settled from its record)."
+		if [ -e "$PORTAL" ]; then
+			"$PORTAL_SERVICE" restart > /dev/null 2>&1
+			alert portal 3600 "the portal program did not answer for $_fails minutes and was restarted (a coin window that was open is settled from its record)."
+		else
+			failover_fas
+		fi
 		echo 0 > "$S/pingfails"   # the minutes count from the restart, so a portal that keeps failing does not report ever larger numbers
 	fi
 }
@@ -3113,6 +3500,7 @@ check_ledger() {  # at most once an hour
 	_f="$S/lastreconcile"; _n=$(now)
 	[ -r "$_f" ] && [ $((_n - $(cat "$_f"))) -lt 3600 ] && return 0
 	echo "$_n" > "$_f"
+	[ -e "$PORTAL" ] || return 0
 	_o=$("$PORTAL" reconcile 2>&1); _rc=$?
 	case "$_rc" in
 		1) alert ledger 21600 "REVENUE MISMATCH: $_o
@@ -3172,8 +3560,15 @@ check_report() {  # the daily report, once, from REPORT_HOUR on
 	_day=$(date +%F); [ "$(cat "$S/lastreport" 2> /dev/null)" = "$_day" ] && return 0
 	[ "$(date +%H | sed 's/^0//')" -ge "$REPORT_HOUR" ] || return 0
 	echo "$_day" > "$S/lastreport"
-	tg_send "daily report $_day
+	if [ -e "$PORTAL" ]; then
+		tg_send "daily report $_day
 $("$PORTAL" report 1 2>&1)"
+	else
+		_bip=$(active_fas_ip)
+		_rep=$(curl -s -m 5 "http://$_bip/api/wifi/report?days=1" 2>/dev/null)
+		tg_send "daily report $_day (${_bip})
+${_rep:-No report data available from coin box.}"
+	fi
 }
 
 do_tick() {
@@ -3187,9 +3582,11 @@ do_tick() {
 cmd_status_text() {
 	echo "uptime: $(uptime 2> /dev/null | sed 's/^ *//')"
 	echo "memory free: $(awk '/MemAvailable/ {printf "%d MB", $2/1024}' /proc/meminfo 2> /dev/null)"
-	box_ok && echo "box: answers" || echo "box: DOES NOT ANSWER"
+	box_ok && echo "box: answers ($(active_fas_ip))" || echo "box: DOES NOT ANSWER"
 	echo "guests online: $("$NDSCTL" json 2> /dev/null | grep -c '"state":"Authenticated"')"
-	"$PORTAL" reconcile 2>&1 | head -2
+	if [ -e "$PORTAL" ]; then
+		"$PORTAL" reconcile 2>&1 | head -2
+	fi
 }
 
 handle_command() {  # handle_command <chat> <text>
@@ -3201,8 +3598,23 @@ handle_command() {  # handle_command <chat> <text>
 	_cmd="${1%%@*}"; _arg="$2"
 	case "$_cmd" in
 		/status | /start) tg_send "$(cmd_status_text)" ;;
-		/report) case "$_arg" in "" | *[!0-9]*) _arg=1 ;; esac; tg_send "$("$PORTAL" report "$_arg" 2>&1)" ;;
-		/reconcile) tg_send "$("$PORTAL" reconcile 2>&1)" ;;
+		/report)
+			case "$_arg" in "" | *[!0-9]*) _arg=1 ;; esac
+			if [ -e "$PORTAL" ]; then
+				tg_send "$("$PORTAL" report "$_arg" 2>&1)"
+			else
+				_bip=$(active_fas_ip)
+				tg_send "$(curl -s -m 5 "http://$_bip/api/wifi/report?days=$_arg" 2>/dev/null)"
+			fi
+			;;
+		/reconcile)
+			if [ -e "$PORTAL" ]; then
+				tg_send "$("$PORTAL" reconcile 2>&1)"
+			else
+				_bip=$(active_fas_ip)
+				tg_send "$(curl -s -m 5 "http://$_bip/api/wifi/reconcile" 2>/dev/null)"
+			fi
+			;;
 		/diag) tg_send "$("$SETUP" diag 2>&1 | tail -c 3600)" ;;
 		/update) tg_send "looking for an update the owner signed (the router, then the coin box); the result follows."; { "$SETUP" box-update > /dev/null 2>&1; "$SETUP" self-update > /dev/null 2>&1; } & ;;   # (each tells you itself; the router's update restarts this monitor, so it goes last)
 		/restart) "$PORTAL_SERVICE" restart > /dev/null 2>&1; note "portal restarted by the owner."; tg_send "portal restarted (a coin window that was open is settled from its record)." ;;
@@ -3305,22 +3717,43 @@ start_service() {
 #@@FILE /usr/lib/opennds/pisoportal_status.sh 755
 #!/bin/sh
 # openNDS "statuspath" script: what a guest sees at the openNDS status address (http://status.client, or the gateway
-# address on port 2050). There is one page for guests: the portal's page (/ on the portal port). It shows the menu and,
-# for a guest that is online, the live countdown. This script only sends the guest there. openNDS calls:
+# address on port 2050). Redirects guests to the active portal/FAS page (/ on the portal port). openNDS calls:
 #   pisoportal_status.sh status <client ip> <b64 query>     a guest that is logged in
 #   pisoportal_status.sh err511 <client ip>                 a guest that is not
 # and serves whatever this prints. It changes nothing.
 status="$1"; clientip="$2"
 case "$clientip" in "" | *[!0-9.]*) exit 1 ;; esac
 CONF="${COINSLOT_CONF:-/etc/coinslot.conf}"
+EPOCH_CONF="${PISO_EPOCH_CONF:-/etc/coinslot.d/epoch.conf}"
+
 conf_get() { sed -n "s/^$1='\\{0,1\\}\\([^']*\\)'\\{0,1\\}\$/\\1/p" "$CONF" 2> /dev/null | head -n 1; }
-host=$(conf_get PORTAL_BIND); port=$(conf_get PORTAL_PORT)
+
+# Determine active portal address:
+# 1. Active FAS host from epoch.conf if offloaded to ESP32-C3
+# 2. openNDS uci fasremoteip
+# 3. Fall back to local PORTAL_BIND in coinslot.conf
+host=""
+if [ -r "$EPOCH_CONF" ]; then
+	host=$(sed -n "s/^ACTIVE_FAS_IP='\\{0,1\\}\\([^']*\\)'\\{0,1\\}\$/\\1/p" "$EPOCH_CONF" 2>/dev/null | head -n 1)
+fi
+if [ -z "$host" ]; then
+	host=$(uci -q get opennds.@opennds[0].fasremoteip 2>/dev/null)
+fi
+if [ -z "$host" ]; then
+	host=$(conf_get PORTAL_BIND)
+fi
+port=$(uci -q get opennds.@opennds[0].fasport 2>/dev/null)
+port="${port:-$(conf_get PORTAL_PORT)}"
+port="${port:-2080}"
+
 case "$host$port" in *[!0-9.]*) exit 1 ;; esac
 [ -n "$host" ] && [ -n "$port" ] || exit 1
+
 case "$status" in
 	status | err511) ;;
 	*) exit 1 ;;
 esac
+
 url="http://$host:$port/"
 cat << HTML
 <!DOCTYPE html>
@@ -3430,16 +3863,32 @@ if [ -d "$SYS/$LAN_BR" ]; then
 	case "$BOX_MAC" in [0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]) ;; *) BOX_MAC="" ;; esac
 	case "$BOX_IP" in *[!0-9.]*) BOX_IP="" ;; esac
 	case "$LAN_IP" in *[!0-9.]*) LAN_IP="" ;; esac
+	ALL_BOX_MACS=""
+	ALL_BOX_IPS=""
+	_bconf="${PISO_ROOT}/etc/coinslot.d/boxes.conf"
+	if [ -f "$_bconf" ]; then
+		while IFS='|' read -r _s _m _i _n _r _e; do
+			[ -z "$_m" ] && continue
+			[ "$_e" = "0" ] && continue
+			_m=$(echo "$_m" | tr 'A-F' 'a-f')
+			ALL_BOX_MACS="${ALL_BOX_MACS:+$ALL_BOX_MACS }$_m"
+			[ -n "$_i" ] && ALL_BOX_IPS="${ALL_BOX_IPS:+$ALL_BOX_IPS }$_i"
+		done < "$_bconf"
+	fi
+	[ -n "$ALL_BOX_MACS" ] || ALL_BOX_MACS="$BOX_MAC"
+	[ -n "$ALL_BOX_IPS" ] || ALL_BOX_IPS="$BOX_IP"
 	{
 		echo "table bridge piso_kiosk {"
 		echo "	chain forward {"
 		echo "		type filter hook forward priority -200; policy accept;"
 		# the coin box talks to phones and phones to the coin box (ARP included); everything else on a Wi-Fi port is dropped
-		if [ -n "$BOX_MAC" ]; then
-			echo "		ether saddr $BOX_MAC accept"
-			echo "		ether daddr $BOX_MAC accept"
-		fi
-		[ -z "$BOX_IP" ] || echo "		arp daddr ip $BOX_IP accept"
+		for _bm in $ALL_BOX_MACS; do
+			echo "		ether saddr $_bm accept"
+			echo "		ether daddr $_bm accept"
+		done
+		for _bi in $ALL_BOX_IPS; do
+			echo "		arp daddr ip $_bi accept"
+		done
 		for _p in $WIFI_PORTS; do
 			echo "		iifname \"$_p\" counter drop comment \"a Wi-Fi client reaches the router and the coin box only\""
 			echo "		oifname \"$_p\" counter drop"
@@ -3463,8 +3912,9 @@ if [ -d "$SYS/$LAN_BR" ]; then
 		echo "	chain prerouting {"
 		echo "		type filter hook prerouting priority -200; policy accept;"
 		for _p in $WIFI_PORTS; do
-			if [ -n "$BOX_MAC" ]; then
-				echo "		iifname \"$_p\" ether saddr != $BOX_MAC meta mark set meta mark | $MARK"
+			if [ -n "$ALL_BOX_MACS" ]; then
+				_mac_set=$(echo "$ALL_BOX_MACS" | tr ' ' ', ')
+				echo "		iifname \"$_p\" ether saddr != { $_mac_set } meta mark set meta mark | $MARK"
 			else
 				echo "		iifname \"$_p\" meta mark set meta mark | $MARK"
 			fi
@@ -3475,6 +3925,286 @@ if [ -d "$SYS/$LAN_BR" ]; then
 	load piso_kiosk "$T" || fail "phone isolation is NOT active: this router cannot load a bridge firewall rule (install kmod-nft-bridge); rental phones can still reach each other and the router's login pages"
 fi
 exit 0
+#@@FILE /www/cgi-bin/piso-nds 755
+#!/bin/sh
+# piso_nds_cgi.sh: Authenticated CGI endpoint for OpenWrt uhttpd (/www/cgi-bin/piso-nds).
+# Exposes openNDS management, ARP client lookup, multi-box coordination, and failover epoch.
+# Authentication uses one-time nonces and HMAC-SHA256 signatures with the shared gateway_key.
+
+COINSLOT_CONF="${PISO_COINSLOT_CONF:-/etc/coinslot.conf}"
+BOXES_CONF="${PISO_BOXES_CONF:-/etc/coinslot.d/boxes.conf}"
+EPOCH_CONF="${PISO_EPOCH_CONF:-/etc/coinslot.d/epoch.conf}"
+NONCE_DIR="${PISO_NONCE_DIR:-/tmp/piso-cgi-nonces}"
+NDSCTL="${NDSCTL:-ndsctl}"
+
+# Response helpers
+send_json() {
+	status="${2:-200 OK}"
+	printf "Status: %s\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n%s\n" "$status" "$1"
+	exit 0
+}
+
+send_err() {
+	status="${2:-400 Bad Request}"
+	send_json "{\"ok\":false,\"error\":\"$1\"}" "$status"
+}
+
+# Parameter extraction from QUERY_STRING or POST body
+get_param() {
+	key="$1"; str="${2:-$QUERY_STRING}"
+	printf '%s' "$str" | sed -n "s/^.*[?&]${key}=\\([^&]*\\).*/\\1/p" | head -n 1 | sed 's/+/ /g;s/%\([0-9A-Fa-f]\{2\}\)/\\x\1/g' | xargs -0 printf '%b' 2>/dev/null
+}
+
+ACTION=$(get_param "action")
+NONCE=$(get_param "nonce")
+SIG=$(get_param "sig")
+
+# POST body reading if present
+BODY=""
+if [ "$REQUEST_METHOD" = "POST" ] && [ -n "$CONTENT_LENGTH" ] && [ "$CONTENT_LENGTH" -gt 0 ]; then
+	# Limit maximum POST body to 16KB for safety
+	if [ "$CONTENT_LENGTH" -gt 16384 ]; then
+		send_err "payload_too_large" "413 Payload Too Large"
+	fi
+	BODY=$(dd bs=1 count="$CONTENT_LENGTH" 2>/dev/null)
+	[ -n "$ACTION" ] || ACTION=$(get_param "action" "$BODY")
+	[ -n "$NONCE" ] || NONCE=$(get_param "nonce" "$BODY")
+	[ -n "$SIG" ] || SIG=$(get_param "sig" "$BODY")
+fi
+
+# Load Gateway Key
+GW_KEY=""
+if [ -r "$COINSLOT_CONF" ]; then
+	GW_KEY=$(sed -n "s/^GW_KEY='\{0,1\}\([^']*\)'\{0,1\}\$/\1/p" "$COINSLOT_CONF" 2>/dev/null | head -n 1)
+fi
+
+# Clean old nonces (>60s)
+mkdir -p "$NONCE_DIR" 2>/dev/null
+find "$NONCE_DIR" -type f -mmin +1 -delete 2>/dev/null
+
+# Action: challenge (unauthenticated; gives nonce + current unix time + active epoch)
+if [ "$ACTION" = "challenge" ] || [ "$ACTION" = "ping" ]; then
+	NOW=$(date +%s)
+	EPOCH="1"
+	[ -r "$EPOCH_CONF" ] && EPOCH=$(cat "$EPOCH_CONF" 2>/dev/null | tr -dc '0-9')
+	EPOCH="${EPOCH:-1}"
+
+	if [ "$ACTION" = "ping" ]; then
+		send_json "{\"ok\":true,\"time\":$NOW,\"epoch\":$EPOCH}" "200 OK"
+	fi
+
+	# Generate 32-char hex nonce
+	RAND_HEX=$(head -c 16 /dev/urandom 2>/dev/null | hexdump -ve '1/1 "%.2x"' 2>/dev/null)
+	if [ -z "$RAND_HEX" ] || [ "${#RAND_HEX}" -ne 32 ]; then
+		RAND_HEX=$(printf '%s%s' "$NOW" "$$" | sha256sum | awk '{print $1}' | cut -c1-32)
+	fi
+
+	echo "$NOW" > "$NONCE_DIR/$RAND_HEX" 2>/dev/null
+	send_json "{\"ok\":true,\"nonce\":\"$RAND_HEX\",\"time\":$NOW,\"epoch\":$EPOCH}" "200 OK"
+fi
+
+# Authenticate request
+if [ -z "$GW_KEY" ]; then
+	send_err "gateway_key_not_configured" "500 Internal Server Error"
+fi
+
+case "$NONCE" in
+	"" | *[!0-9a-fA-F]* | ?????????????????????????????????*)
+		send_err "invalid_nonce" "401 Unauthorized"
+		;;
+esac
+
+NONCE_FILE="$NONCE_DIR/$NONCE"
+if [ ! -f "$NONCE_FILE" ]; then
+	send_err "nonce_expired_or_used" "401 Unauthorized"
+fi
+
+# Read creation time & consume nonce immediately to block replays
+NONCE_TIME=$(cat "$NONCE_FILE" 2>/dev/null)
+rm -f "$NONCE_FILE" 2>/dev/null
+NOW=$(date +%s)
+if [ $((NOW - NONCE_TIME)) -gt 35 ] || [ $((NOW - NONCE_TIME)) -lt -5 ]; then
+	send_err "nonce_timeout" "401 Unauthorized"
+fi
+
+# Compute expected HMAC-SHA256 signature
+# Canonical payload: nonce|action|param|key
+PARAM=$(get_param "mac")
+[ -n "$PARAM" ] || PARAM=$(get_param "ip")
+[ -n "$PARAM" ] || PARAM=$(get_param "slot")
+SIGN_PAYLOAD="${NONCE}|${ACTION}|${PARAM}|${GW_KEY}"
+EXPECTED_SIG=$(printf '%s' "$SIGN_PAYLOAD" | sha256sum | awk '{print $1}')
+
+if [ "$SIG" != "$EXPECTED_SIG" ]; then
+	send_err "signature_mismatch" "403 Forbidden"
+fi
+
+# Execute Authenticated Action
+case "$ACTION" in
+	auth | grant)
+		MAC=$(get_param "mac" | tr '[:upper:]' '[:lower:]')
+		MINS=$(get_param "mins")
+		UP=$(get_param "up"); UP="${UP:-0}"
+		DOWN=$(get_param "down"); DOWN="${DOWN:-0}"
+		QUP=$(get_param "qup"); QUP="${QUP:-0}"
+		QDOWN=$(get_param "qdown"); QDOWN="${QDOWN:-0}"
+
+		case "$MAC" in
+			[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]) ;;
+			*) send_err "invalid_mac" "400 Bad Request" ;;
+		esac
+		case "$MINS" in
+			"" | *[!0-9]*) send_err "invalid_minutes" "400 Bad Request" ;;
+		esac
+
+		# If already authenticated, deauth first so openNDS takes updated time/caps
+		STATE=$("$NDSCTL" json "$MAC" 2>/dev/null | grep -o '"state":"[^"]*"' | cut -d'"' -f4)
+		if [ "$STATE" = "Authenticated" ]; then
+			"$NDSCTL" deauth "$MAC" >/dev/null 2>&1
+		fi
+
+		# ndsctl auth <mac> <session minutes> <upload kbit/s> <download kbit/s> <upload quota kB> <download quota kB> <custom>
+		OUT=$("$NDSCTL" auth "$MAC" "$MINS" "$UP" "$DOWN" "$QUP" "$QDOWN" "piso-nds" 2>&1)
+		if printf '%s' "$OUT" | grep -qi "failed"; then
+			send_err "auth_failed: $OUT" "500 Internal Server Error"
+		fi
+
+		send_json "{\"ok\":true,\"action\":\"auth\",\"mac\":\"$MAC\",\"mins\":$MINS}" "200 OK"
+		;;
+
+	deauth)
+		MAC=$(get_param "mac" | tr '[:upper:]' '[:lower:]')
+		case "$MAC" in
+			[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]) ;;
+			*) send_err "invalid_mac" "400 Bad Request" ;;
+		esac
+		"$NDSCTL" deauth "$MAC" >/dev/null 2>&1
+		send_json "{\"ok\":true,\"action\":\"deauth\",\"mac\":\"$MAC\"}" "200 OK"
+		;;
+
+	arp)
+		IP=$(get_param "ip")
+		case "$IP" in
+			"" | *[!0-9.]*) send_err "invalid_ip" "400 Bad Request" ;;
+		esac
+		MAC=$(awk -v ip="$IP" '$1 == ip && $4 ~ /^[0-9a-fA-F:]+$/ { print tolower($4); exit }' /proc/net/arp 2>/dev/null)
+		if [ -z "$MAC" ] || [ "$MAC" = "00:00:00:00:00:00" ]; then
+			send_err "mac_not_found" "404 Not Found"
+		fi
+		send_json "{\"ok\":true,\"ip\":\"$IP\",\"mac\":\"$MAC\"}" "200 OK"
+		;;
+
+	status)
+		NDS_JSON=$("$NDSCTL" json 2>/dev/null)
+		EPOCH=$(cat "$EPOCH_CONF" 2>/dev/null | tr -dc '0-9')
+		EPOCH="${EPOCH:-1}"
+		NOW=$(date +%s)
+		send_json "{\"ok\":true,\"time\":$NOW,\"epoch\":$EPOCH,\"nds\":$NDS_JSON}" "200 OK"
+		;;
+
+	boxes)
+		if [ ! -r "$BOXES_CONF" ]; then
+			send_json "{\"ok\":true,\"boxes\":[]}" "200 OK"
+		fi
+		JSON_ITEMS=""
+		while IFS=: read -r b_slot b_mac b_ip b_name b_role b_status || [ -n "$b_slot" ]; do
+			case "$b_slot" in "#"* | "") continue ;; esac
+			[ -z "$JSON_ITEMS" ] || JSON_ITEMS="$JSON_ITEMS,"
+			JSON_ITEMS="$JSON_ITEMS{\"slot\":$b_slot,\"mac\":\"$b_mac\",\"ip\":\"$b_ip\",\"name\":\"$b_name\",\"role\":\"$b_role\",\"status\":\"$b_status\"}"
+		done < "$BOXES_CONF"
+		send_json "{\"ok\":true,\"boxes\":[$JSON_ITEMS]}" "200 OK"
+		;;
+
+	set-role)
+		SLOT=$(get_param "slot")
+		ROLE=$(get_param "role")
+		case "$SLOT" in 1 | 2 | 3 | 4) ;; *) send_err "invalid_slot" "400 Bad Request" ;; esac
+		case "$ROLE" in wifi | phone | hub) ;; *) send_err "invalid_role" "400 Bad Request" ;; esac
+
+		TMP_B="$BOXES_CONF.tmp.$$"
+		if [ -r "$BOXES_CONF" ]; then
+			awk -v slot="$SLOT" -v role="$ROLE" -F: 'BEGIN { OFS=":" } $1 == slot { $5 = role } { print }' "$BOXES_CONF" > "$TMP_B" && mv "$TMP_B" "$BOXES_CONF"
+		fi
+		send_json "{\"ok\":true,\"slot\":$SLOT,\"role\":\"$ROLE\"}" "200 OK"
+		;;
+
+	epoch)
+		SET_EPOCH=$(get_param "set")
+		if [ -n "$SET_EPOCH" ]; then
+			case "$SET_EPOCH" in *[!0-9]*) send_err "invalid_epoch" "400 Bad Request" ;; esac
+			echo "$SET_EPOCH" > "$EPOCH_CONF" 2>/dev/null
+			send_json "{\"ok\":true,\"epoch\":$SET_EPOCH}" "200 OK"
+		fi
+		CUR_EPOCH=$(cat "$EPOCH_CONF" 2>/dev/null | tr -dc '0-9')
+		CUR_EPOCH="${CUR_EPOCH:-1}"
+		send_json "{\"ok\":true,\"epoch\":$CUR_EPOCH}" "200 OK"
+		;;
+
+	sqm)
+		DOWN=$(get_param "down")
+		UP=$(get_param "up")
+		ENABLE=$(get_param "enable")
+		if [ "$ENABLE" = "on" ] || [ "$ENABLE" = "off" ]; then
+			uci set sqm.@sqm[0].enabled="$([ "$ENABLE" = "on" ] && echo 1 || echo 0)" 2>/dev/null
+		fi
+		[ -z "$DOWN" ] || uci set sqm.@sqm[0].download="$DOWN" 2>/dev/null
+		[ -z "$UP" ] || uci set sqm.@sqm[0].upload="$UP" 2>/dev/null
+		uci commit sqm 2>/dev/null
+		/etc/init.d/sqm reload >/dev/null 2>&1
+		send_json "{\"ok\":true,\"action\":\"sqm\"}" "200 OK"
+		;;
+
+	telegram)
+		TOKEN=$(get_param "token")
+		CHAT=$(get_param "chat")
+		HOUR=$(get_param "hour")
+		CONF_TG="/etc/piso-monitor.conf"
+		[ -r "$CONF_TG" ] || touch "$CONF_TG"
+		[ -z "$TOKEN" ] || sed -i "/^TG_TOKEN=/d" "$CONF_TG"
+		[ -z "$TOKEN" ] || echo "TG_TOKEN='$TOKEN'" >> "$CONF_TG"
+		[ -z "$CHAT" ] || sed -i "/^TG_CHAT=/d" "$CONF_TG"
+		[ -z "$CHAT" ] || echo "TG_CHAT='$CHAT'" >> "$CONF_TG"
+		[ -z "$HOUR" ] || sed -i "/^REPORT_HOUR=/d" "$CONF_TG"
+		[ -z "$HOUR" ] || echo "REPORT_HOUR='$HOUR'" >> "$CONF_TG"
+		send_json "{\"ok\":true,\"action\":\"telegram\"}" "200 OK"
+		;;
+
+	*)
+		send_err "unknown_action: $ACTION" "400 Bad Request"
+		;;
+esac
+#@@B64 /www/offline.html 644 2d008dac2b4500e482aa643a095f2d9ed98488f9d3d3d172a377a2b5ea416542
+PCFkb2N0eXBlIGh0bWw+CjxodG1sIGxhbmc9ImVuIj4KPGhlYWQ+CjxtZXRhIGNoYXJzZXQ9InV0
+Zi04Ij4KPG1ldGEgbmFtZT0idmlld3BvcnQiIGNvbnRlbnQ9IndpZHRoPWRldmljZS13aWR0aCxp
+bml0aWFsLXNjYWxlPTEiPgo8bWV0YSBodHRwLWVxdWl2PSJyZWZyZXNoIiBjb250ZW50PSI2Ij4K
+PHRpdGxlPlBpc29XaUZpICZtaWRkb3Q7IFJlY29ubmVjdGluZzwvdGl0bGU+CjxzdHlsZT4KOnJv
+b3R7LS1iZzojMDkwOTBiOy0tY2FyZDojMTgxODFiOy0tdHg6I2ZhZmFmYTstLW11dDojYTFhMWFh
+Oy0tYWNjOiMwZjlmN2E7LS1sbjojMjcyNzJhfQoqe2JveC1zaXppbmc6Ym9yZGVyLWJveH0KYm9k
+eXttYXJnaW46MDtwYWRkaW5nOjI0cHggMTZweDtiYWNrZ3JvdW5kOnZhcigtLWJnKTtjb2xvcjp2
+YXIoLS10eCk7Zm9udDoxNXB4LzIycHggc3lzdGVtLXVpLC1hcHBsZS1zeXN0ZW0sQmxpbmtNYWNT
+eXN0ZW1Gb250LHNhbnMtc2VyaWY7dGV4dC1hbGlnbjpjZW50ZXI7bWluLWhlaWdodDoxMDB2aDtk
+aXNwbGF5OmZsZXg7YWxpZ24taXRlbXM6Y2VudGVyO2p1c3RpZnktY29udGVudDpjZW50ZXJ9Ci5j
+YXJke2JhY2tncm91bmQ6dmFyKC0tY2FyZCk7Ym9yZGVyOjFweCBzb2xpZCB2YXIoLS1sbik7Ym9y
+ZGVyLXJhZGl1czoxOHB4O3BhZGRpbmc6MzJweCAyNHB4O21heC13aWR0aDozODBweDt3aWR0aDox
+MDAlO2JveC1zaGFkb3c6MCAxMnB4IDMycHggcmdiYSgwLDAsMCwuNCl9Ci5zcGlue3dpZHRoOjQ0
+cHg7aGVpZ2h0OjQ0cHg7bWFyZ2luOjAgYXV0byAyMHB4O2JvcmRlcjozcHggc29saWQgdmFyKC0t
+bG4pO2JvcmRlci10b3AtY29sb3I6dmFyKC0tYWNjKTtib3JkZXItcmFkaXVzOjUwJTthbmltYXRp
+b246cyAxcyBsaW5lYXIgaW5maW5pdGV9CkBrZXlmcmFtZXMgc3t0b3t0cmFuc2Zvcm06cm90YXRl
+KDM2MGRlZyl9fQpoMXtmb250LXNpemU6MTlweDtmb250LXdlaWdodDo3MDA7bWFyZ2luOjAgMCAx
+MHB4O2xldHRlci1zcGFjaW5nOi0uMDFlbX0KcHtjb2xvcjp2YXIoLS1tdXQpO21hcmdpbjowIDAg
+MjBweDtmb250LXNpemU6MTRweH0KLmJ0bntkaXNwbGF5OmlubGluZS1ibG9jaztwYWRkaW5nOjEy
+cHggMjRweDtib3JkZXItcmFkaXVzOjEwcHg7YmFja2dyb3VuZDp2YXIoLS1hY2MpO2NvbG9yOiNm
+ZmY7Zm9udC13ZWlnaHQ6NjAwO3RleHQtZGVjb3JhdGlvbjpub25lO2JvcmRlcjowO2N1cnNvcjpw
+b2ludGVyO3dpZHRoOjEwMCU7Zm9udC1zaXplOjE0cHh9Ci5maWx7Zm9udC1zaXplOjEycHg7Y29s
+b3I6dmFyKC0tbXV0KTttYXJnaW4tdG9wOjE2cHh9Cjwvc3R5bGU+CjwvaGVhZD4KPGJvZHk+Cjxk
+aXYgY2xhc3M9ImNhcmQiPgo8ZGl2IGNsYXNzPSJzcGluIiBhcmlhLWhpZGRlbj0idHJ1ZSI+PC9k
+aXY+CjxoMT5Db2luIEJveCBSZWNvbm5lY3Rpbmc8L2gxPgo8cD5UaGUgY29pbiBib3ggaXMgc3Rh
+cnRpbmcgdXAgb3IgcmVjb25uZWN0aW5nIHRvIHRoZSByb3V0ZXIuIFRoaXMgcGFnZSB3aWxsIHJl
+ZnJlc2ggYXV0b21hdGljYWxseSBpbiBhIGZldyBzZWNvbmRzLjwvcD4KPGJ1dHRvbiBjbGFzcz0i
+YnRuIiBvbmNsaWNrPSJsb2NhdGlvbi5yZWxvYWQoKSI+Q2hlY2sgQWdhaW48L2J1dHRvbj4KPGRp
+diBjbGFzcz0iZmlsIj4KPGI+TXVsaW5nIEt1bW9rb25la3RhOjwvYj4gTmFnc2lzaW11bGEgbyBt
+dWxpbmcga3Vtb2tvbmVrdGEgYW5nIGNvaW4gYm94LiBLdXNhIGl0b25nIG1hZ3JlLXJlZnJlc2gg
+c2EgbG9vYiBuZyBpbGFuZyBzZWd1bmRvLgo8L2Rpdj4KPC9kaXY+CjwvYm9keT4KPC9odG1sPgo=
 #@@B64 /usr/bin/pisoportal 755 5305f9c61f51a5c42e38bab8aecb961ee5055e8e162665c981009214b659700d
 f0VMRgIBAQAAAAAAAAAAAAIAtwABAAAAwFNAAAAAAABAAAAAAAAAANAMEAAAAAAAAAAAAEAAOAAG
 AEAAEgARAAEAAAAFAAAAAAAAAAAAAAAAAEAAAAAAAAAAQAAAAAAAUHIPAAAAAABQcg8AAAAAAAAA

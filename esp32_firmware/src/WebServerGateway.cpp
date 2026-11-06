@@ -11,6 +11,10 @@
 // sig = HMAC-SHA256(key, "gw1:<action>:<session>:<nonce>") where action is arm/status/release/ack.
 // A successful answer carries "rsig" = HMAC-SHA256(key, "gw1r:<action>:<session>:<nonce>:<facts>"), see GatewayAuth.h.
 #include "WebServerGateway.h"
+#include "BoxPersona.h"
+#if !defined(PISO_PRODUCT_PHONE)
+#include "MultiBoxCoordinator.h"
+#endif
 #include "Config.h"
 #include "GatewayAuth.h"
 #include "GatewayCoinslot.h"
@@ -173,3 +177,34 @@ void handleGatewayConfig() {
     }
     sendJson(200, String("{\"success\":true,\"configured\":") + (gatewayConfigured() ? "true" : "false") + "}");
 }
+
+void handleGatewayPersona() {
+    if (!checkAdminAuth()) return;
+    uint8_t slot = getLocalSlot();
+    if (webServer.hasArg("slot")) {
+        slot = (uint8_t)webServer.arg("slot").toInt();
+    }
+    String name = webServer.hasArg("name") ? webServer.arg("name") : getLocalPersonaName();
+    String role = webServer.hasArg("role") ? webServer.arg("role") : getLocalRole();
+    uint32_t epoch = webServer.hasArg("epoch") ? (uint32_t)webServer.arg("epoch").toInt() : getLocalEpoch();
+
+    setLocalPersona(slot, name.c_str(), role.c_str(), epoch);
+
+    sendJson(200, String("{\"success\":true,\"slot\":") + String(slot) +
+                      ",\"name\":\"" + name + "\",\"role\":\"" + role +
+                      "\",\"epoch\":" + String(epoch) + "}");
+}
+
+void handleGatewayBoxes() {
+#if !defined(PISO_PRODUCT_PHONE)
+    sendJson(200, getBoxesJson());
+#else
+    String json = "[{\"slot\":" + String(getLocalSlot()) +
+                  ",\"name\":\"" + getLocalPersonaName() +
+                  "\",\"ip\":\"" + WiFi.localIP().toString() +
+                  "\",\"role\":\"" + getLocalRole() +
+                  "\",\"online\":true,\"is_local\":true}]";
+    sendJson(200, json);
+#endif
+}
+

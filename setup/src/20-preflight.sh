@@ -54,9 +54,9 @@ preflight() {
 # preflight_network: the router's WAN address and internet, and that its LAN and WAN ranges do not clash. The router needs internet for
 # the first setup: it downloads its packages itself (opkg or apk, against the router's own signed feeds).
 preflight_network() {
+	[ "$LAN_IP" = 10.0.0.1 ] || die "the router's LAN address is $LAN_IP, but it must be 10.0.0.1 before anything else to avoid IP conflicts with upstream modems on 192.168.1.1. Run the installer, which moves it for you: wget -qO- https://pisophone.pages.dev/install.sh | sh   (or by hand: uci set network.lan.ipaddr=10.0.0.1 && uci commit network && reboot), then log in again at 10.0.0.1 and re-run. See setup/README.md."
 	WAN=$(wan_ip)
 	[ -n "$WAN" ] || die "the router has no WAN address, and it needs internet for the first setup: plug the modem into the WAN port and wait a minute, then run this again"
-	[ "$LAN_IP" = 10.0.0.1 ] || die "the router's LAN address is $LAN_IP, but this setup expects 10.0.0.1. Run the installer, which moves it for you: wget -qO- https://pisophone.pages.dev/install.sh | sh   (or by hand: uci set network.lan.ipaddr=10.0.0.1 && uci commit network && reboot), then log in again at 10.0.0.1 and re-run. See setup/README.md."
 	case "$(wan_clash)" in
 		"") ;;
 		"$LAN_IP") die "the modem's network ($WAN/$(wan_prefix)) overlaps (the same range as) the router's LAN ($LAN_IP). Change the modem's own LAN address (for example to 192.168.100.1) and run this again" ;;
