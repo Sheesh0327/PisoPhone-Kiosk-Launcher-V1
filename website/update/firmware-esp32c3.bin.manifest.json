@@ -1,7 +1,7 @@
 {
   "chip": "esp32c3",
   "version": "3.13.0",
-  "sha256": "fd31ca46d5c81449e5fd64575914d1d6b5c7b455da2ba1b04e5c18049cf60572",
-  "size": 1530416,
-  "sig": "MEUCIQDe8KITAHhdzfOVyLoN8fvRd/H5eqPy9QpBX2hR7lZcrgIgaUXpKl1nNxhp4yVhAnR21/Idr14xjAiWwZZ9+VI9UqM="
+  "sha256": "db6a124899cf850e5f65eb1cadd517909e51e12cbf5eced931a4f1d72f879690",
+  "size": 1530496,
+  "sig": "MEYCIQC4Cl9OedV2PVujvIa+VbgeYb5e5Myt/o2+aDundPaKoQIhAMODtK9NG9SULMQ/7JECXzQCCskF2hgiGTEVOFezmLDc"
 }
