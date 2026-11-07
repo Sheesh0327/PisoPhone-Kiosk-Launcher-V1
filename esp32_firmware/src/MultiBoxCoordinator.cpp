@@ -83,7 +83,7 @@ static bool fetchRemoteChallenge(const char* ip, String& out_nonce) {
     HTTPClient http;
     String url = String("http://") + ip + "/api/gateway/challenge";
     http.begin(url);
-    http.setTimeout(2500);
+    http.setTimeout(300);
     int code = http.GET();
     if (code == 200) {
         StaticJsonDocument<256> doc;
@@ -99,6 +99,10 @@ static bool fetchRemoteChallenge(const char* ip, String& out_nonce) {
 }
 
 void multiBoxCoordinatorLoop() {
+    // If the gateway is not configured yet (e.g. during initial pairing/setup), do not poll remote boxes.
+    // Doing so blocks the single core CPU on offline IPs and starves router pairing requests.
+    if (!gatewayConfigured()) return;
+
     uint32_t now = millis();
     if (now - lastHealthPollMs < HEALTH_POLL_INTERVAL_MS) return;
     lastHealthPollMs = now;
@@ -109,19 +113,34 @@ void multiBoxCoordinatorLoop() {
     boxes[localSlot - 1].online = true;
     boxes[localSlot - 1].lastSeenMs = now;
 
-    for (uint8_t s = 1; s <= 4; s++) {
-        if (s == localSlot) continue;
-        String nonce;
-        if (fetchRemoteChallenge(boxes[s - 1].ip, nonce)) {
-            boxes[s - 1].online = true;
-            boxes[s - 1].lastSeenMs = now;
-        } else {
-            // Check if 45 seconds have passed without answer
-            if (now - boxes[s - 1].lastSeenMs > 45000) {
-                boxes[s - 1].online = false;
-            }
+    // Poll round-robin: only one remote slot per poll interval, so loop() is never blocked
+    static uint8_t nextPollSlot = 1;
+    for (uint8_t attempt = 0; attempt < 4; attempt++) {
+        nextPollSlot = (nextPollSlot % 4) + 1;
+        if (nextPollSlot != localSlot) break;
+    }
+    if (nextPollSlot == localSlot) return;
+
+    uint8_t s = nextPollSlot;
+    // If the remote slot has never been seen (lastSeenMs == 0), only poll it once every 60 seconds
+    static uint32_t lastUnseenPollMs[4] = {0, 0, 0, 0};
+    if (boxes[s - 1].lastSeenMs == 0 && (now - lastUnseenPollMs[s - 1] < 60000)) {
+        return;
+    }
+    lastUnseenPollMs[s - 1] = now;
+
+    yield();
+    String nonce;
+    if (fetchRemoteChallenge(boxes[s - 1].ip, nonce)) {
+        boxes[s - 1].online = true;
+        boxes[s - 1].lastSeenMs = now;
+    } else {
+        // Check if 45 seconds have passed without answer
+        if (now - boxes[s - 1].lastSeenMs > 45000) {
+            boxes[s - 1].online = false;
         }
     }
+    yield();
 }
 
 bool armSlot(uint8_t slot, const String& session, int duration, String& out_err) {

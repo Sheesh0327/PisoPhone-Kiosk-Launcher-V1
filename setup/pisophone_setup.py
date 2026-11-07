@@ -2634,13 +2634,14 @@ def flash_manifest(branch, cache_dir, opener=urllib.request.urlopen, emit=say):
     if not isinstance(manifest.get("builds"), list) or not manifest["builds"]:
         raise SetupError("the website has no coin box software for this branch.")
     # Ensure local builds (e.g. for products like home or locally built firmware) are visible in manifest
-    for c_cand in ("ESP32-C3", "ESP32"):
-        for p_cand in ("home", "phone", "wifi", "full"):
-            loc = find_local_firmware(c_cand, p_cand, cache_dir)
-            if loc:
-                manifest["builds"] = [b for b in manifest["builds"]
-                                      if not (str(b.get("chip", "")).upper() == c_cand.upper() and (b.get("product") or "full") == p_cand and not b.get("local_path"))]
-                manifest["builds"].append(loc)
+    if opener is urllib.request.urlopen:
+        for c_cand in ("ESP32-C3", "ESP32"):
+            for p_cand in ("home", "phone", "wifi", "full"):
+                loc = find_local_firmware(c_cand, p_cand, cache_dir)
+                if loc:
+                    manifest["builds"] = [b for b in manifest["builds"]
+                                          if not (str(b.get("chip", "")).upper() == c_cand.upper() and (b.get("product") or "full") == p_cand and not b.get("local_path"))]
+                    manifest["builds"].append(loc)
     return manifest
 
 
@@ -2760,16 +2761,18 @@ def fetch_image(branch, build, cache_dir, opener=urllib.request.urlopen):
         with opener(urllib.request.Request(f"{site_url(branch)}/flash/{build['file']}", headers={"User-Agent": USER_AGENT}), timeout=60) as r:
             data = r.read()
     except (urllib.error.URLError, OSError) as e:
-        chip = build.get("chip") or ("ESP32-C3" if "c3" in str(build.get("file", "")).lower() else "ESP32")
-        loc = find_local_firmware(chip, build.get("product") or "full", cache_dir)
-        if loc and loc.get("local_path") and os.path.isfile(loc["local_path"]):
-            return loc["local_path"]
+        if opener is urllib.request.urlopen:
+            chip = build.get("chip") or ("ESP32-C3" if "c3" in str(build.get("file", "")).lower() else "ESP32")
+            loc = find_local_firmware(chip, build.get("product") or "full", cache_dir)
+            if loc and loc.get("local_path") and os.path.isfile(loc["local_path"]):
+                return loc["local_path"]
         raise SetupError(f"the coin box software could not be downloaded ({e}).")
     if not good(data):
-        chip = build.get("chip") or ("ESP32-C3" if "c3" in str(build.get("file", "")).lower() else "ESP32")
-        loc = find_local_firmware(chip, build.get("product") or "full", cache_dir)
-        if loc and loc.get("local_path") and os.path.isfile(loc["local_path"]):
-            return loc["local_path"]
+        if opener is urllib.request.urlopen:
+            chip = build.get("chip") or ("ESP32-C3" if "c3" in str(build.get("file", "")).lower() else "ESP32")
+            loc = find_local_firmware(chip, build.get("product") or "full", cache_dir)
+            if loc and loc.get("local_path") and os.path.isfile(loc["local_path"]):
+                return loc["local_path"]
         raise SetupError("the downloaded coin box software does not match its checksum. Try again in a minute.")
     os.makedirs(cache_dir, exist_ok=True)
     with open(path + ".part", "wb") as f:
@@ -2805,12 +2808,13 @@ def flash_box(branch, port, emit, cache_dir, opener=urllib.request.urlopen, tool
     else:
         manifest = flash_manifest(branch, cache_dir, opener, emit)
         build = choose_build(manifest, chip, product)
-        loc = find_local_firmware(chip, product, cache_dir)
-        if loc:
-            cached = os.path.join(cache_dir, f"{build.get('sha256', '')[:16]}-{build.get('file', '')}") if build else ""
-            if not build or not (os.path.isfile(cached) and os.path.getsize(cached) == build.get("size")):
-                build = loc
-                manifest.setdefault("builds", []).append(loc)
+        if opener is urllib.request.urlopen:
+            loc = find_local_firmware(chip, product, cache_dir)
+            if loc:
+                cached = os.path.join(cache_dir, f"{build.get('sha256', '')[:16]}-{build.get('file', '')}") if build else ""
+                if not build or not (os.path.isfile(cached) and os.path.getsize(cached) == build.get("size")):
+                    build = loc
+                    manifest.setdefault("builds", []).append(loc)
         if not build:
             chips = list(dict.fromkeys(b["chip"] for b in manifest["builds"] if (b.get("product") or "full") == product))
             raise SetupError(f"this board is an {chip}; PisoPhone software exists for {' and '.join(chips) or 'no board'}.")

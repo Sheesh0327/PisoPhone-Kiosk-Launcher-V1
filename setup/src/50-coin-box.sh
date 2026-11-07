@@ -92,9 +92,13 @@ pair_box() {
 	lock_box_network "$MAC"
 	conf_set BOX_MAC "$MAC"
 	BOX_MAC="$MAC"
-	_t=0
-	while [ "$_t" -lt 180 ]; do box_up && break; sleep 5; _t=$((_t + 5)); done   # it rejoins after the reload and takes the fixed address
-	box_up || { cmd_box_diag; die "the box joined but does not answer at $BOX_IP (it may still hold an old address lease: power-cycle the box and run: piso-setup status)"; }
+	_t=0; _box_ok=0
+	while [ "$_t" -lt 180 ]; do
+		if box_up; then _box_ok=1; break; fi
+		sleep 5
+		_t=$((_t + 5))
+	done   # it rejoins after the reload and takes the fixed address
+	[ "$_box_ok" = 1 ] || { cmd_box_diag; die "the box joined but does not answer at $BOX_IP (it may still hold an old address lease: power-cycle the box and run: piso-setup status)"; }
 	log "the coin box answers at $BOX_IP"
 }
 

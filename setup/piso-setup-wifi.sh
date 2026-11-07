@@ -1465,9 +1465,13 @@ pair_box() {
 	lock_box_network "$MAC"
 	conf_set BOX_MAC "$MAC"
 	BOX_MAC="$MAC"
-	_t=0
-	while [ "$_t" -lt 180 ]; do box_up && break; sleep 5; _t=$((_t + 5)); done   # it rejoins after the reload and takes the fixed address
-	box_up || { cmd_box_diag; die "the box joined but does not answer at $BOX_IP (it may still hold an old address lease: power-cycle the box and run: piso-setup status)"; }
+	_t=0; _box_ok=0
+	while [ "$_t" -lt 180 ]; do
+		if box_up; then _box_ok=1; break; fi
+		sleep 5
+		_t=$((_t + 5))
+	done   # it rejoins after the reload and takes the fixed address
+	[ "$_box_ok" = 1 ] || { cmd_box_diag; die "the box joined but does not answer at $BOX_IP (it may still hold an old address lease: power-cycle the box and run: piso-setup status)"; }
 	log "the coin box answers at $BOX_IP"
 }
 
@@ -2204,7 +2208,9 @@ cmd_box_diag() {
 	_st=""
 	[ -n "$_if" ] && _st=$(iwinfo "$_if" assoclist 2> /dev/null | awk 'toupper($1) ~ /^[0-9A-F][0-9A-F]:[0-9A-F:]+$/ { print toupper($1) }')
 	echo "joined to the network now: ${_st:-nobody}"
-	echo "address reservation: $(uci -q get dhcp.pisocoinbox.mac) -> $(uci -q get dhcp.pisocoinbox.ip)"
+	_res_mac=$(uci -q get dhcp.pisocoinbox.mac); [ -n "$_res_mac" ] || _res_mac=$(uci -q get dhcp.pisocoinbox1.mac)
+	_res_ip=$(uci -q get dhcp.pisocoinbox.ip); [ -n "$_res_ip" ] || _res_ip=$(uci -q get dhcp.pisocoinbox1.ip)
+	echo "address reservation: ${_res_mac:-none} -> ${_res_ip:-none}"
 	echo "lease: $(grep -i "${_mac:-no-mac}" /tmp/dhcp.leases 2> /dev/null || echo none)"
 	echo "neighbour: $(ip neigh show 2> /dev/null | grep "$BOX_IP" || echo none)"
 	if box_up; then _answers=yes; else _answers=no; fi
@@ -3876,8 +3882,8 @@ if [ -d "$SYS/$LAN_BR" ]; then
 	# the console is the admin page (and the coin box's page one port up): offered on a LAN cable only, like the login pages
 	CONSOLE_PORT=$(cget "$COIN" CONSOLE_PORT)
 	case "$CONSOLE_PORT" in "" | *[!0-9]*) CONSOLE_PORT=8081 ;; esac
-	ADMIN_PORTS=$(echo "$ADMIN_PORTS $CONSOLE_PORT $((CONSOLE_PORT + 1))" | tr ' ' '\n' | awk '!seen[$0]++' | paste -sd, - | sed 's/,/, /g')
-	CONSOLE_PORTS=$(echo "$CONSOLE_PORT $((CONSOLE_PORT + 1))" | tr ' ' '\n' | awk '$0 != 80 && $0 != 443 && !seen[$0]++' | paste -sd, - | sed 's/,/, /g')
+	ADMIN_PORTS=$(echo "$ADMIN_PORTS $CONSOLE_PORT $((CONSOLE_PORT + 1))" | tr ' ' '\n' | awk '!seen[$0]++' | tr '\n' ',' | sed 's/,$//; s/,/, /g')
+	CONSOLE_PORTS=$(echo "$CONSOLE_PORT $((CONSOLE_PORT + 1))" | tr ' ' '\n' | awk '$0 != 80 && $0 != 443 && !seen[$0]++' | tr '\n' ',' | sed 's/,$//; s/,/, /g')
 	case "$BOX_MAC" in [0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]) ;; *) BOX_MAC="" ;; esac
 	case "$BOX_IP" in *[!0-9.]*) BOX_IP="" ;; esac
 	case "$LAN_IP" in *[!0-9.]*) LAN_IP="" ;; esac
