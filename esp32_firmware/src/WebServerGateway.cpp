@@ -173,4 +173,3 @@ void handleGatewayConfig() {
     }
     sendJson(200, String("{\"success\":true,\"configured\":") + (gatewayConfigured() ? "true" : "false") + "}");
 }
-

@@ -432,7 +432,9 @@ impl Core {
         let boxes_conf = self.cfg.boxes();
         let mut idle_boxes = Vec::new();
         for b in &boxes_conf {
-            if !b.enabled { continue; }
+            if !b.enabled {
+                continue;
+            }
             let is_busy = st.windows.get(&b.slot).map(|w| w.mac != mac).unwrap_or(false);
             let busy = if is_busy { self.cfg.busy_retry } else { 0 };
             idle_boxes.push(IdleBox { slot: b.slot, name: b.name.clone(), busy });
@@ -500,7 +502,14 @@ impl Core {
             },
             WState::Closing => match &w.early {
                 Some(v) => self.live(v.clone(), &w.mac, now_secs()),
-                None => View::Closing { plan: w.plan, pulses: w.pulses, minutes, voucher: w.voucher, slot: w.slot, box_name: w.box_name.clone() },
+                None => View::Closing {
+                    plan: w.plan,
+                    pulses: w.pulses,
+                    minutes,
+                    voucher: w.voucher,
+                    slot: w.slot,
+                    box_name: w.box_name.clone(),
+                },
             },
         }
     }
@@ -979,15 +988,19 @@ impl Core {
         }
     }
 
+    fn box_marker(&self, slot: u8) -> String {
+        if slot == 1 {
+            format!("{}/box_signed", self.cfg.data_dir)
+        } else {
+            format!("{}/box_signed_{}", self.cfg.data_dir, slot)
+        }
+    }
+
     fn finish_window(&self, sid: &str, view: View, noted: Option<bool>) {
         let mac = {
             let mut st = self.st.lock().unwrap();
             let slot = st.windows.iter().find_map(|(&k, w)| if w.sid == sid { Some(k) } else { None });
-            let mac = if let Some(slot) = slot {
-                st.windows.remove(&slot).map(|w| w.mac)
-            } else {
-                None
-            };
+            let mac = if let Some(slot) = slot { st.windows.remove(&slot).map(|w| w.mac) } else { None };
             if let Some(m) = &mac {
                 st.results.insert(m.clone(), (now_secs(), view));
                 self.bump(&mut st);
@@ -1014,7 +1027,7 @@ impl Core {
             return;
         };
         let cfg = &self.cfg;
-        let box_link = BoxLink::new(&box_ip, &cfg.gw_key).remember_in(&format!("{}/box_signed_{}", cfg.data_dir, slot));
+        let box_link = BoxLink::new(&box_ip, &cfg.gw_key).remember_in(&self.box_marker(slot));
         let evx = self.evx(&wid);
         let t_arm = Instant::now();
         let ans = box_link.call(sid, "arm", &format!("&duration={}{}", cfg.first_wait + 3, evx));
@@ -1234,6 +1247,7 @@ impl Core {
 
     /// A window leaves a record on flash from the moment the box is armed, kept until the box is acknowledged (or the window ends with
     /// no coin at all): if the router restarts mid-window, recovery credits what the box holds. Nothing is granted yet. Written once.
+    #[allow(clippy::too_many_arguments)]
     fn note_open(&self, sid: &str, mac: &str, plan: Plan, wid: &str, forfeit: bool, voucher: bool, slot: u8, box_ip: &str) {
         if std::path::Path::new(&self.open_file(sid)).exists() {
             return;
@@ -1473,7 +1487,7 @@ impl Core {
             let voucher = f.get(4) == Some(&"1");
             let slot = f.get(5).and_then(|s| s.parse::<u8>().ok()).unwrap_or(1);
             let box_ip = f.get(6).map(|s| s.to_string()).unwrap_or_else(|| self.cfg.gw_box.clone());
-            let box_link = BoxLink::new(&box_ip, &self.cfg.gw_key).remember_in(&format!("{}/box_signed_{}", self.cfg.data_dir, slot));
+            let box_link = BoxLink::new(&box_ip, &self.cfg.gw_key).remember_in(&self.box_marker(slot));
             let st = match box_link.call(&sid, "status", "") {
                 Ok(b) if BoxLink::is_success(&b) => b,
                 _ => {
@@ -1531,7 +1545,7 @@ impl Core {
         let f: Vec<&str> = opened.split_whitespace().collect();
         let slot = f.get(5).and_then(|s| s.parse::<u8>().ok()).unwrap_or(1);
         let box_ip = f.get(6).map(|s| s.to_string()).unwrap_or_else(|| self.cfg.gw_box.clone());
-        let box_link = BoxLink::new(&box_ip, &self.cfg.gw_key).remember_in(&format!("{}/box_signed_{}", self.cfg.data_dir, slot));
+        let box_link = BoxLink::new(&box_ip, &self.cfg.gw_key).remember_in(&self.box_marker(slot));
         let st = match box_link.call(sid, "status", "") {
             Ok(b) if BoxLink::is_success(&b) => b,
             _ => return,
@@ -1896,7 +1910,8 @@ mod tests {
         let d = std::env::temp_dir().join(format!("pisoportal-multibox-core-{}", std::process::id()));
         let _ = fs::remove_dir_all(&d);
         fs::create_dir_all(d.join("open")).unwrap();
-        fs::write(d.join("boxes.conf"), "1|AA:BB:CC:11:22:33|10.0.0.10|Station A|wifi|1\n2|AA:BB:CC:11:22:44|10.0.0.11|Station B|wifi|1\n").unwrap();
+        fs::write(d.join("boxes.conf"), "1|AA:BB:CC:11:22:33|10.0.0.10|Station A|wifi|1\n2|AA:BB:CC:11:22:44|10.0.0.11|Station B|wifi|1\n")
+            .unwrap();
         let mut cfg = Config::from_map(std::collections::HashMap::new());
         cfg.data_dir = d.to_string_lossy().into_owned();
         let core = Core::new(cfg);

@@ -730,9 +730,9 @@ fn handle(c: &Console, req: Request, mut conn: Incoming) {
                 ("GET", "/api/boxes") => json(&mut conn, "200 OK", &c.boxes_json(), ""),
                 ("POST", "/api/boxes") => {
                     let slot_str = jget(&body, "slot");
-                    let slot = slot_str.parse::<u8>().unwrap_or_else(|_| {
-                        crate::util::query_get(&req.query, "slot").and_then(|s| s.parse::<u8>().ok()).unwrap_or(1)
-                    });
+                    let slot = slot_str
+                        .parse::<u8>()
+                        .unwrap_or_else(|_| crate::util::query_get(&req.query, "slot").and_then(|s| s.parse::<u8>().ok()).unwrap_or(1));
                     c.set_selected_box_slot(slot);
                     json(&mut conn, "200 OK", &format!("{{\"ok\":true,\"selected\":{}}}", slot), "")
                 }

@@ -228,13 +228,7 @@ impl Config {
         if !entries.is_empty() {
             return entries;
         }
-        vec![BoxEntry {
-            slot: 1,
-            mac: String::new(),
-            ip: self.gw_box.clone(),
-            name: "Esmeralda".to_string(),
-            enabled: true,
-        }]
+        vec![BoxEntry { slot: 1, mac: String::new(), ip: self.gw_box.clone(), name: "Esmeralda".to_string(), enabled: true }]
     }
 
     #[allow(dead_code)]
@@ -245,11 +239,7 @@ impl Config {
     #[allow(dead_code)]
     pub fn box_link_for(&self, slot: u8) -> Option<crate::boxlink::BoxLink> {
         let entry = self.box_entry_for(slot)?;
-        let marker = if slot == 1 {
-            format!("{}/box_signed", self.data_dir)
-        } else {
-            format!("{}/box_signed_{}", self.data_dir, slot)
-        };
+        let marker = if slot == 1 { format!("{}/box_signed", self.data_dir) } else { format!("{}/box_signed_{}", self.data_dir, slot) };
         Some(crate::boxlink::BoxLink::new(&entry.ip, &self.gw_key).remember_in(&marker))
     }
 
@@ -398,9 +388,18 @@ mod tests {
 "#;
         let boxes = parse_boxes_str(text);
         assert_eq!(boxes.len(), 3);
-        assert_eq!(boxes[0], BoxEntry { slot: 1, mac: "00:11:22:33:44:55".into(), ip: "10.0.0.10".into(), name: "Esmeralda".into(), enabled: true });
-        assert_eq!(boxes[1], BoxEntry { slot: 2, mac: "00:11:22:33:44:56".into(), ip: "10.0.0.11".into(), name: "Valentina".into(), enabled: true });
-        assert_eq!(boxes[2], BoxEntry { slot: 3, mac: "00:11:22:33:44:57".into(), ip: "10.0.0.12".into(), name: "Corazon".into(), enabled: false });
+        assert_eq!(
+            boxes[0],
+            BoxEntry { slot: 1, mac: "00:11:22:33:44:55".into(), ip: "10.0.0.10".into(), name: "Esmeralda".into(), enabled: true }
+        );
+        assert_eq!(
+            boxes[1],
+            BoxEntry { slot: 2, mac: "00:11:22:33:44:56".into(), ip: "10.0.0.11".into(), name: "Valentina".into(), enabled: true }
+        );
+        assert_eq!(
+            boxes[2],
+            BoxEntry { slot: 3, mac: "00:11:22:33:44:57".into(), ip: "10.0.0.12".into(), name: "Corazon".into(), enabled: false }
+        );
 
         let cfg = Config::from_map(HashMap::new());
         // Default without file is 1 box (Esmeralda)

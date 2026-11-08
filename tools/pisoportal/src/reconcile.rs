@@ -209,12 +209,7 @@ pub fn peek(cfg: &Config) -> Money {
             Ok((_, pesos)) => (None, pesos),
             Err(line) => (Some(line), 0),
         };
-        let look = Look {
-            bad_line,
-            ledger_total,
-            box_count: Some((kind, total_counted)),
-            base: load(&state_path(cfg)),
-        };
+        let look = Look { bad_line, ledger_total, box_count: Some((kind, total_counted)), base: load(&state_path(cfg)) };
         money(&look)
     })
 }
