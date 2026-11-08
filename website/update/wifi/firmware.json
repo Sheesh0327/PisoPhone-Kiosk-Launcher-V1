@@ -1,17 +1,17 @@
 {
-  "build": 319,
+  "build": 320,
   "chips": {
     "esp32c3": {
       "url": "https://pisophone.pages.dev/update/wifi/firmware-esp32c3.bin",
-      "sha256": "84b0da141839bdea61c66310e24e2a860b7626c74abab97c4c056827785d09af",
+      "sha256": "e105f7c36a7289b65c7be819b79720348a9ffec0d1138ffcd7c87e8953b43373",
       "size": 1074128,
-      "sig": "MEYCIQCnNiDncolGmtjxrQtDwMW8+N15HkIODIgz0LVR0+HA5gIhAN2wILzv2NsqHmcP7KSpph4JDXc35OLvIV50j3hPZWAE"
+      "sig": "MEUCIQDhCkRwkcG5JHhFZK+XrSrgxRS0Lj0aJFZV39q9wQfrKAIgT4T/DJTmzSxUD9JfEIFZCcb4sjoWR/5XfAi+xq0yIzg="
     },
     "esp32": {
       "url": "https://pisophone.pages.dev/update/wifi/firmware-esp32.bin",
-      "sha256": "141ec2c93f236142bbe77f97f7641a344373c449a53e13abebd702855b4d7f84",
+      "sha256": "9c128d1b3ac66cca1ebcf0936d0c5e38067639f4c457f8b3535f638ce66611d5",
       "size": 1073136,
-      "sig": "MEUCIQCSmJEopz3QBaMNkDJOJ/2Bo/aaUi5bY2cm5S0I+/W7PAIgWsQpyd4iPyjdrKkVt/S4jCMyuia1Ya7I1G/AYawuBnw="
+      "sig": "MEUCID648Iec04eDaku0JWDeI7nNuI/pQE/UfPkg2I9N1udEAiEAhkk1+VdFBPVmuSiDQeZ9/NO6x9viCdo5ePw5Gfj4fTk="
     }
   },
   "version": "3.13.0",
