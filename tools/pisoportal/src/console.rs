@@ -68,6 +68,7 @@ pub struct Console {
     fails: Mutex<HashMap<String, (u32, u64)>>,
     wan: Mutex<VecDeque<Sample>>,
     prev: Mutex<HashMap<String, (u64, u64, u64)>>,
+    selected_slot: Mutex<u8>,
 }
 
 // ---- reading the router (pure parts first: they are tested) -----------------------------------------------------------------------
@@ -294,6 +295,7 @@ impl Console {
             fails: Mutex::new(HashMap::new()),
             wan: Mutex::new(VecDeque::new()),
             prev: Mutex::new(HashMap::new()),
+            selected_slot: Mutex::new(1),
         })
     }
 
@@ -518,13 +520,53 @@ impl Console {
         format!("{{\"clients\":[{}]}}", rows.into_iter().map(|r| r.1).collect::<Vec<_>>().join(","))
     }
 
+    pub fn selected_box_slot(&self) -> u8 {
+        *self.selected_slot.lock().unwrap()
+    }
+
+    pub fn set_selected_box_slot(&self, slot: u8) {
+        *self.selected_slot.lock().unwrap() = slot;
+    }
+
+    pub fn active_box_ip(&self) -> String {
+        let slot = self.selected_box_slot();
+        let boxes = self.core.cfg.boxes();
+        if let Some(b) = boxes.iter().find(|b| b.slot == slot && b.enabled) {
+            return b.ip.clone();
+        }
+        if let Some(first) = boxes.iter().find(|b| b.enabled) {
+            return first.ip.clone();
+        }
+        self.core.cfg.gw_box.clone()
+    }
+
+    pub fn boxes_json(&self) -> String {
+        let selected = self.selected_box_slot();
+        let boxes = self.core.cfg.boxes();
+        let list: Vec<String> = boxes
+            .into_iter()
+            .map(|b| {
+                format!(
+                    "{{\"slot\":{},\"mac\":\"{}\",\"ip\":\"{}\",\"name\":\"{}\",\"enabled\":{}}}",
+                    b.slot,
+                    json_esc(&b.mac),
+                    json_esc(&b.ip),
+                    json_esc(&b.name),
+                    b.enabled
+                )
+            })
+            .collect();
+        format!("{{\"selected\":{},\"boxes\":[{}]}}", selected, list.join(","))
+    }
+
     fn phones(&self) -> String {
         let cfg = &self.core.cfg;
         let pass = conf_value(&cfg.setup_conf, "BOX_ADMIN_PASS");
         if pass.is_empty() {
             return "{\"error\":\"NO_PASSWORD\"}".into();
         }
-        match http_get_auth(&with_port(&cfg.gw_box), "/api/status", "admin", &pass) {
+        let box_ip = self.active_box_ip();
+        match http_get_auth(&with_port(&box_ip), "/api/status", "admin", &pass) {
             Ok(body) if body.trim_start().starts_with(['{', '[']) => body,
             Ok(_) => "{\"error\":\"BAD_ANSWER\"}".into(),
             Err(e) if e == "PASSWORD" => "{\"error\":\"PASSWORD\"}".into(),
@@ -685,6 +727,15 @@ fn handle(c: &Console, req: Request, mut conn: Incoming) {
                 ("GET", "/api/overview") => json(&mut conn, "200 OK", &c.overview(), ""),
                 ("GET", "/api/clients") => json(&mut conn, "200 OK", &c.clients(), ""),
                 ("GET", "/api/phones") => json(&mut conn, "200 OK", &c.phones(), ""),
+                ("GET", "/api/boxes") => json(&mut conn, "200 OK", &c.boxes_json(), ""),
+                ("POST", "/api/boxes") => {
+                    let slot_str = jget(&body, "slot");
+                    let slot = slot_str.parse::<u8>().unwrap_or_else(|_| {
+                        crate::util::query_get(&req.query, "slot").and_then(|s| s.parse::<u8>().ok()).unwrap_or(1)
+                    });
+                    c.set_selected_box_slot(slot);
+                    json(&mut conn, "200 OK", &format!("{{\"ok\":true,\"selected\":{}}}", slot), "")
+                }
                 ("POST", "/api/logout") => {
                     if let Some(t) =
                         req.header("cookie").and_then(|k| k.split(';').filter_map(|p| p.trim().strip_prefix("piso_console=")).next())
@@ -1061,5 +1112,29 @@ mod tests {
         assert_eq!((today_p, total_p, week_p), (today, total, week));
         assert_eq!(week_total, 25);
         assert_eq!(month_total, 25);
+    }
+
+    #[test]
+    fn console_multi_box_selection() {
+        let dir = format!("/tmp/pisoportal-test-console-boxes-{}", std::process::id());
+        std::fs::create_dir_all(&dir).unwrap();
+        let boxes_path = format!("{}/boxes.conf", dir);
+        std::fs::write(&boxes_path, "1|AA:BB:CC:11:22:33|10.0.0.10|Box 1|wifi|1\n2|AA:BB:CC:11:22:44|10.0.0.11|Box 2|wifi|1\n").unwrap();
+        let mut map = std::collections::HashMap::new();
+        map.insert("DATA_DIR".to_string(), dir.clone());
+        let cfg = crate::config::Config::from_map(map);
+        let core = Core::new(cfg);
+        let console = Console::new(core);
+        assert_eq!(console.selected_box_slot(), 1);
+        assert_eq!(console.active_box_ip(), "10.0.0.10");
+        let j = console.boxes_json();
+        assert!(j.contains(r#""selected":1"#));
+        assert!(j.contains(r#""name":"Box 1""#) && j.contains(r#""name":"Box 2""#));
+
+        console.set_selected_box_slot(2);
+        assert_eq!(console.selected_box_slot(), 2);
+        assert_eq!(console.active_box_ip(), "10.0.0.11");
+        assert!(console.boxes_json().contains(r#""selected":2"#));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

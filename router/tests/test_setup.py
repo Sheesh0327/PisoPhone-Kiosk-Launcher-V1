@@ -1168,7 +1168,7 @@ ub, ul = open(f"{tmp}/uci.batch").read(), open(f"{tmp}/uci.log").read()
 check("set opennds.@opennds[0].fasport='2080'" in ub and "set opennds.@opennds[0].login_option_enabled='0'" in ub and "delete opennds.@opennds[0].themespec_path" in ub
       and "set firewall.guest_stream.dest_port='2080'" in ub and "set opennds.@opennds[0].gatewayname='Shop WiFi'" in ub, "update moves openNDS to the FAS portal: " + ub[:300])
 check("set dropbear.@dropbear[0].Interface='lan'" in ub, "and keeps SSH off the guest network")
-check(all(l.startswith(("set firewall.guest_stream", "set firewall.guest_fas_boxes", "set firewall.guest_nomodem", "delete firewall.guest_nomodem", "add_list firewall.guest_nomodem", "set firewall.guest_noprivate", "delete firewall.guest_noprivate", "add_list firewall.guest_noprivate", "set firewall.phone_noprivate", "delete firewall.phone_noprivate", "add_list firewall.phone_noprivate", "add_list dhcp.@dnsmasq", "del_list dhcp.@dnsmasq", "set opennds.", "delete opennds.", "add_list opennds.", "set dropbear.", "delete uhttpd.", "add_list uhttpd.", "#"))
+check(all(l.startswith(("set firewall.guest_stream", "delete firewall.guest_fas_boxes", "set firewall.guest_fas_boxes", "set firewall.guest_nomodem", "delete firewall.guest_nomodem", "add_list firewall.guest_nomodem", "set firewall.guest_noprivate", "delete firewall.guest_noprivate", "add_list firewall.guest_noprivate", "set firewall.phone_noprivate", "delete firewall.phone_noprivate", "add_list firewall.phone_noprivate", "add_list dhcp.@dnsmasq", "del_list dhcp.@dnsmasq", "set opennds.", "delete opennds.", "add_list opennds.", "set dropbear.", "delete uhttpd.", "add_list uhttpd.", "#"))
           for l in ub.splitlines() if l.strip()), "and touches nothing else (no Wi-Fi, network or passwords): " + ub)
 check("commit opennds" in ul and "commit firewall" in ul, "the change is committed")
 cc = open(f"{root}/etc/coinslot.conf").read()
@@ -1549,7 +1549,6 @@ for name, body in (("sessions.csv", "aa:bb,paid,1800\n"), ("revenue.csv", "2026-
     open(f"{sroot}/etc/coinslot.d/{name}", "w").write(body)
 open(f"{sroot}/etc/coinslot.conf", "w").write("GW_BOX='10.0.0.10'\nPRICE_NOTE='mine'\nSEND_HOST='owner.example'\n")
 os.makedirs(f"{sroot}/etc/coinslot.d/brand")  # (feature 049: the shop's branding is in the data folder too, in a folder of its own)
-open(f"{sroot}/etc/coinslot.d/epoch.conf", "w").write("CURRENT_EPOCH=1\nACTIVE_FAS_IP=10.0.0.10\nACTIVE_FAS_PORT=2080\nACTIVE_FAS_NAME=Esmeralda\n")
 open(f"{sroot}/etc/coinslot.d/boxes.conf", "w").write("1|AA:BB:CC:00:00:01|10.0.0.10|Esmeralda|primary|1\n")
 for _n, _b in (("published.txt", b"name=Aling Nena\n"), ("images.txt", b"logo logo-0123456789ab.png " + b"a" * 64 + b"\n"), ("logo-0123456789ab.png", b"\x89PNG\r\n\x1a\nlogo")):
     open(f"{sroot}/etc/coinslot.d/brand/{_n}", "wb").write(_b)

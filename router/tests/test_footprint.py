@@ -12,7 +12,6 @@ BUDGET_KB = {
     "tools/pisoportal/bin/pisoportal-armv7": 1200,
     "tools/pisoportal/bin/pisoportal-x86_64": 1200,
     "setup/piso-setup.sh": 1850,                      # the one-file installer / update (it is downloaded, not kept).
-    "setup/piso-setup-wifi.sh": 250,                  # PisoWiFi-only installer (no binary payload, offloaded to ESP32)
     "setup/piso-setup.sh.in": 195,                    # the installed command (the file without its payload; grew with multi-box 067)
     "tools/pisoportal/src/page.html": 28,             # the customer page (1.3.4: voucher choice and code view, speech with a fallback, heartbeat)
     "tools/pisoportal/src/brand_fil.js": 14,          # a branded page: the Filipino wording and the language button (feature 049; page.html itself did not grow)

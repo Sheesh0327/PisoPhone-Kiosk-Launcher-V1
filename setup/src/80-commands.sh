@@ -271,11 +271,13 @@ cmd_pair_add() {
 	pair_add_box
 }
 
-cmd_box_role() {
+cmd_pair_remove() {
 	[ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"
-	_slot="$1"; _role="$2"
-	[ -n "$_slot" ] && [ -n "$_role" ] || die "usage: piso-setup box-role <slot 1-4> <primary|standby>"
-	set_box_role "$_slot" "$_role"
+	pair_remove_box "$@"
+}
+
+cmd_pair_list() {
+	pair_list_boxes
 }
 
 

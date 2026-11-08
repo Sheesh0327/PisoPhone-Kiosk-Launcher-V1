@@ -2,7 +2,6 @@
 //! revenue is collected (the super admin's vault reset), so the ledger is compared with what the box counted since the
 //! last restart of that counter this router saw: DATA_DIR/reconcile.state holds "<box_base> <ledger_base> <last_box>".
 //! The box counts the rental phones' coins too, so it may be ahead of the ledger, never behind it.
-use crate::boxlink::BoxLink;
 use crate::config::Config;
 use crate::ledger;
 use crate::util::jget_u64;
@@ -67,18 +66,28 @@ pub fn run(cfg: &Config, rebase: bool) -> (Outcome, Option<&'static str>) {
         Ok((_, pesos)) => pesos,
         Err(line) => return (Outcome::BadLedger(line), None),
     };
-    let st = BoxLink::new(&cfg.gw_box, &cfg.gw_key).call(&"f".repeat(32), "status", "").unwrap_or_default();
-    let Some(counted) = jget_u64(&st, "lifetime_wifi_pulses").or_else(|| jget_u64(&st, "lifetime_pulses")) else {
+    let boxes = cfg.boxes();
+    let enabled_boxes: Vec<&crate::config::BoxEntry> = boxes.iter().filter(|b| b.enabled).collect();
+    if enabled_boxes.is_empty() {
         return (Outcome::NoBox(ledger), None);
-    };
+    }
+    let mut total_counted = 0u64;
+    for entry in &enabled_boxes {
+        let link = cfg.box_link_for_ip(&entry.ip);
+        let st = link.call(&"f".repeat(32), "status", "").unwrap_or_default();
+        let Some(c) = jget_u64(&st, "lifetime_wifi_pulses").or_else(|| jget_u64(&st, "lifetime_pulses")) else {
+            return (Outcome::NoBox(ledger), None);
+        };
+        total_counted = total_counted.saturating_add(c);
+    }
     let path = state_path(cfg);
     let (base, note) = if rebase {
-        (Base { box_base: counted, ledger_base: ledger, last_box: counted }, Some("compared from now on (rebase)"))
+        (Base { box_base: total_counted, ledger_base: ledger, last_box: total_counted }, Some("compared from now on (rebase)"))
     } else {
-        next_base(load(&path), counted, ledger)
+        next_base(load(&path), total_counted, ledger)
     };
     save(&path, &base);
-    let (l, c) = (ledger.saturating_sub(base.ledger_base), counted.saturating_sub(base.box_base));
+    let (l, c) = (ledger.saturating_sub(base.ledger_base), total_counted.saturating_sub(base.box_base));
     if l > c {
         (Outcome::Mismatch { ledger: l, counted: c }, note)
     } else {
@@ -170,8 +179,43 @@ static SLOT: Slot = Mutex::new(None);
 /// the only one that saves the base).
 pub fn peek(cfg: &Config) -> Money {
     cached(&SLOT, Instant::now(), Duration::from_secs(60), || {
-        let st = BoxLink::new(&cfg.gw_box, &cfg.gw_key).call(&"f".repeat(32), "status", "").unwrap_or_default();
-        money(&look_from(&cfg.revenue_path(), &state_path(cfg), &st))
+        let boxes = cfg.boxes();
+        let enabled_boxes: Vec<&crate::config::BoxEntry> = boxes.iter().filter(|b| b.enabled).collect();
+        if enabled_boxes.is_empty() {
+            let look = look_from(&cfg.revenue_path(), &state_path(cfg), "");
+            return money(&look);
+        }
+        let mut total_counted = 0u64;
+        let mut any_ok = false;
+        let mut all_wifi = true;
+        for entry in &enabled_boxes {
+            let link = cfg.box_link_for_ip(&entry.ip);
+            let st = link.call(&"f".repeat(32), "status", "").unwrap_or_default();
+            if let Some(c) = jget_u64(&st, "lifetime_wifi_pulses") {
+                total_counted = total_counted.saturating_add(c);
+                any_ok = true;
+            } else if let Some(c) = jget_u64(&st, "lifetime_pulses") {
+                total_counted = total_counted.saturating_add(c);
+                any_ok = true;
+                all_wifi = false;
+            }
+        }
+        if !any_ok {
+            let look = look_from(&cfg.revenue_path(), &state_path(cfg), "");
+            return money(&look);
+        }
+        let kind = if all_wifi { CountKind::WifiOnly } else { CountKind::AllCoins };
+        let (bad_line, ledger_total) = match ledger::verify(&cfg.revenue_path()) {
+            Ok((_, pesos)) => (None, pesos),
+            Err(line) => (Some(line), 0),
+        };
+        let look = Look {
+            bad_line,
+            ledger_total,
+            box_count: Some((kind, total_counted)),
+            base: load(&state_path(cfg)),
+        };
+        money(&look)
     })
 }
 

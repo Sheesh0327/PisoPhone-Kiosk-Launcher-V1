@@ -21,6 +21,13 @@ macro_rules! log {
 pub(crate) use log;
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct IdleBox {
+    pub slot: u8,
+    pub name: String,
+    pub busy: u64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum View {
     Idle {
         /// guests may send a file to the owner (the Send a file button)
@@ -41,6 +48,7 @@ pub enum View {
         vc: bool,
         /// the vouchers this device paid for and has not used
         vs: Vec<Mine>,
+        boxes: Vec<IdleBox>,
     },
     /// the clock is stopped: `by` is when the unused time is lost
     Paused {
@@ -53,6 +61,8 @@ pub enum View {
     Starting {
         plan: Plan,
         voucher: bool,
+        slot: u8,
+        box_name: String,
     },
     Armed {
         plan: Plan,
@@ -61,12 +71,16 @@ pub enum View {
         remaining: u64,
         total: u64,
         voucher: bool,
+        slot: u8,
+        box_name: String,
     },
     Closing {
         plan: Plan,
         pulses: u32,
         minutes: u32,
         voucher: bool,
+        slot: u8,
+        box_name: String,
     },
     Final {
         plan: Plan,
@@ -99,8 +113,8 @@ fn vflag(voucher: bool) -> &'static str {
 impl View {
     pub fn to_json(&self) -> String {
         match self {
-            View::Idle { sd, pn, left, plan, online, busy, cooldown, used_mb, slow, pm, pl, pw, vc, vs } => format!(
-                "{{\"t\":\"state\",\"s\":\"idle\",\"left\":{},\"plan\":\"{}\",\"online\":{},\"busy\":{},\"cooldown\":{},\"used_mb\":{},\"slow\":{},\"pm\":{},\"pl\":{},\"pw\":{},\"vc\":{},\"sd\":{},\"pn\":{},\"vs\":[{}]}}",
+            View::Idle { sd, pn, left, plan, online, busy, cooldown, used_mb, slow, pm, pl, pw, vc, vs, boxes } => format!(
+                "{{\"t\":\"state\",\"s\":\"idle\",\"left\":{},\"plan\":\"{}\",\"online\":{},\"busy\":{},\"cooldown\":{},\"used_mb\":{},\"slow\":{},\"pm\":{},\"pl\":{},\"pw\":{},\"vc\":{},\"sd\":{},\"pn\":{},\"vs\":[{}],\"boxes\":[{}]}}",
                 left,
                 plan.map(|p| p.as_str()).unwrap_or(""),
                 online,
@@ -117,6 +131,10 @@ impl View {
                 vs.iter()
                     .map(|m| format!("{{\"c\":\"{}\",\"m\":{},\"p\":\"{}\",\"x\":{}}}", json_esc(&m.code), m.minutes, json_esc(&m.plan), m.expires))
                     .collect::<Vec<_>>()
+                    .join(","),
+                boxes.iter()
+                    .map(|b| format!("{{\"slot\":{},\"name\":\"{}\",\"busy\":{}}}", b.slot, json_esc(&b.name), b.busy))
+                    .collect::<Vec<_>>()
                     .join(",")
             ),
             View::Paused { plan, left, pm, pl, by } => format!(
@@ -127,24 +145,34 @@ impl View {
                 pl,
                 by
             ),
-            View::Starting { plan, voucher } => {
-                format!("{{\"t\":\"state\",\"s\":\"starting\",\"plan\":\"{}\"{}}}", plan.as_str(), vflag(*voucher))
+            View::Starting { plan, voucher, slot, box_name } => {
+                format!(
+                    "{{\"t\":\"state\",\"s\":\"starting\",\"plan\":\"{}\",\"slot\":{},\"bname\":\"{}\"{}}}",
+                    plan.as_str(),
+                    slot,
+                    json_esc(box_name),
+                    vflag(*voucher)
+                )
             }
-            View::Armed { plan, pulses, minutes, remaining, total, voucher } => format!(
-                "{{\"t\":\"state\",\"s\":\"armed\",\"plan\":\"{}\",\"pulses\":{},\"minutes\":{},\"remaining\":{},\"total\":{}{}}}",
+            View::Armed { plan, pulses, minutes, remaining, total, voucher, slot, box_name } => format!(
+                "{{\"t\":\"state\",\"s\":\"armed\",\"plan\":\"{}\",\"pulses\":{},\"minutes\":{},\"remaining\":{},\"total\":{},\"slot\":{},\"bname\":\"{}\"{}}}",
                 plan.as_str(),
                 pulses,
                 minutes,
                 remaining,
                 total,
+                slot,
+                json_esc(box_name),
                 vflag(*voucher)
             ),
-            View::Closing { plan, pulses, minutes, voucher } => {
+            View::Closing { plan, pulses, minutes, voucher, slot, box_name } => {
                 format!(
-                    "{{\"t\":\"state\",\"s\":\"closing\",\"plan\":\"{}\",\"pulses\":{},\"minutes\":{}{}}}",
+                    "{{\"t\":\"state\",\"s\":\"closing\",\"plan\":\"{}\",\"pulses\":{},\"minutes\":{},\"slot\":{},\"bname\":\"{}\"{}}}",
                     plan.as_str(),
                     pulses,
                     minutes,
+                    slot,
+                    json_esc(box_name),
                     vflag(*voucher)
                 )
             }
@@ -179,6 +207,9 @@ enum WState {
 }
 
 struct Window {
+    slot: u8,
+    box_name: String,
+    box_ip: String,
     sid: String,
     wid: String,
     mac: String,
@@ -209,7 +240,7 @@ pub struct FairState {
 }
 
 pub struct State {
-    window: Option<Window>,
+    windows: HashMap<u8, Window>,
     results: HashMap<String, (u64, View)>,
     version: u64,
     empties: HashMap<String, Vec<u64>>,
@@ -224,6 +255,7 @@ pub struct State {
 
 pub struct Core {
     pub cfg: Config,
+    #[allow(dead_code)]
     pub box_: BoxLink,
     pub nds: Nds,
     pub st: Mutex<State>,
@@ -269,7 +301,7 @@ impl Core {
             box_,
             nds,
             st: Mutex::new(State {
-                window: None,
+                windows: HashMap::new(),
                 results: HashMap::new(),
                 version: 1,
                 empties: HashMap::new(),
@@ -373,10 +405,8 @@ impl Core {
         let now = now_secs();
         {
             let st = self.st.lock().unwrap();
-            if let Some(w) = &st.window {
-                if w.mac == mac {
-                    return self.window_view(w);
-                }
+            if let Some(w) = st.windows.values().find(|w| w.mac == mac) {
+                return self.window_view(w);
             }
             if let Some((at, v)) = st.results.get(mac) {
                 if now.saturating_sub(*at) < 120 {
@@ -399,7 +429,16 @@ impl Core {
         };
         let st = self.st.lock().unwrap();
         let pw = st.last_resume.get(mac).map(|t| (t + self.cfg.pause_gap).saturating_sub(now)).unwrap_or(0);
-        let busy = if st.window.as_ref().map(|w| w.mac != mac).unwrap_or(false) { self.cfg.busy_retry } else { 0 };
+        let boxes_conf = self.cfg.boxes();
+        let mut idle_boxes = Vec::new();
+        for b in &boxes_conf {
+            if !b.enabled { continue; }
+            let is_busy = st.windows.get(&b.slot).map(|w| w.mac != mac).unwrap_or(false);
+            let busy = if is_busy { self.cfg.busy_retry } else { 0 };
+            idle_boxes.push(IdleBox { slot: b.slot, name: b.name.clone(), busy });
+        }
+        let all_busy = !idle_boxes.is_empty() && idle_boxes.iter().all(|b| b.busy > 0);
+        let busy = if all_busy { self.cfg.busy_retry } else { 0 };
         let cooldown = st.cooldown.get(mac).map(|u| u.saturating_sub(now)).unwrap_or(0);
         // HyperSpeed only: data used this session, and the seconds a fair-use slowdown still lasts (0 = full speed)
         let (used_mb, slow) = match st.fair.get(mac) {
@@ -425,6 +464,7 @@ impl Core {
             pw,
             vc: self.voucher_choice(),
             vs,
+            boxes: idle_boxes,
         }
     }
 
@@ -447,7 +487,7 @@ impl Core {
     fn window_view(&self, w: &Window) -> View {
         let minutes = minutes_for(&w.pricing, w.plan, w.pulses);
         match w.state {
-            WState::Starting => View::Starting { plan: w.plan, voucher: w.voucher },
+            WState::Starting => View::Starting { plan: w.plan, voucher: w.voucher, slot: w.slot, box_name: w.box_name.clone() },
             WState::Armed => View::Armed {
                 plan: w.plan,
                 pulses: w.pulses,
@@ -455,10 +495,12 @@ impl Core {
                 remaining: w.deadline.saturating_duration_since(Instant::now()).as_secs(),
                 total: w.total,
                 voucher: w.voucher,
+                slot: w.slot,
+                box_name: w.box_name.clone(),
             },
             WState::Closing => match &w.early {
                 Some(v) => self.live(v.clone(), &w.mac, now_secs()),
-                None => View::Closing { plan: w.plan, pulses: w.pulses, minutes, voucher: w.voucher },
+                None => View::Closing { plan: w.plan, pulses: w.pulses, minutes, voucher: w.voucher, slot: w.slot, box_name: w.box_name.clone() },
             },
         }
     }
@@ -466,13 +508,14 @@ impl Core {
     /// Tell the page the result now, before the box is acknowledged (that takes a moment, and the customer is waiting).
     fn publish_early(&self, sid: &str, v: View) {
         let mut st = self.st.lock().unwrap();
-        let set = match st.window.as_mut().filter(|w| w.sid == sid) {
-            Some(w) => {
-                w.early = Some(v);
-                true
+        let mut set = false;
+        for w in st.windows.values_mut() {
+            if w.sid == sid {
+                w.early = Some(v.clone());
+                set = true;
+                break;
             }
-            None => false,
-        };
+        }
         if set {
             self.bump(&mut st);
         }
@@ -509,7 +552,7 @@ impl Core {
     /// with a page that says "online" and a phone with no internet until the page happens to be opened again. A device that is in
     /// the middle of paying, or paused, is left alone.
     pub fn heal(&self, mac: &str) {
-        if self.st.lock().unwrap().window.as_ref().is_some_and(|w| w.mac == mac) {
+        if self.st.lock().unwrap().windows.values().any(|w| w.mac == mac) {
             return;
         }
         if self.reconnect(mac) {
@@ -525,7 +568,7 @@ impl Core {
         if wait > 0 {
             return Err(("wait", wait));
         }
-        if self.st.lock().unwrap().window.as_ref().is_some_and(|w| w.mac == mac && w.early.is_none()) {
+        if self.st.lock().unwrap().windows.values().any(|w| w.mac == mac && w.early.is_none()) {
             return Err(("paying", 0)); // not in the middle of putting coins in
         }
         let rules = roll::PauseRules { max: self.cfg.pause_max, min_left: self.cfg.pause_min_left, min_pesos: self.cfg.pause_min_pesos };
@@ -725,7 +768,7 @@ impl Core {
 
     /// Open a coin window for a device. Returns what the device should see now. `voucher`: the customer chose "Get a voucher code"
     /// (honoured only while the owner leaves that choice on): the coins buy a code, nothing is connected.
-    pub fn start(self: &Arc<Self>, mac: &str, plan: Plan, forfeit: bool, voucher: bool) -> View {
+    pub fn start(self: &Arc<Self>, mac: &str, plan: Plan, forfeit: bool, voucher: bool, box_slot: Option<u8>) -> View {
         let voucher = voucher && self.voucher_choice();
         let cd = self.cooldown_left(mac);
         if cd > 0 {
@@ -738,8 +781,41 @@ impl Core {
                 return View::Mismatch { plan: p, left };
             }
         }
-        if self.st.lock().unwrap().window.as_ref().is_some_and(|w| w.mac != mac) {
-            return View::Busy(self.cfg.busy_retry);
+        let enabled_boxes: Vec<crate::config::BoxEntry> = self.cfg.boxes().into_iter().filter(|b| b.enabled).collect();
+        if enabled_boxes.is_empty() {
+            return View::Error("NO_BOX".into());
+        }
+        // If the customer already has an active window open on any slot, return it
+        {
+            let st = self.st.lock().unwrap();
+            if let Some(w) = st.windows.values().find(|w| w.mac == mac) {
+                return self.window_view(w);
+            }
+        }
+        // Determine target box
+        let target_entry = match box_slot.filter(|&s| s > 0) {
+            Some(s) => match enabled_boxes.iter().find(|b| b.slot == s) {
+                Some(b) => b.clone(),
+                None => return View::Error("BAD_BOX".into()),
+            },
+            None => {
+                if enabled_boxes.len() == 1 {
+                    enabled_boxes[0].clone()
+                } else {
+                    let st = self.st.lock().unwrap();
+                    match enabled_boxes.iter().find(|b| !st.windows.contains_key(&b.slot)) {
+                        Some(b) => b.clone(),
+                        None => return View::Busy(self.cfg.busy_retry),
+                    }
+                }
+            }
+        };
+        // Check if chosen box slot is busy
+        {
+            let st = self.st.lock().unwrap();
+            if let Some(w) = st.windows.get(&target_entry.slot) {
+                return if w.mac == mac { self.window_view(w) } else { View::Busy(self.cfg.busy_retry) };
+            }
         }
         // Coins of an earlier window that are recorded but not yet acknowledged on the box must be settled first.
         self.recover();
@@ -747,63 +823,78 @@ impl Core {
             return View::Error("ACK_PENDING".into());
         }
         let mut st = self.st.lock().unwrap();
-        if let Some(w) = &st.window {
+        if let Some(w) = st.windows.get(&target_entry.slot) {
             return if w.mac == mac { self.window_view(w) } else { View::Busy(self.cfg.busy_retry) };
         }
         st.results.remove(mac);
         let sid = random_hex(32);
         let wid = random_hex(32);
-        st.window = Some(Window {
-            sid: sid.clone(),
-            wid,
-            mac: mac.to_string(),
-            plan,
-            forfeit,
-            pricing: self.pricing(),
-            voucher,
-            state: WState::Starting,
-            pulses: 0,
-            last_seq: 0,
-            deadline: Instant::now() + Duration::from_secs(self.cfg.first_wait),
-            total: self.cfg.first_wait,
-            stop: false,
-            box_ended: false,
-            early: None,
-        });
+        let slot = target_entry.slot;
+        let box_name = target_entry.name.clone();
+        let box_ip = target_entry.ip.clone();
+        st.windows.insert(
+            slot,
+            Window {
+                slot,
+                box_name: box_name.clone(),
+                box_ip: box_ip.clone(),
+                sid: sid.clone(),
+                wid,
+                mac: mac.to_string(),
+                plan,
+                forfeit,
+                pricing: self.pricing(),
+                voucher,
+                state: WState::Starting,
+                pulses: 0,
+                last_seq: 0,
+                deadline: Instant::now() + Duration::from_secs(self.cfg.first_wait),
+                total: self.cfg.first_wait,
+                stop: false,
+                box_ended: false,
+                early: None,
+            },
+        );
         self.bump(&mut st);
         drop(st);
-        log!("window {} opened for {} plan {}{}", &sid[..8], mac, plan.as_str(), if voucher { " (pays for a voucher code)" } else { "" });
+        log!(
+            "window {} opened on slot {} ({}) for {} plan {}{}",
+            &sid[..8],
+            slot,
+            box_name,
+            mac,
+            plan.as_str(),
+            if voucher { " (pays for a voucher code)" } else { "" }
+        );
         let (core, worker_sid) = (Arc::clone(self), sid.clone());
-        if std::thread::Builder::new().stack_size(128 * 1024).spawn(move || core.run_window(&worker_sid)).is_err() {
+        if std::thread::Builder::new().stack_size(128 * 1024).spawn(move || core.run_window(&worker_sid, slot)).is_err() {
             // without its worker the window would hold the coin slot for everybody, for ever
             log!("window {} could not start (no thread)", &sid[..8]);
             let mut st = self.st.lock().unwrap();
-            st.window = None;
+            st.windows.remove(&slot);
             self.bump(&mut st);
             return View::Error("NO_THREAD".into());
         }
-        View::Starting { plan, voucher }
+        View::Starting { plan, voucher, slot, box_name }
     }
 
     /// Some device has a coin window open (a payment is in progress).
     pub fn window_open(&self) -> bool {
-        self.st.lock().unwrap().window.is_some()
+        !self.st.lock().unwrap().windows.is_empty()
     }
 
     /// This device has a coin window open now (one whose result is known already is over for the customer: only the box is
     /// still being acknowledged).
     pub fn window_open_for(&self, mac: &str) -> bool {
-        self.st.lock().unwrap().window.as_ref().is_some_and(|w| w.mac == mac && w.early.is_none())
+        self.st.lock().unwrap().windows.values().any(|w| w.mac == mac && w.early.is_none())
     }
 
     /// The customer is done (or cancels): close the window now.
     pub fn finish(&self, mac: &str) {
         let mut st = self.st.lock().unwrap();
-        if let Some(w) = st.window.as_mut() {
-            if w.mac == mac {
-                w.stop = true;
-                self.cv.notify_all();
-            }
+        if let Some(w) = st.windows.values_mut().find(|w| w.mac == mac) {
+            w.stop = true;
+            self.cv.notify_all();
         }
     }
 
@@ -815,8 +906,8 @@ impl Core {
             return;
         }
         let mut st = self.st.lock().unwrap();
-        let Some(w) = st.window.as_mut() else { return };
-        if w.sid != ev.sid || w.wid != ev.wid || ev.seq <= w.last_seq {
+        let Some(w) = st.windows.values_mut().find(|w| w.sid == ev.sid) else { return };
+        if w.wid != ev.wid || ev.seq <= w.last_seq {
             return; // another window, or a repeat (the box sends every line twice)
         }
         w.last_seq = ev.seq;
@@ -834,10 +925,10 @@ impl Core {
         let mut st = self.st.lock().unwrap();
         if pulses > MAX_PULSES {
             log!("window {} ignored a count of {} pesos from the box (not possible in one window)", &sid[..8], pulses);
-            return st.window.as_ref().filter(|w| w.sid == sid).map(|w| w.pulses).unwrap_or(0);
+            return st.windows.values().find(|w| w.sid == sid).map(|w| w.pulses).unwrap_or(0);
         }
         let mut cur = pulses;
-        if let Some(w) = st.window.as_mut().filter(|w| w.sid == sid) {
+        if let Some(w) = st.windows.values_mut().find(|w| w.sid == sid) {
             if pulses > w.pulses {
                 w.pulses = pulses;
                 self.bump(&mut st);
@@ -850,12 +941,12 @@ impl Core {
 
     fn cur(&self, sid: &str) -> Option<(u32, bool, bool, bool)> {
         let st = self.st.lock().unwrap();
-        st.window.as_ref().filter(|w| w.sid == sid).map(|w| (w.pulses, w.stop, w.box_ended, w.state == WState::Armed))
+        st.windows.values().find(|w| w.sid == sid).map(|w| (w.pulses, w.stop, w.box_ended, w.state == WState::Armed))
     }
 
     fn set_state(&self, sid: &str, f: impl FnOnce(&mut Window)) {
         let mut st = self.st.lock().unwrap();
-        if let Some(w) = st.window.as_mut().filter(|w| w.sid == sid) {
+        if let Some(w) = st.windows.values_mut().find(|w| w.sid == sid) {
             f(w);
             self.bump(&mut st);
         }
@@ -866,7 +957,7 @@ impl Core {
         let g = self.st.lock().unwrap();
         let _ = self
             .cv
-            .wait_timeout_while(g, dur, |s| match s.window.as_ref().filter(|w| w.sid == sid) {
+            .wait_timeout_while(g, dur, |s| match s.windows.values().find(|w| w.sid == sid) {
                 Some(w) => !w.stop && !w.box_ended && w.pulses == seen,
                 None => false,
             })
@@ -877,7 +968,7 @@ impl Core {
     /// this wait short: while closing, the box must be given time.
     fn wait_end(&self, sid: &str, dur: Duration) {
         let g = self.st.lock().unwrap();
-        let _ = self.cv.wait_timeout_while(g, dur, |s| s.window.as_ref().filter(|w| w.sid == sid).is_some_and(|w| !w.box_ended)).unwrap();
+        let _ = self.cv.wait_timeout_while(g, dur, |s| s.windows.values().find(|w| w.sid == sid).is_some_and(|w| !w.box_ended)).unwrap();
     }
 
     fn evx(&self, wid: &str) -> String {
@@ -891,9 +982,13 @@ impl Core {
     fn finish_window(&self, sid: &str, view: View, noted: Option<bool>) {
         let mac = {
             let mut st = self.st.lock().unwrap();
-            let mac = st.window.as_ref().filter(|w| w.sid == sid).map(|w| w.mac.clone());
+            let slot = st.windows.iter().find_map(|(&k, w)| if w.sid == sid { Some(k) } else { None });
+            let mac = if let Some(slot) = slot {
+                st.windows.remove(&slot).map(|w| w.mac)
+            } else {
+                None
+            };
             if let Some(m) = &mac {
-                st.window = None;
                 st.results.insert(m.clone(), (now_secs(), view));
                 self.bump(&mut st);
             }
@@ -908,30 +1003,31 @@ impl Core {
         }
     }
 
-    fn run_window(self: &Arc<Self>, sid: &str) {
-        let Some((wid, mac, plan, forfeit, voucher, pricing)) = ({
+    fn run_window(self: &Arc<Self>, sid: &str, slot: u8) {
+        let Some((wid, mac, plan, forfeit, voucher, pricing, box_ip)) = ({
             let st = self.st.lock().unwrap();
-            st.window
-                .as_ref()
-                .filter(|w| w.sid == sid)
-                .map(|w| (w.wid.clone(), w.mac.clone(), w.plan, w.forfeit, w.voucher, Arc::clone(&w.pricing)))
+            st.windows
+                .values()
+                .find(|w| w.sid == sid)
+                .map(|w| (w.wid.clone(), w.mac.clone(), w.plan, w.forfeit, w.voucher, Arc::clone(&w.pricing), w.box_ip.clone()))
         }) else {
             return;
         };
         let cfg = &self.cfg;
+        let box_link = BoxLink::new(&box_ip, &cfg.gw_key).remember_in(&format!("{}/box_signed_{}", cfg.data_dir, slot));
         let evx = self.evx(&wid);
         let t_arm = Instant::now();
-        let ans = self.box_.call(sid, "arm", &format!("&duration={}{}", cfg.first_wait + 3, evx));
+        let ans = box_link.call(sid, "arm", &format!("&duration={}{}", cfg.first_wait + 3, evx));
         let ans = match ans {
             Ok(b) if BoxLink::is_success(&b) => b,
             Ok(b) => {
                 let e = jget(&b, "error");
-                log!("window {} could not arm: {}", &sid[..8], if e.is_empty() { "NO_ANSWER" } else { &e });
+                log!("window {} could not arm on slot {}: {}", &sid[..8], slot, if e.is_empty() { "NO_ANSWER" } else { &e });
                 self.finish_window(sid, View::Error(if e.is_empty() { "NO_ANSWER".into() } else { e }), None);
                 return;
             }
             Err(e) => {
-                log!("window {} could not arm: {}", &sid[..8], e);
+                log!("window {} could not arm on slot {}: {}", &sid[..8], slot, e);
                 self.finish_window(sid, View::Error("NO_ANSWER".into()), None);
                 return;
             }
@@ -939,14 +1035,14 @@ impl Core {
         let events = !evx.is_empty() && jget(&ans, "events") == "true";
         let ready = jget_u64(&ans, "ready_in_ms").unwrap_or(0);
         if ready > 5000 {
-            let _ = self.box_.call(sid, "release", "");
+            let _ = box_link.call(sid, "release", "");
             self.finish_window(sid, View::Error("BAD_SETTLE_TIME".into()), None);
             return;
         }
         if ready > 0 {
             // the acceptor ignores pulses while it settles after power-on: the countdown starts after that
             std::thread::sleep(Duration::from_millis(ready));
-            let _ = self.box_.call(sid, "arm", &format!("&duration={}{}", cfg.first_wait + 3, evx));
+            let _ = box_link.call(sid, "arm", &format!("&duration={}{}", cfg.first_wait + 3, evx));
         }
         let cap = Instant::now() + Duration::from_secs(cfg.max_window);
         let mut deadline = Instant::now() + Duration::from_secs(cfg.first_wait);
@@ -959,10 +1055,10 @@ impl Core {
                 w.pulses = first;
             }
         });
-        log!("timing {} armed events={} in {} ms", &sid[..8], events, t_arm.elapsed().as_millis());
+        log!("timing {} armed on slot {} events={} in {} ms", &sid[..8], slot, events, t_arm.elapsed().as_millis());
         // AO-11: the record goes to flash now, while the box is armed, not when the first coin is seen. A kill or power cut between
         // the box counting a coin and the router noticing it used to leave that coin on the box with nothing to recover it.
-        self.note_open(sid, &mac, plan, &wid, forfeit, voucher);
+        self.note_open(sid, &mac, plan, &wid, forfeit, voucher, slot, &box_ip);
         let mut last = first;
         let mut noted = false;
         let poll = Duration::from_millis(if events { cfg.poll_ms } else { 250 });
@@ -980,7 +1076,7 @@ impl Core {
             }
             if Instant::now() >= next_poll {
                 next_poll = Instant::now() + poll;
-                if let Ok(st) = self.box_.call(sid, "status", "") {
+                if let Ok(st) = box_link.call(sid, "status", "") {
                     if BoxLink::is_success(&st) {
                         pulses = self.set_pulses(sid, jget_u64(&st, "pulses").unwrap_or(0) as u32);
                         boxstate_armed = jget(&st, "state") == "armed";
@@ -992,7 +1088,7 @@ impl Core {
             }
             if pulses > 0 && !noted {
                 noted = true;
-                self.note_open(sid, &mac, plan, &wid, forfeit, voucher);
+                self.note_open(sid, &mac, plan, &wid, forfeit, voucher, slot, &box_ip);
                 log!("timing {} first coin pulses={} at={} ms", &sid[..8], pulses, t_arm.elapsed().as_millis());
             }
             if pulses > last {
@@ -1004,7 +1100,7 @@ impl Core {
                     w.total = total;
                 });
                 let rem = deadline.saturating_duration_since(Instant::now()).as_secs();
-                let _ = self.box_.call(sid, "arm", &format!("&duration={}{}", rem + 3, evx));
+                let _ = box_link.call(sid, "arm", &format!("&duration={}{}", rem + 3, evx));
             }
             if Instant::now() >= deadline {
                 why = if last > 0 { "no more coins came" } else { "no coin came" };
@@ -1017,8 +1113,9 @@ impl Core {
         }
         let t_done = Instant::now();
         log!(
-            "window {} closing: {} ({} pesos, open {} s)",
+            "window {} on slot {} closing: {} ({} pesos, open {} s)",
             &sid[..8],
+            slot,
             why,
             last.max(self.cur(sid).map(|c| c.0).unwrap_or(0)),
             t_arm.elapsed().as_secs()
@@ -1027,7 +1124,7 @@ impl Core {
         // until the box says it is idle (or sends "end"); one status call per 300 ms at most
         self.set_state(sid, |w| w.state = WState::Closing);
         for _ in 0..3 {
-            if self.box_.call(sid, "release", "").map(|b| BoxLink::is_success(&b)).unwrap_or(false) {
+            if box_link.call(sid, "release", "").map(|b| BoxLink::is_success(&b)).unwrap_or(false) {
                 break;
             }
             std::thread::sleep(Duration::from_millis(300));
@@ -1039,7 +1136,7 @@ impl Core {
             let ended = self.cur(sid).is_some_and(|c| c.2);
             let mut idle = false;
             if !ended {
-                if let Ok(st) = self.box_.call(sid, "status", "") {
+                if let Ok(st) = box_link.call(sid, "status", "") {
                     if BoxLink::is_success(&st) {
                         self.set_pulses(sid, jget_u64(&st, "pulses").unwrap_or(0) as u32);
                         idle = jget(&st, "state") == "idle";
@@ -1049,7 +1146,7 @@ impl Core {
             // a coin counted only now must still survive a restart
             if !noted && self.cur(sid).is_some_and(|c| c.0 > 0) {
                 noted = true;
-                self.note_open(sid, &mac, plan, &wid, forfeit, voucher);
+                self.note_open(sid, &mac, plan, &wid, forfeit, voucher, slot, &box_ip);
             }
             if ended || idle {
                 drained = true;
@@ -1068,7 +1165,7 @@ impl Core {
                 // The box's link was lost: it may have counted coins the router never saw. The window is kept for recovery, which
                 // credits whatever the box holds once it answers (it used to be closed as empty, and those coins were never credited).
                 if !noted {
-                    self.note_open(sid, &mac, plan, &wid, forfeit, voucher);
+                    self.note_open(sid, &mac, plan, &wid, forfeit, voucher, slot, &box_ip);
                 }
                 log!("window {} closed with no coins seen and no answer from the box: left for recovery", &sid[..8]);
                 self.finish_window(sid, View::Empty, None);
@@ -1080,9 +1177,9 @@ impl Core {
             return;
         }
         let view = if voucher {
-            self.settle_voucher(sid, &mac, plan, &wid, pulses, &pricing, drained)
+            self.settle_voucher(sid, &mac, plan, &wid, pulses, &pricing, drained, &box_link)
         } else {
-            self.settle(sid, &mac, plan, &wid, forfeit, pulses, &pricing, drained)
+            self.settle(sid, &mac, plan, &wid, forfeit, pulses, &pricing, drained, &box_link)
         };
         // (a voucher window connects nothing, so there is nothing for the grant retries to finish)
         let refused = matches!(view, View::Final { online: false, voucher: None, .. });
@@ -1137,28 +1234,41 @@ impl Core {
 
     /// A window leaves a record on flash from the moment the box is armed, kept until the box is acknowledged (or the window ends with
     /// no coin at all): if the router restarts mid-window, recovery credits what the box holds. Nothing is granted yet. Written once.
-    fn note_open(&self, sid: &str, mac: &str, plan: Plan, wid: &str, forfeit: bool, voucher: bool) {
+    fn note_open(&self, sid: &str, mac: &str, plan: Plan, wid: &str, forfeit: bool, voucher: bool, slot: u8, box_ip: &str) {
         if std::path::Path::new(&self.open_file(sid)).exists() {
             return;
         }
         let _ = fs::create_dir_all(self.cfg.open_dir());
-        // (records of earlier releases have four fields: no voucher). Flushed to flash: a power cut right after a coin must not lose it.
-        if let Err(e) =
-            write_synced(&self.open_file(sid), &format!("{} {} {} {} {}\n", mac, plan.as_str(), wid, forfeit as u8, voucher as u8))
-        {
+        // (records of earlier releases have 4 or 5 fields). Flushed to flash: a power cut right after a coin must not lose it.
+        if let Err(e) = write_synced(
+            &self.open_file(sid),
+            &format!("{} {} {} {} {} {} {}\n", mac, plan.as_str(), wid, forfeit as u8, voucher as u8, slot, box_ip),
+        ) {
             log!("window {} could not be noted on flash: {}", &sid[..8], e);
         }
     }
 
-    fn ack(&self, sid: &str) -> bool {
-        self.box_.call(sid, "ack", "").map(|b| BoxLink::is_success(&b)).unwrap_or(false)
+    #[allow(dead_code)]
+    pub fn ack(&self, sid: &str, box_link: &BoxLink) -> bool {
+        box_link.call(sid, "ack", "").map(|b| BoxLink::is_success(&b)).unwrap_or(false)
     }
 
     /// Price the window once, record it, grant access once, acknowledge the box.
     #[allow(clippy::too_many_arguments)]
     /// `ack_now` is false when the box never said it is idle: an acknowledgement erases every coin it holds for the window, also
     /// the ones the router has not seen yet, so it is left to recovery (which waits for "idle" and credits what came late).
-    fn settle(&self, sid: &str, mac: &str, plan: Plan, wid: &str, forfeit: bool, pulses: u32, pr: &Pricing, ack_now: bool) -> View {
+    fn settle(
+        &self,
+        sid: &str,
+        mac: &str,
+        plan: Plan,
+        wid: &str,
+        forfeit: bool,
+        pulses: u32,
+        pr: &Pricing,
+        ack_now: bool,
+        box_link: &BoxLink,
+    ) -> View {
         let minutes = minutes_for(pr, plan, pulses);
         let now = now_secs();
         let t0 = Instant::now();
@@ -1172,7 +1282,7 @@ impl Core {
             roll::session(&self.cfg.roll_path(), now_secs(), mac)
         };
         let Some(s) = s else {
-            self.ack_and_clear(sid);
+            self.ack_and_clear(sid, box_link);
             return View::Error("NO_SESSION".into());
         };
         let mut online = false;
@@ -1191,7 +1301,7 @@ impl Core {
         let t_grant = t0.elapsed().as_millis();
         let result = View::Final { plan: s.plan, pulses, minutes, left: s.left_secs, online, voucher: None };
         self.publish_early(sid, result.clone()); // the customer is online: the page says so now, not after the box answers
-        let ack_ok = ack_now && self.ack_and_clear(sid);
+        let ack_ok = ack_now && self.ack_and_clear(sid, box_link);
         log!(
             "timing {} settled pulses={} min={} left={} min online={} acked={} (recorded {} ms, granted {} ms, acknowledged {} ms)",
             &sid[..8],
@@ -1210,7 +1320,17 @@ impl Core {
     /// A window that paid for a voucher code: price it once, make the one voucher (and its revenue row, as a direct purchase
     /// would), acknowledge the box. The device is NOT connected and no time is granted.
     #[allow(clippy::too_many_arguments)]
-    fn settle_voucher(&self, sid: &str, mac: &str, plan: Plan, wid: &str, pulses: u32, pr: &Pricing, ack_now: bool) -> View {
+    fn settle_voucher(
+        &self,
+        sid: &str,
+        mac: &str,
+        plan: Plan,
+        wid: &str,
+        pulses: u32,
+        pr: &Pricing,
+        ack_now: bool,
+        box_link: &BoxLink,
+    ) -> View {
         let minutes = minutes_for(pr, plan, pulses);
         let now = now_secs();
         let v = match self.record_voucher(sid, mac, plan, wid, pulses, minutes, now) {
@@ -1219,7 +1339,7 @@ impl Core {
         };
         let result = View::Final { plan, pulses, minutes, left: 0, online: false, voucher: Some(v) };
         self.publish_early(sid, result.clone());
-        let ack_ok = ack_now && self.ack_and_clear(sid);
+        let ack_ok = ack_now && self.ack_and_clear(sid, box_link);
         log!("timing {} settled pulses={} min={} voucher issued acked={}", &sid[..8], pulses, minutes, ack_ok);
         result
     }
@@ -1286,9 +1406,9 @@ impl Core {
         }
     }
 
-    fn ack_and_clear(&self, sid: &str) -> bool {
+    fn ack_and_clear(&self, sid: &str, box_link: &BoxLink) -> bool {
         for i in 0..3 {
-            if self.ack(sid) {
+            if box_link.call(sid, "ack", "").map(|b| BoxLink::is_success(&b)).unwrap_or(false) {
                 let _ = fs::remove_file(self.open_file(sid));
                 let _ = fs::remove_file(format!("{}.rec", self.open_file(sid)));
                 return true;
@@ -1316,15 +1436,15 @@ impl Core {
     }
 
     fn is_live(&self, sid: &str) -> bool {
-        self.st.lock().unwrap().window.as_ref().is_some_and(|w| w.sid == sid)
+        self.st.lock().unwrap().windows.values().any(|w| w.sid == sid)
     }
 
     /// Records of windows that were recorded but never acknowledged (the box did not answer), outside the live window.
     fn unacked(&self) -> usize {
-        let live = self.st.lock().unwrap().window.as_ref().map(|w| w.sid.clone());
+        let live_sids: Vec<String> = self.st.lock().unwrap().windows.values().map(|w| w.sid.clone()).collect();
         self.open_sids()
             .iter()
-            .filter(|s| Some(*s) != live.as_ref())
+            .filter(|s| !live_sids.contains(s))
             .filter(|s| fs::metadata(format!("{}.rec", self.open_file(s))).is_ok())
             .count()
     }
@@ -1351,7 +1471,10 @@ impl Core {
             };
             let forfeit = f.get(3) == Some(&"1");
             let voucher = f.get(4) == Some(&"1");
-            let st = match self.box_.call(&sid, "status", "") {
+            let slot = f.get(5).and_then(|s| s.parse::<u8>().ok()).unwrap_or(1);
+            let box_ip = f.get(6).map(|s| s.to_string()).unwrap_or_else(|| self.cfg.gw_box.clone());
+            let box_link = BoxLink::new(&box_ip, &self.cfg.gw_key).remember_in(&format!("{}/box_signed_{}", self.cfg.data_dir, slot));
+            let st = match box_link.call(&sid, "status", "") {
                 Ok(b) if BoxLink::is_success(&b) => b,
                 _ => {
                     let old = fs::metadata(self.open_file(&sid))
@@ -1393,7 +1516,7 @@ impl Core {
                     }
                 }
             }
-            if self.ack(&sid) {
+            if box_link.call(&sid, "ack", "").map(|b| BoxLink::is_success(&b)).unwrap_or(false) {
                 let _ = fs::remove_file(self.open_file(&sid));
                 let _ = fs::remove_file(format!("{}.rec", self.open_file(&sid)));
             }
@@ -1404,7 +1527,12 @@ impl Core {
     /// router stopped looking (its link dropped during the drain) are credited to the same device first: the acknowledgement erases
     /// everything the box holds for the window.
     fn recover_recorded(&self, sid: &str, rec_text: &str) {
-        let st = match self.box_.call(sid, "status", "") {
+        let opened = fs::read_to_string(self.open_file(sid)).unwrap_or_default();
+        let f: Vec<&str> = opened.split_whitespace().collect();
+        let slot = f.get(5).and_then(|s| s.parse::<u8>().ok()).unwrap_or(1);
+        let box_ip = f.get(6).map(|s| s.to_string()).unwrap_or_else(|| self.cfg.gw_box.clone());
+        let box_link = BoxLink::new(&box_ip, &self.cfg.gw_key).remember_in(&format!("{}/box_signed_{}", self.cfg.data_dir, slot));
+        let st = match box_link.call(sid, "status", "") {
             Ok(b) if BoxLink::is_success(&b) => b,
             _ => return,
         };
@@ -1416,8 +1544,6 @@ impl Core {
         if let Some(recorded) = recorded {
             let late = boxed.saturating_sub(recorded);
             if late > 0 && boxed <= MAX_PULSES {
-                let opened = fs::read_to_string(self.open_file(sid)).unwrap_or_default();
-                let f: Vec<&str> = opened.split_whitespace().collect();
                 match (f.first(), f.get(1).and_then(|p| Plan::parse(p)), f.get(2), f.get(4) == Some(&"1")) {
                     (Some(mac), Some(plan), Some(wid), false) => {
                         let minutes = minutes_for(&self.pricing(), plan, late);
@@ -1449,7 +1575,7 @@ impl Core {
                 }
             }
         }
-        if self.ack(sid) {
+        if box_link.call(sid, "ack", "").map(|b| BoxLink::is_success(&b)).unwrap_or(false) {
             let _ = fs::remove_file(self.open_file(sid));
             let _ = fs::remove_file(format!("{}.rec", self.open_file(sid)));
         }
@@ -1763,5 +1889,44 @@ mod tests {
             "the first recovery is still waiting on the box, on its own thread"
         );
         drop(held);
+    }
+
+    #[test]
+    fn multi_box_concurrency_and_idle_view() {
+        let d = std::env::temp_dir().join(format!("pisoportal-multibox-core-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(d.join("open")).unwrap();
+        fs::write(d.join("boxes.conf"), "1|AA:BB:CC:11:22:33|10.0.0.10|Station A|wifi|1\n2|AA:BB:CC:11:22:44|10.0.0.11|Station B|wifi|1\n").unwrap();
+        let mut cfg = Config::from_map(std::collections::HashMap::new());
+        cfg.data_dir = d.to_string_lossy().into_owned();
+        let core = Core::new(cfg);
+
+        // Check Idle view has both boxes
+        let view = core.view_for(MAC_A);
+        match view {
+            View::Idle { boxes, .. } => {
+                assert_eq!(boxes.len(), 2);
+                assert_eq!(boxes[0].slot, 1);
+                assert_eq!(boxes[0].name, "Station A");
+                assert_eq!(boxes[0].busy, 0);
+                assert_eq!(boxes[1].slot, 2);
+                assert_eq!(boxes[1].name, "Station B");
+                assert_eq!(boxes[1].busy, 0);
+            }
+            _ => panic!("expected View::Idle"),
+        }
+
+        // Test crash recovery with 7-field open state and unacked count
+        let sid1 = "11111111111111111111111111111111";
+        let sid2 = "22222222222222222222222222222222";
+        fs::write(d.join(format!("open/{}", sid1)), format!("{} hyper w1 0 0 1 10.0.0.10\n", MAC_A)).unwrap();
+        fs::write(d.join(format!("open/{}.rec", sid1)), "recorded 5\n").unwrap();
+        fs::write(d.join(format!("open/{}", sid2)), format!("{} endurance w2 0 0 2 10.0.0.11\n", MAC_B)).unwrap();
+        fs::write(d.join(format!("open/{}.rec", sid2)), "recorded 10\n").unwrap();
+
+        assert_eq!(core.unacked(), 2);
+        assert_eq!(core.open_sids().len(), 2);
+
+        let _ = fs::remove_dir_all(&d);
     }
 }

@@ -138,7 +138,7 @@ fn serve_one(c: &Console, req: Request, mut conn: Incoming) {
             "The router does not know the coin box's admin password (piso-setup summary shows it). Open the box page directly.",
         );
     }
-    let box_addr = with_port(&cfg.gw_box);
+    let box_addr = with_port(&c.active_box_ip());
     let box_host = box_addr.strip_suffix(":80").unwrap_or(&box_addr).to_string();
     let Some(sock) = box_addr.to_socket_addrs().ok().and_then(|mut a| a.next()) else {
         return refuse(&mut conn, "502 Bad Gateway", "the coin box has no usable address");

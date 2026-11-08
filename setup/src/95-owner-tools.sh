@@ -4,14 +4,7 @@ cmd_reconcile() {
 	if [ -x /usr/bin/pisoportal ]; then
 		/usr/bin/pisoportal reconcile "$@"
 	else
-		echo "PisoWiFi only: coin counters are maintained directly on each coin box."
-		if [ -f "$PISO_ROOT/etc/coinslot.d/boxes.conf" ]; then
-			while IFS='|' read -r _slot _mac _ip _name _role _en; do
-				[ -z "$_mac" ] && continue
-				echo "Slot $_slot ($_name at $_ip):"
-				curl -s -m 3 "http://$_ip/api/diagnostics" 2>/dev/null | grep -iE 'coins|total|pulse' | sed 's/^/  /' || echo "  (offline)"
-			done < "$PISO_ROOT/etc/coinslot.d/boxes.conf"
-		fi
+		echo "pisoportal is not installed"
 	fi
 }
 

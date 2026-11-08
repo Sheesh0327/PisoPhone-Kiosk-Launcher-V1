@@ -29,14 +29,6 @@
 #endif
 #if PISO_HAS_GATEWAY
 #include "GatewayCoinslot.h"
-#include "BoxPersona.h"
-#if !defined(PISO_PRODUCT_PHONE)
-#include "MultiBoxCoordinator.h"
-#include "WifiFasServer.h"
-#endif
-#endif
-#if defined(PISO_PRODUCT_WIFI)
-#include "WifiConsoleServer.h"
 #endif
 #include "PaymentQueueManager.h"
 #include "FirmwareVersion.h"
@@ -291,13 +283,6 @@ void setup() {
     }
 
     setupWebServer();
-#if PISO_HAS_GATEWAY
-    initBoxPersona();
-#if !defined(PISO_PRODUCT_PHONE)
-    initMultiBoxCoordinator();
-    setupWifiFasServer();
-#endif
-#endif
 
     lastWifiCheckTime = millis();
 }
@@ -353,15 +338,6 @@ void loop() {
     // 3. Handle Port 80 HTTP Requests
     webServer.handleClient();
     yield();
-#if PISO_HAS_GATEWAY
-#if !defined(PISO_PRODUCT_PHONE)
-    handleWifiFasServer();
-    multiBoxCoordinatorLoop();
-#endif
-#endif
-#if defined(PISO_PRODUCT_WIFI)
-    handleWifiConsoleLoop();
-#endif
 
 #if PISO_HAS_PHONES
     // 4. Handle Port 81 WebSocket Client & Frames

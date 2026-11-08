@@ -215,93 +215,84 @@ pair_add_box() {
 		sleep 5; _t=$((_t + 5))
 	done
 
-	_new_pw=$(conf_get BOX_ADMIN_PASS_NEW)
+	_admin_pw=$(conf_get BOX_ADMIN_PASS)
+	_admin_pw="${_admin_pw:-$(conf_get BOX_ADMIN_PASS_NEW)}"
 	_gw_key=$(conf_get GW_KEY)
 	log "Provisioning Slot $_next_slot ($_persona) at $_target_ip..."
 
-	curl -s -m 10 -u "admin:$BOX_DEFAULT_ADMIN" -X POST "http://$_target_ip/save" --data-urlencode "admin_pw=$_new_pw" >/dev/null 2>&1
+	curl -s -m 10 -u "admin:$BOX_DEFAULT_ADMIN" -X POST "http://$_target_ip/save" --data-urlencode "admin_pw=$_admin_pw" >/dev/null 2>&1
 	sleep 2
-	curl -s -m 10 -u "admin:$_new_pw" -X POST "http://$_target_ip/api/gateway/config" --data-urlencode "key=$_gw_key" >/dev/null 2>&1
-	curl -s -m 10 -u "admin:$_new_pw" -X POST "http://$_target_ip/api/gateway/persona" --data-urlencode "name=$_persona" --data-urlencode "slot=$_next_slot" --data-urlencode "role=standby" >/dev/null 2>&1
+	curl -s -m 10 -u "admin:$_admin_pw" -X POST "http://$_target_ip/api/gateway/config" --data-urlencode "key=$_gw_key" >/dev/null 2>&1
+
+	if ! wifi_only; then
+		_kp=$(conf_get KIOSK_PASS)
+		[ -n "$_kp" ] && curl -s -m 10 -u "admin:$_admin_pw" -X POST "http://$_target_ip/save" --data-urlencode "kiosk_wifi=$_kp" --data-urlencode "kiosk_ssid=$KIOSK_SSID" >/dev/null 2>&1
+	fi
 
 	if [ "$(conf_get BOX_WIFI_ROTATED)" = 1 ] && [ -n "$(conf_get BOX_WIFI_PASS_NEW)" ]; then
 		_w_pass=$(conf_get BOX_WIFI_PASS_NEW)
-		curl -s -m 10 -u "admin:$_new_pw" -X POST "http://$_target_ip/save" --data-urlencode "wifi_pass=$_w_pass" --data-urlencode "wifi_ssid=$BOX_SSID" >/dev/null 2>&1
+		curl -s -m 10 -u "admin:$_admin_pw" -X POST "http://$_target_ip/save" --data-urlencode "wifi_pass=$_w_pass" --data-urlencode "wifi_ssid=$BOX_SSID" >/dev/null 2>&1
 	fi
 
-	log "SUCCESS: Coin box Slot $_next_slot ($_persona) paired at $_target_ip. Role: standby."
+	# Restore router AP to rotated key/ssid so all existing boxes rejoin
+	uci set wireless.box_ap.key="$_old"; uci set wireless.box_ap.ssid="$_old_ssid"
+	uci commit wireless
+	wifi reload > /dev/null 2>&1
+
+	[ -x /etc/init.d/pisoportal ] && /etc/init.d/pisoportal restart > /dev/null 2>&1
+
+	log "SUCCESS: Coin box Slot $_next_slot ($_persona) paired at $_target_ip."
 }
 
-set_box_role() {
-	_slot="$1"; _role="$2"
-	case "$_slot" in 1|2|3|4) ;; *) die "Invalid slot number '$_slot' (must be 1-4)" ;; esac
-	case "$_role" in primary|standby) ;; *) die "Invalid role '$_role' (must be primary or standby)" ;; esac
+pair_remove_box() {
+	_slot="$1"
+	case "$_slot" in 2|3|4) ;; 1) die "Cannot remove primary box (Slot 1: Esmeralda). Use 'piso-setup pair' to re-pair it." ;; *) die "usage: piso-setup pair-remove <slot 2-4>" ;; esac
 	[ -f "$PISO_ROOT/etc/coinslot.d/boxes.conf" ] || die "No coin boxes configured in /etc/coinslot.d/boxes.conf"
-	_entry=$(grep "^$_slot|" "$PISO_ROOT/etc/coinslot.d/boxes.conf")
-	[ -n "$_entry" ] || die "No box found at slot $_slot"
-	IFS='|' read -r _s _mac _ip _name _cur_role _en << EOF
-$_entry
-EOF
-	if [ "$_role" = "primary" ]; then
-		curl -s -m 4 "http://$_ip/api/gateway/challenge" 2>/dev/null | grep -q '{' || die "Box at slot $_slot ($_name at $_ip) is not responding; cannot promote offline box"
+	grep -q "^$_slot|" "$PISO_ROOT/etc/coinslot.d/boxes.conf" || die "No coin box found at slot $_slot"
 
-		_tmp_conf="$PISO_ROOT/etc/coinslot.d/boxes.tmp.$$"
-		while IFS='|' read -r s m i n r e; do
-			[ -z "$s" ] && continue
-			if [ "$s" = "$_slot" ]; then
-				echo "$s|$m|$i|$n|primary|$e"
-			elif [ "$r" = "primary" ]; then
-				echo "$s|$m|$i|$n|standby|$e"
-			else
-				echo "$s|$m|$i|$n|$r|$e"
+	_tmp_conf="$PISO_ROOT/etc/coinslot.d/boxes.tmp.$$"
+	grep -v "^$_slot|" "$PISO_ROOT/etc/coinslot.d/boxes.conf" > "$_tmp_conf"
+	mv "$_tmp_conf" "$PISO_ROOT/etc/coinslot.d/boxes.conf"
+
+	lock_box_network ""
+	[ -x /etc/init.d/pisoportal ] && /etc/init.d/pisoportal restart > /dev/null 2>&1
+	log "Slot $_slot removed from paired coin boxes."
+}
+
+pair_list_boxes() {
+	echo "=== Paired Coin Boxes ==="
+	if [ -f "$PISO_ROOT/etc/coinslot.d/boxes.conf" ]; then
+		while IFS='|' read -r _slot _mac _ip _name _role _en; do
+			[ -z "$_mac" ] && continue
+			_state="offline"
+			if curl -s -m 2 "http://$_ip/api/gateway/challenge" 2>/dev/null | grep -q '{'; then
+				_state="online"
 			fi
-		done < "$PISO_ROOT/etc/coinslot.d/boxes.conf" > "$_tmp_conf"
-		mv "$_tmp_conf" "$PISO_ROOT/etc/coinslot.d/boxes.conf"
-
-		_cur_ep=$(sed -n "s/^CURRENT_EPOCH='\\?\\([0-9]*\\)'\\?.*/\\1/p" "$PISO_ROOT/etc/coinslot.d/epoch.conf" 2>/dev/null | tail -n 1)
-		_next_ep=$((${_cur_ep:-0} + 1))
-		cat << EOT > "$PISO_ROOT/etc/coinslot.d/epoch.conf"
-CURRENT_EPOCH=$_next_ep
-ACTIVE_FAS_IP=$_ip
-ACTIVE_FAS_PORT=2080
-ACTIVE_FAS_NAME=$_name
-EOT
-		_pw=$(conf_get BOX_ADMIN_PASS_NEW)
-		curl -s -m 5 -u "admin:$_pw" -X POST "http://$_ip/api/gateway/persona" --data-urlencode "role=primary" --data-urlencode "epoch=$_next_ep" >/dev/null 2>&1
-
-		uci set opennds.@opennds[0].fasremoteip="$_ip"
-		uci commit opennds
-		/etc/init.d/opennds restart >/dev/null 2>&1
-
-		_have=$(uci -q get dhcp.@dnsmasq[0].address 2>/dev/null)
-		for _a in $_have; do
-			case "$_a" in /admin.hub/*) uci del_list dhcp.@dnsmasq[0].address="$_a" ;; esac
-		done
-		uci add_list dhcp.@dnsmasq[0].address="/admin.hub/$_ip"
-		uci commit dhcp
-		/etc/init.d/dnsmasq restart >/dev/null 2>&1
-
-		log "Role updated: Slot $_slot ($_name at $_ip) is now primary FAS (Epoch $_next_ep)."
+			printf "Slot %s: %-10s at %-15s (MAC: %s) [%s]\n" "$_slot" "$_name" "$_ip" "$_mac" "$_state"
+		done < "$PISO_ROOT/etc/coinslot.d/boxes.conf"
 	else
-		_tmp_conf="$PISO_ROOT/etc/coinslot.d/boxes.tmp.$$"
-		while IFS='|' read -r s m i n r e; do
-			[ -z "$s" ] && continue
-			if [ "$s" = "$_slot" ]; then
-				echo "$s|$m|$i|$n|standby|$e"
-			else
-				echo "$s|$m|$i|$n|$r|$e"
-			fi
-		done < "$PISO_ROOT/etc/coinslot.d/boxes.conf" > "$_tmp_conf"
-		mv "$_tmp_conf" "$PISO_ROOT/etc/coinslot.d/boxes.conf"
-		log "Role updated: Slot $_slot ($_name) set to standby."
+		echo "Slot 1: Esmeralda at $BOX_IP (MAC: $(conf_get BOX_MAC))"
 	fi
 }
 
-box_curl() {  # box_curl <admin password> <path> [curl args]: HTTP status and body in BOXOUT / BOXCODE
-	_pw="$1"; _path="$2"; shift 2
-	BOXOUT=$(curl -s -m 10 -w '\n%{http_code}' -u "admin:$_pw" -X POST "http://$BOX_IP$_path" "$@" 2> /dev/null)
+# boxes_ips: prints the IP of every enabled box in boxes.conf, or BOX_IP if none
+boxes_ips() {
+	if [ -f "$PISO_ROOT/etc/coinslot.d/boxes.conf" ] && grep -q '^[1-4]|' "$PISO_ROOT/etc/coinslot.d/boxes.conf" 2>/dev/null; then
+		awk -F'|' '$6 != "0" && $3 ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ { print $3 }' "$PISO_ROOT/etc/coinslot.d/boxes.conf"
+	else
+		echo "$BOX_IP"
+	fi
+}
+
+box_curl_ip() {  # box_curl_ip <ip> <admin password> <path> [curl args]: HTTP status and body in BOXOUT / BOXCODE
+	_ip="$1"; _pw="$2"; _path="$3"; shift 3
+	BOXOUT=$(curl -s -m 10 -w '\n%{http_code}' -u "admin:$_pw" -X POST "http://$_ip$_path" "$@" 2> /dev/null)
 	BOXCODE=$(printf '%s' "$BOXOUT" | tail -n 1)
 	BOXOUT=$(printf '%s' "$BOXOUT" | sed '$d')
+}
+
+box_curl() {  # box_curl <admin password> <path> [curl args]: HTTP status and body on BOX_IP
+	box_curl_ip "$BOX_IP" "$@"
 }
 
 # provision_box <new admin password> <gateway key>: replaces the default admin password and sets the gateway key.
@@ -334,11 +325,13 @@ push_kiosk_wifi() {
 	wifi_only && return 0   # (a PisoWiFi-only shop has no rental phones: the box is given no kiosk name or password)
 	_kp=$(conf_get KIOSK_PASS); _bp=$(conf_get BOX_ADMIN_PASS)
 	[ -n "$_kp" ] && [ -n "$_bp" ] || return 0
-	box_curl "$_bp" /save --data-urlencode "kiosk_wifi=$_kp" --data-urlencode "kiosk_ssid=$KIOSK_SSID"
-	case "$BOXCODE" in
-		200 | 302 | 303) log "the coin box has the $KIOSK_SSID name and password: its \"Set up a phone\" link carries them" ;;
-		*) log "the coin box did not take the PisoKiosk password (HTTP ${BOXCODE:-none}); the setup page will ask for it. Run again: piso-setup kiosk-wifi" ;;
-	esac
+	for _bip in $(boxes_ips); do
+		box_curl_ip "$_bip" "$_bp" /save --data-urlencode "kiosk_wifi=$_kp" --data-urlencode "kiosk_ssid=$KIOSK_SSID"
+		case "$BOXCODE" in
+			200 | 302 | 303) log "coin box at $_bip has the $KIOSK_SSID name and password: its \"Set up a phone\" link carries them" ;;
+			*) log "coin box at $_bip did not take the PisoKiosk password (HTTP ${BOXCODE:-none}); the setup page will ask for it. Run again: piso-setup kiosk-wifi" ;;
+		esac
+	done
 	return 0
 }
 
@@ -377,15 +370,17 @@ rotate_box_wifi() {  # rotate_box_wifi [force]: "force" does it again even when 
 		_new=$(rand 20); [ "${#_new}" -eq 20 ] || die "could not generate a random value for BOX_WIFI_PASS_NEW"
 		conf_set BOX_WIFI_PASS_NEW "$_new"
 	else _new=$(secret BOX_WIFI_PASS_NEW 20); fi
-	box_curl "$(conf_get BOX_ADMIN_PASS)" /save --data-urlencode "wifi_pass=$_new" --data-urlencode "wifi_ssid=$BOX_SSID"
-	case "$BOXCODE" in
-		200 | 302 | 303) ;;
-		*)
-			# the box said no: nothing on the router changes (a new password stored now would be named by box_wifi_key for a box that never got it)
-			if [ -n "$_had" ]; then conf_set BOX_WIFI_PASS_NEW "$_had"; else conf_del BOX_WIFI_PASS_NEW; fi
-			log "the box did not take its own Wi-Fi password (HTTP ${BOXCODE:-none}); nothing was changed on the router, the box keeps the Wi-Fi password and name it had. Run again: piso-setup rotate-box-wifi"
-			return 1 ;;
-	esac
+	_bp=$(conf_get BOX_ADMIN_PASS)
+	for _bip in $(boxes_ips); do
+		box_curl_ip "$_bip" "$_bp" /save --data-urlencode "wifi_pass=$_new" --data-urlencode "wifi_ssid=$BOX_SSID"
+		case "$BOXCODE" in
+			200 | 302 | 303) ;;
+			*)
+				if [ -n "$_had" ]; then conf_set BOX_WIFI_PASS_NEW "$_had"; else conf_del BOX_WIFI_PASS_NEW; fi
+				log "coin box at $_bip did not take its own Wi-Fi password (HTTP ${BOXCODE:-none}); nothing was changed on the router, the box keeps the Wi-Fi password and name it had. Run again: piso-setup rotate-box-wifi"
+				return 1 ;;
+		esac
+	done
 	uci set wireless.box_ap.key="$_new"; uci set wireless.box_ap.ssid="$BOX_SSID"; uci commit wireless
 	conf_set BOX_WIFI_ROTATED 1
 	wifi reload > /dev/null 2>&1

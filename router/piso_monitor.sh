@@ -36,7 +36,6 @@ ALERTS_FILE="${ALERTS_FILE:-/etc/coinslot.d/alerts.txt}"
 COINSLOT_CONF="${COINSLOT_CONF:-/etc/coinslot.conf}"
 SETUP_CONF="${PISO_SETUP_CONF:-/etc/piso-setup.conf}"
 BOXES_CONF="${PISO_BOXES_CONF:-/etc/coinslot.d/boxes.conf}"
-EPOCH_CONF="${PISO_EPOCH_CONF:-/etc/coinslot.d/epoch.conf}"
 UPDATE_GRACE="${UPDATE_GRACE:-86400}"                  # seconds an update may wait before it is a warning
 [ -n "$PORTAL_PORT" ] || PORTAL_PORT=$(sed -n "s/^PORTAL_PORT=['\"]\{0,1\}\([0-9]*\).*/\1/p" "$COINSLOT_CONF" 2> /dev/null | head -n 1)
 # Where the portal listens: the installer binds it to the guest network's address only (PORTAL_BIND), where 127.0.0.1 never answers. Asking
@@ -90,101 +89,46 @@ check_wan() {
 	return 0
 }
 
-active_fas_ip() {
-	_a=""
-	[ -r "$EPOCH_CONF" ] && _a=$(sed -n "s/^ACTIVE_FAS_IP='\{0,1\}\([^']*\)'\{0,1\}\$/\1/p" "$EPOCH_CONF" 2>/dev/null | head -n 1)
-	[ -n "$_a" ] || _a=$(uci -q get opennds.@opennds[0].fasremoteip 2>/dev/null)
-	echo "${_a:-10.0.0.10}"
-}
-
-active_epoch() {
-	_e=""
-	[ -r "$EPOCH_CONF" ] && _e=$(sed -n "s/^CURRENT_EPOCH='\{0,1\}\([^']*\)'\{0,1\}\$/\1/p" "$EPOCH_CONF" 2>/dev/null | head -n 1)
-	echo "${_e:-1}"
-}
-
 box_ok() {
 	if [ -e "$PORTAL" ]; then
 		"$PORTAL" box > /dev/null 2>&1
 		return $?
 	fi
-	_bip=$(active_fas_ip)
-	curl -s -m 3 "http://$_bip/api/gateway/challenge" 2>/dev/null | grep -q '{'
+	curl -s -m 3 "http://10.0.0.10/api/gateway/challenge" 2>/dev/null | grep -q '{'
 }
 
 check_box() {
-	_fails=$(cat "$S/boxfails" 2> /dev/null); _fails=${_fails:-0}
-	if box_ok; then
-		if [ "$_fails" -ge "$BOX_DOWN_AFTER" ]; then note "the coin box is back."; tg_send "the coin box is back."; rm -f "$S/alert.boxdown"; fi
-		echo 0 > "$S/boxfails"
+	if [ -r "$BOXES_CONF" ] && grep -q '^[1-4]|' "$BOXES_CONF" 2>/dev/null; then
+		while IFS='|' read -r b_slot b_mac b_ip b_name b_role b_en; do
+			case "$b_slot" in "#"* | "") continue ;; esac
+			[ "$b_en" != "0" ] || continue
+			_fails=$(cat "$S/boxfails.$b_slot" 2>/dev/null); _fails=${_fails:-0}
+			if curl -s -m 3 "http://$b_ip/api/gateway/challenge" 2>/dev/null | grep -q '{'; then
+				if [ "$_fails" -ge "$BOX_DOWN_AFTER" ]; then
+					note "the coin box $b_name (slot $b_slot) is back."
+					tg_send "the coin box $b_name (slot $b_slot) is back."
+					rm -f "$S/alert.boxdown.$b_slot"
+				fi
+				echo 0 > "$S/boxfails.$b_slot"
+			else
+				_fails=$((_fails + 1)); echo "$_fails" > "$S/boxfails.$b_slot"
+				[ "$_fails" -ge "$BOX_DOWN_AFTER" ] && alert "boxdown.$b_slot" 21600 "the coin box $b_name (slot $b_slot at $b_ip) has not answered for $_fails minutes (power, Wi-Fi or the box itself)."
+			fi
+		done < "$BOXES_CONF"
 	else
-		_fails=$((_fails + 1)); echo "$_fails" > "$S/boxfails"
-		[ "$_fails" -ge "$BOX_DOWN_AFTER" ] && alert boxdown 21600 "the coin box has not answered for $_fails minutes (power, Wi-Fi or the box itself)."
+		_fails=$(cat "$S/boxfails" 2> /dev/null); _fails=${_fails:-0}
+		if box_ok; then
+			if [ "$_fails" -ge "$BOX_DOWN_AFTER" ]; then note "the coin box is back."; tg_send "the coin box is back."; rm -f "$S/alert.boxdown"; fi
+			echo 0 > "$S/boxfails"
+		else
+			_fails=$((_fails + 1)); echo "$_fails" > "$S/boxfails"
+			[ "$_fails" -ge "$BOX_DOWN_AFTER" ] && alert boxdown 21600 "the coin box has not answered for $_fails minutes (power, Wi-Fi or the box itself)."
+		fi
 	fi
 }
 
 portal_ok() {
-	if [ -e "$PORTAL" ]; then
-		[ "$(curl -s -m "$PING_TIMEOUT" "$PING_URL" 2> /dev/null)" = ok ]
-		return $?
-	fi
-	_bip=$(active_fas_ip)
-	[ "$(curl -s -m "$PING_TIMEOUT" "http://$_bip:2080/ping" 2> /dev/null)" = ok ]
-}
-
-failover_fas() {
-	_cur_ip=$(active_fas_ip)
-	_cand_ip=""
-	_cand_name=""
-	if [ -r "$BOXES_CONF" ]; then
-		while IFS='|' read -r b_slot b_mac b_ip b_name b_role b_status || [ -n "$b_slot" ]; do
-			case "$b_slot" in "#"* | "") continue ;; esac
-			[ "$b_ip" != "$_cur_ip" ] || continue
-			case "$b_role" in
-				standby | primary | wifi | hub)
-					if curl -s -m 3 "http://$b_ip:2080/ping" 2>/dev/null | grep -q ok \
-					   || curl -s -m 3 "http://$b_ip/api/gateway/challenge" 2>/dev/null | grep -q '{'; then
-						_cand_ip="$b_ip"
-						_cand_name="$b_name"
-						break
-					fi
-					;;
-			esac
-		done < "$BOXES_CONF"
-	fi
-
-	if [ -n "$_cand_ip" ]; then
-		_ep=$(active_epoch)
-		_new_ep=$((_ep + 1))
-		mkdir -p "$(dirname "$EPOCH_CONF")" 2>/dev/null
-		printf "ACTIVE_FAS_IP='%s'\nACTIVE_FAS_PORT='2080'\nACTIVE_FAS_NAME='%s'\nCURRENT_EPOCH='%s'\n" "$_cand_ip" "$_cand_name" "$_new_ep" > "$EPOCH_CONF"
-		uci set opennds.@opennds[0].fasremoteip="$_cand_ip" 2>/dev/null
-		uci set opennds.@opennds[0].fasport='2080' 2>/dev/null
-		uci set opennds.@opennds[0].faspath='/' 2>/dev/null
-		uci commit opennds 2>/dev/null
-		# Update admin.hub DNS mapping
-		for _a in $(uci -q get dhcp.@dnsmasq[0].address 2>/dev/null); do
-			case "$_a" in /admin.hub/*) uci del_list dhcp.@dnsmasq[0].address="$_a" 2>/dev/null ;; esac
-		done
-		uci add_list dhcp.@dnsmasq[0].address="/admin.hub/$_cand_ip" 2>/dev/null
-		uci commit dhcp 2>/dev/null
-		/etc/init.d/dnsmasq restart > /dev/null 2>&1
-		/etc/init.d/opennds restart > /dev/null 2>&1
-		note "FAILOVER: Box $_cur_ip offline. Promoted $_cand_name ($_cand_ip) to active FAS (epoch $_new_ep)."
-		tg_send "FAILOVER: Box $_cur_ip offline. Promoted $_cand_name ($_cand_ip) to active FAS (epoch $_new_ep)."
-		return 0
-	fi
-
-	# No online candidate boxes found: fallback to local offline HTML
-	if [ -r "/www/offline.html" ]; then
-		uci set opennds.@opennds[0].fasremoteip="" 2>/dev/null
-		uci set opennds.@opennds[0].faspath='/offline.html' 2>/dev/null
-		uci commit opennds 2>/dev/null
-		/etc/init.d/opennds restart > /dev/null 2>&1
-		note "ALL COIN BOXES OFFLINE: Switched openNDS to offline fallback."
-		tg_send "ALL COIN BOXES OFFLINE: Switched openNDS to offline fallback."
-	fi
-	return 1
+	[ "$(curl -s -m "$PING_TIMEOUT" "$PING_URL" 2> /dev/null)" = ok ]
 }
 
 check_portal() {
@@ -201,8 +145,6 @@ check_portal() {
 		if [ -e "$PORTAL" ]; then
 			"$PORTAL_SERVICE" restart > /dev/null 2>&1
 			alert portal 3600 "the portal program did not answer for $_fails minutes and was restarted (a coin window that was open is settled from its record)."
-		else
-			failover_fas
 		fi
 		echo 0 > "$S/pingfails"   # the minutes count from the restart, so a portal that keeps failing does not report ever larger numbers
 	fi
@@ -307,7 +249,19 @@ do_tick() {
 cmd_status_text() {
 	echo "uptime: $(uptime 2> /dev/null | sed 's/^ *//')"
 	echo "memory free: $(awk '/MemAvailable/ {printf "%d MB", $2/1024}' /proc/meminfo 2> /dev/null)"
-	box_ok && echo "box: answers ($(active_fas_ip))" || echo "box: DOES NOT ANSWER"
+	if [ -r "$BOXES_CONF" ] && grep -q '^[1-4]|' "$BOXES_CONF" 2>/dev/null; then
+		while IFS='|' read -r b_slot b_mac b_ip b_name b_role b_en; do
+			case "$b_slot" in "#"* | "") continue ;; esac
+			[ "$b_en" != "0" ] || continue
+			if curl -s -m 3 "http://$b_ip/api/gateway/challenge" 2>/dev/null | grep -q '{'; then
+				echo "box slot $b_slot ($b_name): answers ($b_ip)"
+			else
+				echo "box slot $b_slot ($b_name): DOES NOT ANSWER ($b_ip)"
+			fi
+		done < "$BOXES_CONF"
+	else
+		box_ok && echo "box: answers" || echo "box: DOES NOT ANSWER"
+	fi
 	echo "guests online: $("$NDSCTL" json 2> /dev/null | grep -c '"state":"Authenticated"')"
 	if [ -e "$PORTAL" ]; then
 		"$PORTAL" reconcile 2>&1 | head -2
@@ -327,17 +281,11 @@ handle_command() {  # handle_command <chat> <text>
 			case "$_arg" in "" | *[!0-9]*) _arg=1 ;; esac
 			if [ -e "$PORTAL" ]; then
 				tg_send "$("$PORTAL" report "$_arg" 2>&1)"
-			else
-				_bip=$(active_fas_ip)
-				tg_send "$(curl -s -m 5 "http://$_bip/api/wifi/report?days=$_arg" 2>/dev/null)"
 			fi
 			;;
 		/reconcile)
 			if [ -e "$PORTAL" ]; then
 				tg_send "$("$PORTAL" reconcile 2>&1)"
-			else
-				_bip=$(active_fas_ip)
-				tg_send "$(curl -s -m 5 "http://$_bip/api/wifi/reconcile" 2>/dev/null)"
 			fi
 			;;
 		/diag) tg_send "$("$SETUP" diag 2>&1 | tail -c 3600)" ;;

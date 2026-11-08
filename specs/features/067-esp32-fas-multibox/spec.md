@@ -1,7 +1,7 @@
 # Feature 067: ESP32-C3 FAS Offload, Ground-Up PisoWiFi Console & Multi-Coinslot Architecture
 
-Status: **complete**   Branch: `feat/067-esp32-fas-multibox`   Area: router, firmware, website
-Release: router, firmware
+Status: **superseded by Feature 068**   Branch: `feat/067-esp32-fas-multibox`   Area: router, firmware, website
+Release: router, firmware (Note: ESP32 FAS offload and epoch failover superseded by Feature 068; router 10.0.0.1 move-first and multi-box pairing retained)
 
 ## Intent
 

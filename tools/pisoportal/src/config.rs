@@ -221,6 +221,86 @@ impl Config {
     pub fn open_dir(&self) -> String {
         format!("{}/open", self.data_dir)
     }
+
+    pub fn boxes(&self) -> Vec<BoxEntry> {
+        let path = format!("{}/boxes.conf", self.data_dir);
+        let entries = parse_boxes_file(&path);
+        if !entries.is_empty() {
+            return entries;
+        }
+        vec![BoxEntry {
+            slot: 1,
+            mac: String::new(),
+            ip: self.gw_box.clone(),
+            name: "Esmeralda".to_string(),
+            enabled: true,
+        }]
+    }
+
+    #[allow(dead_code)]
+    pub fn box_entry_for(&self, slot: u8) -> Option<BoxEntry> {
+        self.boxes().into_iter().find(|b| b.slot == slot && b.enabled)
+    }
+
+    #[allow(dead_code)]
+    pub fn box_link_for(&self, slot: u8) -> Option<crate::boxlink::BoxLink> {
+        let entry = self.box_entry_for(slot)?;
+        let marker = if slot == 1 {
+            format!("{}/box_signed", self.data_dir)
+        } else {
+            format!("{}/box_signed_{}", self.data_dir, slot)
+        };
+        Some(crate::boxlink::BoxLink::new(&entry.ip, &self.gw_key).remember_in(&marker))
+    }
+
+    pub fn box_link_for_ip(&self, ip: &str) -> crate::boxlink::BoxLink {
+        crate::boxlink::BoxLink::new(ip, &self.gw_key)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BoxEntry {
+    pub slot: u8,
+    pub mac: String,
+    pub ip: String,
+    pub name: String,
+    pub enabled: bool,
+}
+
+pub fn parse_boxes_file(path: &str) -> Vec<BoxEntry> {
+    let Ok(text) = fs::read_to_string(path) else { return Vec::new() };
+    parse_boxes_str(&text)
+}
+
+pub fn parse_boxes_str(text: &str) -> Vec<BoxEntry> {
+    let mut entries = Vec::new();
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let parts: Vec<&str> = line.split('|').map(str::trim).collect();
+        if parts.len() < 4 {
+            continue;
+        }
+        let Ok(slot) = parts[0].parse::<u8>() else { continue };
+        if !(1..=4).contains(&slot) {
+            continue;
+        }
+        let mac = parts[1].to_string();
+        let ip = parts[2].to_string();
+        let name = if parts[3].is_empty() { "Esmeralda".to_string() } else { parts[3].to_string() };
+        let enabled = if parts.len() >= 6 {
+            parts[5] != "0" && !parts[5].eq_ignore_ascii_case("false")
+        } else if parts.len() == 5 {
+            parts[4] != "0" && !parts[4].eq_ignore_ascii_case("false")
+        } else {
+            true
+        };
+        entries.push(BoxEntry { slot, mac, ip, name, enabled });
+    }
+    entries.sort_by_key(|e| e.slot);
+    entries
 }
 
 #[cfg(test)]
@@ -306,5 +386,28 @@ mod tests {
                 assert!(!text.contains("WHEEL="), "{} must not write WHEEL=", f.path().display());
             }
         }
+    }
+
+    #[test]
+    fn multi_box_configuration_parsing() {
+        let text = r#"
+# slot|mac|ip|name|role|enabled
+1|00:11:22:33:44:55|10.0.0.10|Esmeralda|primary|1
+2|00:11:22:33:44:56|10.0.0.11|Valentina|standby|1
+3|00:11:22:33:44:57|10.0.0.12|Corazon|standby|0
+"#;
+        let boxes = parse_boxes_str(text);
+        assert_eq!(boxes.len(), 3);
+        assert_eq!(boxes[0], BoxEntry { slot: 1, mac: "00:11:22:33:44:55".into(), ip: "10.0.0.10".into(), name: "Esmeralda".into(), enabled: true });
+        assert_eq!(boxes[1], BoxEntry { slot: 2, mac: "00:11:22:33:44:56".into(), ip: "10.0.0.11".into(), name: "Valentina".into(), enabled: true });
+        assert_eq!(boxes[2], BoxEntry { slot: 3, mac: "00:11:22:33:44:57".into(), ip: "10.0.0.12".into(), name: "Corazon".into(), enabled: false });
+
+        let cfg = Config::from_map(HashMap::new());
+        // Default without file is 1 box (Esmeralda)
+        let def_boxes = cfg.boxes();
+        assert_eq!(def_boxes.len(), 1);
+        assert_eq!(def_boxes[0].name, "Esmeralda");
+        assert_eq!(def_boxes[0].slot, 1);
+        assert_eq!(def_boxes[0].ip, "10.0.0.10");
     }
 }

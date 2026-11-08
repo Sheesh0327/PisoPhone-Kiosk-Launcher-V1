@@ -7,26 +7,13 @@
 status="$1"; clientip="$2"
 case "$clientip" in "" | *[!0-9.]*) exit 1 ;; esac
 CONF="${COINSLOT_CONF:-/etc/coinslot.conf}"
-EPOCH_CONF="${PISO_EPOCH_CONF:-/etc/coinslot.d/epoch.conf}"
 
 conf_get() { sed -n "s/^$1='\\{0,1\\}\\([^']*\\)'\\{0,1\\}\$/\\1/p" "$CONF" 2> /dev/null | head -n 1; }
 
-# Determine active portal address:
-# 1. Active FAS host from epoch.conf if offloaded to ESP32-C3
-# 2. openNDS uci fasremoteip
-# 3. Fall back to local PORTAL_BIND in coinslot.conf
-host=""
-if [ -r "$EPOCH_CONF" ]; then
-	host=$(sed -n "s/^ACTIVE_FAS_IP='\\{0,1\\}\\([^']*\\)'\\{0,1\\}\$/\\1/p" "$EPOCH_CONF" 2>/dev/null | head -n 1)
-fi
-if [ -z "$host" ]; then
-	host=$(uci -q get opennds.@opennds[0].fasremoteip 2>/dev/null)
-fi
-if [ -z "$host" ]; then
-	host=$(conf_get PORTAL_BIND)
-fi
-port=$(uci -q get opennds.@opennds[0].fasport 2>/dev/null)
-port="${port:-$(conf_get PORTAL_PORT)}"
+# The portal is always local on the router
+host=$(conf_get PORTAL_BIND)
+[ -n "$host" ] || host="10.0.30.1"
+port=$(conf_get PORTAL_PORT)
 port="${port:-2080}"
 
 case "$host$port" in *[!0-9.]*) exit 1 ;; esac

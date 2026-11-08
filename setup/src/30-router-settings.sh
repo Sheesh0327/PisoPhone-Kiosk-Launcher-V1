@@ -147,10 +147,6 @@ EOT
 # owner's other dnsmasq address entries stay; an old address of the name (the router's address was changed) is replaced.
 admin_name_uci() {
 	_target_ip="$LAN_IP"
-	if wifi_only; then
-		_epoch_ip=$(sed -n "s/^ACTIVE_FAS_IP='\\?\\([^'\" ]*\\)'\\?.*/\\1/p" "$PISO_ROOT/etc/coinslot.d/epoch.conf" 2>/dev/null | tail -n 1)
-		_target_ip="${_epoch_ip:-${ACTIVE_FAS_IP:-10.0.0.10}}"
-	fi
 	_have=$(uci -q get dhcp.@dnsmasq[0].address 2> /dev/null)
 	for _a in $_have; do
 		case "$_a" in "/admin.hub/$_target_ip") return 0 ;; esac
@@ -218,14 +214,7 @@ set firewall.guest_stream.src='guest'
 set firewall.guest_stream.proto='tcp'
 set firewall.guest_stream.dest_port='$PORTAL_PORT'
 set firewall.guest_stream.target='ACCEPT'
-set firewall.guest_fas_boxes=rule
-set firewall.guest_fas_boxes.name='Guest-FAS-Boxes'
-set firewall.guest_fas_boxes.src='guest'
-set firewall.guest_fas_boxes.dest='lan'
-set firewall.guest_fas_boxes.dest_ip='10.0.0.8/29'
-set firewall.guest_fas_boxes.proto='tcp'
-set firewall.guest_fas_boxes.dest_port='$PORTAL_PORT'
-set firewall.guest_fas_boxes.target='ACCEPT'
+delete firewall.guest_fas_boxes
 # guests reach the internet, not the modem's own pages (its login page, its settings): traffic from the guest network to the modem's
 # addresses is refused. It is one narrow rule in the router's firewall; the withdrawn 1.5.5 attempt blocked whole private ranges in
 # openNDS's list.
@@ -275,28 +264,9 @@ set opennds.@opennds[0].login_option_enabled='0'
 set opennds.@opennds[0].fasport='$PORTAL_PORT'
 set opennds.@opennds[0].faspath='/'
 set opennds.@opennds[0].fas_secure_enabled='1'
-EOT
-	if wifi_only; then
-		_fas_ip=$(sed -n "s/^ACTIVE_FAS_IP='\\?\\([^'\" ]*\\)'\\?.*/\\1/p" "$PISO_ROOT/etc/coinslot.d/epoch.conf" 2>/dev/null | tail -n 1)
-		_fas_ip="${_fas_ip:-${ACTIVE_FAS_IP:-10.0.0.10}}"
-		cat << EOT
-set opennds.@opennds[0].fasremoteip='$_fas_ip'
-delete opennds.@opennds[0].preauthenticated_users
-add_list opennds.@opennds[0].preauthenticated_users='allow tcp port 2080 to 10.0.0.10'
-add_list opennds.@opennds[0].preauthenticated_users='allow tcp port 2080 to 10.0.0.11'
-add_list opennds.@opennds[0].preauthenticated_users='allow tcp port 2080 to 10.0.0.12'
-add_list opennds.@opennds[0].preauthenticated_users='allow tcp port 2080 to 10.0.0.13'
-EOT
-	else
-		cat << EOT
 delete opennds.@opennds[0].fasremoteip
 delete opennds.@opennds[0].preauthenticated_users
-add_list opennds.@opennds[0].preauthenticated_users='allow tcp port 2080 to 10.0.0.10'
-add_list opennds.@opennds[0].preauthenticated_users='allow tcp port 2080 to 10.0.0.11'
-add_list opennds.@opennds[0].preauthenticated_users='allow tcp port 2080 to 10.0.0.12'
-add_list opennds.@opennds[0].preauthenticated_users='allow tcp port 2080 to 10.0.0.13'
 EOT
-	fi
 	cat << EOT
 delete opennds.@opennds[0].themespec_path
 set opennds.@opennds[0].statuspath='/usr/lib/opennds/pisoportal_status.sh'

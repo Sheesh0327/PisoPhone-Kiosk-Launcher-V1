@@ -483,7 +483,8 @@ fn ws_session(core: Arc<Core>, mut conn: Incoming, key: &str, mac: String) {
                     }
                     "start" => {
                         if let Some(plan) = Plan::parse(&jget(&text, "plan")) {
-                            let v = core.start(&mac, plan, jget(&text, "forfeit") == "true", jget(&text, "mode") == "voucher");
+                            let slot = crate::util::jget_u64(&text, "box").map(|n| n as u8);
+                            let v = core.start(&mac, plan, jget(&text, "forfeit") == "true", jget(&text, "mode") == "voucher", slot);
                             ws_send(&writer, 1, v.to_json().as_bytes());
                         }
                     }
@@ -762,7 +763,10 @@ pub fn serve_admin(core: Arc<Core>) {
         let ok_mac = valid_mac(&mac);
         let body = match req.path.as_str() {
             "/admin/start" if ok_mac => match Plan::parse(&query_get(&req.query, "plan").unwrap_or_default()) {
-                Some(p) => core.start(&mac, p, query_get(&req.query, "forfeit").as_deref() == Some("1"), false).to_json(),
+                Some(p) => {
+                    let slot = query_get(&req.query, "box").and_then(|s| s.parse::<u8>().ok());
+                    core.start(&mac, p, query_get(&req.query, "forfeit").as_deref() == Some("1"), false, slot).to_json()
+                }
                 None => "{\"error\":\"INVALID_PLAN\"}".into(),
             },
             "/admin/status" if ok_mac => core.view_for(&mac).to_json(),

@@ -79,6 +79,7 @@ var X={
 "Connection lost. Reconnecting…":"Nawala ang koneksyon. Kumokonekta ulit…",
 "Still connecting. Check you are on the TechNet Wi-Fi.":"Kumokonekta pa rin. Tiyaking nasa Wi-Fi ng shop ka.",
 "Still connecting. Check you are on the shop's Wi-Fi.":"Kumokonekta pa rin. Tiyaking nasa Wi-Fi ng shop ka.",
+"Select coin station:":"Pumili ng hulugan ng barya:",
 "House rules":"Mga patakaran"
 };
 var P="(Endurance|HyperSpeed)";
@@ -103,7 +104,11 @@ var R=[
 [new RegExp("^You still have (.+) of "+P+" time\\. Add more \\2 time, or switch to "+P+" and give up the time you have left\\.$"),"May natitira ka pang $1 ng $2 time. Magdagdag pa ng $2 time, o lumipat sa $3 at isuko ang natitirang oras mo."],
 [new RegExp("^Add "+P+" time$"),"Magdagdag ng $1 time"],
 [new RegExp("^Switch to "+P+" · lose my time$"),"Lumipat sa $1 · isuko ang oras ko"],
-[/^Coin payment is not available right now\. Try again, or ask the attendant \((.*)\)\.$/,"Hindi available ang bayad gamit ang barya ngayon. Subukan ulit, o magtanong sa attendant ($1)."]
+[/^Coin payment is not available right now\. Try again, or ask the attendant \((.*)\)\.$/,"Hindi available ang bayad gamit ang barya ngayon. Subukan ulit, o magtanong sa attendant ($1)."],
+[/^Station: (.*) · Insert coin now$/,"Estasyon: $1 · Magpasok na ng barya"],
+[/^Station: (.*) · Getting the coin slot ready$/,"Estasyon: $1 · Inihahanda ang coin slot"],
+[/^Station: (.*) · Counting coins$/,"Estasyon: $1 · Binibilang ang mga barya"],
+[/^Station: (.*) · (.*)$/,"Estasyon: $1 · $2"]
 ];
 var L="en",btn=document.getElementsByClassName("lang")[0];
 function tr(t){var s=t.replace(/(\d+) hrs?\b/g,"$1 oras"),i;if(X.hasOwnProperty(s))return X[s];for(i=0;i<R.length;i++)if(R[i][0].test(s))return s.replace(R[i][0],R[i][1]);return s}
