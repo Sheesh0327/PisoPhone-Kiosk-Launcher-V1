@@ -250,6 +250,7 @@ cmd_status_text() {
 	echo "uptime: $(uptime 2> /dev/null | sed 's/^ *//')"
 	echo "memory free: $(awk '/MemAvailable/ {printf "%d MB", $2/1024}' /proc/meminfo 2> /dev/null)"
 	if [ -r "$BOXES_CONF" ] && grep -q '^[1-4]|' "$BOXES_CONF" 2>/dev/null; then
+		# shellcheck disable=SC2034
 		while IFS='|' read -r b_slot b_mac b_ip b_name b_role b_en; do
 			case "$b_slot" in "#"* | "") continue ;; esac
 			[ "$b_en" != "0" ] || continue
