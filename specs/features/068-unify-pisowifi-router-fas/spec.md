@@ -1,6 +1,6 @@
 # Feature 068: Unify PisoWiFi FAS Back to Router (`pisoportal`) + Native Multi-Box Support
 
-Status: **in progress**   Branch: `feat/068-unify-pisowifi-router-fas`   Area: router, firmware, pisoportal, setup
+Status: **completed**   Branch: `main`   Area: router, firmware, pisoportal, setup
 Release: router, firmware
 
 ## Intent
@@ -93,3 +93,4 @@ Feature 067 offloaded openNDS Forward Authentication Service (FAS) and the opera
 5. **Reconciliation & Vaults:** `reconcile.state` tracks per-box baselines, emptying one box does not disturb other boxes' baselines, and offline boxes do not cause false `MISMATCH` alerts.
 6. **Console Switching:** Operator console provides a box switcher on the coin box tab and lists all paired boxes in `/api/overview`.
 7. **Footprints & Security:** All size budgets in `router/tests/test_footprint.py` and `scripts/check_security_rules.sh` pass.
+8. **Golden Page State:** `tools/pisoportal/tests/golden/page_states.json` matches current page (`page_bytes: 29113`, `page_sha256: ab72c4778b7f8ef58e4056800b533fa6089f149862c03540a0cfe1864dc640a7`).
