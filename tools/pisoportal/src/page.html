@@ -81,7 +81,7 @@ details .btn{margin:8px 0 12px}
 <a class="btn alt" id="snd" href="/send" style="display:none">Send a file to the owner</a>
 </div>
 <div id="v-live" class="v card">
-<span class="chip" id="lplan"></span>
+<span class="chip" id="lplan"></span><span class="chip alt" id="lbox" style="display:none;margin-left:6px"></span>
 <p id="lsub"></p>
 <div class="big" id="lpes"></div>
 <p class="mut c" id="lmin"></p>
@@ -173,11 +173,11 @@ function clean(){return dropq("w")}
 function wake(){wk=null;if(woke)return;var q=clean();location.replace(location.pathname+q+(q?"&":"?")+"w=1")}
 function foff(on){var e=el("foff");if(!on){clearTimeout(fo);fo=null;e.style.display="none"}else if(!fo){e.style.display="block";e.innerHTML="<b>Payment received.</b> Connecting you&hellip;";fo=setTimeout(function(){e.innerHTML="<b>Payment received.</b> Not online yet: turn Wi-Fi off and on. Your time is saved."},3e4)}}
 function msg(t,btns){put("mtext",t);var b=el("mbtns");b.innerHTML="";var i,x;for(i=0;i<(btns||[]).length;i++){x=document.createElement("button");x.type="button";x.className="btn"+(btns[i][2]?" alt":"");x.textContent=btns[i][0];x.onclick=btns[i][1];b.appendChild(x)}show("msg")}
-var selBox=null;
+var selBox=null,bxs=[];
 function again(){clearTimeout(wk);wk=null;send({t:"hello",fas:fas,reset:true})}
 function startPlan(p,f,v){plan=p;if(woke){woke=false;try{history.replaceState(null,"",location.pathname+clean())}catch(e){}}var o={t:"start",plan:p,forfeit:!!f,mode:v?"voucher":"now"};if(selBox)o.box=selBox;send(o)}
-function wait(p,bn){show("live");put("lplan",pn(p));put("lsub",(bn?"Station: "+bn+" · ":"")+"Getting the coin slot ready");put("lpes","");put("lmin","Please wait, do not insert coins yet");el("lcd").style.display="none";el("ldone").style.display="none";el("lhint").style.display="none";el("lstuck").style.display="none"}
-var go=function(){var r=document.querySelector("input[name=p]:checked");var p=r?r.value:"endurance";wait(p);startPlan(p,false,vch&&el("mv").checked);later(prime)};
+function wait(p,bn){show("live");put("lplan",pn(p));var lb=el("lbox");if(lb){lb.style.display=bn?"inline-block":"none";lb.textContent=bn||""}put("lsub","Getting the coin slot ready");put("lpes","");put("lmin","Please wait, do not insert coins yet");el("lcd").style.display="none";el("ldone").style.display="none";el("lhint").style.display="none";el("lstuck").style.display="none"}
+var go=function(){var r=document.querySelector("input[name=p]:checked");var p=r?r.value:"endurance";wait(p,bxs.length>1?((bxs.filter(function(x){return x.slot===selBox})[0]||{}).name):null);startPlan(p,false,vch&&el("mv").checked);later(prime)};
 el("go").onclick=go;
 el("ldone").onclick=function(){this.disabled=true;this.textContent="Closing…";dn=1;if(!send({t:"done"}))connect()};
 el("lcancel").onclick=function(){dn=1;if(!send({t:"done"}))connect()};
@@ -234,7 +234,7 @@ if(s==="idle"||s==="paused"){
  else{on.style.display="none";tstop();tt=0}
  put("go",tm?"Add more time":"Insert Coin");el("go").className="btn coin"+(ps?" alt":"");put("gos",tm?"":"Coins add up: every coin adds more time");
  var b=el("ibusy");if(j.cooldown>0){b.style.display="block";b.textContent="Too many empty tries. Wait about "+j.cooldown+" s."}else if(j.busy>0){b.style.display="block";b.textContent="Another customer is paying. Try again in a few seconds."}else b.style.display="none";
- var bxs=j.boxes||[],bp=el("bx-pick"),bb=el("bx-btns");
+ bxs=j.boxes||[];var bp=el("bx-pick"),bb=el("bx-btns");
  if(bxs.length>1&&bp&&bb){
   bp.style.display="block";
   if(!selBox||!bxs.some(function(x){return x.slot===selBox&&!x.busy})){
@@ -255,17 +255,17 @@ if(s==="idle"||s==="paused"){
   el("go").disabled=false;
  }
  return}
-if(s==="starting"){wait(j.plan,j.bname);el("lv").style.display=j.v?"block":"none";return}
+if(s==="starting"){wait(j.plan,bxs.length>1?j.bname:null);el("lv").style.display=j.v?"block":"none";return}
 if(s==="armed"){
  show("live");if(dn)send({t:"done"});else{el("ldone").disabled=false;el("ldone").textContent="Done"}
- var bpre=j.bname?"Station: "+j.bname+" · ":"";
- el("lcd").style.display="block";put("lplan",pn(j.plan));put("lsub",bpre+"Insert coin now");el("lv").style.display=j.v?"block":"none";
+ var lb=el("lbox");if(lb){lb.style.display=bxs.length>1&&j.bname?"inline-block":"none";lb.textContent=j.bname||""}
+ el("lcd").style.display="block";put("lplan",pn(j.plan));put("lsub","Insert coin now");el("lv").style.display=j.v?"block":"none";
  put("lpes","₱"+j.pulses);el("lpes").className="big"+(j.pulses>0?" p":"");put("lmin",j.pulses>0?"= "+fmt(j.minutes)+(j.v?" voucher":" of Wi-Fi"):j.v?"Each coin adds voucher time":"Each coin adds Wi-Fi time");
  if(j.pulses>pes){var d=j.pulses-pes;say(j.pulses+(j.pulses===1?" peso":" pesos"),function(){ding(d)})}else if(!pes&&!j.pulses&&!tk)say("Insert coin now",function(){ding(1)});
  pes=j.pulses;left=j.remaining;total=j.total||FIRST;bar();
  el("ldone").style.display=j.pulses>0?"block":"none";el("lhint").style.display=j.pulses>0?"block":"none";el("ltop").style.display=tl>0?"block":"none";el("lcancel").style.display=j.pulses>0?"none":"block";
  if(!tk)tk=setInterval(function(){if(left>0)left--;bar()},1000);return}
-if(s==="closing"){var bpre=j.bname?"Station: "+j.bname+" · ":"";show("live");el("lcd").style.display="none";el("ldone").style.display="none";el("lcancel").style.display="none";el("lhint").style.display="none";el("ltop").style.display="none";el("lv").style.display=j.v?"block":"none";put("lplan",pn(j.plan));put("lsub",bpre+"Counting coins");put("lpes","₱"+j.pulses);put("lmin","");return}
+if(s==="closing"){show("live");el("lcd").style.display="none";el("ldone").style.display="none";el("lcancel").style.display="none";el("lhint").style.display="none";el("ltop").style.display="none";el("lv").style.display=j.v?"block":"none";put("lplan",pn(j.plan));put("lsub","Counting coins");put("lpes","₱"+j.pulses);put("lmin","");return}
 if(s==="final"){
  if(j.vcode){vshow(j);return}
  show("final");el("fn").style.display="block";el("fv").style.display="none";put("fagain","Add more time");pes=0;tt=0;pj=false;tstart(j.left);put("fmin","time left · ₱"+j.pulses+" = "+fmt(j.minutes)+" bought");
