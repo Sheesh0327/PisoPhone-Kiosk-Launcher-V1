@@ -2617,9 +2617,12 @@ def flash_manifest(branch, cache_dir, opener=urllib.request.urlopen, emit=say):
     """The list of firmware images of this branch (flash/manifest.json on the website). Offline, the copy kept on this
     computer from the last time is used."""
     path = os.path.join(cache_dir, "manifest.json")
+    manifest = None
     try:
         with opener(urllib.request.Request(f"{site_url(branch)}/flash/manifest.json", headers={"User-Agent": USER_AGENT}), timeout=15) as r:
             text = r.read().decode("utf-8")
+        if text.strip().startswith("<"):
+            raise ValueError("HTML response received instead of JSON manifest")
         manifest = json.loads(text)
         os.makedirs(cache_dir, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
@@ -2630,7 +2633,20 @@ def flash_manifest(branch, cache_dir, opener=urllib.request.urlopen, emit=say):
                 manifest = json.load(f)
             emit("The website could not be reached: using the coin box software kept from the last time.")
         except (OSError, ValueError):
-            raise SetupError("the coin box software list could not be downloaded. This computer needs internet for this step.")
+            if opener is urllib.request.urlopen:
+                repo_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+                local_manifest = os.path.join(repo_dir, "setup", "flash", "manifest.json")
+                if not os.path.isfile(local_manifest):
+                    local_manifest = os.path.join(repo_dir, "website", "flash", "manifest.json")
+                if os.path.isfile(local_manifest):
+                    try:
+                        with open(local_manifest, encoding="utf-8") as f:
+                            manifest = json.load(f)
+                        emit("Using the coin box software from the local repository.")
+                    except Exception:
+                        manifest = None
+            if not manifest or not isinstance(manifest.get("builds"), list) or not manifest["builds"]:
+                raise SetupError("the coin box software list could not be downloaded. This computer needs internet for this step.")
     if not isinstance(manifest.get("builds"), list) or not manifest["builds"]:
         raise SetupError("the website has no coin box software for this branch.")
     # Ensure local builds (e.g. for products like home or locally built firmware) are visible in manifest
@@ -2760,7 +2776,9 @@ def fetch_image(branch, build, cache_dir, opener=urllib.request.urlopen):
     try:
         with opener(urllib.request.Request(f"{site_url(branch)}/flash/{build['file']}", headers={"User-Agent": USER_AGENT}), timeout=60) as r:
             data = r.read()
-    except (urllib.error.URLError, OSError) as e:
+            if data.strip().startswith(b"<"):
+                raise ValueError("HTML response received instead of binary image")
+    except (urllib.error.URLError, OSError, ValueError) as e:
         if opener is urllib.request.urlopen:
             chip = build.get("chip") or ("ESP32-C3" if "c3" in str(build.get("file", "")).lower() else "ESP32")
             loc = find_local_firmware(chip, build.get("product") or "full", cache_dir)
@@ -4345,13 +4363,18 @@ def preflight_phone(branch, opener=urllib.request.urlopen, tool=esptool_module):
     online, why = False, ""
     try:
         with opener(urllib.request.Request(f"{site_url(branch)}/flash/manifest.json", headers={"User-Agent": USER_AGENT}), timeout=15) as r:
-            online = r.status == 200
+            text = r.read().decode("utf-8") if hasattr(r, "read") else ""
+            online = r.status == 200 and not text.strip().startswith("<")
     except urllib.error.HTTPError as e:
         why = f"the website answered HTTP {e.code}"
     except urllib.error.URLError as e:
         why = f"{e.reason}"
     except (OSError, ValueError) as e:
         why = f"{type(e).__name__}: {e}"
+    if not online and opener is urllib.request.urlopen:
+        repo_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        if os.path.isfile(os.path.join(repo_dir, "setup", "flash", "manifest.json")) or os.path.isfile(os.path.join(repo_dir, "website", "flash", "manifest.json")):
+            online, why = True, ""
     advice = "This computer needs internet now (to download the coin box software)."
     if why:
         advice += f" The error was: {why}."

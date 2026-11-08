@@ -203,6 +203,8 @@ jobs:
           for attempt in 1 2 3 4 5; do
             git fetch -q origin "$GITHUB_REF_NAME"
             git reset -q --hard "origin/$GITHUB_REF_NAME"
+            rm -rf website/flash && cp -r "$RUNNER_TEMP/flash" website/flash
+            git add -A website/flash
             if [ "$GITHUB_REF_NAME" = main ]; then
               # (the production site is built from main, and the boxes' dashboard reads https://pisophone.pages.dev/update)
               # (a failure here must not hold back the coin box images, but it still fails the run, after they are pushed)
@@ -221,7 +223,7 @@ jobs:
               fi
             fi
             if git diff --staged --quiet; then exit $ota_failed; fi
-            git commit -q -m "ci: coin box updates ($(python3 -c "import json;print(json.load(open('$RUNNER_TEMP/flash/manifest.json'))['version'])"))"
+            git commit -q -m "ci: coin box updates and flash images ($(python3 -c "import json;print(json.load(open('$RUNNER_TEMP/flash/manifest.json'))['version'])"))"
             if git push origin "HEAD:refs/heads/$GITHUB_REF_NAME"; then exit $ota_failed; fi
             sleep $((attempt * 3))
           done

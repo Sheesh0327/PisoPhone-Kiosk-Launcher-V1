@@ -33,6 +33,7 @@ esp32_firmware/include/WebAssets.h linguist-generated=true
 setup/piso-setup*.sh linguist-generated=true
 setup/piso-setup*.sh.sha256 linguist-generated=true
 website/update/** linguist-generated=true
+website/flash/** linguist-generated=true
 tools/pisoportal/bin/** linguist-generated=true
 app/schemas/** linguist-generated=true
 website/js/*-bundle.js linguist-vendored=true
