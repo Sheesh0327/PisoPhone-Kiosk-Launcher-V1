@@ -71,28 +71,28 @@ try:
             check("PisoPhone Management Disabled" in pg.text_content("#t-ph"), "the locked notice is shown on wifi-only")
             check(pg.query_selector("#boxf") is None, "no coin box iframe on wifi-only")
             br.close()
-            return
-        pg.wait_for_selector("#boxf", state="visible", timeout=5000)
-        frame = None
-        for _ in range(40):
-            frame = next((f for f in pg.frames if f.url.startswith(f"http://127.0.0.1:{CP + 1}/")), None)
-            if frame and frame.query_selector("#h"):
-                break
-            pg.wait_for_timeout(250)
-        check(frame is not None and frame.text_content("#h") == "Coin box dashboard", "the Rental phones tab shows the coin box's page in a frame (the router added the box login, the box's framing refusal is gone)")
-        check("embed=1" in frame.url and ("theme=light" in frame.url or "theme=dark" in frame.url) and frame.text_content("#t").split(":")[0] in ("start", "theme"), "the frame is asked for the embedded view with the console's theme: " + frame.url + " " + frame.text_content("#t"))
-        pg.click("#th")
-        pg.wait_for_function("document.querySelector('#boxf').contentWindow !== null", timeout=3000)
-        want = pg.evaluate("document.documentElement.dataset.theme")
-        for _ in range(20):
-            if frame.text_content("#t") == f"theme:{want}":
-                break
-            pg.wait_for_timeout(150)
-        check(frame.text_content("#t") == f"theme:{want}", f"the console's light/dark switch reaches the page in the frame: {frame.text_content('#t')} (wanted {want})")
-        check(not errors and not blocked, f"no script errors and nothing refused by the content security policy: {errors} {blocked}")
-        pg.click("#tabs button[data-t=over]")
-        check(not pg.is_visible("#boxf"), "another tab hides the frame")
-        br.close()
+        else:
+            pg.wait_for_selector("#boxf", state="visible", timeout=5000)
+            frame = None
+            for _ in range(40):
+                frame = next((f for f in pg.frames if f.url.startswith(f"http://127.0.0.1:{CP + 1}/")), None)
+                if frame and frame.query_selector("#h"):
+                    break
+                pg.wait_for_timeout(250)
+            check(frame is not None and frame.text_content("#h") == "Coin box dashboard", "the Rental phones tab shows the coin box's page in a frame (the router added the box login, the box's framing refusal is gone)")
+            check("embed=1" in frame.url and ("theme=light" in frame.url or "theme=dark" in frame.url) and frame.text_content("#t").split(":")[0] in ("start", "theme"), "the frame is asked for the embedded view with the console's theme: " + frame.url + " " + frame.text_content("#t"))
+            pg.click("#th")
+            pg.wait_for_function("document.querySelector('#boxf').contentWindow !== null", timeout=3000)
+            want = pg.evaluate("document.documentElement.dataset.theme")
+            for _ in range(20):
+                if frame.text_content("#t") == f"theme:{want}":
+                    break
+                pg.wait_for_timeout(150)
+            check(frame.text_content("#t") == f"theme:{want}", f"the console's light/dark switch reaches the page in the frame: {frame.text_content('#t')} (wanted {want})")
+            check(not errors and not blocked, f"no script errors and nothing refused by the content security policy: {errors} {blocked}")
+            pg.click("#tabs button[data-t=over]")
+            check(not pg.is_visible("#boxf"), "another tab hides the frame")
+            br.close()
 finally:
     env.close()
     stub.shutdown(); stub.server_close()
