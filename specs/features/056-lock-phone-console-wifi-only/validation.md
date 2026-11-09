@@ -15,7 +15,7 @@
 - [x] Console HTML test (`python tools/pisoportal/tests/test_console_html.py` passes)
 
 ## Not tested
-Physical OpenWrt hardware execution (to be added to `docs/REAL_WORLD_TESTING.md` as hardware check RS66). Native cargo tests owed to CI `router-program.yml` on `beta`.
+Physical OpenWrt hardware execution (to be added to `docs/REAL_WORLD_TESTING.md` as hardware check RS66). Native cargo tests, style/lints, and multi-architecture builds verified green in CI on `beta` (`router-program.yml` run 42611664456 and `quality.yml` run 42613422448).
 
 ## Money and time
 Money and time paths not touched: payment recording, coin counting, roll, vouchers, and rates remain completely untouched.
