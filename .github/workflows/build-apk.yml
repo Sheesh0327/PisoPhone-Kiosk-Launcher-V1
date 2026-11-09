@@ -168,7 +168,7 @@ jobs:
 
       - name: Upload test reports on failure
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: unit-test-reports
           path: |
@@ -227,7 +227,7 @@ jobs:
 
       - name: Upload the lint report
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: lint-report
           path: app/build/reports/lint-results-debug.html
@@ -296,7 +296,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/unsigned" && cp "$APK" "$RUNNER_TEMP/unsigned/app-unsigned.apk"
           echo "Unsigned APK: $(stat -c %s "$APK") bytes"
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: unsigned-apk
           path: ${{ runner.temp }}/unsigned/app-unsigned.apk
@@ -357,7 +357,7 @@ jobs:
             --out "$RUNNER_TEMP/signed/app-release.apk" "$RUNNER_TEMP/aligned.apk"
           "$BT/apksigner" verify --print-certs "$RUNNER_TEMP/signed/app-release.apk"
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: signed-apk
           path: ${{ runner.temp }}/signed/app-release.apk
