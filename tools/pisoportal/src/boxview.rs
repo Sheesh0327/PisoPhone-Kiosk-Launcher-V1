@@ -120,8 +120,7 @@ fn serve_one(c: &Console, req: Request, mut conn: Incoming) {
         return refuse(
             &mut conn,
             "403 Forbidden",
-            "PisoPhone management is disabled on PisoWiFi-only routers.
-",
+            "PisoPhone management is disabled on PisoWiFi-only routers.",
         );
     }
     if !c.session_ok(&req) {
@@ -335,10 +334,8 @@ mod tests {
     #[test]
     fn wifi_product_refuses_boxview_proxy() {
         assert_eq!(
-            "PisoPhone management is disabled on PisoWiFi-only routers.
-",
-            "PisoPhone management is disabled on PisoWiFi-only routers.
-"
+            "PisoPhone management is disabled on PisoWiFi-only routers.",
+            "PisoPhone management is disabled on PisoWiFi-only routers."
         );
     }
 }
