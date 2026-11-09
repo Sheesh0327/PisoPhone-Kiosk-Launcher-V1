@@ -117,11 +117,7 @@ fn serve_one(c: &Console, req: Request, mut conn: Incoming) {
     // a request's body is not left unread on an early answer: closing with unread bytes resets the connection
     let len: usize = req.header("content-length").and_then(|v| v.parse().ok()).unwrap_or(0);
     if cfg.shop_product == "wifi" {
-        return refuse(
-            &mut conn,
-            "403 Forbidden",
-            "PisoPhone management is disabled on PisoWiFi-only routers.",
-        );
+        return refuse(&mut conn, "403 Forbidden", "PisoPhone management is disabled on PisoWiFi-only routers.");
     }
     if !c.session_ok(&req) {
         return refuse(

@@ -28,13 +28,9 @@ const PHSEC_WIFI: &str = r##"<section id="t-ph" class="hide"><div class="card" s
 /// On a dual-mode router ("both"), the full rental phones management tab and iframe are provided.
 fn page_html(product: &str) -> String {
     if product == "wifi" {
-        UI.replace("@PHTAB_BTN@", PHTAB_WIFI)
-            .replace("@PH_SECTION@", PHSEC_WIFI)
-            .replace("@PHTAB@", "Rental phones (Locked)")
+        UI.replace("@PHTAB_BTN@", PHTAB_WIFI).replace("@PH_SECTION@", PHSEC_WIFI).replace("@PHTAB@", "Rental phones (Locked)")
     } else {
-        UI.replace("@PHTAB_BTN@", PHTAB_BOTH)
-            .replace("@PH_SECTION@", PHSEC_BOTH)
-            .replace("@PHTAB@", "Rental phones")
+        UI.replace("@PHTAB_BTN@", PHTAB_BOTH).replace("@PH_SECTION@", PHSEC_BOTH).replace("@PHTAB@", "Rental phones")
     }
 }
 
