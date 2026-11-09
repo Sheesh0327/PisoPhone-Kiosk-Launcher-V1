@@ -73,7 +73,7 @@ function cli(j){var a=j.clients||[];$('cl').innerHTML=a.map(function(c){var on=c
 function theme(){var r=document.documentElement;return r.dataset.theme||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light')}
 function boxOrigin(){return 'http://'+location.hostname+':'+((+location.port||80)+1)}
 function boxTheme(){var f=$('boxf');if(f&&f.contentWindow&&f.src)try{f.contentWindow.postMessage({piso:'theme',theme:theme()},boxOrigin())}catch(e){}}
-function ph(){var f=$('boxf');if(!f.getAttribute('src')){f.onload=boxTheme;f.src=boxOrigin()+'/?embed=1&theme='+theme()}$('boxdirect').href=boxOrigin()+'/'}
+function ph(){var f=$('boxf');if(!f)return;if(!f.getAttribute('src')){f.onload=boxTheme;f.src=boxOrigin()+'/?embed=1&theme='+theme()}var bd=$('boxdirect');if(bd)bd.href=boxOrigin()+'/'}
 /* sales */
 function soldOut(j){if(j&&j.error==='NOT_FOUND'){$('t-'+tab).insertAdjacentHTML('afterbegin','<p class="msg">This router is on an older version. Run <b>piso-setup update</b> to use this page.</p>');return true}return false}
 /* kinds: coin = coins that bought time at once, vcoin = coins that bought a voucher code (income when the coins were counted), voucher = printed slips of older releases */

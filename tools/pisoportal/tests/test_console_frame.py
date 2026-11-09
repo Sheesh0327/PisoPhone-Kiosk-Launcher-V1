@@ -63,8 +63,15 @@ try:
         pg.fill("#pw", "router-pass"); pg.click("#gobtn")
         pg.wait_for_selector("#tabs", state="visible", timeout=8000)
         label = pg.inner_text("#tabs button[data-t=ph]")
-        check(label == ("Coin box" if PRODUCT == "wifi" else "Rental phones"), f"the tab that shows the coin box page reads {label!r} for SHOP_PRODUCT={PRODUCT}")
+        want_label = "Rental phones (Locked)" if PRODUCT == "wifi" else "Rental phones"
+        check(label == want_label, f"the tab that shows the coin box page reads {label!r} for SHOP_PRODUCT={PRODUCT}")
         pg.click("#tabs button[data-t=ph]")
+        if PRODUCT == "wifi":
+            pg.wait_for_selector("#t-ph .card", state="visible", timeout=5000)
+            check("PisoPhone Management Disabled" in pg.text_content("#t-ph"), "the locked notice is shown on wifi-only")
+            check(pg.query_selector("#boxf") is None, "no coin box iframe on wifi-only")
+            br.close()
+            return
         pg.wait_for_selector("#boxf", state="visible", timeout=5000)
         frame = None
         for _ in range(40):

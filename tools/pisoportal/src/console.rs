@@ -17,10 +17,25 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 const UI: &str = include_str!("console.html");
-/// The console page. The tab that shows the coin box's own page is named "Coin box" on a PisoWiFi-only router and "Rental phones"
-/// otherwise; its id (`ph`) and the page inside do not change.
+
+const PHTAB_BOTH: &str = r#"<button data-t="ph"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="2"/><path d="M11 18.5h2"/></svg>Rental phones</button>"#;
+const PHTAB_WIFI: &str = r#"<button data-t="ph" class="dis" aria-disabled="true"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Rental phones (Locked)</button>"#;
+
+const PHSEC_BOTH: &str = r#"<section id="t-ph" class="hide"><p class="msg hide" id="phnote"></p><iframe id="boxf" title="Rental phones: the coin box" allow=""></iframe><p class="s">This is the coin box's own page, brought in through the router. <a id="boxdirect" href="#">Open it on its own</a></p></section>"#;
+const PHSEC_WIFI: &str = r#"<section id="t-ph" class="hide"><div class="card" style="margin-top:16px"><div style="display:flex;align-items:center;gap:12px;margin-bottom:8px"><svg viewBox="0 0 24 24" aria-hidden="true" style="width:24px;height:24px;stroke:var(--gold,#d97706);fill:none;stroke-width:2"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><h2 style="margin:0">PisoPhone Management Disabled</h2></div><p class="s">This router is configured for PisoWiFi only. Rental phone management, prepaid time cards, and phone slot settings are disabled. To manage rental phones, configure the shop product as 'both' during router setup.</p></div></section>"#;
+
+/// The console page. On a PisoWiFi-only router, rental phone management is locked (disabled tab with lock icon, locked info card, no box iframe).
+/// On a dual-mode router ("both"), the full rental phones management tab and iframe are provided.
 fn page_html(product: &str) -> String {
-    UI.replace("@PHTAB@", if product == "wifi" { "Coin box" } else { "Rental phones" })
+    if product == "wifi" {
+        UI.replace("@PHTAB_BTN@", PHTAB_WIFI)
+            .replace("@PH_SECTION@", PHSEC_WIFI)
+            .replace("@PHTAB@", "Rental phones (Locked)")
+    } else {
+        UI.replace("@PHTAB_BTN@", PHTAB_BOTH)
+            .replace("@PH_SECTION@", PHSEC_BOTH)
+            .replace("@PHTAB@", "Rental phones")
+    }
 }
 
 const UI_JS: &str = include_str!("console-ui.js");
@@ -915,16 +930,25 @@ mod tests {
     fn the_coin_box_tab_is_named_for_the_product() {
         let wifi = page_html("wifi");
         assert!(
-            wifi.contains(r#"<button data-t="ph"><svg"#) && wifi.contains("</svg>Coin box</button>") && !wifi.contains("Rental phones")
+            wifi.contains(r#"<button data-t="ph" class="dis" aria-disabled="true"><svg"#)
+                && wifi.contains("Rental phones (Locked)</button>")
+                && !wifi.contains("Coin box</button>")
         );
+        assert!(wifi.contains(r#"id="t-ph""#));
+        assert!(!wifi.contains(r#"id="boxf""#), "on wifi the coin box iframe is not included");
+        assert!(wifi.contains("PisoPhone Management Disabled"));
+
         let both = page_html("both");
         assert!(
             both.contains(r#"<button data-t="ph"><svg"#)
                 && both.contains("</svg>Rental phones</button>")
-                && !both.contains("Coin box</button>")
+                && !both.contains("class=\"dis\"")
+                && !both.contains("(Locked)")
         );
         assert!(!wifi.contains("@PHTAB@") && !both.contains("@PHTAB@"));
-        assert!(wifi.contains(r#"id="t-ph""#) && wifi.contains(r#"id="boxf""#), "the tab id and the page inside it do not change");
+        assert!(!wifi.contains("@PHTAB_BTN@") && !both.contains("@PHTAB_BTN@"));
+        assert!(!wifi.contains("@PH_SECTION@") && !both.contains("@PH_SECTION@"));
+        assert!(both.contains(r#"id="t-ph""#) && both.contains(r#"id="boxf""#), "on both the iframe is present");
     }
 
     #[test]

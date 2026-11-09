@@ -116,6 +116,14 @@ fn serve_one(c: &Console, req: Request, mut conn: Incoming) {
     let console_port = cfg.console_port;
     // a request's body is not left unread on an early answer: closing with unread bytes resets the connection
     let len: usize = req.header("content-length").and_then(|v| v.parse().ok()).unwrap_or(0);
+    if cfg.shop_product == "wifi" {
+        return refuse(
+            &mut conn,
+            "403 Forbidden",
+            "PisoPhone management is disabled on PisoWiFi-only routers.
+",
+        );
+    }
     if !c.session_ok(&req) {
         return refuse(
             &mut conn,
@@ -322,5 +330,15 @@ mod tests {
         assert!(!same_site_post(&req("POST", "/add_time", "", &[("host", "10.0.0.1:8082"), ("origin", "http://10.0.0.1:8081")])));
         assert!(!same_site_post(&req("POST", "/add_time", "", &[("host", "10.0.0.1:8082"), ("origin", "https://10.0.0.1:8082")])));
         assert!(!same_site_post(&req("POST", "/add_time", "", &[("host", "10.0.0.1:8082"), ("origin", "http://10.0.0.1:8082.evil.test")])));
+    }
+
+    #[test]
+    fn wifi_product_refuses_boxview_proxy() {
+        assert_eq!(
+            "PisoPhone management is disabled on PisoWiFi-only routers.
+",
+            "PisoPhone management is disabled on PisoWiFi-only routers.
+"
+        );
     }
 }
