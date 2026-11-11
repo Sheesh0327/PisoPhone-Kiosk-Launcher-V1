@@ -16,7 +16,9 @@
    "where": "host_tests/coin_record_order_test.cpp",
    "fails_before": true
   },
-  "release": "firmware"
+  "release": "firmware",
+  "feature": "004-firmware-money",
+  "review_evidence": "Feature 004 validation (git 2b2bdc2^): host tests passed, but the prior red result was a missing-header build error rather than a failing logic assertion; no real box test is established."
  },
  {
   "id": "FW-02",
@@ -36,7 +38,9 @@
    "where": "host_tests/coin_hw_apply_test.cpp",
    "fails_before": true
   },
-  "release": "firmware"
+  "release": "firmware",
+  "feature": "004-firmware-money",
+  "review_evidence": "Feature 004 validation (git 2b2bdc2^): host tests passed, but the prior red result was a missing-header build error rather than a failing logic assertion; no real box test is established."
  },
  {
   "id": "FW-01",
@@ -56,7 +60,9 @@
    "where": "host_tests/restart_guard_test.cpp",
    "fails_before": true
   },
-  "release": "firmware"
+  "release": "firmware",
+  "feature": "004-firmware-money",
+  "review_evidence": "Feature 004 validation (git 2b2bdc2^): host tests passed, but the prior red result was a missing-header build error rather than a failing logic assertion; no real box test is established."
  },
  {
   "id": "FW-05",
@@ -76,7 +82,9 @@
    "where": "host_tests/coin_credit_test.cpp",
    "fails_before": true
   },
-  "release": "firmware"
+  "release": "firmware",
+  "feature": "004-firmware-money",
+  "review_evidence": "Feature 004 validation (git 2b2bdc2^): host tests passed, but the prior red result was a missing-header build error rather than a failing logic assertion; no real box test is established."
  },
  {
   "id": "FW-06",
@@ -95,7 +103,9 @@
    "where": "host_tests/idle_coin_test.cpp",
    "fails_before": true
   },
-  "release": "firmware"
+  "release": "firmware",
+  "feature": "004-firmware-money",
+  "review_evidence": "Feature 004 validation (git 2b2bdc2^): host tests passed, but the prior red result was a missing-header build error rather than a failing logic assertion; no real box test is established."
  },
  {
   "id": "APP-06",
@@ -114,7 +124,9 @@
    "where": "app/src/test (PaymentRepositoryUnitTest and others)"
   },
   "release": "app",
-  "prior_work": "brought back to main by feature 018 (cherry-picked, merged 2026-10-24, PRs 108 to 114); CI build-apk runs 544 and 546 on main compiled it and ran the unit tests green"
+  "prior_work": "brought back to main by feature 018 (cherry-picked, merged 2026-10-24, PRs 108 to 114); CI build-apk runs 544 and 546 on main compiled it and ran the unit tests green",
+  "feature": "018-app-money-rows",
+  "review_evidence": "Feature 018 validation (git 2b2bdc2^) records CI unit tests and builds; no phone hardware verification is established."
  },
  {
   "id": "APP-01",
@@ -133,7 +145,9 @@
    "where": "app/src/test (PaymentRepositoryUnitTest and others)"
   },
   "release": "app",
-  "prior_work": "brought back to main by feature 018 (cherry-picked, merged 2026-10-24, PRs 108 to 114); CI build-apk runs 544 and 546 on main compiled it and ran the unit tests green"
+  "prior_work": "brought back to main by feature 018 (cherry-picked, merged 2026-10-24, PRs 108 to 114); CI build-apk runs 544 and 546 on main compiled it and ran the unit tests green",
+  "feature": "018-app-money-rows",
+  "review_evidence": "Feature 018 validation (git 2b2bdc2^) records CI unit tests and builds; no phone hardware verification is established."
  },
  {
   "id": "APP-02",
@@ -152,7 +166,9 @@
    "where": "app/src/test (PaymentRepositoryUnitTest and others)"
   },
   "release": "app",
-  "prior_work": "brought back to main by feature 018 (cherry-picked, merged 2026-10-24, PRs 108 to 114); CI build-apk runs 544 and 546 on main compiled it and ran the unit tests green"
+  "prior_work": "brought back to main by feature 018 (cherry-picked, merged 2026-10-24, PRs 108 to 114); CI build-apk runs 544 and 546 on main compiled it and ran the unit tests green",
+  "feature": "018-app-money-rows",
+  "review_evidence": "Feature 018 validation (git 2b2bdc2^) records CI unit tests and builds; no phone hardware verification is established."
  },
  {
   "id": "APP-08",
@@ -171,7 +187,9 @@
    "where": "app/src/test (PaymentRepositoryUnitTest and others)"
   },
   "release": "app",
-  "prior_work": "brought back to main by feature 018 (cherry-picked, merged 2026-10-24, PRs 108 to 114); CI build-apk runs 544 and 546 on main compiled it and ran the unit tests green"
+  "prior_work": "brought back to main by feature 018 (cherry-picked, merged 2026-10-24, PRs 108 to 114); CI build-apk runs 544 and 546 on main compiled it and ran the unit tests green",
+  "feature": "018-app-money-rows",
+  "review_evidence": "Feature 018 validation (git 2b2bdc2^) records CI unit tests and builds; no phone hardware verification is established."
  },
  {
   "id": "APP-05",
@@ -190,7 +208,9 @@
    "where": "app/src/test (PaymentRepositoryUnitTest and others)"
   },
   "release": "app",
-  "prior_work": "brought back to main by feature 018 (cherry-picked, merged 2026-10-24, PRs 108 to 114); CI build-apk runs 544 and 546 on main compiled it and ran the unit tests green"
+  "prior_work": "brought back to main by feature 018 (cherry-picked, merged 2026-10-24, PRs 108 to 114); CI build-apk runs 544 and 546 on main compiled it and ran the unit tests green",
+  "feature": "018-app-money-rows",
+  "review_evidence": "Feature 018 validation (git 2b2bdc2^) records CI unit tests and builds; no phone hardware verification is established. STATUS records no unit test naming this row."
  },
  {
   "id": "APP-10",
@@ -210,7 +230,9 @@
    "where": "app/src/test (PaymentRepositoryUnitTest and others)"
   },
   "release": "app",
-  "prior_work": "brought back to main by feature 018 (cherry-picked, merged 2026-10-24, PRs 108 to 114); CI build-apk runs 544 and 546 on main compiled it and ran the unit tests green"
+  "prior_work": "brought back to main by feature 018 (cherry-picked, merged 2026-10-24, PRs 108 to 114); CI build-apk runs 544 and 546 on main compiled it and ran the unit tests green",
+  "feature": "018-app-money-rows",
+  "review_evidence": "Feature 018 validation (git 2b2bdc2^) records CI unit tests and builds; no phone hardware verification is established."
  },
  {
   "id": "APP-03",
@@ -229,7 +251,9 @@
    "where": "app/src/test (PaymentRepositoryUnitTest and others)"
   },
   "release": "app",
-  "prior_work": "brought back to main by feature 018 (cherry-picked, merged 2026-10-24, PRs 108 to 114); CI build-apk runs 544 and 546 on main compiled it and ran the unit tests green"
+  "prior_work": "brought back to main by feature 018 (cherry-picked, merged 2026-10-24, PRs 108 to 114); CI build-apk runs 544 and 546 on main compiled it and ran the unit tests green",
+  "feature": "018-app-money-rows",
+  "review_evidence": "Feature 018 validation (git 2b2bdc2^) records CI unit tests and builds; no phone hardware verification is established. STATUS records no unit test naming this row."
  },
  {
   "id": "APP-09",
@@ -248,7 +272,9 @@
    "where": "app/src/test (PaymentRepositoryUnitTest and others)"
   },
   "release": "app",
-  "prior_work": "brought back to main by feature 018 (cherry-picked, merged 2026-10-24, PRs 108 to 114); CI build-apk runs 544 and 546 on main compiled it and ran the unit tests green"
+  "prior_work": "brought back to main by feature 018 (cherry-picked, merged 2026-10-24, PRs 108 to 114); CI build-apk runs 544 and 546 on main compiled it and ran the unit tests green",
+  "feature": "018-app-money-rows",
+  "review_evidence": "Feature 018 validation (git 2b2bdc2^) records CI unit tests and builds; no phone hardware verification is established. STATUS records no unit test naming this row."
  },
  {
   "id": "APP-04",

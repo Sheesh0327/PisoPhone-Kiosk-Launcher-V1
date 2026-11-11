@@ -1,3 +1,5 @@
+> Historical legacy template. For new or resumed work use OpenSpec; see `specs/README.md`.
+
 # Feature NNN: <name>
 
 Status: **draft | approved | in progress | done**   Branch: `feat/NNN-name`   Area: <one of app, firmware, router, setup, scripts, ci, website>

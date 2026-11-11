@@ -1,0 +1,9 @@
+schema: spec-driven
+
+context: |
+  New and resumed work uses OpenSpec. Link relevant legacy feature IDs, approvals,
+  and evidence without treating approval of old scope as approval of new scope.
+  Record owner approval and its scope separately from completed tasks in evidence.md.
+  Product capability coverage in openspec/specs is incomplete. Preserve outstanding
+  hardware checks and distinguish them from computer validation and release facts.
+  Follow CONTRIBUTING.md for checks and CLAUDE.md section 5 for branch and release safeguards.

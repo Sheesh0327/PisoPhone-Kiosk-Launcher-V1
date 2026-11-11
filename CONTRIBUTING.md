@@ -12,6 +12,8 @@ for working on it (also for Claude Code sessions).
 - `main` is the production channel. Merging to `main` publishes the phone app, the coin-box firmware and the router update, so nothing
   goes there that Code quality has not passed.
 
+Before a production merge, Code quality must pass on the exact candidate commit. When the owner authorizes a PR, use it to obtain the pre-merge check; if the required check is unavailable, report the missing evidence and do not merge to trigger it. Record failed acceptance gates and their diagnosis; a bounded retry after diagnosis or a change is allowed. Intentional red regression tests are not failed acceptance gates. See `specs/README.md` for OpenSpec approval and evidence.
+
 ## Before you open a pull request
 Run the checks for every area you touched (`CLAUDE.md` section 3 adds the router program's own tests):
 
@@ -37,3 +39,13 @@ Run the checks for every area you touched (`CLAUDE.md` section 3 adds the router
 
 ## Reporting problems
 Use the issue templates. For anything security related, follow `SECURITY.md` instead of opening an issue.
+
+Specification inventory: run `python3 scripts/check_specs.py` and `python3 scripts/tests/test_check_specs.py`. The checker validates record coverage and references; it does not prove historical claims are true.
+
+### Python verification prerequisites
+
+Create an isolated Python environment (Python 3.14 was used for the cleanup): `python -m venv .venv`, activate it for your shell, then `python -m pip install ruff==0.17.4 mypy==2.4.1 pytest==9.2.0`. For touched Python files under `scripts/`, `setup/`, `router/tests/`, and `protocol/`, run `python -m ruff check <touched-python-files>`, `python -m mypy <touched-python-files>`, and `python -m pytest -x <applicable-test-files>`. Also run standalone test scripts directly if they are not pytest tests. Report unavailable tools, unsupported collection, or failures as not passed; do not substitute another check. Existing area and security checks remain required.
+
+For the spec checker change, the six touched Python files are `scripts/check_specs.py`, `scripts/check_openspec.py`, `scripts/check_links.py`, `scripts/tests/test_check_specs.py`, `scripts/tests/test_check_openspec.py`, and `scripts/tests/test_check_links.py`. Run pytest on the three test files and also run `python scripts/tests/test_check_links.py` directly (it is a standalone test script).
+
+The **Specification integrity** workflow runs for specification and workflow-only changes targeting `main` or `beta`. It checks inventory coverage, scoped links with exact historical exceptions, and strict OpenSpec governance coverage; it also runs checker tests and Python gates. Hosted branch protection configuration is separate from this repository.

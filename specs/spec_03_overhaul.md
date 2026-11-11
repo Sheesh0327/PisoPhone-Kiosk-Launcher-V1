@@ -1,6 +1,8 @@
 # Spec 03: the overhaul (make it simpler, provable, and quick to set up)
 
 Status: **decisions D1 to D32 answered (D32 on 2026-10-29); 033, 034, 035, 039, 041 built and released as router 1.5.26 at 0%; 040 and 043 open (replan 2026-10-29)**   Written: 2026-10-28 against `main` at `9a92c33` (router 1.5.23, firmware 3.12.4, app 547)
+
+**Later record:** features 036 and 044 were merged in PR #126 (`662d759`), and the dated release record reports 1.5.29 at 100%. RS57–RS59 remain outstanding. The status above is the 2026-10-29 planning snapshot; see `specs/STATUS.md` and `specs/RELEASE_STATE.md`.
 Related: `specs/spec_02_always_on.md` (most of its reliability rows are now built, see section 2), `specs/roadmap.md` phases 6-8.
 
 ## 1. Goal

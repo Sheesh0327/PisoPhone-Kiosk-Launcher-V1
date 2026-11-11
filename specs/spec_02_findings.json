@@ -9,7 +9,7 @@
     "severity": "high",
     "money_or_signing": false,
     "confidence": "confirmed",
-    "status": "open",
+    "status": "fixed",
     "problem": "The monitor checks the box, the ledger, grief and the report, but **not the portal itself**. A hung (not crashed) `pisoportal` is not restarted by procd: customers cannot pay until someone reboots. (HARDENING item 8, roadmap 6.1)",
     "fix": "Each tick: `/ping` the portal with a 5 s limit; after 3 failures in a row restart it with the init script and alert once; alert again when it is back. Never restart twice within 10 min.",
     "test": {
@@ -17,7 +17,9 @@
       "where": "`router/tests/test_monitor.py`: fake portal that hangs; 3 ticks restart once; 4th tick alerts nothing new.",
       "fails_before": true
     },
-    "release": "router"
+    "release": "router",
+    "feature": "015-router-always-on",
+    "review_evidence": "Feature 015 validation records computer tests; hardware RS40-RS43 remain separate. AO-01 later required feature 052; see its validation and release record."
   },
   {
     "id": "AO-02",
@@ -57,7 +59,8 @@
       "where": "`cargo test`: 100k rows verify under 50 ms after the first (x86), peak memory below 64 KB extra.",
       "fails_before": true
     },
-    "release": "router"
+    "release": "router",
+    "review_evidence": "Feature 015 validation records streaming, but the 50 ms and 64 KB acceptance targets were not measured; remains open."
   },
   {
     "id": "AO-04",
@@ -77,7 +80,8 @@
       "where": "`cargo test`.",
       "fails_before": true
     },
-    "release": "router"
+    "release": "router",
+    "review_evidence": "Feature 015 records a computer pass; feature 033 subsequently removed the wheel. Whether this backlog row should be closed as superseded needs explicit disposition."
   },
   {
     "id": "AO-05",
@@ -89,7 +93,7 @@
     "severity": "med",
     "money_or_signing": false,
     "confidence": "confirmed",
-    "status": "open",
+    "status": "fixed",
     "problem": "Nothing watches free flash after setup.",
     "fix": "Each hour: `df /overlay`; alert under 1 MB and under 256 KB (once each a day); the portal never stops recording coins because of it. `piso-setup status` and the Check-up show the same.",
     "test": {
@@ -97,7 +101,9 @@
       "where": "`test_monitor.py` with a fake `df`.",
       "fails_before": true
     },
-    "release": "router"
+    "release": "router",
+    "feature": "015-router-always-on",
+    "review_evidence": "Feature 015 validation records computer tests; hardware RS40-RS43 remain separate."
   },
   {
     "id": "AO-06",
@@ -109,7 +115,7 @@
     "severity": "med",
     "money_or_signing": false,
     "confidence": "confirmed",
-    "status": "open",
+    "status": "fixed",
     "problem": "Every alert needs Telegram. A shop without Telegram is never told anything.",
     "fix": "Write each alert also to `/etc/coinslot.d/alerts.txt` (last 20 lines, a small file); the console front page and the setup program's Check-up show them.",
     "test": {
@@ -117,7 +123,9 @@
       "where": "`test_monitor.py`, `test_console.py`.",
       "fails_before": true
     },
-    "release": "router"
+    "release": "router",
+    "feature": "015-router-always-on",
+    "review_evidence": "Feature 015 validation records computer tests; hardware RS40-RS43 remain separate."
   },
   {
     "id": "AO-07",
@@ -138,7 +146,8 @@
       "where": "new `host_tests/worker_liveness_test.cpp`.",
       "fails_before": true
     },
-    "release": "firmware"
+    "release": "firmware",
+    "review_evidence": "Feature 017 records host tests but local firmware compile and hardware RS46 were not run; CI evidence must be checked."
   },
   {
     "id": "AO-08",
@@ -171,7 +180,7 @@
     "severity": "med",
     "money_or_signing": false,
     "confidence": "confirmed",
-    "status": "open",
+    "status": "fixed",
     "problem": "One thread per console / box-view connection, no cap. 200 idle sockets from a guest exhaust memory on a 64 MB router. (spec 01 RT-09; `http.rs:394` already uses `http::Limits`)",
     "fix": "Reuse `http::Limits` (cap and read timeouts) on both listeners.",
     "test": {
@@ -179,7 +188,9 @@
       "where": "`test_console.py`: 200 idle sockets, `/ping` and the coin page still answer.",
       "fails_before": true
     },
-    "release": "router"
+    "release": "router",
+    "feature": "015-router-always-on",
+    "review_evidence": "Feature 015 validation records computer tests; hardware RS40-RS43 remain separate."
   },
   {
     "id": "AO-10",
@@ -214,15 +225,16 @@
     "severity": "med",
     "money_or_signing": true,
     "confidence": "confirmed (found by feature 014's soak, 2026-10-23)",
-    "status": "owner-decision",
+    "status": "fixed",
     "problem": "A window's record is written to flash when the router first SEES a coin, not when the box is armed. A kill -9 or power cut after the box counted a coin and before the router noticed it (event about 0.3 s, poll up to 1 s) leaves the coin on the box with no record: recovery has nothing to credit, so the customer paid and the router never credits it. Measured: 9 of 527 pesos in 4 of 70 kills (kills aimed into windows).",
-    "fix": "not decided. Options for the owner: write the record at arm time (one small synced write per window); or on start ask the box for sessions it holds unacknowledged coins for (needs a box call that does not exist today); or leave it (the box keeps the coin, `reconcile` raises a mismatch alert and the box's revenue shows it).",
+    "fix": "Owner approved writing the window record at arm time; feature 021 implemented and computer-tested it. RS45 remains not run.",
     "test": {
       "kind": "integration",
       "where": "tools/pisoportal/tests/test_soak.py (--strict makes the stranded coins fail the run)",
       "fails_before": true
     },
     "release": "router",
-    "feature": "(none yet; found by 014, to be taken by 015 or its own feature after the owner decides)"
+    "feature": "021-window-record-at-arm",
+    "prior_decision_options": "not decided. Options for the owner: write the record at arm time (one small synced write per window); or on start ask the box for sessions it holds unacknowledged coins for (needs a box call that does not exist today); or leave it (the box keeps the coin, `reconcile` raises a mismatch alert and the box's revenue shows it)."
   }
 ]

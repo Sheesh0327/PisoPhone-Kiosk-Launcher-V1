@@ -1,0 +1,162 @@
+[
+  {
+    "source": "specs/features/010-router-flash-profile/spec.md",
+    "target": "setup/MANUAL.md",
+    "reason": "Historical feature record refers to a path removed or consolidated by 39ac65e Feature 048 group 5: small reference documents merged, the manual joins the setup guide."
+  },
+  {
+    "source": "specs/features/010-router-flash-profile/validation.md",
+    "target": "setup/MANUAL.md",
+    "reason": "Historical feature record refers to a path removed or consolidated by 39ac65e Feature 048 group 5: small reference documents merged, the manual joins the setup guide."
+  },
+  {
+    "source": "specs/features/015-router-always-on/plan.md",
+    "target": "tools/pisoportal/src/wheel_gate.rs",
+    "reason": "Historical feature record refers to a path removed or consolidated by c083016 Remove the spinning wheel from the router program (feature 033, groups 2-3)."
+  },
+  {
+    "source": "specs/features/039-hardware-check-triage/inventory.md",
+    "target": "specs/features/011-offline-setup/validation.md",
+    "reason": "Historical feature record refers to a path removed or consolidated by 2b2bdc2 Feature 048 group 4: finished features merged into one archive file."
+  },
+  {
+    "source": "specs/features/041-router-internet-required/plan.md",
+    "target": "setup/src/21-local-packages.sh",
+    "reason": "Historical feature record refers to a path removed or consolidated by 20e7b2d 041 group 2: the router setup needs internet; the copied-packages path is gone from the shell side."
+  },
+  {
+    "source": "specs/features/041-router-internet-required/plan.md",
+    "target": "specs/features/011-offline-setup/validation.md",
+    "reason": "Historical feature record refers to a path removed or consolidated by 2b2bdc2 Feature 048 group 4: finished features merged into one archive file."
+  },
+  {
+    "source": "specs/features/041-router-internet-required/spec.md",
+    "target": "setup/src/21-local-packages.sh",
+    "reason": "Historical feature record refers to a path removed or consolidated by 20e7b2d 041 group 2: the router setup needs internet; the copied-packages path is gone from the shell side."
+  },
+  {
+    "source": "specs/features/041-router-internet-required/spec.md",
+    "target": "router/tests/test_offline_setup.py",
+    "reason": "Historical feature record refers to a path removed or consolidated by 965071b 041 groups 5 and 6: say the requirement before the owner begins, and record the removal."
+  },
+  {
+    "source": "specs/features/041-router-internet-required/spec.md",
+    "target": "specs/features/011-offline-setup/validation.md",
+    "reason": "Historical feature record refers to a path removed or consolidated by 2b2bdc2 Feature 048 group 4: finished features merged into one archive file."
+  },
+  {
+    "source": "specs/features/041-router-internet-required/validation.md",
+    "target": "router/tests/test_offline_setup.py",
+    "reason": "Historical feature record refers to a path removed or consolidated by 965071b 041 groups 5 and 6: say the requirement before the owner begins, and record the removal."
+  },
+  {
+    "source": "specs/features/041-router-internet-required/validation.md",
+    "target": "setup/src/21-local-packages.sh",
+    "reason": "Historical feature record refers to a path removed or consolidated by 20e7b2d 041 group 2: the router setup needs internet; the copied-packages path is gone from the shell side."
+  },
+  {
+    "source": "specs/features/046-router-setup-real-run/plan.md",
+    "target": "setup/src/21-local-packages.sh",
+    "reason": "Historical feature record refers to a path removed or consolidated by 20e7b2d 041 group 2: the router setup needs internet; the copied-packages path is gone from the shell side."
+  },
+  {
+    "source": "specs/features/048-codebase-cleanup/plan.md",
+    "target": "setup/MANUAL.md",
+    "reason": "Historical feature record refers to a path removed or consolidated by 39ac65e Feature 048 group 5: small reference documents merged, the manual joins the setup guide."
+  },
+  {
+    "source": "specs/features/048-codebase-cleanup/plan.md",
+    "target": "specs/EPICS.md",
+    "reason": "Proposed consolidation was dropped in feature 048 spec B5 and plan group 6."
+  },
+  {
+    "source": "specs/features/048-codebase-cleanup/spec.md",
+    "target": "specs/features/007-wheel-graphics/evidence/wheel-360x740.png",
+    "reason": "Historical feature record refers to a path removed or consolidated by e0a1453 Feature 048 group 3: remove the wheel feature folders, old reports and handoff notes."
+  },
+  {
+    "source": "specs/features/048-codebase-cleanup/spec.md",
+    "target": "docs/maintainers/AUDIT_REPORT.md",
+    "reason": "Historical feature record refers to a path removed or consolidated by e0a1453 Feature 048 group 3: remove the wheel feature folders, old reports and handoff notes."
+  },
+  {
+    "source": "specs/features/048-codebase-cleanup/spec.md",
+    "target": "docs/maintainers/HARDENING_PLAN.md",
+    "reason": "Historical feature record refers to a path removed or consolidated by e0a1453 Feature 048 group 3: remove the wheel feature folders, old reports and handoff notes."
+  },
+  {
+    "source": "specs/features/048-codebase-cleanup/spec.md",
+    "target": "docs/COIN_SLOT_PROTECTION.md",
+    "reason": "Historical feature record refers to a path removed or consolidated by 39ac65e Feature 048 group 5: small reference documents merged, the manual joins the setup guide."
+  },
+  {
+    "source": "specs/features/048-codebase-cleanup/spec.md",
+    "target": "docs/LICENSING.md",
+    "reason": "Historical feature record refers to a path removed or consolidated by 39ac65e Feature 048 group 5: small reference documents merged, the manual joins the setup guide."
+  },
+  {
+    "source": "specs/features/048-codebase-cleanup/spec.md",
+    "target": "docs/api/print-pairing.md",
+    "reason": "Historical feature record refers to a path removed or consolidated by 39ac65e Feature 048 group 5: small reference documents merged, the manual joins the setup guide."
+  },
+  {
+    "source": "specs/features/048-codebase-cleanup/spec.md",
+    "target": "docs/api/superadmin-qr.md",
+    "reason": "Historical feature record refers to a path removed or consolidated by 39ac65e Feature 048 group 5: small reference documents merged, the manual joins the setup guide."
+  },
+  {
+    "source": "specs/features/048-codebase-cleanup/spec.md",
+    "target": "setup/MANUAL.md",
+    "reason": "Historical feature record refers to a path removed or consolidated by 39ac65e Feature 048 group 5: small reference documents merged, the manual joins the setup guide."
+  },
+  {
+    "source": "specs/features/048-codebase-cleanup/spec.md",
+    "target": "specs/spec_01..03",
+    "reason": "Historical shorthand for a dropped epic consolidation in feature 048 spec B5."
+  },
+  {
+    "source": "specs/features/048-codebase-cleanup/spec.md",
+    "target": "specs/EPICS.md",
+    "reason": "Proposed consolidation was dropped in feature 048 spec B5 and plan group 6."
+  },
+  {
+    "source": "specs/features/048-codebase-cleanup/validation.md",
+    "target": "docs/maintainers/AUDIT_REPORT.md",
+    "reason": "Historical feature record refers to a path removed or consolidated by e0a1453 Feature 048 group 3: remove the wheel feature folders, old reports and handoff notes."
+  },
+  {
+    "source": "specs/features/048-codebase-cleanup/validation.md",
+    "target": "docs/COIN_SLOT_PROTECTION.md",
+    "reason": "Historical feature record refers to a path removed or consolidated by 39ac65e Feature 048 group 5: small reference documents merged, the manual joins the setup guide."
+  },
+  {
+    "source": "specs/features/048-codebase-cleanup/validation.md",
+    "target": "setup/MANUAL.md",
+    "reason": "Historical feature record refers to a path removed or consolidated by 39ac65e Feature 048 group 5: small reference documents merged, the manual joins the setup guide."
+  },
+  {
+    "source": "specs/features/048-codebase-cleanup/validation.md",
+    "target": "docs/maintainers/HARDENING_PLAN.md",
+    "reason": "Historical feature record refers to a path removed or consolidated by e0a1453 Feature 048 group 3: remove the wheel feature folders, old reports and handoff notes."
+  },
+  {
+    "source": "specs/features/048-codebase-cleanup/validation.md",
+    "target": "specs/features/005-spinning-wheel",
+    "reason": "Historical feature record refers to a path removed or consolidated by e0a1453 Feature 048 group 3: remove the wheel feature folders, old reports and handoff notes."
+  },
+  {
+    "source": "specs/features/048-codebase-cleanup/validation.md",
+    "target": "docs/LICENSING.md",
+    "reason": "Historical feature record refers to a path removed or consolidated by 39ac65e Feature 048 group 5: small reference documents merged, the manual joins the setup guide."
+  },
+  {
+    "source": "specs/features/048-codebase-cleanup/validation.md",
+    "target": "docs/api/print-pairing.md",
+    "reason": "Historical feature record refers to a path removed or consolidated by 39ac65e Feature 048 group 5: small reference documents merged, the manual joins the setup guide."
+  },
+  {
+    "source": "specs/features/048-codebase-cleanup/validation.md",
+    "target": "docs/api/superadmin-qr.md",
+    "reason": "Historical feature record refers to a path removed or consolidated by 39ac65e Feature 048 group 5: small reference documents merged, the manual joins the setup guide."
+  }
+]

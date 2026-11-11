@@ -1,6 +1,8 @@
 # Spec 05: shop branding (the shop owner's name on everything a customer sees)
 
 Status: **decisions D1 to D11 answered by the owner on 2026-10-30 (asked one at a time, none assumed); feature 049 specified, waiting for approval**   Written: 2026-10-30 against `main` at `2489b58` (router 1.5.29 live)
+
+**Later record:** feature 049 was merged and the dated release record reports router 1.5.31 at 100%; RS63 and Filipino wording sign-off remained open in that record. Features 050 and 051 were skipped by owner decision, as recorded below. The status above is the earlier planning snapshot; see `specs/RELEASE_STATE.md`.
 Related: `specs/features/013-shop-branding/` (phone palette, shop name, title: built), `specs/features/ARCHIVE.md` (023, 024)
 
 ## 1. Goal

@@ -1,6 +1,6 @@
 # CLAUDE.md: what this project is and how to work on it
 
-Spec-driven work: read `constitution.md`, then `specs/README.md` (the loop: plan, implement, validate; skills in `.claude/skills/sdd-*`). No code without an approved feature spec.
+Spec-driven work: read `constitution.md`, then `specs/README.md`. Use OpenSpec for new and resumed work; no code without an owner-approved spec and plan.
 
 Read this first. It is short on purpose: the details are in the documents it points to. Section 2 points to where the repository stands
 today (`specs/RELEASE_STATE.md`); update that file whenever a release goes out.

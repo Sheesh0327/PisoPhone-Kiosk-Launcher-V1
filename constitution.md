@@ -1,48 +1,24 @@
 ---
-version: 1.2.0
+version: 1.3.0
 frozen: true
-last_reviewed: 2026-10-21
+last_reviewed: 2026-11-11
 ---
 
 # PisoHub Software Factory Constitution
 
-> This file is the **absolute first bytes** of every system prompt.
-> Do not edit between sessions. Version it, then freeze it.
-> If a rule here conflicts with the two project rules in `CLAUDE.md` section 1 (money and time are never wrong; only owner-signed software is installed), the project rules win.
+This is a versioned project policy. The two project rules in `CLAUDE.md` section 1 (money and time are never wrong; only owner-signed software is installed) govern trade-offs.
 
-## 1. Zero Raw File Dumps
+## 1. Context hygiene
 
-- **Hard cap: 200 lines / 1,500 tokens per file snippet.** Anything larger must be summarized.
-- Before touching code, emit a **Context Manifest**: a flat table of `filename | purpose | lines | est_tokens`.
-- Directory exploration must use `tree -L 2 -I node_modules` output, never `ls -R` dumps.
-- CSV/JSON: show **headers + first 5 rows + row count only**. Never full data.
+- Read only relevant files and use focused searches. Do not disclose secrets.
+- Keep file snippets under 200 lines / 1,500 tokens; summarize larger material.
+- Before touching code, emit a context manifest with filename, purpose, lines and estimated tokens.
+- For CSV/JSON, show headers, the first five rows and the row count only.
+- Preserve a handoff when work cannot be completed in a session.
 
-## 2. Byte-Stable Prefix & Context Hygiene
+## 2. Provider-specific guidance
 
-- This constitution is the **first bytes** of the system prompt. No preamble above it.
-- **No timestamps, UUIDs, session IDs, or `Date.now()`** anywhere in the static prefix before the first user message.
-- Tool definitions must be **pinned and versioned**. Any router or proxy that injects a header must append it to the *user message*, not the system prefix.
-- **Do not reorder or reformat** static blocks between turns — even whitespace changes invalidate the cache.
-
-## 3. Caching Telemetry Gate (NEW)
-
-- After **turn 2**, verify the API response shows `cache_read_input_tokens > cache_creation_input_tokens`.
-- If the ratio is inverted, **stop and diagnose**: check for (a) proxy header injection, (b) a model swap by a fallback, (c) any dynamic token in the prefix.
-- Log the cache hit rate to the Negative Constraint Ledger (Rule 6) so you can spot regressions.
-
-## 4. Tiered Model Discipline
-
-- **Tier-1 (Haiku):** bulk codegen, markdown formatting, data cleaning. Default effort: `low`.
-- **Tier-2 (Sonnet):** architecture, integration, complex scripts. Default effort: `medium`.
-- **Tier-3 (Opus):** strict emergency fallback. Requires **two documented failed local test runs** in the ledger first.
-- **Model-switch protocol:** Any tier change (manual or by fallback) **must start a new chat**. Caches are per-model; mixing tiers mid-session pays full price for every turn.
-- A model fallback is allowed **only on quota exhaustion**, never on soft errors.
-
-## 5. Fresh Chat / Nuke Rule
-
-- **Turn limit: 20.** **Input token limit: 60K.** Whichever hits first, nuke the chat.
-- Before nuking: **write a summary to `specs/notes/YYYY-MM-DD_<task>.md`** (task, decisions, artifacts, open questions) and link it from the ledger.
-- Treat every task as a single transaction: generate → copy to disk → close.
+Stable prompts, cache measurements, model selection, and chat limits depend on the provider and tools actually available. Use cache telemetry only when the runtime exposes it; never invent or require inaccessible measurements. Prior cache and model guidance is historical and not a universal gate.
 
 ## 6. Negative Constraint Ledger
 
@@ -58,14 +34,14 @@ last_reviewed: 2026-10-21
 
 - **Python** (`scripts/`, `setup/`, `router/tests`, `protocol/`): no generated code is accepted without **`ruff check` + `mypy` + `pytest -x`** on the touched files.
 - **Every area:** run the checks for the area in the `CONTRIBUTING.md` table and `bash scripts/check_security_rules.sh`. Say plainly what could not be run (for example no Android SDK or no board).
-- Failed gate → append to ledger, do **not** retry in the same chat. Open a fresh chat with the traceback.
+- Record a failed acceptance gate and diagnose it. A bounded retry after a documented diagnosis or change is allowed; do not hide repeated failures. An intentional red regression test is not a failed acceptance gate.
 
 ## 8. Spec First
 
-- **No code without an approved spec.** Work is a feature: a folder `specs/features/NNN-name/` with `spec.md` (intent, constraints, success criteria), `plan.md` (small task groups) and `validation.md` (acceptance checks and evidence). The owner approves the spec and plan before the agent writes code.
-- **The spec is the contract.** If the work needs something the spec does not say, stop and change the spec first (small, precise edit), then continue. Code that no spec asks for is removed.
-- **One feature, one branch, one area**: `feat/NNN-name` from `beta`. Loop: plan, implement, validate. A feature is done only when `validation.md` is filled with evidence and `specs/STATUS.md` is updated.
-- **Replan between features** (`specs/REPLAN.md`): update the constitution, roadmap and workflow before starting the next one.
+- No code without an owner-approved spec and plan. Use OpenSpec for new and resumed work, as described in `specs/README.md`; link and preserve legacy records.
+- Record approval scope and acceptance evidence separately from task checkboxes. Update the spec first and obtain approval for material new scope before changing code.
+- Start feature branches from `main`. Follow `CLAUDE.md` section 5 for router beta builds, exact-candidate pre-merge checks, and owner-directed PRs, merges, and releases.
+- Record results or explicit not-run reasons for each criterion, update the status and backlog, and keep outstanding hardware checks open.
 
 ## 9. Human in the Loop
 
