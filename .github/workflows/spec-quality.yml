@@ -1,0 +1,49 @@
+name: Specification integrity
+
+on:
+  push:
+    branches: [main, beta]
+    paths: &spec_paths
+      - 'specs/**'
+      - 'openspec/**'
+      - 'constitution.md'
+      - 'CLAUDE.md'
+      - 'CONTRIBUTING.md'
+      - '.claude/skills/**'
+      - '.agents/skills/**'
+      - '.github/pull_request_template.md'
+      - '.github/workflows/spec-quality.yml'
+      - 'scripts/check_specs.py'
+      - 'scripts/check_links.py'
+      - 'scripts/check_openspec.py'
+      - 'scripts/tests/test_check_specs.py'
+      - 'scripts/tests/test_check_links.py'
+      - 'scripts/tests/test_check_openspec.py'
+  pull_request:
+    branches: [main, beta]
+    paths: *spec_paths
+
+permissions:
+  contents: read
+
+jobs:
+  spec-integrity:
+    name: Specification integrity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+      - run: npm install --global @fission-ai/openspec@1.17.0
+      - run: python -m pip install ruff==0.17.4 mypy==2.4.1 pytest==9.2.0
+      - run: python scripts/check_specs.py
+      - run: python scripts/check_links.py --specs
+      - run: python scripts/check_openspec.py
+      - run: python scripts/tests/test_check_links.py
+      - run: python -m pytest -x scripts/tests/test_check_specs.py scripts/tests/test_check_openspec.py scripts/tests/test_check_links.py
+      - run: python -m ruff check scripts/check_specs.py scripts/check_openspec.py scripts/check_links.py scripts/tests/test_check_specs.py scripts/tests/test_check_openspec.py scripts/tests/test_check_links.py
+      - run: python -m mypy scripts/check_specs.py scripts/check_openspec.py scripts/check_links.py scripts/tests/test_check_specs.py scripts/tests/test_check_openspec.py scripts/tests/test_check_links.py

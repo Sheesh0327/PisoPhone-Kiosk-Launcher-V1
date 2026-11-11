@@ -1,53 +1,34 @@
-# Specs: spec-driven development in this repo
+# Specification workflow
 
-The full guide (workflow, cache rules, templates) is `specs/GUIDE.md`. Start every chat with `specs/templates/session-start.md`.
+OpenSpec is the planning workflow for new and resumed work. The owner approves the scope and plan before implementation; record that approval and its scope in the change's `evidence.md`. Checked tasks are not approval.
 
-Specs are permanent files that tell a stateless agent what to build and what not to break. Chat is for steering, not for remembering.
-The owner is the architect: writes or approves the spec; the agent plans, builds and proves it.
+## Where to look
 
-## Reading order for every new chat (a stable prefix, so it can be cached)
+| Question | Record |
+|---|---|
+| Established requirements | `openspec/specs/` capability specs. Product coverage is incomplete: absence here does not mean a product has no requirements. |
+| Proposed work | `openspec/changes/<change>/` proposal, delta specs, design and tasks. |
+| Earlier decisions and validation | `specs/features/`, `specs/features/ARCHIVE.md`, legacy epics and findings. These retain their IDs and paths; historical entries describe what was known at the time. |
+| Work summary | `specs/STATUS.md`; cross-check dated claims against their sources. |
+| Release observations | `specs/RELEASE_STATE.md`; its dated feed observations are not proof of current device state. |
+| Outstanding physical checks | `docs/REAL_WORLD_TESTING.md`. A computer pass does not close a hardware check. |
+| Checks, branches and release safeguards | `CONTRIBUTING.md` for checks and `CLAUDE.md` section 5 for branches and releases. |
 
-1. `constitution.md` (frozen rules for the agent)  2. `CLAUDE.md`  3. this file  4. `specs/STATUS.md`
-5. `specs/RELEASE_STATE.md` when the task needs to know what is live. Only then the feature you are working on: `specs/features/NNN-name/`, and the backlog row it came from.
-Never read generated or big files (`CLAUDE.md` section 4). Search with `grep -n`, read line ranges.
+See `specs/legacy-inventory.json` and `specs/cleanup-report.md` for the evidence reconciliation and known gaps. Until the cleanup completes, other older guides and skills may still contain conflicting instructions; do not treat those conflicts as evidence of approval or validation.
 
-## The three layers
+## New work
 
-| Layer | Files | Changes |
-|---|---|---|
-| Project (rarely) | `constitution.md`, `specs/mission.md`, `specs/techstack.md`, `specs/roadmap.md` | Only at a replan, with the owner |
-| Backlog | `specs/spec_NN_*.md` (an epic) and `specs/spec_NN_findings.json` (one row per item) | Rows change status as features land |
-| Feature (often) | `specs/features/NNN-name/{spec,plan,validation}.md` | Written, approved, built, validated |
+1. Create an OpenSpec change describing the intended behavior, constraints, tasks, and applicable checks. Refer to relevant capability specs and backlog rows.
+2. Obtain owner approval of the spec and plan before implementation and record its source and scope in `evidence.md`. Update the change and obtain approval for material new scope before coding it.
+3. Implement the approved tasks, record each acceptance criterion's result and evidence (or a reason it was not run), and run applicable checks from `CONTRIBUTING.md`.
+4. Update relevant backlog and status summaries without overstating evidence. Keep hardware checks open until actually run. Record dated release observations in `specs/RELEASE_STATE.md`.
+5. Request review. PRs, merges, and releases remain owner-directed; follow `CLAUDE.md` section 5. A missing required pre-merge check is a blocker, not a reason to merge first.
+6. After implementation review, use the OpenSpec archive workflow. Archiving does not certify unperformed hardware checks; retain those obligations in the evidence.
 
-## The loop (one feature = one branch `feat/NNN-name` from `main`; a router change goes through `beta`, see `CLAUDE.md` section 5)
+## Resuming legacy work
 
-1. **Plan** (`/sdd-plan`): copy `specs/features/_template/`, write the spec (intent, constraints, success criteria) and plan. **Owner approves. No code before this.**
-2. **Implement** (`/sdd-implement`): test first (see it fail, log it in `ledger/`), fix in the source, regenerate generated files, one commit per task group.
-3. **Validate** (`/sdd-validate`): fill `validation.md` with evidence, run the gates, update STATUS and the backlog row.
-4. **CI**: Code quality runs only on pull requests into `beta`/`main` and pushes to them, not on `feat/*` pushes. Open a PR (when the owner asks) or merge to `main` (a router change: to `beta`), then read the result.
-5. **Review** the owner reads spec, criteria and evidence first; style last. Merge when the owner asks (to `main`; a router change goes through `beta` first). Releases only when the owner asks (`CLAUDE.md` section 5).
-6. **Replan** (`/sdd-replan`) before the next feature (`specs/REPLAN.md`).
-End a long chat with `/sdd-handoff`: a note in `specs/notes/`, then start a fresh chat.
+Create an OpenSpec change and link the legacy feature ID, existing approvals, evidence, and related backlog rows. Preserve the old files. Prior approval is evidence only for its original scope; obtain approval for the new or changed scope and plan. Record current verification separately from historical evidence. Do not create a second legacy feature contract merely to resume work.
 
-## If the spec is wrong or silent
+## Backlog terminology
 
-Change the spec first, with a small precise edit, tell the owner, then change the code. The code never gets ahead of the spec.
-
-## Status words (backlog rows)
-
-`open` -> `test-written` -> `fixed` -> `verified-on-hardware`; also `wont-fix` (with a reason) and `owner-decision`. `fixed` means the tests pass on a computer; only `verified-on-hardware` ran on a real box, phone or router.
-A row with `prior_work` has a tested solution on another branch; bring it back through a feature spec, do not rewrite it.
-
-## Saving tokens
-
-- One feature per chat; a handoff note beats a long history.
-- Specs name files and line ranges, so the agent opens nothing it does not need.
-- Keep the first bytes of every chat the same (constitution rule 2); put changing facts in `STATUS.md`, never in the constitution.
-- Run slow tests in the background and read the last lines only.
-- Use a cheaper model for rows that have a precise spec, test and fix (constitution rule 4).
-
-## Files
-
-`constitution.md` agent rules (frozen) · `specs/mission.md`, `techstack.md`, `roadmap.md` direction · `specs/spec_NN_*` epics and trackers ·
-`specs/features/` active features, and `specs/features/ARCHIVE.md` the finished ones (intent and success criteria; the rest is in git history) · `specs/STATUS.md` the board · `specs/REPLAN.md` + `specs/replans/` replanning ·
-`specs/RELEASE_STATE.md` what is live · `specs/GUIDE.md` the guide · `specs/templates/` templates · `scripts/cache_report.py` cache hit rate · `specs/notes/` handoffs · `ledger/negative-constraints.md` failures · `.claude/skills/sdd-*` the workflow as skills.
+`open`, `test-written`, `fixed`, `verified-on-hardware`, `wont-fix` (with a reason), and `owner-decision` describe different states. `fixed` is computer evidence, not hardware verification. `prior_work` identifies work on another branch that needs its own review and evidence.

@@ -1,7 +1,7 @@
 # Feature 055: a shorter bursting window for the speed caps
 
 Status: **approved by the owner 2026-10-30 ("go, build the installer change directly on main"); applied directly on main like feature 052 (an installer setting only; main carries the correctly built programs)**   Branch: `feat/055-shorter-burst`   Area: setup (the router installer's openNDS settings)
-Backlog rows: none (owner's speed test 2026-10-30)   Release: router (raises `setup/RELEASE`; goes through `beta`, `CLAUDE.md` section 5)
+Backlog rows: none (owner's speed test 2026-10-30)   Release: router (raises `setup/RELEASE`; the owner authorized this historical direct-main exception; the normal router route goes through `beta`, `CLAUDE.md` section 5)
 
 ## Intent
 With bursting on, openNDS lets a customer run at full speed until their average over the rate window goes above the cap. The window is 2 checks of 15 seconds, so about 30 seconds.

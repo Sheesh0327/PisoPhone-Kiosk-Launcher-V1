@@ -1,3 +1,5 @@
+> Historical legacy template. For new or resumed work use OpenSpec; see `specs/README.md`.
+
 # Validation: <feature>
 
 | # | Success criterion (from spec.md) | Check | Result | Evidence |

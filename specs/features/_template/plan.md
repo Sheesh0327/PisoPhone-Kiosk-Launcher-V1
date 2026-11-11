@@ -1,3 +1,5 @@
+> Historical legacy template. For new or resumed work use OpenSpec; see `specs/README.md`.
+
 # Plan: <feature>
 
 Context manifest (constitution rule 1): `file | purpose | lines | est_tokens`. Unresolved ledger entries loaded: <none | list>.

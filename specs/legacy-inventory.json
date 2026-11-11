@@ -1,0 +1,3688 @@
+{
+  "schema_version": 1,
+  "reviewed_at": "2026-11-11",
+  "reviewed_commit": "0a2b5c563faa771184a8755e6d9c213a393ef8f3",
+  "records": [
+    {
+      "kind": "feature",
+      "id": "010",
+      "paths": [
+        "specs/features/010-router-flash-profile"
+      ],
+      "disposition": "historical",
+      "related_ids": [],
+      "evidence": [
+        "specs/features/010-router-flash-profile/spec.md",
+        "specs/features/010-router-flash-profile/plan.md",
+        "specs/features/010-router-flash-profile/validation.md",
+        "specs/STATUS.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Computer tests are documented, but real router flash measurement and other RS35 scenarios were not run in the feature validation."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "013",
+      "paths": [
+        "specs/features/013-shop-branding"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [],
+      "evidence": [
+        "specs/features/013-shop-branding/spec.md",
+        "specs/features/013-shop-branding/plan.md",
+        "specs/features/013-shop-branding/validation.md",
+        "specs/STATUS.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Feature validation says Android and ESP32 builds and real devices were not run locally; RS38/RS39 remain separate."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "015",
+      "paths": [
+        "specs/features/015-router-always-on"
+      ],
+      "disposition": "historical",
+      "related_ids": [
+        "finding:02:AO-06",
+        "finding:02:AO-03",
+        "finding:02:AO-01",
+        "finding:02:AO-09",
+        "finding:02:AO-04",
+        "finding:02:AO-05",
+        "finding:01:RT-17",
+        "finding:02:AO-02"
+      ],
+      "evidence": [
+        "specs/features/015-router-always-on/spec.md",
+        "specs/features/015-router-always-on/plan.md",
+        "specs/features/015-router-always-on/validation.md",
+        "specs/STATUS.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Feature validation records computer tests but not a real router; AO-03 performance targets were not measured and 052 later corrected the monitor address."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "017",
+      "paths": [
+        "specs/features/017-coin-box-always-on"
+      ],
+      "disposition": "historical",
+      "related_ids": [
+        "finding:02:AO-07",
+        "finding:01:FW-04",
+        "finding:01:FW-07",
+        "finding:01:FW-08",
+        "finding:01:FW-10",
+        "finding:01:FW-11",
+        "finding:01:FW-12",
+        "finding:01:FW-13",
+        "finding:01:FW-14",
+        "finding:01:FW-17",
+        "finding:01:FW-18"
+      ],
+      "evidence": [
+        "specs/features/017-coin-box-always-on/spec.md",
+        "specs/features/017-coin-box-always-on/plan.md",
+        "specs/features/017-coin-box-always-on/validation.md",
+        "specs/STATUS.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Validation records host tests but no local firmware compile or real board run; RS46 and CI evidence remain separate."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "021",
+      "paths": [
+        "specs/features/021-window-record-at-arm"
+      ],
+      "disposition": "historical",
+      "related_ids": [
+        "finding:02:AO-11"
+      ],
+      "evidence": [
+        "specs/features/021-window-record-at-arm/spec.md",
+        "specs/features/021-window-record-at-arm/plan.md",
+        "specs/features/021-window-record-at-arm/validation.md",
+        "specs/STATUS.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Feature validation records computer tests including a strict soak; the real power-cut scenario RS45 was not run there."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "022",
+      "paths": [
+        "specs/features/022-quick-adjust-fix"
+      ],
+      "disposition": "historical",
+      "related_ids": [],
+      "evidence": [
+        "specs/features/022-quick-adjust-fix/spec.md",
+        "specs/features/022-quick-adjust-fix/plan.md",
+        "specs/features/022-quick-adjust-fix/validation.md",
+        "specs/STATUS.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Feature validation records computer checks; real browser/router/box/phone conditions including RS47 were not run."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "023",
+      "paths": [
+        "specs/features/023-shop-name-marquee"
+      ],
+      "disposition": "historical",
+      "related_ids": [],
+      "evidence": [
+        "specs/features/023-shop-name-marquee/spec.md",
+        "specs/features/023-shop-name-marquee/plan.md",
+        "specs/features/023-shop-name-marquee/validation.md",
+        "specs/STATUS.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Feature validation records computer checks but real phone temperature and battery scenario RS48 was not run."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "024",
+      "paths": [
+        "specs/features/024-device-type-labels"
+      ],
+      "disposition": "historical",
+      "related_ids": [],
+      "evidence": [
+        "specs/features/024-device-type-labels/spec.md",
+        "specs/features/024-device-type-labels/plan.md",
+        "specs/features/024-device-type-labels/validation.md",
+        "specs/STATUS.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Feature validation records computer checks; real phone and box scenario RS49 was not run."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "027",
+      "paths": [
+        "specs/features/027-phone-wifi-refused"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [],
+      "evidence": [
+        "specs/features/027-phone-wifi-refused/spec.md",
+        "specs/STATUS.md",
+        "docs/REAL_WORLD_TESTING.md",
+        "specs/cleanup-criteria-gaps.md"
+      ],
+      "gaps": [
+        "No plan.md exists in the retained feature folder; historical evidence requires review.",
+        "No validation.md exists in the retained feature folder; historical evidence requires review.",
+        "No retained plan.md exists in the feature folder; check historical scope and evidence in Git.",
+        "No retained validation.md exists in the feature folder; check historical scope and evidence in Git.",
+        "Retained folder lacks plan and validation files; the spec records owner-directed urgent work and RS51 remains a physical-check obligation."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "028",
+      "paths": [
+        "specs/features/028-phone-only-phone-wifi"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [],
+      "evidence": [
+        "specs/features/028-phone-only-phone-wifi/spec.md",
+        "specs/STATUS.md",
+        "docs/REAL_WORLD_TESTING.md",
+        "specs/cleanup-criteria-gaps.md"
+      ],
+      "gaps": [
+        "No plan.md exists in the retained feature folder; historical evidence requires review.",
+        "No validation.md exists in the retained feature folder; historical evidence requires review.",
+        "No retained plan.md exists in the feature folder; check historical scope and evidence in Git.",
+        "No retained validation.md exists in the feature folder; check historical scope and evidence in Git.",
+        "Retained folder lacks plan and validation files; the spec records owner-directed urgent work and RS52 remains a physical-check obligation."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "029",
+      "paths": [
+        "specs/features/029-keep-google-apps"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [],
+      "evidence": [
+        "specs/features/029-keep-google-apps/spec.md",
+        "specs/STATUS.md",
+        "docs/REAL_WORLD_TESTING.md",
+        "specs/cleanup-criteria-gaps.md"
+      ],
+      "gaps": [
+        "No plan.md exists in the retained feature folder; historical evidence requires review.",
+        "No validation.md exists in the retained feature folder; historical evidence requires review.",
+        "No retained plan.md exists in the feature folder; check historical scope and evidence in Git.",
+        "No retained validation.md exists in the feature folder; check historical scope and evidence in Git.",
+        "Retained folder lacks plan and validation files; the spec records owner-directed urgent work and RS53 remains a physical-check obligation."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "030",
+      "paths": [
+        "specs/features/030-wifi-joined-toast"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [],
+      "evidence": [
+        "specs/features/030-wifi-joined-toast/spec.md",
+        "specs/STATUS.md",
+        "docs/REAL_WORLD_TESTING.md",
+        "specs/cleanup-criteria-gaps.md"
+      ],
+      "gaps": [
+        "No plan.md exists in the retained feature folder; historical evidence requires review.",
+        "No validation.md exists in the retained feature folder; historical evidence requires review.",
+        "No retained plan.md exists in the feature folder; check historical scope and evidence in Git.",
+        "No retained validation.md exists in the feature folder; check historical scope and evidence in Git.",
+        "Retained folder lacks plan and validation files; the spec records urgent work and RS54 remains a physical-check obligation."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "031",
+      "paths": [
+        "specs/features/031-owner-can-uninstall"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [],
+      "evidence": [
+        "specs/features/031-owner-can-uninstall/spec.md",
+        "specs/STATUS.md",
+        "docs/REAL_WORLD_TESTING.md",
+        "specs/cleanup-criteria-gaps.md"
+      ],
+      "gaps": [
+        "No plan.md exists in the retained feature folder; historical evidence requires review.",
+        "No validation.md exists in the retained feature folder; historical evidence requires review.",
+        "No retained plan.md exists in the feature folder; check historical scope and evidence in Git.",
+        "No retained validation.md exists in the feature folder; check historical scope and evidence in Git.",
+        "Retained folder lacks plan and validation files; the spec records owner-directed urgent work and RS55 remains a physical-check obligation."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "032",
+      "paths": [
+        "specs/features/032-ledger-size-cap"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "finding:02:AO-02"
+      ],
+      "evidence": [
+        "specs/features/032-ledger-size-cap/spec.md",
+        "specs/features/032-ledger-size-cap/plan.md",
+        "specs/features/032-ledger-size-cap/validation.md",
+        "specs/STATUS.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Feature validation records a setup-test failure also seen on the untouched base, unrun Python gates and no real router test RS56; do not represent every gate as passed."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "036",
+      "paths": [
+        "specs/features/036-site-status-panel"
+      ],
+      "disposition": "historical",
+      "related_ids": [],
+      "evidence": [
+        "specs/features/036-site-status-panel/spec.md",
+        "specs/features/036-site-status-panel/plan.md",
+        "specs/features/036-site-status-panel/validation.md",
+        "specs/STATUS.md",
+        "specs/RELEASE_STATE.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "PR #126 (662d759) merged 036 with 044; 1.5.28 contained the old program, while the 1.5.29 release record reports the rebuilt program. RS58 is not run."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "039",
+      "paths": [
+        "specs/features/039-hardware-check-triage"
+      ],
+      "disposition": "historical",
+      "related_ids": [],
+      "evidence": [
+        "specs/features/039-hardware-check-triage/spec.md",
+        "specs/features/039-hardware-check-triage/plan.md",
+        "specs/features/039-hardware-check-triage/validation.md",
+        "specs/STATUS.md",
+        "specs/RELEASE_STATE.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Feature 039 validation explicitly says it ran no hardware check; it triaged existing checks only."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "040",
+      "paths": [
+        "specs/features/040-sold-box-hardening"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [],
+      "evidence": [
+        "specs/features/040-sold-box-hardening/spec.md",
+        "specs/features/040-sold-box-hardening/plan.md",
+        "specs/features/040-sold-box-hardening/validation.md",
+        "specs/STATUS.md",
+        "specs/RELEASE_STATE.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Feature 040 validation says no bench gate passed; toolchain and board-dependent criteria were not run."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "041",
+      "paths": [
+        "specs/features/041-router-internet-required"
+      ],
+      "disposition": "historical",
+      "related_ids": [],
+      "evidence": [
+        "specs/features/041-router-internet-required/spec.md",
+        "specs/features/041-router-internet-required/plan.md",
+        "specs/features/041-router-internet-required/validation.md",
+        "specs/STATUS.md",
+        "specs/RELEASE_STATE.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Feature 041 validation records unrun and baseline Python checks; RS57 was not run. The offline path and RS36 were retired."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "043",
+      "paths": [
+        "specs/features/043-nvs-secrets-at-rest"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [],
+      "evidence": [
+        "specs/features/043-nvs-secrets-at-rest/spec.md",
+        "specs/features/043-nvs-secrets-at-rest/plan.md",
+        "specs/features/043-nvs-secrets-at-rest/validation.md",
+        "specs/STATUS.md",
+        "specs/RELEASE_STATE.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Feature 043 remains a proposed approach; the status board records its group-0 findings file missing and no code. The validation file contains a template rather than completed evidence."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "044",
+      "paths": [
+        "specs/features/044-version-skew"
+      ],
+      "disposition": "historical",
+      "related_ids": [],
+      "evidence": [
+        "specs/features/044-version-skew/spec.md",
+        "specs/features/044-version-skew/plan.md",
+        "specs/features/044-version-skew/validation.md",
+        "specs/STATUS.md",
+        "specs/RELEASE_STATE.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "PR #126 (662d759) merged 044 with 036; the initial 1.5.28 signed program was old, and the 1.5.29 release record reports the rebuilt program. RS59 is not run."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "045",
+      "paths": [
+        "specs/features/045-setup-program-real-run"
+      ],
+      "disposition": "historical",
+      "related_ids": [
+        "finding:04:SU-18",
+        "finding:04:SU-09",
+        "finding:04:SU-10",
+        "finding:04:SU-01",
+        "finding:04:SU-02",
+        "finding:04:SU-04",
+        "finding:04:SU-06a",
+        "finding:04:SU-15",
+        "finding:04:SU-17",
+        "finding:04:SU-21",
+        "finding:04:SU-14"
+      ],
+      "evidence": [
+        "specs/features/045-setup-program-real-run/spec.md",
+        "specs/features/045-setup-program-real-run/plan.md",
+        "specs/features/045-setup-program-real-run/validation.md",
+        "specs/STATUS.md",
+        "specs/RELEASE_STATE.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "PR #131 merged 045; its validation records computer tests, with RS60 and real-device/browser conditions not run."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "046",
+      "paths": [
+        "specs/features/046-router-setup-real-run"
+      ],
+      "disposition": "historical",
+      "related_ids": [
+        "finding:04:SU-03",
+        "finding:04:SU-11",
+        "finding:04:SU-06b",
+        "finding:04:SU-05",
+        "finding:04:SU-07",
+        "finding:04:SU-08"
+      ],
+      "evidence": [
+        "specs/features/046-router-setup-real-run/spec.md",
+        "specs/features/046-router-setup-real-run/plan.md",
+        "specs/features/046-router-setup-real-run/validation.md",
+        "specs/STATUS.md",
+        "specs/RELEASE_STATE.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "PR #131 merged 046; validation records computer tests, but RS61 and real setup conditions were not run; RS61(c) determines the SU-08 disposition."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "047",
+      "paths": [
+        "specs/features/047-box-wifi-retry"
+      ],
+      "disposition": "historical",
+      "related_ids": [
+        "finding:04:SU-16"
+      ],
+      "evidence": [
+        "specs/features/047-box-wifi-retry/spec.md",
+        "specs/features/047-box-wifi-retry/plan.md",
+        "specs/features/047-box-wifi-retry/validation.md",
+        "specs/STATUS.md",
+        "specs/RELEASE_STATE.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "PR #131 merged 047; validation records computer tests but ESP32-only code and RS62 were not run locally. Firmware CI is not equivalent to a bench run."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "048",
+      "paths": [
+        "specs/features/048-codebase-cleanup"
+      ],
+      "disposition": "historical",
+      "related_ids": [],
+      "evidence": [
+        "specs/features/048-codebase-cleanup/spec.md",
+        "specs/features/048-codebase-cleanup/plan.md",
+        "specs/features/048-codebase-cleanup/validation.md",
+        "specs/STATUS.md",
+        "specs/RELEASE_STATE.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "PR #130 merged the cleanup; validation distinguishes computer checks from tests that could not run."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "049",
+      "paths": [
+        "specs/features/049-guest-page-branding"
+      ],
+      "disposition": "historical",
+      "related_ids": [],
+      "evidence": [
+        "specs/features/049-guest-page-branding/spec.md",
+        "specs/features/049-guest-page-branding/plan.md",
+        "specs/features/049-guest-page-branding/validation.md",
+        "specs/STATUS.md",
+        "specs/RELEASE_STATE.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Feature validation records computer checks; release state records router 1.5.31 raised to 100% before RS63 and Filipino wording sign-off, which remain open in that record."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "052",
+      "paths": [
+        "specs/features/052-monitor-portal-address"
+      ],
+      "disposition": "historical",
+      "related_ids": [],
+      "evidence": [
+        "specs/features/052-monitor-portal-address/spec.md",
+        "specs/features/052-monitor-portal-address/validation.md",
+        "specs/STATUS.md",
+        "specs/RELEASE_STATE.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "No retained plan.md exists in the feature folder; check historical scope and evidence in Git.",
+        "Feature 052 spec records an owner-directed direct-main exception; release state records 1.5.32 at 100%. The validation did not run a real router."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "053",
+      "paths": [
+        "specs/features/053-console-layout"
+      ],
+      "disposition": "historical",
+      "related_ids": [],
+      "evidence": [
+        "specs/features/053-console-layout/spec.md",
+        "specs/features/053-console-layout/plan.md",
+        "specs/features/053-console-layout/validation.md",
+        "specs/STATUS.md",
+        "specs/RELEASE_STATE.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Feature validation records computer checks and RS64 not run; the later release record says 1.5.33 was raised to 100%."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "055",
+      "paths": [
+        "specs/features/055-shorter-burst"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [],
+      "evidence": [
+        "specs/features/055-shorter-burst/spec.md",
+        "specs/features/055-shorter-burst/plan.md",
+        "specs/features/055-shorter-burst/validation.md",
+        "specs/STATUS.md",
+        "specs/RELEASE_STATE.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Feature 055 records an owner-directed direct-main exception and computer gates. The old-to-new update itself was not directly asserted and RS65 was not run; signing 1.5.34 is unverified in the local main feed snapshot."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "001",
+      "paths": [
+        "specs/features/ARCHIVE.md#001-router-money-time"
+      ],
+      "disposition": "historical",
+      "related_ids": [
+        "finding:01:RT-01",
+        "finding:01:RT-02",
+        "finding:01:RT-03",
+        "finding:01:RT-04",
+        "finding:01:RT-05",
+        "finding:01:RT-06",
+        "finding:01:RT-07",
+        "finding:01:RT-14"
+      ],
+      "evidence": [
+        "specs/features/ARCHIVE.md#001-router-money-time",
+        "specs/STATUS.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Archived summary is historical; original approval and validation evidence require checking in git history.",
+        "Relevant git history (review required): 2b2bdc2 Feature 048 group 4: finished features merged into one archive file | 5dce780 fix(router): money and time kept right across power cuts and a wrong clock (feature 001, RT-01 to RT-07, RT-14) 1.5.13 | dabb7d5 docs: feature 001 (router money and time) spec and plan, patch verification recorded",
+        "Validation at git 2b2bdc2^ records computer tests and local mutation for RT-01/RT-07 only; RS32 was not run in that validation."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "002",
+      "paths": [
+        "specs/features/ARCHIVE.md#002-firmware-3-11-0"
+      ],
+      "disposition": "historical",
+      "related_ids": [
+        "finding:01:ST-1"
+      ],
+      "evidence": [
+        "specs/features/ARCHIVE.md#002-firmware-3-11-0",
+        "specs/STATUS.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Archived summary is historical; original approval and validation evidence require checking in git history.",
+        "Relevant git history (review required): 2b2bdc2 Feature 048 group 4: finished features merged into one archive file | 05c19d9 Fix two review findings: right dates in the period ledger; each product gets its own image | 14e31fd docs: note that Code quality does not run on feature branches; feature 002 waits for a PR",
+        "Validation at git 2b2bdc2^ records local checks but predates CI. The later status reports release; validate any specific CI claim separately."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "003",
+      "paths": [
+        "specs/features/ARCHIVE.md#003-tablet-game-touch"
+      ],
+      "disposition": "historical",
+      "related_ids": [
+        "finding:01:APP-27"
+      ],
+      "evidence": [
+        "specs/features/ARCHIVE.md#003-tablet-game-touch",
+        "specs/STATUS.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Archived summary is historical; original approval and validation evidence require checking in git history.",
+        "Relevant git history (review required): 2b2bdc2 Feature 048 group 4: finished features merged into one archive file | 96aaa2f Phone app: hidden lock screen no longer blocks touch in games on tablets (APP-27) | aa22952 docs: feature 003 (touch works inside games on tablets) spec and plan",
+        "Validation at git 2b2bdc2^ records a JVM test but not the tablet/game scenarios (RS33)."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "004",
+      "paths": [
+        "specs/features/ARCHIVE.md#004-firmware-money"
+      ],
+      "disposition": "historical",
+      "related_ids": [
+        "finding:01:FW-06",
+        "finding:01:FW-03",
+        "finding:01:FW-02",
+        "finding:01:FW-05",
+        "finding:01:FW-01"
+      ],
+      "evidence": [
+        "specs/features/ARCHIVE.md#004-firmware-money",
+        "specs/STATUS.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Archived summary is historical; original approval and validation evidence require checking in git history.",
+        "Relevant git history (review required): 2b2bdc2 Feature 048 group 4: finished features merged into one archive file | e74a753 Firmware 3.11.1: feature 004 done on the branch (FW-01, 02, 03, 05, 06); validation, checks RS28-RS31, status and backlog | 8084c34 A coin at an idle slot is written to the orphan payments list (FW-06)",
+        "Validation at git 2b2bdc2^ records host passes; the red results were missing-header build failures rather than logic assertions, and no board test was done."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "008",
+      "paths": [
+        "specs/features/ARCHIVE.md#008-wheel-install-option"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [],
+      "evidence": [
+        "specs/features/ARCHIVE.md#008-wheel-install-option",
+        "specs/STATUS.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Archived summary is historical; original approval and validation evidence require checking in git history.",
+        "Relevant git history (review required): 2b2bdc2 Feature 048 group 4: finished features merged into one archive file | 97ccb22 Feature 008 parked: the owner will write a separate spec for the wheel install option | cc535c0 Feature 008 drafted: the wheel as an install option on routers with more than 16 MB of flash (spec, plan, review questions)",
+        "The archived proposal was parked and not approved; no implementation is claimed."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "009",
+      "paths": [
+        "specs/features/ARCHIVE.md#009-thin-jackpot"
+      ],
+      "disposition": "superseded",
+      "related_ids": [],
+      "evidence": [
+        "specs/features/ARCHIVE.md#009-thin-jackpot",
+        "specs/STATUS.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Archived summary is historical; original approval and validation evidence require checking in git history.",
+        "Relevant git history (review required): 2b2bdc2 Feature 048 group 4: finished features merged into one archive file | eb471a8 Thin jackpot, step 6b: validation notes, plan and board updated | 2cb6deb Thin jackpot, step 5: the console understands the thin mark",
+        "Historical validation at git 2b2bdc2^ records computer-only tests; the wheel was subsequently removed and RS34 retired without a hardware run."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "011",
+      "paths": [
+        "specs/features/ARCHIVE.md#011-offline-setup"
+      ],
+      "disposition": "historical",
+      "related_ids": [],
+      "evidence": [
+        "specs/features/ARCHIVE.md#011-offline-setup",
+        "specs/STATUS.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Archived summary is historical; original approval and validation evidence require checking in git history.",
+        "Relevant git history (review required): 2b2bdc2 Feature 048 group 4: finished features merged into one archive file | 965071b 041 groups 5 and 6: say the requirement before the owner begins, and record the removal | c21ee6b Router 1.5.18 live at 100%: RS36 and RS37 passed, records updated",
+        "The older archived status says RS36/RS37 were not run; the later checklist reports owner passes without full per-step readings. RS36 was subsequently retired and router model and step detail remain uncertain."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "014",
+      "paths": [
+        "specs/features/ARCHIVE.md#014-router-soak-harness"
+      ],
+      "disposition": "historical",
+      "related_ids": [
+        "finding:02:AO-10"
+      ],
+      "evidence": [
+        "specs/features/ARCHIVE.md#014-router-soak-harness",
+        "specs/STATUS.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Archived summary is historical; original approval and validation evidence require checking in git history.",
+        "Relevant git history (review required): 2b2bdc2 Feature 048 group 4: finished features merged into one archive file | e576bba Feature 014 validated: soak numbers, status row for spec 02, handoff note | 8d426ee Feature 015 spec and plan (router always on): waiting for the owner's answers D1, D2, D3",
+        "Historical validation at git 2b2bdc2^ did not run the 30-day-equivalent soak or measure AO-03 targets; the initial soak exposed stranded coins later addressed by 021."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "016",
+      "paths": [
+        "specs/features/ARCHIVE.md#016-router-hardening"
+      ],
+      "disposition": "historical",
+      "related_ids": [
+        "finding:01:RT-10",
+        "finding:01:RT-18",
+        "finding:01:RT-08",
+        "finding:01:RT-26",
+        "finding:01:RT-22"
+      ],
+      "evidence": [
+        "specs/features/ARCHIVE.md#016-router-hardening",
+        "specs/STATUS.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Archived summary is historical; original approval and validation evidence require checking in git history.",
+        "Relevant git history (review required): 2b2bdc2 Feature 048 group 4: finished features merged into one archive file | e78487e Feature 016: validation | 37aaca7 Feature 016 spec and plan: router hardening rows (RT-10, 18, 08, 26, 22)",
+        "Historical validation at git 2b2bdc2^ used fakes for firewall and backup behavior; no real router or dedicated hardware check was established there."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "018",
+      "paths": [
+        "specs/features/ARCHIVE.md#018-app-money-rows"
+      ],
+      "disposition": "historical",
+      "related_ids": [
+        "finding:01:APP-03",
+        "finding:01:APP-06",
+        "finding:01:APP-10",
+        "finding:01:APP-01",
+        "finding:01:APP-08",
+        "finding:01:APP-05",
+        "finding:01:APP-02",
+        "finding:01:APP-09",
+        "finding:02:AO-08"
+      ],
+      "evidence": [
+        "specs/features/ARCHIVE.md#018-app-money-rows",
+        "specs/STATUS.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Archived summary is historical; original approval and validation evidence require checking in git history.",
+        "Relevant git history (review required): 2b2bdc2 Feature 048 group 4: finished features merged into one archive file | d201b26 Feature 018: validation notes (what CI found, what changed, what was not run) | efb0638 Feature 018: fix the lint findings (ktlint, detekt) and move the hourly log out of KioskEngine",
+        "Historical validation at git 2b2bdc2^ records CI unit tests and builds; local Android SDK checks and real-phone behavior were not run there."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "020",
+      "paths": [
+        "specs/features/ARCHIVE.md#020-ci-signing"
+      ],
+      "disposition": "historical",
+      "related_ids": [
+        "finding:01:CI-1",
+        "finding:01:CI-2"
+      ],
+      "evidence": [
+        "specs/features/ARCHIVE.md#020-ci-signing",
+        "specs/STATUS.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Archived summary is historical; original approval and validation evidence require checking in git history.",
+        "Relevant git history (review required): 2b2bdc2 Feature 048 group 4: finished features merged into one archive file | bff5879 Feature 020: sign from the approved commit (CI-1, CI-2)",
+        "Historical validation at git 2b2bdc2^ records signing-workflow tests but did not execute the actual signing workflows; consult later CI evidence for production execution."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "025",
+      "paths": [
+        "specs/features/ARCHIVE.md#025-fresh-page-first-view"
+      ],
+      "disposition": "historical",
+      "related_ids": [],
+      "evidence": [
+        "specs/features/ARCHIVE.md#025-fresh-page-first-view",
+        "specs/STATUS.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Archived summary is historical; original approval and validation evidence require checking in git history.",
+        "Relevant git history (review required): 2b2bdc2 Feature 048 group 4: finished features merged into one archive file | 99d2be1 Feature 025 validated: a fresh page is sent no view before its hello (router 1.5.21) | 4ac3597 Feature 025 (work in progress, NOT validated): a fresh page is sent no view before its hello",
+        "Historical validation at git 2b2bdc2^ records deterministic ordering tests but no real router or real browser run."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "026",
+      "paths": [
+        "specs/features/ARCHIVE.md#026-usb-setup-boot-loop"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [],
+      "evidence": [
+        "specs/features/ARCHIVE.md#026-usb-setup-boot-loop",
+        "specs/STATUS.md",
+        "docs/REAL_WORLD_TESTING.md",
+        "specs/cleanup-criteria-gaps.md"
+      ],
+      "gaps": [
+        "Archived summary is historical; original approval and validation evidence require checking in git history.",
+        "Relevant git history (review required): 2b2bdc2 Feature 048 group 4: finished features merged into one archive file | 21574dc Feature 026: a new board no longer crashes in a loop (firmware 3.12.2)",
+        "The retained Git folder had no validation file at 2b2bdc2^. The owner reportedly saw the fix work, but the full RS50 remains unchecked and its scope is not recorded."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "033",
+      "paths": [
+        "specs/features/ARCHIVE.md#033-remove-wheel"
+      ],
+      "disposition": "historical",
+      "related_ids": [],
+      "evidence": [
+        "specs/features/ARCHIVE.md#033-remove-wheel",
+        "specs/STATUS.md",
+        "specs/RELEASE_STATE.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Feature 033 validation at git 2b2bdc2^ records computer checks; router program was not rebuilt locally and the wheel hardware check RS34 was retired when the wheel was removed."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "034",
+      "paths": [
+        "specs/features/ARCHIVE.md#034-remove-minigame"
+      ],
+      "disposition": "historical",
+      "related_ids": [],
+      "evidence": [
+        "specs/features/ARCHIVE.md#034-remove-minigame",
+        "specs/STATUS.md",
+        "specs/RELEASE_STATE.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Feature 034 validation at git 2b2bdc2^ records computer/browser checks; router program was not rebuilt locally and no real router run is established."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "035",
+      "paths": [
+        "specs/features/ARCHIVE.md#035-supported-routers"
+      ],
+      "disposition": "historical",
+      "related_ids": [],
+      "evidence": [
+        "specs/features/ARCHIVE.md#035-supported-routers",
+        "specs/STATUS.md",
+        "specs/RELEASE_STATE.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Feature 035 validation at git 2b2bdc2^ records documentation/checklist work; retrospective hardware records have incomplete per-step readings."
+      ]
+    },
+    {
+      "kind": "epic",
+      "id": "01",
+      "paths": [
+        "specs/spec_01_codebase_refactor.md"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [],
+      "evidence": [
+        "specs/spec_01_codebase_refactor.md",
+        "specs/STATUS.md"
+      ],
+      "gaps": [
+        "Open and owner-decision findings remain; see the finding records for evidence and links."
+      ]
+    },
+    {
+      "kind": "epic",
+      "id": "02",
+      "paths": [
+        "specs/spec_02_always_on.md"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [],
+      "evidence": [
+        "specs/spec_02_always_on.md",
+        "specs/STATUS.md"
+      ],
+      "gaps": [
+        "Some always-on findings remain open or have explicit performance, CI, or hardware gaps; see the finding records."
+      ]
+    },
+    {
+      "kind": "epic",
+      "id": "03",
+      "paths": [
+        "specs/spec_03_overhaul.md"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [],
+      "evidence": [
+        "specs/spec_03_overhaul.md",
+        "specs/STATUS.md"
+      ],
+      "gaps": [
+        "Features 040 and 043 have unresolved bench/plan evidence; D29 remains an owner decision."
+      ]
+    },
+    {
+      "kind": "epic",
+      "id": "04",
+      "paths": [
+        "specs/spec_04_setup_real_run.md"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [],
+      "evidence": [
+        "specs/spec_04_setup_real_run.md",
+        "specs/STATUS.md"
+      ],
+      "gaps": [
+        "RS60–RS62 remain outstanding; the historical draft did not itself establish a separate epic approval."
+      ]
+    },
+    {
+      "kind": "epic",
+      "id": "05",
+      "paths": [
+        "specs/spec_05_shop_branding.md"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [],
+      "evidence": [
+        "specs/spec_05_shop_branding.md",
+        "specs/STATUS.md"
+      ],
+      "gaps": [
+        "Feature 049 has outstanding RS63 and Filipino wording sign-off in the dated release record; 050 and 051 were skipped."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:FW-03",
+      "paths": [
+        "specs/spec_01_findings.json#FW-03"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:01",
+        "feature:004"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#FW-03",
+        "specs/features/ARCHIVE.md#004-firmware-money",
+        "specs/STATUS.md"
+      ],
+      "gaps": [
+        "Hardware verification is not established; see source status and retained validation in Git.",
+        "The historical red result was a missing-header build error, not a failed logic assertion."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:FW-02",
+      "paths": [
+        "specs/spec_01_findings.json#FW-02"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:01",
+        "feature:004"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#FW-02",
+        "specs/features/ARCHIVE.md#004-firmware-money",
+        "specs/STATUS.md"
+      ],
+      "gaps": [
+        "Hardware verification is not established; see source status and retained validation in Git.",
+        "The historical red result was a missing-header build error, not a failed logic assertion."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:FW-01",
+      "paths": [
+        "specs/spec_01_findings.json#FW-01"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:01",
+        "feature:004"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#FW-01",
+        "specs/features/ARCHIVE.md#004-firmware-money",
+        "specs/STATUS.md"
+      ],
+      "gaps": [
+        "Hardware verification is not established; see source status and retained validation in Git.",
+        "The historical red result was a missing-header build error, not a failed logic assertion."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:FW-05",
+      "paths": [
+        "specs/spec_01_findings.json#FW-05"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:01",
+        "feature:004"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#FW-05",
+        "specs/features/ARCHIVE.md#004-firmware-money",
+        "specs/STATUS.md"
+      ],
+      "gaps": [
+        "Hardware verification is not established; see source status and retained validation in Git.",
+        "The historical red result was a missing-header build error, not a failed logic assertion."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:FW-06",
+      "paths": [
+        "specs/spec_01_findings.json#FW-06"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:01",
+        "feature:004"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#FW-06",
+        "specs/features/ARCHIVE.md#004-firmware-money",
+        "specs/STATUS.md"
+      ],
+      "gaps": [
+        "Hardware verification is not established; see source status and retained validation in Git.",
+        "The historical red result was a missing-header build error, not a failed logic assertion."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:APP-06",
+      "paths": [
+        "specs/spec_01_findings.json#APP-06"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:01",
+        "feature:018"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#APP-06",
+        "specs/features/ARCHIVE.md#018-app-money-rows",
+        "specs/STATUS.md"
+      ],
+      "gaps": [
+        "Hardware verification is not established; see source status and retained validation in Git."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:APP-01",
+      "paths": [
+        "specs/spec_01_findings.json#APP-01"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:01",
+        "feature:018"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#APP-01",
+        "specs/features/ARCHIVE.md#018-app-money-rows",
+        "specs/STATUS.md"
+      ],
+      "gaps": [
+        "Hardware verification is not established; see source status and retained validation in Git."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:APP-02",
+      "paths": [
+        "specs/spec_01_findings.json#APP-02"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:01",
+        "feature:018"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#APP-02",
+        "specs/features/ARCHIVE.md#018-app-money-rows",
+        "specs/STATUS.md"
+      ],
+      "gaps": [
+        "Hardware verification is not established; see source status and retained validation in Git."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:APP-08",
+      "paths": [
+        "specs/spec_01_findings.json#APP-08"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:01",
+        "feature:018"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#APP-08",
+        "specs/features/ARCHIVE.md#018-app-money-rows",
+        "specs/STATUS.md"
+      ],
+      "gaps": [
+        "Hardware verification is not established; see source status and retained validation in Git."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:APP-05",
+      "paths": [
+        "specs/spec_01_findings.json#APP-05"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:01",
+        "feature:018"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#APP-05",
+        "specs/features/ARCHIVE.md#018-app-money-rows",
+        "specs/STATUS.md"
+      ],
+      "gaps": [
+        "Hardware verification is not established; see source status and retained validation in Git.",
+        "Status board notes no unit test names this row."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:APP-10",
+      "paths": [
+        "specs/spec_01_findings.json#APP-10"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:01",
+        "feature:018"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#APP-10",
+        "specs/features/ARCHIVE.md#018-app-money-rows",
+        "specs/STATUS.md"
+      ],
+      "gaps": [
+        "Hardware verification is not established; see source status and retained validation in Git."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:APP-03",
+      "paths": [
+        "specs/spec_01_findings.json#APP-03"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:01",
+        "feature:018"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#APP-03",
+        "specs/features/ARCHIVE.md#018-app-money-rows",
+        "specs/STATUS.md"
+      ],
+      "gaps": [
+        "Hardware verification is not established; see source status and retained validation in Git.",
+        "Status board notes no unit test names this row."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:APP-09",
+      "paths": [
+        "specs/spec_01_findings.json#APP-09"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:01",
+        "feature:018"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#APP-09",
+        "specs/features/ARCHIVE.md#018-app-money-rows",
+        "specs/STATUS.md"
+      ],
+      "gaps": [
+        "Hardware verification is not established; see source status and retained validation in Git.",
+        "Status board notes no unit test names this row."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:APP-04",
+      "paths": [
+        "specs/spec_01_findings.json#APP-04"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#APP-04"
+      ],
+      "gaps": [
+        "Owner decision remains open in the source row; no decision or test outcome is inferred.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:RT-01",
+      "paths": [
+        "specs/spec_01_findings.json#RT-01"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:01",
+        "feature:001"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#RT-01",
+        "specs/features/ARCHIVE.md#001-router-money-time",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Feature 001 validation at git 2b2bdc2^ records the original red run on an older branch and local mutation for RT-01/RT-07 only; RS32 is separate and not established as passed by that validation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:RT-02",
+      "paths": [
+        "specs/spec_01_findings.json#RT-02"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:01",
+        "feature:001"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#RT-02",
+        "specs/features/ARCHIVE.md#001-router-money-time",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Feature 001 validation at git 2b2bdc2^ records the original red run on an older branch and local mutation for RT-01/RT-07 only; RS32 is separate and not established as passed by that validation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:RT-03",
+      "paths": [
+        "specs/spec_01_findings.json#RT-03"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:01",
+        "feature:001"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#RT-03",
+        "specs/features/ARCHIVE.md#001-router-money-time",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Feature 001 validation at git 2b2bdc2^ records the original red run on an older branch and local mutation for RT-01/RT-07 only; RS32 is separate and not established as passed by that validation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:RT-04",
+      "paths": [
+        "specs/spec_01_findings.json#RT-04"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:01",
+        "feature:001"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#RT-04",
+        "specs/features/ARCHIVE.md#001-router-money-time",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Feature 001 validation at git 2b2bdc2^ records the original red run on an older branch and local mutation for RT-01/RT-07 only; RS32 is separate and not established as passed by that validation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:RT-05",
+      "paths": [
+        "specs/spec_01_findings.json#RT-05"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:01",
+        "feature:001"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#RT-05",
+        "specs/features/ARCHIVE.md#001-router-money-time",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Feature 001 validation at git 2b2bdc2^ records the original red run on an older branch and local mutation for RT-01/RT-07 only; RS32 is separate and not established as passed by that validation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:RT-06",
+      "paths": [
+        "specs/spec_01_findings.json#RT-06"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:01",
+        "feature:001"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#RT-06",
+        "specs/features/ARCHIVE.md#001-router-money-time",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Feature 001 validation at git 2b2bdc2^ records the original red run on an older branch and local mutation for RT-01/RT-07 only; RS32 is separate and not established as passed by that validation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:RT-07",
+      "paths": [
+        "specs/spec_01_findings.json#RT-07"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:01",
+        "feature:001"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#RT-07",
+        "specs/features/ARCHIVE.md#001-router-money-time",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Feature 001 validation at git 2b2bdc2^ records the original red run on an older branch and local mutation for RT-01/RT-07 only; RS32 is separate and not established as passed by that validation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:RT-14",
+      "paths": [
+        "specs/spec_01_findings.json#RT-14"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:01",
+        "feature:001"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#RT-14",
+        "specs/features/ARCHIVE.md#001-router-money-time",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Feature 001 validation at git 2b2bdc2^ records the original red run on an older branch and local mutation for RT-01/RT-07 only; RS32 is separate and not established as passed by that validation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:CI-1",
+      "paths": [
+        "specs/spec_01_findings.json#CI-1"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01",
+        "feature:020"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#CI-1",
+        "specs/features/ARCHIVE.md#020-ci-signing"
+      ],
+      "gaps": [
+        "Feature 020 validation at git 2b2bdc2^ tested workflow logic but did not execute actual signing workflows."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:CI-2",
+      "paths": [
+        "specs/spec_01_findings.json#CI-2"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01",
+        "feature:020"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#CI-2",
+        "specs/features/ARCHIVE.md#020-ci-signing"
+      ],
+      "gaps": [
+        "Feature 020 validation at git 2b2bdc2^ tested workflow logic but did not execute actual signing workflows."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:CI-4",
+      "paths": [
+        "specs/spec_01_findings.json#CI-4"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#CI-4"
+      ],
+      "gaps": [
+        "Source row remains open and declares a ci check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:CI-9",
+      "paths": [
+        "specs/spec_01_findings.json#CI-9"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#CI-9"
+      ],
+      "gaps": [
+        "Source row remains open and declares a ci check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:ST-1",
+      "paths": [
+        "specs/spec_01_findings.json#ST-1"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:01",
+        "feature:002"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#ST-1",
+        "specs/features/ARCHIVE.md#002-firmware-3-11-0",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Feature 002 validation at git 2b2bdc2^ records local checks but says CI had not run at that time; later CI evidence needs separate review."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:SC-1",
+      "paths": [
+        "specs/spec_01_findings.json#SC-1"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#SC-1"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:SC-3",
+      "paths": [
+        "specs/spec_01_findings.json#SC-3"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#SC-3"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:SC-4",
+      "paths": [
+        "specs/spec_01_findings.json#SC-4"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#SC-4"
+      ],
+      "gaps": [
+        "Owner decision remains open in the source row; no decision or test outcome is inferred.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:SC-2",
+      "paths": [
+        "specs/spec_01_findings.json#SC-2"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#SC-2"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:ST-2",
+      "paths": [
+        "specs/spec_01_findings.json#ST-2"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#ST-2"
+      ],
+      "gaps": [
+        "Owner decision remains open in the source row; no decision or test outcome is inferred.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:ST-3",
+      "paths": [
+        "specs/spec_01_findings.json#ST-3"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#ST-3"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:ST-4",
+      "paths": [
+        "specs/spec_01_findings.json#ST-4"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#ST-4"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:SC-7",
+      "paths": [
+        "specs/spec_01_findings.json#SC-7"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#SC-7"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:CI-7",
+      "paths": [
+        "specs/spec_01_findings.json#CI-7"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#CI-7"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:CI-3",
+      "paths": [
+        "specs/spec_01_findings.json#CI-3"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#CI-3"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:CI-8",
+      "paths": [
+        "specs/spec_01_findings.json#CI-8"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#CI-8"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:ST-6",
+      "paths": [
+        "specs/spec_01_findings.json#ST-6"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#ST-6"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:RT-10",
+      "paths": [
+        "specs/spec_01_findings.json#RT-10"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01",
+        "feature:016"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#RT-10",
+        "specs/features/ARCHIVE.md#016-router-hardening"
+      ],
+      "gaps": [
+        "Feature 016 validation at git 2b2bdc2^ used fakes and did not test a real router."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:RT-18",
+      "paths": [
+        "specs/spec_01_findings.json#RT-18"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01",
+        "feature:016"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#RT-18",
+        "specs/features/ARCHIVE.md#016-router-hardening"
+      ],
+      "gaps": [
+        "Feature 016 validation at git 2b2bdc2^ used fakes and did not test a real router."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:RT-09",
+      "paths": [
+        "specs/spec_01_findings.json#RT-09"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#RT-09"
+      ],
+      "gaps": [
+        "Source row remains open and declares a integration check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:RT-17",
+      "paths": [
+        "specs/spec_01_findings.json#RT-17"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01",
+        "feature:015"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#RT-17",
+        "specs/features/015-router-always-on/validation.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "The finding remains open; the linked feature validation records computer evidence and unrun hardware/CI conditions. Reconcile the final disposition against those conditions, not the feature merge alone."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:RT-08",
+      "paths": [
+        "specs/spec_01_findings.json#RT-08"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01",
+        "feature:016"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#RT-08",
+        "specs/features/ARCHIVE.md#016-router-hardening"
+      ],
+      "gaps": [
+        "Feature 016 validation at git 2b2bdc2^ used fakes and did not test a real router."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:RT-26",
+      "paths": [
+        "specs/spec_01_findings.json#RT-26"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01",
+        "feature:016"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#RT-26",
+        "specs/features/ARCHIVE.md#016-router-hardening"
+      ],
+      "gaps": [
+        "Feature 016 validation at git 2b2bdc2^ used fakes and did not test a real router."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:RT-22",
+      "paths": [
+        "specs/spec_01_findings.json#RT-22"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01",
+        "feature:016"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#RT-22",
+        "specs/features/ARCHIVE.md#016-router-hardening"
+      ],
+      "gaps": [
+        "Feature 016 validation at git 2b2bdc2^ used fakes and did not test a real router."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:FW-04",
+      "paths": [
+        "specs/spec_01_findings.json#FW-04"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01",
+        "feature:017"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#FW-04",
+        "specs/features/017-coin-box-always-on/validation.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "The finding remains open; the linked feature validation records computer evidence and unrun hardware/CI conditions. Reconcile the final disposition against those conditions, not the feature merge alone."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:FW-07",
+      "paths": [
+        "specs/spec_01_findings.json#FW-07"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01",
+        "feature:017"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#FW-07",
+        "specs/features/017-coin-box-always-on/validation.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "The finding remains open; the linked feature validation records computer evidence and unrun hardware/CI conditions. Reconcile the final disposition against those conditions, not the feature merge alone."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:FW-08",
+      "paths": [
+        "specs/spec_01_findings.json#FW-08"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01",
+        "feature:017"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#FW-08",
+        "specs/features/017-coin-box-always-on/validation.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "The finding remains open; the linked feature validation records computer evidence and unrun hardware/CI conditions. Reconcile the final disposition against those conditions, not the feature merge alone."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:FW-10",
+      "paths": [
+        "specs/spec_01_findings.json#FW-10"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01",
+        "feature:017"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#FW-10",
+        "specs/features/017-coin-box-always-on/validation.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "The finding remains open; the linked feature validation records computer evidence and unrun hardware/CI conditions. Reconcile the final disposition against those conditions, not the feature merge alone."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:FW-11",
+      "paths": [
+        "specs/spec_01_findings.json#FW-11"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01",
+        "feature:017"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#FW-11",
+        "specs/features/017-coin-box-always-on/validation.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "The finding remains open; the linked feature validation records computer evidence and unrun hardware/CI conditions. Reconcile the final disposition against those conditions, not the feature merge alone."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:FW-12",
+      "paths": [
+        "specs/spec_01_findings.json#FW-12"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01",
+        "feature:017"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#FW-12",
+        "specs/features/017-coin-box-always-on/validation.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "The finding remains open; the linked feature validation records computer evidence and unrun hardware/CI conditions. Reconcile the final disposition against those conditions, not the feature merge alone."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:FW-13",
+      "paths": [
+        "specs/spec_01_findings.json#FW-13"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01",
+        "feature:017"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#FW-13",
+        "specs/features/017-coin-box-always-on/validation.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "The finding remains open; the linked feature validation records computer evidence and unrun hardware/CI conditions. Reconcile the final disposition against those conditions, not the feature merge alone."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:FW-14",
+      "paths": [
+        "specs/spec_01_findings.json#FW-14"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01",
+        "feature:017"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#FW-14",
+        "specs/features/017-coin-box-always-on/validation.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "The finding remains open; the linked feature validation records computer evidence and unrun hardware/CI conditions. Reconcile the final disposition against those conditions, not the feature merge alone."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:APP-21",
+      "paths": [
+        "specs/spec_01_findings.json#APP-21"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#APP-21"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:ST-5",
+      "paths": [
+        "specs/spec_01_findings.json#ST-5"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#ST-5"
+      ],
+      "gaps": [
+        "Source row remains open and declares a integration check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:ST-7",
+      "paths": [
+        "specs/spec_01_findings.json#ST-7"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#ST-7"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:CI-5",
+      "paths": [
+        "specs/spec_01_findings.json#CI-5"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#CI-5"
+      ],
+      "gaps": [
+        "Source row remains open and declares a ci check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:CI-6",
+      "paths": [
+        "specs/spec_01_findings.json#CI-6"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#CI-6"
+      ],
+      "gaps": [
+        "Source row remains open and declares a ci check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:WEB-1",
+      "paths": [
+        "specs/spec_01_findings.json#WEB-1"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#WEB-1"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:WEB-2",
+      "paths": [
+        "specs/spec_01_findings.json#WEB-2"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#WEB-2"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:DEAD-1",
+      "paths": [
+        "specs/spec_01_findings.json#DEAD-1"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#DEAD-1"
+      ],
+      "gaps": [
+        "Owner decision remains open in the source row; no decision or test outcome is inferred.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:APP-11",
+      "paths": [
+        "specs/spec_01_findings.json#APP-11"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#APP-11"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:APP-12",
+      "paths": [
+        "specs/spec_01_findings.json#APP-12"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#APP-12"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:APP-16",
+      "paths": [
+        "specs/spec_01_findings.json#APP-16"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#APP-16"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:APP-17",
+      "paths": [
+        "specs/spec_01_findings.json#APP-17"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#APP-17"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:APP-18",
+      "paths": [
+        "specs/spec_01_findings.json#APP-18"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#APP-18"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:APP-19",
+      "paths": [
+        "specs/spec_01_findings.json#APP-19"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#APP-19"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:APP-20",
+      "paths": [
+        "specs/spec_01_findings.json#APP-20"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#APP-20"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:APP-22",
+      "paths": [
+        "specs/spec_01_findings.json#APP-22"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#APP-22"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:APP-24",
+      "paths": [
+        "specs/spec_01_findings.json#APP-24"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#APP-24"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:APP-25",
+      "paths": [
+        "specs/spec_01_findings.json#APP-25"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#APP-25"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:APP-26",
+      "paths": [
+        "specs/spec_01_findings.json#APP-26"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#APP-26"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:FW-21",
+      "paths": [
+        "specs/spec_01_findings.json#FW-21"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#FW-21"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:FW-22",
+      "paths": [
+        "specs/spec_01_findings.json#FW-22"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#FW-22"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:FW-23",
+      "paths": [
+        "specs/spec_01_findings.json#FW-23"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#FW-23"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:FW-24",
+      "paths": [
+        "specs/spec_01_findings.json#FW-24"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#FW-24"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:FW-09",
+      "paths": [
+        "specs/spec_01_findings.json#FW-09"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#FW-09"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:FW-25",
+      "paths": [
+        "specs/spec_01_findings.json#FW-25"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#FW-25"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:RT-19",
+      "paths": [
+        "specs/spec_01_findings.json#RT-19"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#RT-19"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:RT-20",
+      "paths": [
+        "specs/spec_01_findings.json#RT-20"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#RT-20"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:RT-23",
+      "paths": [
+        "specs/spec_01_findings.json#RT-23"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#RT-23"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:RT-24",
+      "paths": [
+        "specs/spec_01_findings.json#RT-24"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#RT-24"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:ST-8",
+      "paths": [
+        "specs/spec_01_findings.json#ST-8"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#ST-8"
+      ],
+      "gaps": [
+        "Owner decision remains open in the source row; no decision or test outcome is inferred.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:ST-11",
+      "paths": [
+        "specs/spec_01_findings.json#ST-11"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#ST-11"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:SC-8",
+      "paths": [
+        "specs/spec_01_findings.json#SC-8"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#SC-8"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:SC-6",
+      "paths": [
+        "specs/spec_01_findings.json#SC-6"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#SC-6"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:SC-9",
+      "paths": [
+        "specs/spec_01_findings.json#SC-9"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#SC-9"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:CI-10",
+      "paths": [
+        "specs/spec_01_findings.json#CI-10"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#CI-10"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:CI-11",
+      "paths": [
+        "specs/spec_01_findings.json#CI-11"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#CI-11"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:FW-16",
+      "paths": [
+        "specs/spec_01_findings.json#FW-16"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#FW-16"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:FW-15",
+      "paths": [
+        "specs/spec_01_findings.json#FW-15"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#FW-15"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:RT-15",
+      "paths": [
+        "specs/spec_01_findings.json#RT-15"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#RT-15"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:FW-26",
+      "paths": [
+        "specs/spec_01_findings.json#FW-26"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#FW-26"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:ST-9",
+      "paths": [
+        "specs/spec_01_findings.json#ST-9"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#ST-9"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:ST-10",
+      "paths": [
+        "specs/spec_01_findings.json#ST-10"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#ST-10"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:RT-12",
+      "paths": [
+        "specs/spec_01_findings.json#RT-12"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#RT-12"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:RT-13",
+      "paths": [
+        "specs/spec_01_findings.json#RT-13"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#RT-13"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:RT-16",
+      "paths": [
+        "specs/spec_01_findings.json#RT-16"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#RT-16"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:FW-17",
+      "paths": [
+        "specs/spec_01_findings.json#FW-17"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01",
+        "feature:017"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#FW-17",
+        "specs/features/017-coin-box-always-on/validation.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "The finding remains open; the linked feature validation records computer evidence and unrun hardware/CI conditions. Reconcile the final disposition against those conditions, not the feature merge alone."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:FW-18",
+      "paths": [
+        "specs/spec_01_findings.json#FW-18"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01",
+        "feature:017"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#FW-18",
+        "specs/features/017-coin-box-always-on/validation.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "The finding remains open; the linked feature validation records computer evidence and unrun hardware/CI conditions. Reconcile the final disposition against those conditions, not the feature merge alone."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:FW-19",
+      "paths": [
+        "specs/spec_01_findings.json#FW-19"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#FW-19"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:FW-20",
+      "paths": [
+        "specs/spec_01_findings.json#FW-20"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#FW-20"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:APP-13",
+      "paths": [
+        "specs/spec_01_findings.json#APP-13"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#APP-13"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:APP-14",
+      "paths": [
+        "specs/spec_01_findings.json#APP-14"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#APP-14"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:APP-15",
+      "paths": [
+        "specs/spec_01_findings.json#APP-15"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:01"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#APP-15"
+      ],
+      "gaps": [
+        "Source row remains open and declares a unit check; implementation and test completion are not established by this review.",
+        "No feature association is recorded in the reviewed inventory; do not infer implementation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "01:APP-27",
+      "paths": [
+        "specs/spec_01_findings.json#APP-27"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:01",
+        "feature:003"
+      ],
+      "evidence": [
+        "specs/spec_01_findings.json#APP-27",
+        "specs/features/ARCHIVE.md#003-tablet-game-touch",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Feature 003 validation at git 2b2bdc2^ records a JVM unit test; tablet and installed-game checks were not run in that validation (RS33)."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "02:AO-01",
+      "paths": [
+        "specs/spec_02_findings.json#AO-01"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:02",
+        "feature:015"
+      ],
+      "evidence": [
+        "specs/spec_02_findings.json#AO-01",
+        "specs/features/015-router-always-on/validation.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Hardware verification remains separate; consult the linked validation and hardware checklist."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "02:AO-02",
+      "paths": [
+        "specs/spec_02_findings.json#AO-02"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:02",
+        "feature:032",
+        "feature:015"
+      ],
+      "evidence": [
+        "specs/spec_02_findings.json#AO-02",
+        "specs/features/032-ledger-size-cap",
+        "specs/features/015-router-always-on"
+      ],
+      "gaps": [
+        "Feature 032 records a baseline setup-test failure, unrun Python gates and RS56; do not infer all gates passed.",
+        "Feature 015 validation records computer evidence; AO-02 has later feature 032 work, AO-03 performance targets were not measured, and AO-04 wheel behavior was removed by 033."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "02:AO-03",
+      "paths": [
+        "specs/spec_02_findings.json#AO-03"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:02",
+        "feature:015"
+      ],
+      "evidence": [
+        "specs/spec_02_findings.json#AO-03",
+        "specs/features/015-router-always-on/validation.md",
+        "docs/REAL_WORLD_TESTING.md",
+        "specs/features/015-router-always-on"
+      ],
+      "gaps": [
+        "Hardware verification remains separate; consult the linked validation and hardware checklist.",
+        "The 50 ms and 64 KB acceptance targets were not measured.",
+        "Feature 015 validation records computer evidence; AO-02 has later feature 032 work, AO-03 performance targets were not measured, and AO-04 wheel behavior was removed by 033."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "02:AO-04",
+      "paths": [
+        "specs/spec_02_findings.json#AO-04"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:02",
+        "feature:015"
+      ],
+      "evidence": [
+        "specs/spec_02_findings.json#AO-04",
+        "specs/features/015-router-always-on/validation.md",
+        "docs/REAL_WORLD_TESTING.md",
+        "specs/features/015-router-always-on"
+      ],
+      "gaps": [
+        "Hardware verification remains separate; consult the linked validation and hardware checklist.",
+        "Wheel removed by feature 033; backlog closure disposition remains unresolved.",
+        "Feature 015 validation records computer evidence; AO-02 has later feature 032 work, AO-03 performance targets were not measured, and AO-04 wheel behavior was removed by 033."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "02:AO-05",
+      "paths": [
+        "specs/spec_02_findings.json#AO-05"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:02",
+        "feature:015"
+      ],
+      "evidence": [
+        "specs/spec_02_findings.json#AO-05",
+        "specs/features/015-router-always-on/validation.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Hardware verification remains separate; consult the linked validation and hardware checklist."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "02:AO-06",
+      "paths": [
+        "specs/spec_02_findings.json#AO-06"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:02",
+        "feature:015"
+      ],
+      "evidence": [
+        "specs/spec_02_findings.json#AO-06",
+        "specs/features/015-router-always-on/validation.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Hardware verification remains separate; consult the linked validation and hardware checklist."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "02:AO-07",
+      "paths": [
+        "specs/spec_02_findings.json#AO-07"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:02",
+        "feature:017"
+      ],
+      "evidence": [
+        "specs/spec_02_findings.json#AO-07",
+        "specs/features/017-coin-box-always-on/validation.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Hardware verification remains separate; consult the linked validation and hardware checklist.",
+        "Feature 017 did not locally compile firmware; CI evidence requires confirmation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "02:AO-08",
+      "paths": [
+        "specs/spec_02_findings.json#AO-08"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:02",
+        "feature:018"
+      ],
+      "evidence": [
+        "specs/spec_02_findings.json#AO-08",
+        "specs/features/ARCHIVE.md#018-app-money-rows"
+      ],
+      "gaps": [
+        "Feature 018 measures the receipt count; pruning was explicitly not part of that feature."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "02:AO-09",
+      "paths": [
+        "specs/spec_02_findings.json#AO-09"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:02",
+        "feature:015"
+      ],
+      "evidence": [
+        "specs/spec_02_findings.json#AO-09",
+        "specs/features/015-router-always-on/validation.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "Hardware verification remains separate; consult the linked validation and hardware checklist."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "02:AO-10",
+      "paths": [
+        "specs/spec_02_findings.json#AO-10"
+      ],
+      "disposition": "unresolved",
+      "related_ids": [
+        "epic:02",
+        "feature:014"
+      ],
+      "evidence": [
+        "specs/spec_02_findings.json#AO-10",
+        "specs/features/ARCHIVE.md#014-router-soak-harness"
+      ],
+      "gaps": [
+        "Feature 014 validation did not run the 30-day-equivalent soak or establish long-run hardware behavior."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "02:AO-11",
+      "paths": [
+        "specs/spec_02_findings.json#AO-11"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:02",
+        "feature:021"
+      ],
+      "evidence": [
+        "specs/spec_02_findings.json#AO-11",
+        "specs/features/021-window-record-at-arm/spec.md",
+        "specs/features/021-window-record-at-arm/validation.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "RS45 is not run; computer tests do not verify a real power cut."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "04:SU-18",
+      "paths": [
+        "specs/spec_04_findings.json#SU-18"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:04",
+        "feature:045"
+      ],
+      "evidence": [
+        "specs/spec_04_findings.json#SU-18",
+        "specs/features/045-setup-program-real-run/validation.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "RS60 and real router, box, phone, Windows and macOS scenarios were not run in the validation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "04:SU-09",
+      "paths": [
+        "specs/spec_04_findings.json#SU-09"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:04",
+        "feature:045"
+      ],
+      "evidence": [
+        "specs/spec_04_findings.json#SU-09",
+        "specs/features/045-setup-program-real-run/validation.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "RS60 and real router, box, phone, Windows and macOS scenarios were not run in the validation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "04:SU-10",
+      "paths": [
+        "specs/spec_04_findings.json#SU-10"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:04",
+        "feature:045"
+      ],
+      "evidence": [
+        "specs/spec_04_findings.json#SU-10",
+        "specs/features/045-setup-program-real-run/validation.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "RS60 and real router, box, phone, Windows and macOS scenarios were not run in the validation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "04:SU-01",
+      "paths": [
+        "specs/spec_04_findings.json#SU-01"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:04",
+        "feature:045"
+      ],
+      "evidence": [
+        "specs/spec_04_findings.json#SU-01",
+        "specs/features/045-setup-program-real-run/validation.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "RS60 and real router, box, phone, Windows and macOS scenarios were not run in the validation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "04:SU-02",
+      "paths": [
+        "specs/spec_04_findings.json#SU-02"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:04",
+        "feature:045"
+      ],
+      "evidence": [
+        "specs/spec_04_findings.json#SU-02",
+        "specs/features/045-setup-program-real-run/validation.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "RS60 and real router, box, phone, Windows and macOS scenarios were not run in the validation.",
+        "The offline package path was removed by feature 041; the source row is wont-fix."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "04:SU-04",
+      "paths": [
+        "specs/spec_04_findings.json#SU-04"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:04",
+        "feature:045"
+      ],
+      "evidence": [
+        "specs/spec_04_findings.json#SU-04",
+        "specs/features/045-setup-program-real-run/validation.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "RS60 and real router, box, phone, Windows and macOS scenarios were not run in the validation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "04:SU-06a",
+      "paths": [
+        "specs/spec_04_findings.json#SU-06a"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:04",
+        "feature:045"
+      ],
+      "evidence": [
+        "specs/spec_04_findings.json#SU-06a",
+        "specs/features/045-setup-program-real-run/validation.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "RS60 and real router, box, phone, Windows and macOS scenarios were not run in the validation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "04:SU-15",
+      "paths": [
+        "specs/spec_04_findings.json#SU-15"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:04",
+        "feature:045"
+      ],
+      "evidence": [
+        "specs/spec_04_findings.json#SU-15",
+        "specs/features/045-setup-program-real-run/validation.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "RS60 and real router, box, phone, Windows and macOS scenarios were not run in the validation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "04:SU-17",
+      "paths": [
+        "specs/spec_04_findings.json#SU-17"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:04",
+        "feature:045"
+      ],
+      "evidence": [
+        "specs/spec_04_findings.json#SU-17",
+        "specs/features/045-setup-program-real-run/validation.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "RS60 and real router, box, phone, Windows and macOS scenarios were not run in the validation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "04:SU-21",
+      "paths": [
+        "specs/spec_04_findings.json#SU-21"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:04",
+        "feature:045"
+      ],
+      "evidence": [
+        "specs/spec_04_findings.json#SU-21",
+        "specs/features/045-setup-program-real-run/validation.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "RS60 and real router, box, phone, Windows and macOS scenarios were not run in the validation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "04:SU-14",
+      "paths": [
+        "specs/spec_04_findings.json#SU-14"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:04",
+        "feature:045"
+      ],
+      "evidence": [
+        "specs/spec_04_findings.json#SU-14",
+        "specs/features/045-setup-program-real-run/validation.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "RS60 and real router, box, phone, Windows and macOS scenarios were not run in the validation.",
+        "The source row remains open pending RS60(b)."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "04:SU-03",
+      "paths": [
+        "specs/spec_04_findings.json#SU-03"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:04",
+        "feature:046"
+      ],
+      "evidence": [
+        "specs/spec_04_findings.json#SU-03",
+        "specs/features/046-router-setup-real-run/validation.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "RS61 and real router, box, phone and computer scenarios were not run in the validation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "04:SU-11",
+      "paths": [
+        "specs/spec_04_findings.json#SU-11"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:04",
+        "feature:046"
+      ],
+      "evidence": [
+        "specs/spec_04_findings.json#SU-11",
+        "specs/features/046-router-setup-real-run/validation.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "RS61 and real router, box, phone and computer scenarios were not run in the validation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "04:SU-06b",
+      "paths": [
+        "specs/spec_04_findings.json#SU-06b"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:04",
+        "feature:046"
+      ],
+      "evidence": [
+        "specs/spec_04_findings.json#SU-06b",
+        "specs/features/046-router-setup-real-run/validation.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "RS61 and real router, box, phone and computer scenarios were not run in the validation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "04:SU-05",
+      "paths": [
+        "specs/spec_04_findings.json#SU-05"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:04",
+        "feature:046"
+      ],
+      "evidence": [
+        "specs/spec_04_findings.json#SU-05",
+        "specs/features/046-router-setup-real-run/validation.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "RS61 and real router, box, phone and computer scenarios were not run in the validation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "04:SU-07",
+      "paths": [
+        "specs/spec_04_findings.json#SU-07"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:04",
+        "feature:046"
+      ],
+      "evidence": [
+        "specs/spec_04_findings.json#SU-07",
+        "specs/features/046-router-setup-real-run/validation.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "RS61 and real router, box, phone and computer scenarios were not run in the validation."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "04:SU-08",
+      "paths": [
+        "specs/spec_04_findings.json#SU-08"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:04",
+        "feature:046"
+      ],
+      "evidence": [
+        "specs/spec_04_findings.json#SU-08",
+        "specs/features/046-router-setup-real-run/validation.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "RS61 and real router, box, phone and computer scenarios were not run in the validation.",
+        "RS61(c) determines whether the reorder remains needed."
+      ]
+    },
+    {
+      "kind": "finding",
+      "id": "04:SU-16",
+      "paths": [
+        "specs/spec_04_findings.json#SU-16"
+      ],
+      "disposition": "active",
+      "related_ids": [
+        "epic:04",
+        "feature:047"
+      ],
+      "evidence": [
+        "specs/spec_04_findings.json#SU-16",
+        "specs/features/047-box-wifi-retry/validation.md",
+        "docs/REAL_WORLD_TESTING.md"
+      ],
+      "gaps": [
+        "RS62 and ESP32-only portions were not run in the local validation; feature 047 records the exact limits.",
+        "The ESP32 hello line and applySetup/first-address path were not locally run."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "005",
+      "paths": [
+        "specs/STATUS.md#feature-005"
+      ],
+      "disposition": "superseded",
+      "related_ids": [],
+      "evidence": [
+        "specs/STATUS.md#feature-005",
+        "docs/REAL_WORLD_TESTING.md",
+        "specs/features/ARCHIVE.md#033-remove-wheel"
+      ],
+      "gaps": [
+        "Historical validation is available in git at e0a1453^:specs/features/005-spinning-wheel/validation.md; it reports computer checks only. RS34 was retired when the wheel was removed before that hardware check ran. No hardware pass is claimed."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "006",
+      "paths": [
+        "specs/STATUS.md#feature-006"
+      ],
+      "disposition": "superseded",
+      "related_ids": [],
+      "evidence": [
+        "specs/STATUS.md#feature-006",
+        "docs/REAL_WORLD_TESTING.md",
+        "specs/features/ARCHIVE.md#033-remove-wheel"
+      ],
+      "gaps": [
+        "Historical validation is available in git at e0a1453^:specs/features/006-wheel-button/validation.md; it reports computer checks only. RS34 was retired when the wheel was removed before that hardware check ran. No hardware pass is claimed."
+      ]
+    },
+    {
+      "kind": "feature",
+      "id": "007",
+      "paths": [
+        "specs/STATUS.md#feature-007"
+      ],
+      "disposition": "superseded",
+      "related_ids": [],
+      "evidence": [
+        "specs/STATUS.md#feature-007",
+        "docs/REAL_WORLD_TESTING.md",
+        "specs/features/ARCHIVE.md#033-remove-wheel"
+      ],
+      "gaps": [
+        "Historical validation is available in git at e0a1453^:specs/features/007-wheel-graphics/validation.md; it reports computer checks only. RS34 was retired when the wheel was removed before that hardware check ran. No hardware pass is claimed."
+      ]
+    }
+  ]
+}
