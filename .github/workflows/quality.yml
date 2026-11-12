@@ -36,6 +36,7 @@ on:
       - 'website/css/**'
       - 'website/js/**'
       - '.editorconfig'
+      - 'config/detekt/**'
       - '.github/workflows/quality.yml'
   pull_request:
     branches:
@@ -61,6 +62,7 @@ on:
       - 'website/css/**'
       - 'website/js/**'
       - '.editorconfig'
+      - 'config/detekt/**'
       - '.github/workflows/quality.yml'
 
 concurrency:
@@ -115,7 +117,7 @@ jobs:
           }
           W='\.github/workflows/quality\.yml'
           flag security '.'
-          flag kotlin "^(app/|[^/]*\.kts$|\.editorconfig|detekt\.yml|detekt-baseline\.xml|$W)"
+          flag kotlin "^(app/|[^/]*\.kts$|\.editorconfig|config/detekt/|$W)"
           flag firmware_build "^(esp32_firmware/|protocol/|$W)"
           flag firmware_tests "^(esp32_firmware/|protocol/|scripts/|$W)"
           flag portal "^(tools/pisoportal/|router/|setup/|website/install\.sh|website/pisophone_setup\.py|tools/build_piso_setup\.py|scripts/(sign_router|owner_key|make_owner_keys)\.py|$W)"
@@ -203,9 +205,9 @@ jobs:
         run: |
           curl -sSL -o detekt.jar https://github.com/detekt/detekt/releases/download/v1.23.8/detekt-cli-1.23.8-all.jar
           echo "2ce2ff952e150baf28a29cda70a363b0340b3e81a55f43e51ec5edffc3d066c1  detekt.jar" | sha256sum -c -
-      # detekt.yml says what is checked; detekt-baseline.xml holds what already existed. Anything new fails here.
+      # config/detekt/detekt.yml says what is checked; config/detekt/detekt-baseline.xml holds what already existed. Anything new fails here.
       - name: Static analysis of the app
-        run: java -jar detekt.jar --config detekt.yml --build-upon-default-config --baseline detekt-baseline.xml --input app/src/main/java
+        run: java -jar detekt.jar --config config/detekt/detekt.yml --build-upon-default-config --baseline config/detekt/detekt-baseline.xml --input app/src/main/java
 
   firmware-style-and-tests:
     name: Firmware format and host tests

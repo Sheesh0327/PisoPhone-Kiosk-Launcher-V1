@@ -2,7 +2,7 @@ package com.pisophone.kiosk.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// TechNet colours (docs/design/GUI_SPEC_PISOPHONE_KIDS.md section 2): navy, one blue, teal for "connected", gold for money.
+// TechNet colours (docs/UI_DESIGN.md): navy, one blue, teal for "connected", gold for money.
 // Material's roles keep the same pattern as before (a light accent with dark text on it), so every screen that reads them
 // keeps its contrast; Tokens.kt holds the full set for the redesigned screens.
 val Background = Color(0xFF050D22)

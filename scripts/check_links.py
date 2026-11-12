@@ -2,8 +2,7 @@
 """Lists the links in the repository's documents that point to a file that is not there: markdown links `[text](path)` and paths in
 backticks that start with one of the repository's own folders (`docs/ARCHITECTURE.md`, `scripts/x.py:12`).
 
-History is not scanned by default (the changelog, ledger, notes, replans, feature folders and templates name files that were removed
-on purpose); `--all` scans it too. Exit status 1 when a dead link is found.
+The changelog is not scanned by default because it can name files removed on purpose; `--all` scans it too. Exit status 1 when a dead link is found.
 
     python3 scripts/check_links.py [--root DIR] [--all]
 """
@@ -13,7 +12,7 @@ import re
 import subprocess
 import sys
 
-HISTORY = ("CHANGELOG.md", "ledger/", "specs/notes/", "specs/replans/", "specs/features/", "specs/templates/")
+HISTORY = ("CHANGELOG.md",)
 MD_LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
 TICK_PATH = re.compile(r"`([A-Za-z0-9_.\-]+(?:/[A-Za-z0-9_.\-<>*{}$]*)+/?)(?::\d+(?:-\d+)?)?`")
 PLACEHOLDER = re.compile(r"NNN|NN_|YYYY|<|>|\*|\{|\$|\.\.\.")
@@ -32,7 +31,7 @@ def find_dead(root, everything=False):
     folders = {f.split("/")[0] for f in files if "/" in f}
     dead = []
     for rel in files:
-        if not rel.endswith(".md") or (not everything and rel.startswith(HISTORY)):
+        if not os.path.isfile(os.path.join(root, rel)) or not rel.endswith(".md") or (not everything and rel.startswith(HISTORY)):
             continue
         here = os.path.dirname(os.path.join(root, rel))
         with open(os.path.join(root, rel), encoding="utf-8") as f:

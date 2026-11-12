@@ -106,7 +106,7 @@ pub struct Look {
     pub base: Option<Base>,
 }
 
-/// What the panel says (rows 1 to 8 of `specs/features/036-site-status-panel/spec.md`).
+/// Payment reconciliation states shown by the panel.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum State {
     Agrees,

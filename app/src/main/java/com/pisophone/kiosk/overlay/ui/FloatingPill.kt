@@ -109,7 +109,7 @@ private fun Modifier.adminLongPress(scope: CoroutineScope, onTap: () -> Unit = {
     }
 
 /**
- * The time pill and its panel (docs/design/GUI_SPEC_PISOPHONE_KIDS.md, screens D and E). Collapsed it is a small pill with the
+ * The time pill and its panel (docs/UI_DESIGN.md). Collapsed it is a small pill with the
  * time left, a level icon (a dot, an hourglass, an alert) and a note that slides in under it at 5 minutes and 1 minute. Tapped it
  * opens a panel: the time, the coin button, home, close app, clear RAM, sign out, and the volume and brightness. Holding the time
  * for five seconds still opens the owner sign-in.
