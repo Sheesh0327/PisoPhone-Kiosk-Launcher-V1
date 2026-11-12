@@ -201,6 +201,7 @@ cmd_diag() {
 	echo "--- coin box link"; cmd_box_diag 2>&1
 	echo "--- firewall tables"; nft list tables 2> /dev/null
 	echo "--- guests apart; phones reach the router and the coin box only (both tables must be listed; if not, this router lacks kmod-nft-bridge)"; nft list table bridge piso_guest 2>&1 | head -12; nft list table bridge piso_kiosk 2>&1 | head -40
+	echo "--- tether guard (anti-hotspot)"; nft list table inet piso_tether 2>&1 | head -10
 	echo "--- openNDS"; uci -q get opennds.@opennds[0].gatewayinterface; ndsctl status 2>&1 | head -12
 	echo "--- guests as openNDS sees them (a paying phone must be Authenticated)"; ndsctl json 2> /dev/null | grep -E '"(mac|ip|state|session_end|download_this_session)"' | head -40
 	echo "--- rules openNDS built for guests (an Authenticated phone's traffic must reach an accept rule)"

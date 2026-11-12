@@ -11,6 +11,8 @@
 #              router's own login pages (SSH, LuCI: ports 22, 80, 443, 8080, 8443) do not answer on Wi-Fi at all; a computer on a
 #              LAN cable is not touched. `piso-setup wifi-admin on` lets Wi-Fi in again. Packets from Wi-Fi are also marked so the
 #              firewall (rule Kiosk-Wi-Fi-No-Private) can refuse the modem's network to them.
+#  piso_tether Anti-tethering: drops forwarded packets from guest hotspot clients (TTL 61-63, 125-127) entering via the guest bridge.
+#              The paying customer's own device (TTL 64 or 128) is untouched. `piso-setup tether-guard on|off` manages this table.
 #
 # Needs the kernel's nftables bridge support (kmod-nft-bridge). Without it nothing is changed and the reason is logged; the Wi-Fi
 # isolation of each radio stays as it was. `piso-setup diag` shows whether the tables are in place.
@@ -33,6 +35,11 @@ cget() { sed -n "s/^$2='\\(.*\\)'\$/\\1/p" "$1" 2> /dev/null | tail -n 1; }
 # rules stay in place instead of leaving the network with none.
 load() {
 	{ echo "table bridge $1"; echo "delete table bridge $1"; cat "$2"; } > "$T2" 2> /dev/null || return 1
+	"$NFT" -f "$T2" > /dev/null 2>&1
+}
+
+load_inet() {
+	{ echo "table inet $1"; echo "delete table inet $1"; cat "$2"; } > "$T2" 2> /dev/null || return 1
 	"$NFT" -f "$T2" > /dev/null 2>&1
 }
 
@@ -136,4 +143,30 @@ if [ -d "$SYS/$LAN_BR" ]; then
 	} > "$T"
 	load piso_kiosk "$T" || fail "phone isolation is NOT active: this router cannot load a bridge firewall rule (install kmod-nft-bridge); rental phones can still reach each other and the router's login pages"
 fi
+
+# ---- anti-tethering (TTL guard) ------------------------------------------------------------------------------
+# Drops packets from tethered hotspot devices behind guest phones (TTL decremented by host phone's kernel to
+# 61-63 for Linux/Android/iOS or 125-127 for Windows). Traffic originating from the paying phone itself (TTL 64 or 128)
+# is untouched. Only applies to forwarded traffic arriving on the guest bridge (never WAN downloads or router services).
+if [ -d "$SYS/$GUEST_BR" ]; then
+	TETHER_GUARD=$(cget "$CONF" TETHER_GUARD)
+	if [ "$TETHER_GUARD" != off ]; then
+		cat > "$T" << EOT
+table inet piso_tether {
+	chain forward {
+		type filter hook forward priority -50; policy accept;
+		iifname "$GUEST_BR" ip ttl { 61, 62, 63, 125, 126, 127 } counter drop comment "drop tethered clients"
+	}
+}
+EOT
+		load_inet piso_tether "$T" || fail "tether guard could not be loaded: this router cannot load the inet table rule"
+	else
+		{ echo "table inet piso_tether"; echo "delete table inet piso_tether"; } > "$T2" 2> /dev/null
+		"$NFT" -f "$T2" > /dev/null 2>&1
+	fi
+else
+	{ echo "table inet piso_tether"; echo "delete table inet piso_tether"; } > "$T2" 2> /dev/null
+	"$NFT" -f "$T2" > /dev/null 2>&1
+fi
+
 exit 0

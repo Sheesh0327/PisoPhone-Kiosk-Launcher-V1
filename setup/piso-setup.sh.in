@@ -1434,6 +1434,7 @@ cmd_diag() {
 	echo "--- coin box link"; cmd_box_diag 2>&1
 	echo "--- firewall tables"; nft list tables 2> /dev/null
 	echo "--- guests apart; phones reach the router and the coin box only (both tables must be listed; if not, this router lacks kmod-nft-bridge)"; nft list table bridge piso_guest 2>&1 | head -12; nft list table bridge piso_kiosk 2>&1 | head -40
+	echo "--- tether guard (anti-hotspot)"; nft list table inet piso_tether 2>&1 | head -10
 	echo "--- openNDS"; uci -q get opennds.@opennds[0].gatewayinterface; ndsctl status 2>&1 | head -12
 	echo "--- guests as openNDS sees them (a paying phone must be Authenticated)"; ndsctl json 2> /dev/null | grep -E '"(mac|ip|state|session_end|download_this_session)"' | head -40
 	echo "--- rules openNDS built for guests (an Authenticated phone's traffic must reach an accept rule)"
@@ -2042,6 +2043,19 @@ cmd_wifi_admin() {
 	esac
 }
 
+# tether-guard [on|off|status]: anti-tethering / hotspot sharing protection. On is the normal state: dropped packets for
+# devices connected behind guest phones' hotspots (TTL 61-63, 125-127). The paying customer's phone is untouched.
+cmd_tether_guard() {
+	case "${1:-status}" in
+		on) [ "$(id -u)" = 0 ] || die "run as root"; conf_set TETHER_GUARD on; apply_isolation
+			echo "Anti-tethering (TTL guard) is on: hotspot clients behind guest phones are blocked." ;;
+		off) [ "$(id -u)" = 0 ] || die "run as root"; conf_set TETHER_GUARD off; apply_isolation
+			echo "Anti-tethering (TTL guard) is off. Turn it on with: piso-setup tether-guard on" ;;
+		status) if [ "$(conf_get TETHER_GUARD)" = off ]; then echo "off: anti-tethering is disabled"; else echo "on: hotspot clients behind guest phones are blocked (TTL guard)"; fi ;;
+		*) die "usage: piso-setup tether-guard [on|off|status]" ;;
+	esac
+}
+
 cmd_set_password() {
 	[ "$(id -u)" = 0 ] || die "run as root"
 	echo "Choose a new router (SSH / LuCI) password; it is saved in $CONF and shown by: piso-setup summary"
@@ -2418,6 +2432,7 @@ main() {
 		lock-admin-confirm) cmd_lock_admin_confirm ;;
 		unlock-admin) cmd_unlock_admin ;;
 		wifi-admin) cmd_wifi_admin "$ARG" ;;
+		tether-guard) cmd_tether_guard "$ARG" ;;
 		verify) cmd_verify ;;
 		kiosk-wifi)
 			if wifi_only; then echo "this shop has no rental phones (PisoWiFi only)"; return 0; fi

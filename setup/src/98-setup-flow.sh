@@ -186,6 +186,7 @@ main() {
 		lock-admin-confirm) cmd_lock_admin_confirm ;;
 		unlock-admin) cmd_unlock_admin ;;
 		wifi-admin) cmd_wifi_admin "$ARG" ;;
+		tether-guard) cmd_tether_guard "$ARG" ;;
 		verify) cmd_verify ;;
 		kiosk-wifi)
 			if wifi_only; then echo "this shop has no rental phones (PisoWiFi only)"; return 0; fi

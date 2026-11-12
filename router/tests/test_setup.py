@@ -181,6 +181,8 @@ check("delete table bridge piso_kiosk" in nl and "ether saddr aa:bb:cc:dd:ee:09 
 check('iifname "phy*" ip daddr 10.0.0.1 tcp dport { 22, 80, 443, 8080, 8443, 8081, 8082 } counter drop' in nl and "dport 2050" not in nl,
       "the router's login pages and the console (and the coin box page one port up) are not offered on Wi-Fi, and only on the router's own kiosk address (a guest's web request to any website is not touched): " + nl[-900:])
 check('iifname "phy*" ether saddr != aa:bb:cc:dd:ee:09 meta mark set meta mark | 0x00200000' in nl, "what comes in by Wi-Fi (except the coin box) is marked for the firewall rule")
+check('table inet piso_tether' in nl and 'iifname "br-guest" ip ttl { 61, 62, 63, 125, 126, 127 } counter drop' in nl,
+      "tether guard: drops forwarded packets from guest hotspot clients (TTL 61-63, 125-127)")
 # a router that cannot match the bridge name: the guest ports are named instead; and the rule is the same each time it runs
 open(f"{iso}/nft-noname", "w").close()
 r, nl, ll = run_iso()
@@ -197,13 +199,18 @@ r, nl, ll = run_iso()
 check('tcp dport { 22, 80, 443, 8080, 8443, 81 } counter drop' in nl, "with the console on port 80 the list has 80 once and 81 for the box page: " + nl[-700:])
 open(f"{iso}/piso.conf", "w").write("WIFI_ADMIN='on'\n"); open(f"{iso}/coin.conf", "w").write("GW_BOX='10.0.0.10'\nGW_BOX_MAC=''\nCONSOLE_BIND='10.0.0.1'\n")
 r, nl, ll = run_iso()
+open(f"{iso}/piso.conf", "w").write("TETHER_GUARD='off'\n")
+r, nl, ll = run_iso()
+check(r.returncode == 0 and "table inet piso_tether {" not in nl and "delete table inet piso_tether" in nl,
+      "tether-guard off removes the anti-tethering table: " + nl[-400:])
+open(f"{iso}/piso.conf", "w").write("")
 # a router that cannot load the rules logs it and carries on
 open(f"{iso}/nft-fail", "w").close()
 r, nl, ll = run_iso()
 check(r.returncode == 0 and ll.count("NOT active") == 2 and "guest isolation is NOT active" in ll and "phone isolation is NOT active" in ll, "a router that cannot load the bridge rules logs it and carries on (exit 0): " + ll)
 # RT-10: the old table is deleted in the same nft transaction that loads the new one, never on its own (a failed load leaves the old rules in place)
 check("ARGS delete table" not in nl, "RT-10: no separate `nft delete table` call: " + nl[:300])
-check(all(t in nl for t in ("table bridge piso_guest\ndelete table bridge piso_guest\ntable bridge piso_guest {", "table bridge piso_kiosk\ndelete table bridge piso_kiosk\ntable bridge piso_kiosk {")),
+check(all(t in nl for t in ("table bridge piso_guest\ndelete table bridge piso_guest\ntable bridge piso_guest {", "table bridge piso_kiosk\ndelete table bridge piso_kiosk\ntable bridge piso_kiosk {", "table inet piso_tether\ndelete table inet piso_tether\ntable inet piso_tether {")),
       "RT-10: each rule file declares, deletes and re-creates its table in one file: " + nl[:500])
 os.remove(f"{iso}/nft-fail")
 # RT-18: a console bound to every address (CONSOLE_BIND 0.0.0.0 or empty) must still be closed on Wi-Fi

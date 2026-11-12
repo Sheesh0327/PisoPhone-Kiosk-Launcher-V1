@@ -29,7 +29,7 @@
 
 VERSION="dev"
 # the release of this file (setup/RELEASE): routers install only a higher release that the owner signed
-PISO_RELEASE='1.5.36'
+PISO_RELEASE='1.5.37'
 # the CPU family the portal program in this file is built for (router_family below names the family of the router it runs on)
 PISO_ARCH='x86_64'
 
@@ -1434,6 +1434,7 @@ cmd_diag() {
 	echo "--- coin box link"; cmd_box_diag 2>&1
 	echo "--- firewall tables"; nft list tables 2> /dev/null
 	echo "--- guests apart; phones reach the router and the coin box only (both tables must be listed; if not, this router lacks kmod-nft-bridge)"; nft list table bridge piso_guest 2>&1 | head -12; nft list table bridge piso_kiosk 2>&1 | head -40
+	echo "--- tether guard (anti-hotspot)"; nft list table inet piso_tether 2>&1 | head -10
 	echo "--- openNDS"; uci -q get opennds.@opennds[0].gatewayinterface; ndsctl status 2>&1 | head -12
 	echo "--- guests as openNDS sees them (a paying phone must be Authenticated)"; ndsctl json 2> /dev/null | grep -E '"(mac|ip|state|session_end|download_this_session)"' | head -40
 	echo "--- rules openNDS built for guests (an Authenticated phone's traffic must reach an accept rule)"
@@ -2042,6 +2043,19 @@ cmd_wifi_admin() {
 	esac
 }
 
+# tether-guard [on|off|status]: anti-tethering / hotspot sharing protection. On is the normal state: dropped packets for
+# devices connected behind guest phones' hotspots (TTL 61-63, 125-127). The paying customer's phone is untouched.
+cmd_tether_guard() {
+	case "${1:-status}" in
+		on) [ "$(id -u)" = 0 ] || die "run as root"; conf_set TETHER_GUARD on; apply_isolation
+			echo "Anti-tethering (TTL guard) is on: hotspot clients behind guest phones are blocked." ;;
+		off) [ "$(id -u)" = 0 ] || die "run as root"; conf_set TETHER_GUARD off; apply_isolation
+			echo "Anti-tethering (TTL guard) is off. Turn it on with: piso-setup tether-guard on" ;;
+		status) if [ "$(conf_get TETHER_GUARD)" = off ]; then echo "off: anti-tethering is disabled"; else echo "on: hotspot clients behind guest phones are blocked (TTL guard)"; fi ;;
+		*) die "usage: piso-setup tether-guard [on|off|status]" ;;
+	esac
+}
+
 cmd_set_password() {
 	[ "$(id -u)" = 0 ] || die "run as root"
 	echo "Choose a new router (SSH / LuCI) password; it is saved in $CONF and shown by: piso-setup summary"
@@ -2418,6 +2432,7 @@ main() {
 		lock-admin-confirm) cmd_lock_admin_confirm ;;
 		unlock-admin) cmd_unlock_admin ;;
 		wifi-admin) cmd_wifi_admin "$ARG" ;;
+		tether-guard) cmd_tether_guard "$ARG" ;;
 		verify) cmd_verify ;;
 		kiosk-wifi)
 			if wifi_only; then echo "this shop has no rental phones (PisoWiFi only)"; return 0; fi
@@ -2818,6 +2833,8 @@ HTML
 #              router's own login pages (SSH, LuCI: ports 22, 80, 443, 8080, 8443) do not answer on Wi-Fi at all; a computer on a
 #              LAN cable is not touched. `piso-setup wifi-admin on` lets Wi-Fi in again. Packets from Wi-Fi are also marked so the
 #              firewall (rule Kiosk-Wi-Fi-No-Private) can refuse the modem's network to them.
+#  piso_tether Anti-tethering: drops forwarded packets from guest hotspot clients (TTL 61-63, 125-127) entering via the guest bridge.
+#              The paying customer's own device (TTL 64 or 128) is untouched. `piso-setup tether-guard on|off` manages this table.
 #
 # Needs the kernel's nftables bridge support (kmod-nft-bridge). Without it nothing is changed and the reason is logged; the Wi-Fi
 # isolation of each radio stays as it was. `piso-setup diag` shows whether the tables are in place.
@@ -2840,6 +2857,11 @@ cget() { sed -n "s/^$2='\\(.*\\)'\$/\\1/p" "$1" 2> /dev/null | tail -n 1; }
 # rules stay in place instead of leaving the network with none.
 load() {
 	{ echo "table bridge $1"; echo "delete table bridge $1"; cat "$2"; } > "$T2" 2> /dev/null || return 1
+	"$NFT" -f "$T2" > /dev/null 2>&1
+}
+
+load_inet() {
+	{ echo "table inet $1"; echo "delete table inet $1"; cat "$2"; } > "$T2" 2> /dev/null || return 1
 	"$NFT" -f "$T2" > /dev/null 2>&1
 }
 
@@ -2943,6 +2965,32 @@ if [ -d "$SYS/$LAN_BR" ]; then
 	} > "$T"
 	load piso_kiosk "$T" || fail "phone isolation is NOT active: this router cannot load a bridge firewall rule (install kmod-nft-bridge); rental phones can still reach each other and the router's login pages"
 fi
+
+# ---- anti-tethering (TTL guard) ------------------------------------------------------------------------------
+# Drops packets from tethered hotspot devices behind guest phones (TTL decremented by host phone's kernel to
+# 61-63 for Linux/Android/iOS or 125-127 for Windows). Traffic originating from the paying phone itself (TTL 64 or 128)
+# is untouched. Only applies to forwarded traffic arriving on the guest bridge (never WAN downloads or router services).
+if [ -d "$SYS/$GUEST_BR" ]; then
+	TETHER_GUARD=$(cget "$CONF" TETHER_GUARD)
+	if [ "$TETHER_GUARD" != off ]; then
+		cat > "$T" << EOT
+table inet piso_tether {
+	chain forward {
+		type filter hook forward priority -50; policy accept;
+		iifname "$GUEST_BR" ip ttl { 61, 62, 63, 125, 126, 127 } counter drop comment "drop tethered clients"
+	}
+}
+EOT
+		load_inet piso_tether "$T" || fail "tether guard could not be loaded: this router cannot load the inet table rule"
+	else
+		{ echo "table inet piso_tether"; echo "delete table inet piso_tether"; } > "$T2" 2> /dev/null
+		"$NFT" -f "$T2" > /dev/null 2>&1
+	fi
+else
+	{ echo "table inet piso_tether"; echo "delete table inet piso_tether"; } > "$T2" 2> /dev/null
+	"$NFT" -f "$T2" > /dev/null 2>&1
+fi
+
 exit 0
 #@@B64 /usr/bin/pisoportal 755 48899e1ac0121df2cf3d4bdde7a24dce53f563e91269a42a4222185514d9c48b
 f0VMRgIBAQAAAAAAAAAAAAMAPgABAAAAjNkAAAAAAABAAAAAAAAAAPAMEQAAAAAAAAAAAEAAOAAJ

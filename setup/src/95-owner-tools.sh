@@ -168,6 +168,19 @@ cmd_wifi_admin() {
 	esac
 }
 
+# tether-guard [on|off|status]: anti-tethering / hotspot sharing protection. On is the normal state: dropped packets for
+# devices connected behind guest phones' hotspots (TTL 61-63, 125-127). The paying customer's phone is untouched.
+cmd_tether_guard() {
+	case "${1:-status}" in
+		on) [ "$(id -u)" = 0 ] || die "run as root"; conf_set TETHER_GUARD on; apply_isolation
+			echo "Anti-tethering (TTL guard) is on: hotspot clients behind guest phones are blocked." ;;
+		off) [ "$(id -u)" = 0 ] || die "run as root"; conf_set TETHER_GUARD off; apply_isolation
+			echo "Anti-tethering (TTL guard) is off. Turn it on with: piso-setup tether-guard on" ;;
+		status) if [ "$(conf_get TETHER_GUARD)" = off ]; then echo "off: anti-tethering is disabled"; else echo "on: hotspot clients behind guest phones are blocked (TTL guard)"; fi ;;
+		*) die "usage: piso-setup tether-guard [on|off|status]" ;;
+	esac
+}
+
 cmd_set_password() {
 	[ "$(id -u)" = 0 ] || die "run as root"
 	echo "Choose a new router (SSH / LuCI) password; it is saved in $CONF and shown by: piso-setup summary"
