@@ -1,8 +1,8 @@
 {
-  "version": "1.5.33",
-  "sha256": "7072938785a740edeca36663df0e35f1e943815b42f11e724206c6ea6d56e181",
+  "version": "1.5.34",
+  "sha256": "dd2cf6a59b80a6b6f222d67528a2257939adb36515ba9270721ce17191a6ea80",
   "size": 1689115,
-  "rollout": 100,
-  "changelog": "Admin console layout update. ",
-  "sig": "MEUCIQC94RTazCVUqgIZy78F7oAN8DODKyMAozq3jBAmGDpIcwIgRbG5LCJLlPaZ0I0K0c8sZ2kr+Yihf8KyuZ4Qzy51gXc="
+  "rollout": 0,
+  "changelog": "Router software release 1.5.34",
+  "sig": "MEUCIQDcGyAzPwlBxJcQB1VrJO+82gbPqZWqUFUZx+KlNke4aQIgBsgwEZbE3I+zB6TvDfbheDpZF2+KJhYyRn1cs7hAHK4="
 }
