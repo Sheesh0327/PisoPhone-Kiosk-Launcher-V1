@@ -8,6 +8,8 @@ What changed for people who run PisoPhone sites. The phone app, the coin-box fir
 separately (app: the CI build number, shown as hundreds.tens.ones, build 466 is 4.6.6; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+- Router 1.5.38, **anti-tethering rollback and stability release.**
+  - **Stability rollback:** Rolls back experimental TTL-based tethering guard to ensure uninterrupted internet access for paying devices and prevent connection drops during mobile hotspot/tethering activity.
 - Router 1.5.36, **captive portal connectivity fix and Philippine ISP CGNAT compatibility.**
   - **Captive portal validation probe:** Allows DNS (UDP/TCP 53) and DHCP (UDP 67) in openNDS `users_to_router` rules, and updates `wake()` in `page.html` to navigate to the destination probe URL (`cont`), allowing Android and iOS captive portal assistants to receive HTTP 204 and dismiss the captive portal window without showing an exclamation mark (`!`) on the Wi-Fi icon.
   - **Philippine CGNAT compatibility:** Removes RFC 6598 (`100.64.0.0/10`) from the router firewall WAN reject lists so upstream ISP routes and DNS caches operate cleanly on Converge, PLDT, Globe, and DITO networks.
