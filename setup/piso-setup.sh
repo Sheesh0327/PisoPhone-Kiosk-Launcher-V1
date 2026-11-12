@@ -1209,8 +1209,8 @@ stage2() {
 	else log "WARNING: could not set the root password; the router still has its old one"; conf_set ROOT_PASS_SET 0; fi
 
 	step "Checking everything"
-	check_all; _f=$?
 	write_summary
+	check_all; _f=$?
 	_hp=$(write_handout)
 	echo; echo "================ SUMMARY (also saved in $SUMMARY) ================"; cat "$SUMMARY"; echo "=================================================================="
 	log "A printable sheet with the passwords is in $_hp (copy it off with: scp -O root@$LAN_IP:$_hp .)"
