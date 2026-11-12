@@ -170,7 +170,7 @@ The owner makes cards on their own computer with `scripts/make_cards.py` (the ca
 ## 10. Quality checks
 - `.github/workflows/quality.yml` ("Code quality") runs on every push: ktlint for Kotlin, clang-format and the firmware host tests, the security-rule and vendored-file checks, the website and provisioning tests,
   the owner's admin QR login and signed console script tests, the generated web assets check, the dashboard's scripts in a browser, and the portal and router tests (flow, console, browser, installer, self-update, box update).
-- `quality.yml` also runs **detekt** (static analysis; `detekt.yml` is the rules, `detekt-baseline.xml` the findings that existed when it was added, and anything new fails).
+- `quality.yml` also runs **detekt** (static analysis; `config/detekt/detekt.yml` is the rules, `config/detekt/detekt-baseline.xml` the findings that existed when it was added, and anything new fails).
 - `emulator-tests.yml` runs the **emulator tests** (`scripts/ci_emulator_tests.sh`, in an Android emulator with `reactivecircus/android-emulator-runner`) on pushes to `main`, nightly, and by hand. `build-apk.yml` runs the Android unit tests (Robolectric, no device) with a per-package **coverage** check, **Android Lint** (`app/lint-baseline.xml`; anything new fails and lint must pass before the APK is built),
   then builds, signs and publishes the APK (per-branch channel).
 - `scripts/check_security_rules.sh` also fails if a file that is not source sits in a source folder, or a tracked file is over 5 MB (outside the folders CI publishes builds into).

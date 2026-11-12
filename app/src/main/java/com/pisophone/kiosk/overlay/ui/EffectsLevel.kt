@@ -13,7 +13,7 @@ import com.pisophone.kiosk.security.KioskSecurity
 import com.pisophone.kiosk.ui.video.VideoBackgroundPolicy
 
 /**
- * How much the lock screen may move (docs/design/GUI_SPEC_PISOPHONE_KIDS.md sections 8 and 10).
+ * How much the lock screen may move (docs/UI_DESIGN.md).
  *  - [Full]: the mascot's idle wave and the event effects (coins, sparkles, hop).
  *  - [Events]: only effects that answer a tap or a coin (a warm phone, or the admin switched videos off, or low RAM / power saving).
  *  - [Still]: the system's animation scale is 0: nothing moves.

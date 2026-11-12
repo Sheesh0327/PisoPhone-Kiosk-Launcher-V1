@@ -68,7 +68,7 @@ private fun lookOf(style: PisoButtonStyle, enabled: Boolean): ButtonLook {
 }
 
 /**
- * A solid button with a 4dp edge under it; on a press the face moves down 3dp over 80 ms (docs/design/GUI_SPEC_PISOPHONE_KIDS.md
+ * A solid button with a 4dp edge under it; on a press the face moves down 3dp over 80 ms (docs/UI_DESIGN.md
  * section 3). Every button has a text label; a disabled one is flat, grey and says why in its own text or next to it.
  */
 @Composable

@@ -26,8 +26,7 @@ keys. The optional print server is the exception: its send key is still copied b
 
 ## Status
 - PisoPhone and PisoWiFi run in real shops. Each release is signed and published only after its checks pass.
-- Not every feature has been tested on real hardware yet. The current release, and which checks are still waiting for hardware, is in
-  [`specs/RELEASE_STATE.md`](specs/RELEASE_STATE.md). The hardware test log is [`docs/REAL_WORLD_TESTING.md`](docs/REAL_WORLD_TESTING.md).
+- Not every feature has been tested on real hardware yet. Outstanding checks and hardware test results are recorded in [`docs/REAL_WORLD_TESTING.md`](docs/REAL_WORLD_TESTING.md).
 - Router support depends on the router's CPU. [`docs/ROUTERS.md`](docs/ROUTERS.md) lists the five CPU families and says which
   ones have been run on real hardware.
 - What changed for owners, release by release: [`CHANGELOG.md`](CHANGELOG.md).
@@ -44,6 +43,7 @@ sell Wi-Fi time through an OpenWrt router.
 | `website/` | The public website: the setup pages, the router installer, and the signed update feeds (`website/update`). |
 | `router/` and `tools/pisoportal/` | The router add-on. `pisoportal` is a small Rust program that serves the guest coin page and the owner console. A monitor sends optional Telegram alerts. The router add-on is installed by `setup/piso-setup.sh`. |
 | `setup/` | The setup program (`pisophone_setup.py`, run on a computer) and the router installer it drives. |
+| `config/detekt/` | Kotlin static-analysis rules and the existing-findings baseline. |
 | `protocol/`, `scripts/` | Shared test vectors for the box-to-phone messages; owner and maintainer tools. |
 
 ```

@@ -54,7 +54,7 @@ import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.random.Random
 
-/** What the TechNet mascot is doing (docs/design/GUI_SPEC_PISOPHONE_KIDS.md section 3). */
+/** What the TechNet mascot is doing (docs/UI_DESIGN.md). */
 enum class MascotState { Idle, Listening, Cheer, Worried, Sleepy, ThankYou }
 
 private const val TAU = 6.2831855f
