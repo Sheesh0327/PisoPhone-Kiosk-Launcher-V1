@@ -51,12 +51,11 @@ Not run directly: `owner_key.py` (shared key loading for the signing tools) and 
 | `verify_release.py` | Before a release: same owner key in firmware and router; every firmware image, the router file and the app feed match their checksums and verify; and **a box installs firmware only if `PISO_FW_VERSION` is higher** (same for `setup/RELEASE` on routers). |
 | `check_security_rules.sh` | The repository's security rules: no private key or factory password committed, TLS certificate checks never switched off without a stated reason, the coin-slot API keeps requiring signed calls, a capped number of `runBlocking`, and the router setup keeps verifying what it downloads. CI runs it. |
 | `check_vendored.py` | Fails if a vendored third-party file changed without its record in `website/js/VENDORED.md`. |
-| `sold_unit_check.py` | For hardened boxes you sell: shows the security eFuses and tells whether a flash dump is encrypted (`docs/PROVISIONING_SOLD_UNIT.md`). |
 | `gateway_client.py` | Talks to a box's router API from a PC (`arm`, `status`, `release`, `ack`, `run`): for testing, and the model for the router side. |
 
 ## Tests
 Run all with the commands in `CONTRIBUTING.md`; CI runs them for the parts a change touches.
-- `scripts/tests/` is where tests of the scripts and the website live: `test_publish_firmware.py`, `test_check_published_apk.py`, `test_sold_unit_check.py`, `test_recovery_code.py`, `test_make_cards.py`, `test_site_page.py` (the provisioning page in a browser), `test_portal_orphans_ui.py` (the box dashboard's undelivered-payments dialog), `test_provisioning.js`.
+- `scripts/tests/` is where tests of the scripts and the website live: `test_publish_firmware.py`, `test_check_published_apk.py`, `test_recovery_code.py`, `test_make_cards.py`, `test_site_page.py` (the provisioning page in a browser), `test_portal_orphans_ui.py` (the box dashboard's undelivered-payments dialog), `test_provisioning.js`.
 - Box firmware: `sh esp32_firmware/host_tests/run.sh` (pure-logic tests on a PC, no board needed).
 - Router: `router/tests/`, the router program in `tools/pisoportal/tests/` and `cargo test`.
 - The real-world test page: `tools/checklist/test_page.py` and `test_apply.py`.

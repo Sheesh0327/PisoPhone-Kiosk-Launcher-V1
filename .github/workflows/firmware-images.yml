@@ -1,9 +1,9 @@
 name: Coin box images for the setup program
 
-# Builds the coin box firmware (the dev environments: no flash encryption) for each chip, merges bootloader, partition
+# Builds the coin box firmware (the normal environments) for each chip, merges bootloader, partition
 # table, boot_app0 and the app into ONE image per chip, checks its structure, and commits it with a manifest to
 # website/flash/ on main and beta. The setup program (setup/pisophone_setup.py) downloads it, checks its sha256 and writes it to
-# the box over USB with esptool, so a box can be flashed without PlatformIO. Production (encrypted) builds are not published here.
+# the box over USB with esptool, so a box can be flashed without PlatformIO.
 #
 # On main it also publishes the app-only images for the dashboard's "Install update" (website/update/firmware-<chip>.bin and
 # firmware.json, scripts/publish_firmware_ota.py). They are signed with OWNER_SIGNING_KEY_B64 (made by
@@ -25,7 +25,7 @@ on:
   workflow_dispatch:
     inputs:
       bundle:
-        description: 'Also build the production (encrypted layout) firmware and pack the dev and release zips (branch firmware-bundles)'
+        description: 'Pack the normal firmware zip (branch firmware-bundles)'
         type: boolean
         default: false
 
@@ -96,15 +96,13 @@ jobs:
           done
           printf '{"version":"%s","commit":"%s","builds":[%s]}\n' "$VERSION" "$GITHUB_SHA" "${builds%,}" | python3 -m json.tool > ../website/flash/manifest.json
           cat ../website/flash/manifest.json
-      # A manual run with "bundle" on: the two production environments too, then the two owner zips (scripts/make_firmware_bundles.py,
+      # A manual run with "bundle" on: package the normal firmware (scripts/make_firmware_bundles.py,
       # which reads each build's partition table and fails the run when a layout is wrong). No secrets here: no keys are ever packed.
-      - name: Build the production environments and pack the firmware zips
+      - name: Pack the normal firmware zip
         if: ${{ inputs.bundle == true }}
         working-directory: esp32_firmware
         run: |
           set -eu
-          pio run -e esp32-c3-production-encrypted
-          pio run -e esp32dev-production-encrypted
           VERSION=$(sed -n 's/^#define PISO_FW_VERSION "\(.*\)"/\1/p' include/FirmwareVersion.h)
           APP0=$(find ~/.platformio/packages -name boot_app0.bin -path '*partitions*' | head -n 1)
           [ -n "$APP0" ] || { echo "::error::boot_app0.bin not found"; exit 1; }

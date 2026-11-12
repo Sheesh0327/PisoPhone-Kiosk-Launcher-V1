@@ -21,7 +21,7 @@ a determined attacker with lab equipment. In plain terms it is meant to stop:
 
 It deliberately does **not** try to stop, and does not need extra machinery for:
 - someone who can open the coin box or the router and has physical access (lock them away; the box's reset pin, its USB port and
-  the coin acceptor's wires are theirs then). Boxes you sell can use the optional hardware hardening in `docs/PROVISIONING_SOLD_UNIT.md`;
+  the coin acceptor's wires are theirs then);
 - someone who has already joined the hidden shop Wi-Fi (its password is random and never given to customers), so the box's admin
   page is plain HTTP and a phone restart forgets which messages it has already seen;
 - a customer cloning the address of a paying device on the customer Wi-Fi, which every coin Wi-Fi system shares as a weakness.
@@ -33,8 +33,7 @@ Keep it simple: a new protection should answer a way a customer or neighbour cou
 - Installing firmware, router software or an app update that the owner did not sign (`docs/KEYS.md`).
 - Reading or guessing a box secret, admin password or signing key.
 
-Out of scope: attacks that need physical access to open the box and read its flash (use the encrypted production build for
-units you sell, `docs/PROVISIONING_SOLD_UNIT.md`), and denial of service on a Wi-Fi network you control.
+Out of scope: attacks that need physical access to open the box and read its flash, and denial of service on a Wi-Fi network you control.
 
 ## Handling of keys (for maintainers)
 - The owner signing key and the super-admin key (and the QR code made from it) are created on the owner's own computer and never committed; `*.pem` and `*.key`

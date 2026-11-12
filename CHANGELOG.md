@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Retire unused flash-encryption builds and provisioning tools. Normal ESP32-C3/ESP32 firmware, signed OTA, payment persistence and rollback remain supported.
+
 What changed for people who run PisoPhone sites. The phone app, the coin-box firmware and the router software are versioned
 separately (app: the CI build number, shown as hundreds.tens.ones, build 466 is 4.6.6; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
@@ -193,7 +197,7 @@ separately (app: the CI build number, shown as hundreds.tens.ones, build 466 is 
 - **Coin box firmware: the encrypted-production partition table was wrong and is fixed.** PlatformIO writes `boot_app0.bin` at 0xe000, but the encrypted layout put otadata at 0xf000 and ran nvs up to it, so every
   upload would have overwritten the end of nvs. otadata is now at 0xe000 and nvs is 20 KB like the development layout (nothing sold used the encrypted layout yet). New: `scripts/make_firmware_bundles.py` packs the
   development and release firmware into two zips (a manual run of the firmware workflow with *bundle* on); it reads every build's partition table and fails on a bad layout. The encrypted release route is still
-  unproven on a board (`docs/PROVISIONING_SOLD_UNIT.md`).
+  unproven on a board (the retired hardware-hardening tools (available in git history)).
 - **Phone app: fixes from an outside code review.** The admin PIN is no longer written to the log when the box syncs it (a second place that the earlier fix missed), and CI now fails any log line
   that carries the PIN or a secret. The setup step, the auto-update attempt counter and the pill position now use the phone's device-protected storage like the rest of the app, so they cannot fail before the
   first unlock. Six remote-action branches that could never be reached over the network were deleted from the server coordinator, and an "is provisioned" check that was always false was removed (no behaviour change).
