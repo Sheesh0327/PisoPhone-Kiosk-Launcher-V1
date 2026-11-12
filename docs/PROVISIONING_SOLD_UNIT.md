@@ -21,6 +21,78 @@ board. Do it on a spare board first and only then on units for sale.
 > If a command is "not found", try the dash form. *(Checked 2026-10-28 against esptool v5.1.0 `docs/en/migration-guide.rst`
 > and v4.10.0; the commands themselves were not run.)*
 
+## Route A (recommended): flash encryption only, in two reversible-first stages
+
+> **Why this route.** The shortest list of things that can go wrong. It does **not** use Secure Boot, so there is no signing key whose
+> loss or mismatch kills a board (sections 0 to 6 below, "Route B", add Secure Boot and its extra ways to brick: do that only after Route A has
+> been proven on your boards). It uses the **stock Arduino bootloader**: you write images already encrypted on your PC with the unit's own
+> key, and the chip's hardware decrypts them on the fly. Nothing here has been run on a board yet: the stages are ordered so the first
+> irreversible step comes as late as possible, and each stage has a check that must pass before the next.
+> *(Facts checked 2026-11-11 in esptool v5.6.0's `esp32c3.yaml`: `SPI_BOOT_CRYPT_CNT` is 3 bits, 1 = Enable, 3 = Disable, 7 = Enable, so flash
+> encryption can be switched on, off and on again before the counter is spent; all the fuse names used below exist.)*
+
+**What this protects, and what it does not.** The app and the partition table are unreadable from a flash dump. The `nvs` partition (box secret, revenue
+ledger, payment queue, Wi-Fi password) **stays in plain text**, because ESP-IDF cannot flash-encrypt NVS. `partitions_encrypted.csv` no longer flags `nvs` or
+`spiffs` as encrypted (before 2026-11-11 it did, which makes a hardened unit save nothing). Protecting NVS needs NVS encryption, a firmware change that is not done.
+Do not promise a buyer that secrets on the box are unreadable.
+
+**Prerequisites (on your PC, once):** `pip install esptool`; the zip `PisoPhone-firmware-release-<version>.zip` unzipped to a folder; a spare ESP32-C3 board
+of **chip revision v0.3 or newer** (`esptool chip_id`); a folder for unit keys that is **not** in any git repository (the script refuses a key inside one).
+
+### Stage 0: on the PC, no board (nothing irreversible)
+
+1. Make a key for this unit and back it up twice **before** you do anything else (a password manager and an offline copy; label it with the board's MAC):
+   `espsecure generate-flash-encryption-key --keylen 256 unit-<MAC>.key` (esptool 4.x: `generate_flash_encryption_key`). It must be 32 bytes.
+2. Check and encrypt the images:
+   `python3 scripts/encrypt_release_images.py --bundle <unzipped folder> --key unit-<MAC>.key --out enc-<MAC>/`.
+   It re-checks everything a wrong build could break (chip, DIO flash mode, partition table and its MD5, nvs/spiffs not flagged, app fits, key size and randomness),
+   encrypts bootloader, partition table, boot_app0 and app, **decrypts each file again and compares**, and prints the exact `esptool` command. **If it prints REFUSED, stop.**
+   The command it prints already carries `--after no-reset` and `--flash-mode/--flash-freq/--flash-size keep`. Both matter: without `keep`, esptool rewrites the
+   first bytes of the bootloader to its own flash settings and corrupts the encrypted file; without `no-reset`, the chip restarts into half-written flash.
+
+### Stage 1: practice board, fully reversible
+
+1. Read the chip; change nothing: `python3 scripts/sold_unit_check.py fuses --port <PORT>`. Everything must be clear and no key block in use. If not, use a fresh board.
+2. Prove the **plain** build first (so a later fault cannot be blamed on the firmware): flash the merged image from the dev zip, check the box boots and the dashboard opens.
+3. Burn the key (permanent, but harmless until encryption is switched on; keep the key file):
+   `espefuse -p <PORT> burn-key BLOCK_KEY0 unit-<MAC>.key XTS_AES_128_KEY` (4.x: `burn_key`). Do not add `--no-read-protect` or `--no-write-protect`.
+   Then `espefuse -p <PORT> summary`: BLOCK_KEY0 must show purpose `XTS_AES_128_KEY`, read- and write-protected. Anything else: stop.
+4. `esptool -p <PORT> erase-flash`, then the printed `write-flash` command with the **encrypted** files. Every file must report `Hash of data verified.` The board will not boot yet.
+5. **Switch encryption on (reversible once):** `espefuse -p <PORT> burn-efuse SPI_BOOT_CRYPT_CNT 1`. Unplug, replug, open the serial monitor.
+   **Pass:** the normal boot log appears and the log has **no** `[NVS] FATAL` line. Then run the practice checklist: put a coin through and cut the power (the queue survives);
+   change a setting and power-cycle (it is kept); **install a signed update from the dashboard and see it boot**; deliberately install a bad one and see it revert
+   (`docs/REAL_WORLD_TESTING.md` H4, `ota_image_state`). Read the flash back (`esptool read-flash 0x20000 0x2000 dump.bin`; `python3 scripts/sold_unit_check.py flash dump.bin` must say ciphertext).
+   Dump `0x9000` (nvs): it should be readable plain text (expected).
+6. **If the board does not boot or any check fails, undo:** `espefuse -p <PORT> burn-efuse SPI_BOOT_CRYPT_CNT 3` (encryption off; one more switch-on is then still possible).
+   Download mode is untouched in this stage, so you can erase and flash a plain image again. Write down the serial log before you change anything.
+   **Do not go on to Stage 2 on any unit until the whole of step 5 has passed on at least two practice boards**, including the OTA and rollback checks (the stock Arduino
+   updater writing to encrypted slots is the one thing this guide cannot confirm from documentation).
+
+### Stage 2: units you sell (a new board, same steps 1 to 5, then lock)
+
+Repeat Stage 1 steps 1 to 5 with that unit's **own** key. Only when step 5 passed, lock it. Each fuse is separate; burn them one at a time and `summary` after each:
+
+| Order | Command (`espefuse -p <PORT> burn-efuse ...`) | Why |
+|---|---|---|
+| 1 | `SPI_BOOT_CRYPT_CNT 7` | encryption can no longer be switched off. **The point of no return.** |
+| 2 | `DIS_DOWNLOAD_MANUAL_ENCRYPT 1` | ROM download mode can no longer encrypt on request |
+| 3 | `DIS_DOWNLOAD_ICACHE 1` | no cache decrypt in download mode (stops a plaintext read-out through the ROM) |
+| 4 | `DIS_PAD_JTAG 1` and `DIS_USB_JTAG 1` | no debug port |
+| 5 (optional) | `ENABLE_SECURITY_DOWNLOAD 1` | download mode can only write, not read. **After this `espefuse` stops working**: do last, and never burn `DIS_DOWNLOAD_MODE` |
+
+After the lock the unit still takes: a signed OTA, or encrypted images written by serial **with that unit's key**. No key, no re-flash: keep every key. Verify with
+`esptool get_security_info` (Flash Encryption: Enabled, Icache in UART download mode: Disabled, JTAG disabled).
+
+### What you must still do before the first sold unit
+Fill in the practice log at the end of this guide for two boards, and run the full hardware checklist (`docs/REAL_WORLD_TESTING.md`) on a **locked** board, not only on a practice one.
+
+---
+
+## Route B (Secure Boot V2 + flash encryption, the original procedure)
+
+*Read Route A first. Everything from here to the end is the original procedure. It adds Secure Boot, which needs a bootloader built with ESP-IDF (GATE 1) that this repository does not yet contain, and it
+assumed an `nvs` partition flagged encrypted until 2026-11-11: that is wrong (see Route A) and the partition table no longer does it. Do not use Route B until Route A has been proven.*
+
 ## 0. Decisions made here
 
 | Question | Decision |

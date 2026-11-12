@@ -4,7 +4,7 @@ Packs the coin box firmware into two zip files for the owner:
 
   PisoPhone-firmware-dev-<version>.zip       the development builds (no flash encryption): one merged image per chip, plus the
                                              separate files with their flash offsets, ready for esptool or the web flasher.
-  PisoPhone-firmware-release-<version>.zip   the production builds with the encrypted partition layout (every partition carries
+  PisoPhone-firmware-release-<version>.zip   the production builds with the encrypted partition layout (every partition except nvs and spiffs carries
                                              the "encrypted" flag), as PLAIN files plus the exact offsets. NO keys are in it:
                                              the flash-encryption key and the Secure Boot key are made and kept on the owner's
                                              computer (docs/PROVISIONING_SOLD_UNIT.md), and the images are encrypted there.
@@ -12,7 +12,7 @@ Packs the coin box firmware into two zip files for the owner:
 It runs in CI (.github/workflows/firmware-images.yml, a manual run with "bundle" on) after PlatformIO built the four
 environments. The offsets are READ from each build's partitions.bin, never assumed, and the run fails when a layout is wrong:
 the boot_app0 file must fit inside the otadata partition (PlatformIO writes it at 0xe000), the app must sit where the
-merged image and the README say, and in the release layout every partition must be flagged encrypted.
+merged image and the README say, and in the release layout every partition except nvs and spiffs must be flagged encrypted (and those two must not be).
 
   python3 scripts/make_firmware_bundles.py --version 3.5.6 --commit <sha> --build-dir esp32_firmware/.pio/build \
       --boot-app0 <path to boot_app0.bin> --merged-dir website/flash --out bundles
@@ -104,7 +104,12 @@ def check_layout(env, kind, table, boot, parts, app_size):
         app_at, slot_size = DEV_APP_OFFSET, slot["size"]
     else:
         for p in table:
-            if not p["encrypted"]:
+            # nvs and spiffs must NOT carry the flag: ESP-IDF refuses an encrypted nvs (nvs_flash_init fails with
+            # ESP_ERR_NVS_WRONG_ENCRYPTION, so nothing is ever saved) and SPIFFS cannot work on encrypted flash.
+            plain_only = p["type"] == TYPE_DATA and p["subtype"] in (SUB_NVS, SUB_SPIFFS)
+            if plain_only and p["encrypted"]:
+                raise BundleError(f"{env}: partition {p['name']} is flagged encrypted, but nvs and spiffs cannot be flash-encrypted")
+            if not plain_only and not p["encrypted"]:
                 raise BundleError(f"{env}: partition {p['name']} is not flagged encrypted")
         find(table, TYPE_APP, SUB_OTA1)
         for sub in (SUB_NVS, SUB_PHY, SUB_SPIFFS):
@@ -160,7 +165,8 @@ PisoPhone coin box firmware {version} - RELEASE builds, ENCRYPTED PARTITION LAYO
 commit {commit}
 
 READ THIS FIRST. What this zip is and is not:
-  * It holds the production builds as PLAIN files with the partition layout where every partition is flagged "encrypted".
+  * Use scripts/encrypt_release_images.py (in this zip) to check and encrypt the files: it refuses anything that could brick a unit. Follow Route A of the guide.
+  * It holds the production builds as PLAIN files with the partition layout where every partition except nvs and spiffs is flagged "encrypted".
   * It holds NO keys. The flash-encryption key and the Secure Boot key are made on YOUR computer, offline, one flash-encryption
     key per unit, and are never put in git, in CI or in a zip (docs/PROVISIONING_SOLD_UNIT.md, section 2).
   * Burning the eFuses cannot be undone. The procedure in docs/PROVISIONING_SOLD_UNIT.md (copied into this zip) has NOT yet been
@@ -243,6 +249,7 @@ def build(version, commit, build_dir, boot_app0, merged_dir, out_dir):
         if kind == "release":
             guide = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "docs", "PROVISIONING_SOLD_UNIT.md")
             files["PROVISIONING_SOLD_UNIT.md"] = read(guide)
+            files["encrypt_release_images.py"] = read(os.path.join(os.path.dirname(os.path.abspath(__file__)), "encrypt_release_images.py"))
             csv = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "esp32_firmware", "partitions_encrypted.csv")
             files["partitions_encrypted.csv"] = read(csv)
         sums = "".join(f"{sha256(files[n])}  {n}\n" for n in sorted(files) if n != "SHA256SUMS")

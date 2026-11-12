@@ -112,13 +112,30 @@ class T(unittest.TestCase):
         self.assertIn("overwrite", str(e.exception))
 
     def test_a_partition_that_is_not_flagged_encrypted_is_refused(self):
-        csv = self.committed_csv().replace("spiffs,   data, spiffs,  0x3A0000, 0x60000,  encrypted", "spiffs,   data, spiffs,  0x3A0000, 0x60000,")
+        csv = self.committed_csv().replace("ota_1,    app,  ota_1,   0x1E0000, 0x1C0000, encrypted", "ota_1,    app,  ota_1,   0x1E0000, 0x1C0000,")
         self.assertNotEqual(csv, self.committed_csv())
         tmp = tempfile.mkdtemp()
         fake_builds(tmp, csv)
         with self.assertRaises(m.BundleError) as e:
             m.build("9.9.9", "x" * 40, os.path.join(tmp, "build"), os.path.join(tmp, "boot_app0.bin"), os.path.join(tmp, "merged"), os.path.join(tmp, "out"))
         self.assertIn("not flagged encrypted", str(e.exception))
+
+    def test_an_encrypted_nvs_is_refused(self):
+        csv = self.committed_csv().replace("nvs,      data, nvs,     0x9000,   0x5000,", "nvs,      data, nvs,     0x9000,   0x5000,   encrypted")
+        self.assertNotEqual(csv, self.committed_csv())
+        tmp = tempfile.mkdtemp()
+        fake_builds(tmp, csv)
+        with self.assertRaises(m.BundleError) as e:
+            m.build("9.9.9", "x" * 40, os.path.join(tmp, "build"), os.path.join(tmp, "boot_app0.bin"), os.path.join(tmp, "merged"), os.path.join(tmp, "out"))
+        self.assertIn("cannot be flash-encrypted", str(e.exception))
+
+    def test_an_encrypted_spiffs_is_refused(self):
+        csv = self.committed_csv().replace("spiffs,   data, spiffs,  0x3A0000, 0x60000,", "spiffs,   data, spiffs,  0x3A0000, 0x60000,  encrypted")
+        self.assertNotEqual(csv, self.committed_csv())
+        tmp = tempfile.mkdtemp()
+        fake_builds(tmp, csv)
+        with self.assertRaises(m.BundleError):
+            m.build("9.9.9", "x" * 40, os.path.join(tmp, "build"), os.path.join(tmp, "boot_app0.bin"), os.path.join(tmp, "merged"), os.path.join(tmp, "out"))
 
     def test_an_app_that_does_not_fit_is_refused(self):
         tmp = tempfile.mkdtemp()

@@ -177,6 +177,16 @@ static void processSystemHealthAndAutoMaintenance() {
     ESP.restart();
 }
 
+// Saved data lives in NVS. If NVS cannot be opened (for example a flash-encrypted unit whose nvs partition was wrongly flagged
+// "encrypted": nvs_flash_init then fails with ESP_ERR_NVS_WRONG_ENCRYPTION) every later Preferences.begin() fails quietly and
+// nothing is saved. Say so loudly at boot so a bench check of a hardened unit cannot miss it.
+static bool nvsUsable() {
+    Preferences probe;
+    bool ok = probe.begin("nvs_probe", false);
+    if (ok) probe.end();
+    return ok;
+}
+
 void setup() {
     Serial.begin(115200);
     unsigned long start = millis();
@@ -196,6 +206,10 @@ void setup() {
     // Initialize Hardware Watchdog Early
     initHardwareWatchdog();
 
+    if (!nvsUsable()) {
+        diagLog("[NVS] FATAL: saved-data storage cannot be opened. Nothing (revenue, queue, secret, Wi-Fi) will be saved. "
+                "On a flash-encrypted unit check that the nvs partition is NOT flagged encrypted.\n");
+    }
     // Load NVS Configuration & Lifetime Vault Revenue safely
     loadAllConfig();
     orphansBegin(); // payments the box gave up on, kept until the operator deals with them
