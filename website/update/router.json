@@ -2,7 +2,7 @@
   "version": "1.5.36",
   "sha256": "29d0a5f8ccf2ac9c70b7f511d9bdc66a6b3e7218591a96d191fc84f2bf4b6d5e",
   "size": 1686409,
-  "rollout": 0,
-  "changelog": "Router software release 1.5.36",
-  "sig": "MEUCID7Tbbjc1Mc5cS8Z1G20dATk7RwHl3pQVsyFg9LtRCWuAiEAygbbpRUqTVo+Jv/DOaT4vLBVLVLLtwdhdARiynh+yK0="
+  "rollout": 100,
+  "changelog": "Router release 1.5.36: captive portal connectivity fix and CGNAT compatibility",
+  "sig": "MEQCIF09j5AGV8Fa3vzzFwkFBXsQ6w769qilUWmhpnvjbQUcAiAZhvxcJNCmsE3dLdedo5kukgtM/DbG5Um0U9gmK2dbOA=="
 }
