@@ -166,9 +166,8 @@ function tstart(s){tstop();tl=s;if(s>tt)tt=s;tpaint();if(tl>0)ttk=setInterval(fu
 var fo=null,wk=null,woke=/[?&]w=1/.test(location.search);
 function dropq(k){return location.search.replace(new RegExp("([?&])"+k+"=[^&]*(&|$)"),"$1").replace(/[?&]$/,"")}
 function clean(){return dropq("w")}
-/* once online, load the page again: the phone's sign-in window checks the internet when a page loads, so it sees the
-   connection now (and closes itself) instead of minutes later */
-function wake(){wk=null;if(woke)return;var q=clean();location.replace(location.pathname+q+(q?"&":"?")+"w=1")}
+/* once online, redirect to the destination probe/URL so the sign-in window sees internet access and closes, or reload */
+function wake(){wk=null;if(woke)return;if(cont&&cont.indexOf("http")===0){location.replace(cont)}else{var q=clean();location.replace(location.pathname+q+(q?"&":"?")+"w=1")}}
 function foff(on){var e=el("foff");if(!on){clearTimeout(fo);fo=null;e.style.display="none"}else if(!fo){e.style.display="block";e.innerHTML="<b>Payment received.</b> Connecting you&hellip;";fo=setTimeout(function(){e.innerHTML="<b>Payment received.</b> Not online yet: turn Wi-Fi off and on. Your time is saved."},3e4)}}
 function msg(t,btns){put("mtext",t);var b=el("mbtns");b.innerHTML="";var i,x;for(i=0;i<(btns||[]).length;i++){x=document.createElement("button");x.type="button";x.className="btn"+(btns[i][2]?" alt":"");x.textContent=btns[i][0];x.onclick=btns[i][1];b.appendChild(x)}show("msg")}
 function again(){clearTimeout(wk);wk=null;send({t:"hello",fas:fas,reset:true})}

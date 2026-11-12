@@ -561,7 +561,6 @@ add_list firewall.guest_noprivate.dest_ip='10.0.0.0/8'
 add_list firewall.guest_noprivate.dest_ip='172.16.0.0/12'
 add_list firewall.guest_noprivate.dest_ip='192.168.0.0/16'
 add_list firewall.guest_noprivate.dest_ip='169.254.0.0/16'
-add_list firewall.guest_noprivate.dest_ip='100.64.0.0/10'
 # the same for the rental phones on Wi-Fi (the bridge rules in router/piso_isolation.sh mark what comes from Wi-Fi; a computer on a LAN cable
 # is not marked and keeps its way to the modem's pages). The mark is outside the bits openNDS and the traffic shaping use.
 set firewall.phone_noprivate=rule
@@ -576,7 +575,6 @@ add_list firewall.phone_noprivate.dest_ip='10.0.0.0/8'
 add_list firewall.phone_noprivate.dest_ip='172.16.0.0/12'
 add_list firewall.phone_noprivate.dest_ip='192.168.0.0/16'
 add_list firewall.phone_noprivate.dest_ip='169.254.0.0/16'
-add_list firewall.phone_noprivate.dest_ip='100.64.0.0/10'
 
 # --- openNDS gates only the guest network -------------------------------------------------------------------------------
 set opennds.@opennds[0].enabled='1'
@@ -590,6 +588,9 @@ delete opennds.@opennds[0].fasremoteip
 delete opennds.@opennds[0].themespec_path
 set opennds.@opennds[0].statuspath='/usr/lib/opennds/pisoportal_status.sh'
 delete opennds.@opennds[0].users_to_router
+add_list opennds.@opennds[0].users_to_router='allow tcp port 53'
+add_list opennds.@opennds[0].users_to_router='allow udp port 53'
+add_list opennds.@opennds[0].users_to_router='allow udp port 67'
 add_list opennds.@opennds[0].users_to_router='allow tcp port $PORTAL_PORT'
 # paying guests get openNDS's own rules for authenticated users. Router 1.5.5 set its own list here (private networks blocked,
 # then everything allowed) and some routers' paying guests were let on with no internet; the delete takes that list away again.

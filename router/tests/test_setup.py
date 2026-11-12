@@ -147,13 +147,14 @@ check("set firewall.guest_nomodem.src='guest'" in out and "set firewall.guest_no
       and "add_list firewall.guest_nomodem.dest_ip='192.168.1.1'" in out and out.index("set firewall.guest_nomodem=rule") < out.index("set opennds.@opennds[0].enabled"),
       "guests are refused the modem's address (192.168.1.1) in the router's firewall")
 check("set firewall.guest_noprivate.src='guest'" in out and "set firewall.guest_noprivate.dest='wan'" in out and "set firewall.guest_noprivate.target='REJECT'" in out
-      and all(f"add_list firewall.guest_noprivate.dest_ip='{n}'" in out for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "100.64.0.0/10"))
+      and all(f"add_list firewall.guest_noprivate.dest_ip='{n}'" in out for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16"))
+      and "100.64.0.0/10" not in out
       and out.index("set firewall.guest_noprivate=rule") < out.index("set opennds.@opennds[0].enabled"),
       "guests are refused the private address ranges beyond the modem (the internet stays open)")
 
 check("set firewall.phone_noprivate.src='lan'" in out and "set firewall.phone_noprivate.dest='wan'" in out and "set firewall.phone_noprivate.target='REJECT'" in out
       and "set firewall.phone_noprivate.mark='0x00200000/0x00200000'" in out
-      and all(f"add_list firewall.phone_noprivate.dest_ip='{n}'" in out for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "100.64.0.0/10")),
+      and all(f"add_list firewall.phone_noprivate.dest_ip='{n}'" in out for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16")),
       "phones that come in by Wi-Fi (marked by the bridge rules) are refused the modem's network")
 check("0x00200000" in open(f"{ROOT}/router/piso_isolation.sh").read(), "and the bridge rules mark them with the same mark")
 
