@@ -1,8 +1,4 @@
-// USB serial: first-time setup for the setup program (SerialProvision.h), and in the development builds a small command line for
-// bring-up. The *-production-encrypted builds do not have the command line: its "add" command gives free time to every phone
-// and asks for no password. The setup commands exist in every build and work only on a box that has not been set up yet: they are how
-// the PisoPhone-only setup (no router) gives a new box the shop's Wi-Fi and its admin password over the USB cable.
-
+// USB first-time setup and local maintenance commands. Physical USB access is trusted.
 #include "SerialCli.h"
 #include "Config.h"
 #include "DeviceNetwork.h"
@@ -101,10 +97,6 @@ void processSerialCli() {
         return;
     }
 
-#ifdef BUILD_ENV_PRODUCTION
-    if (line.equalsIgnoreCase("help")) Serial.println("\nNo serial commands in this build.");
-    return;
-#else
 #if PISO_HAS_PHONES
     if (line.startsWith("add ") || line.startsWith("add")) {
         int firstSpace = line.indexOf(' ');
@@ -117,6 +109,5 @@ void processSerialCli() {
     }
 #else
     if (line.equalsIgnoreCase("help")) Serial.println("\nCommands: help");
-#endif
 #endif
 }

@@ -122,11 +122,6 @@ Part 4b, a spare router and bare units:
 | 10 | RS20 | No board, or two boards, on USB | |
 | 11 | RS21 | Two routers in range of each other (router 1.5.0, firmware 3.6.0) | |
 
-### Session 5: the hardened box (last, by the owner's rule)
-**Needs:** a sacrificial board and the eFuse steps (feature 040's bench work, feature 043's checks). **Roughly:** not known yet.
-
-No owed row of this document belongs here yet: features 040 and 043 add theirs when they ship, at the next free `RS` number (RS57 or later). Their bench steps are in `docs/HARDENING_BENCH.md`. The owner's rule of 2026-10-28 (epic D30) decides that this session is last: the legacy, field-proven build is the default and stays selectable, and hardening is an option. Nothing in sessions 1 to 4 needs a hardened box.
-
 ### Closed: done and retired (12 `RS` rows, not owed)
 | RS | Status | Reason and where the evidence is |
 |---|---|---|

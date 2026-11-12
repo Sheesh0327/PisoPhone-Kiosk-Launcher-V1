@@ -81,7 +81,7 @@ advanced users, is in [the advanced part of `setup/README.md`](setup/README.md#a
 # Coin box firmware (PlatformIO)
 cd esp32_firmware
 sh host_tests/run.sh                                        # pure-logic tests; no board needed
-pio run -e esp32-c3-dev                                     # also esp32dev-dev and the *-production-encrypted environments
+pio run -e esp32-c3-dev                                     # also esp32dev-dev and their phone-only / Wi-Fi-only variants
 pio run -e esp32-c3-dev -t upload
 
 # Router add-on
@@ -113,7 +113,6 @@ of checks is in [`CONTRIBUTING.md`](CONTRIBUTING.md).
 | [`scripts/README.md`](scripts/README.md) | What each script is for, grouped by who runs it and when |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | How a coin becomes time, which part talks to which, and where the code lives |
 | [`docs/REAL_WORLD_TESTING.md`](docs/REAL_WORLD_TESTING.md) | The hardware test checklist and issue log |
-| [`docs/PROVISIONING_SOLD_UNIT.md`](docs/PROVISIONING_SOLD_UNIT.md) | Secure boot and flash encryption for boxes you sell |
 | [`docs/api/`](docs/api) | The router gateway API, the super-admin QR login and print server pairing |
 | [`docs/HARDENING.md`](docs/HARDENING.md) | What is still open after the security audit and hardening pass |
 
