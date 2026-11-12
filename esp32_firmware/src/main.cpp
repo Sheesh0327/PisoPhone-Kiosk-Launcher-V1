@@ -207,8 +207,9 @@ void setup() {
     initHardwareWatchdog();
 
     if (!nvsUsable()) {
-        diagLog("[NVS] FATAL: saved-data storage cannot be opened. Nothing (revenue, queue, secret, Wi-Fi) will be saved. "
-                "On a flash-encrypted unit check that the nvs partition is NOT flagged encrypted.\n");
+        diagLog(
+            "[NVS] FATAL: saved-data storage cannot be opened. Nothing (revenue, queue, secret, Wi-Fi) will be saved. "
+            "On a flash-encrypted unit check that the nvs partition is NOT flagged encrypted.\n");
     }
     // Load NVS Configuration & Lifetime Vault Revenue safely
     loadAllConfig();
