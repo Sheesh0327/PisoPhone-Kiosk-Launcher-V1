@@ -75,7 +75,9 @@ fakends = os.path.join(tmp, "ndsctl"); open(fakends, "w").write("""#!/bin/sh
 os.chmod(fakends, 0o755)
 conf = os.path.join(tmp, "mon.conf")
 open(conf, "w").write(f"TG_TOKEN=T0K\nTG_CHAT=111\nSITE_NAME=Shop1\nREPORT_HOUR=0\nHEALTHCHECK_URL=http://127.0.0.1:{port}/hc\n")
-env = dict(os.environ, PISO_SETUP_CONF=f"{tmp}/setup.conf", PISO_MONITOR_CONF=conf, TG_API=f"http://127.0.0.1:{port}", MON_STATE=f"{tmp}/state", PORTAL=fake,
+np = ",".join(filter(None, (os.environ.get("no_proxy", ""), "127.0.0.2")))
+NP = ",".join(filter(None, (os.environ.get("NO_PROXY", ""), "127.0.0.2")))
+env = dict(os.environ, no_proxy=np, NO_PROXY=NP, PISO_SETUP_CONF=f"{tmp}/setup.conf", PISO_MONITOR_CONF=conf, TG_API=f"http://127.0.0.1:{port}", MON_STATE=f"{tmp}/state", PORTAL=fake,
            PISO_SETUP=fakesetup, LOGREAD=fakelog, BOX_DOWN_AFTER="2", PORTAL_SERVICE=fakesvc, NDSCTL=fakends,
            PING_URL=f"http://127.0.0.1:{port}/ping", PING_TIMEOUT="1", ALERTS_FILE=f"{tmp}/alerts.txt", DF=f"{tmp}/df.sh")
 open(f"{tmp}/df.sh", "w").write("#!/bin/sh\necho 'Filesystem 1K-blocks Used Available Use% Mounted on'\necho \"overlayfs:/overlay 14000 1000 $(cat " + tmp + "/free 2>/dev/null || echo 9000) 7% /overlay\"\n")

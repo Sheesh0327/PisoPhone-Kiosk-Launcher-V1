@@ -57,6 +57,30 @@ cmd_voucher_choice() {
 	esac
 }
 
+# piso-setup anti-tether [on|off|status]: stops customers sharing paid Wi-Fi via hotspot/USB tethering (default on).
+cmd_anti_tether() {
+	case "${1:-status}" in
+		status)
+			if [ "$(conf_get ANTI_TETHER)" = off ]; then
+				echo "Anti-tethering is OFF. Turn it on: piso-setup anti-tether on"
+			else
+				echo "Anti-tethering is ON (TTL=1 out, TTL 61-63/125-127 dropped in). Turn it off: piso-setup anti-tether off"
+			fi ;;
+		on)
+			[ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"
+			conf_set ANTI_TETHER on; apply_isolation
+			if [ -x "$PISO_ROOT/etc/hotplug.d/firewall/50-piso-isolation" ] && ! anti_tether_on; then
+				echo "WARNING: could not load anti-tethering firewall rule (check: piso-setup diag)." >&2; return 1
+			fi
+			echo "Anti-tethering is now ON (TTL=1 out, TTL 61-63/125-127 dropped in)." ;;
+		off)
+			[ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"
+			conf_set ANTI_TETHER off; apply_isolation
+			echo "Anti-tethering is now OFF." ;;
+		*) echo "usage: piso-setup anti-tether [on|off|status]" >&2; return 1 ;;
+	esac
+}
+
 # piso-setup brand-pack <file>: install the logo pack TechNet signed for this shop (the console's Branding screen does the same). Customers
 # see the pictures once the branding is published there. The portal program checks the owner's signature; a pack it refuses changes nothing.
 cmd_brand_pack() {
@@ -201,6 +225,7 @@ cmd_diag() {
 	echo "--- coin box link"; cmd_box_diag 2>&1
 	echo "--- firewall tables"; nft list tables 2> /dev/null
 	echo "--- guests apart; phones reach the router and the coin box only (both tables must be listed; if not, this router lacks kmod-nft-bridge)"; nft list table bridge piso_guest 2>&1 | head -12; nft list table bridge piso_kiosk 2>&1 | head -40
+	echo "--- anti-tethering ($([ "$(conf_get ANTI_TETHER)" = off ] && echo off || echo on): TTL=1 out, TTL 61-63/125-127 dropped in)"; nft list table inet piso_anti_tether 2>&1 | head -20
 	echo "--- openNDS"; uci -q get opennds.@opennds[0].gatewayinterface; ndsctl status 2>&1 | head -12
 	echo "--- guests as openNDS sees them (a paying phone must be Authenticated)"; ndsctl json 2> /dev/null | grep -E '"(mac|ip|state|session_end|download_this_session)"' | head -40
 	echo "--- rules openNDS built for guests (an Authenticated phone's traffic must reach an accept rule)"

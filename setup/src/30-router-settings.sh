@@ -178,6 +178,9 @@ apply_isolation() {
 # isolation_on: both bridge tables are loaded (they need the kernel's bridge firewall support)
 isolation_on() { nft list table bridge piso_guest > /dev/null 2>&1 && nft list table bridge piso_kiosk > /dev/null 2>&1; }
 
+# anti_tether_on: the anti-tethering inet table is loaded
+anti_tether_on() { nft list table inet piso_anti_tether > /dev/null 2>&1; }
+
 # portal_uci <guest name>: the guest-facing portal: openNDS sends new guests to pisoportal (FAS) and only the guest network
 # is gated; guests may reach the portal's port. The same lines are applied by the setup and by an update (which is how a
 # router set up with the earlier ThemeSpec portal is moved to this one).

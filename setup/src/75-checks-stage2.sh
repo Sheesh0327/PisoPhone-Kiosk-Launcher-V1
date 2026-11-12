@@ -13,6 +13,7 @@ check_all() {  # prints PASS/FAIL lines, returns the number of failures
 	_gp=$(conf_get GUEST_PORT)
 	[ -z "$_gp" ] || _ck "router port $_gp is on the guest network (an access point plugged in there is gated)" "uci -q get \$(net_section br-guest).ports | grep -qw '$_gp'"
 	isolation_on || log "WARN  guests can still reach each other and rental phones can still reach each other and the router's login pages: this router cannot load the bridge rules (install kmod-nft-bridge, then run piso-setup update)"
+	[ "$(conf_get ANTI_TETHER)" = off ] || anti_tether_on || log "WARN  anti-tethering is NOT active: this router cannot load the inet firewall rule (install nftables, then run piso-setup update)"
 	_ck "openNDS is running" "wait_until 30 'ndsctl status'"   # (it needs a few seconds after it was started)
 	_ck "openNDS sends new guests to the portal (FAS)" "[ \"\$(uci -q get opennds.@opennds[0].fasport)\" = $PORTAL_PORT ]"
 	_ck "the router looks for signed updates every hour (scheduler running)" update_timer_ok

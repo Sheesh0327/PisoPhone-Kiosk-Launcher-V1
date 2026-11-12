@@ -21,7 +21,7 @@
 # Everything is generated here (Wi-Fi password, box admin password, gateway key) and printed once at the end and saved in
 # /root/piso-setup-summary.txt. Running the file again is safe: it keeps what it already made.
 #
-# Other commands (after setup): piso-setup status | wifi-name "<name>" | guest-port [lanN|off] | voucher-choice [on|off] | brand-pack <file> | pair | summary | test-coin | diag | box-diag | set-password | box-wifi-name | reconcile [rebase] | telegram | rotate-box-wifi | export [file] | import <file> | space | forget-summary | kiosk-wifi | verify | handout | lock-admin | unlock-admin | wifi-admin [on|off] | update [check] (installs the newest release from the website; same as self-update) | self-update [check] | box-update [check] (installs the coin box's newest firmware) | auto-update on|off
+# Other commands (after setup): piso-setup status | wifi-name "<name>" | guest-port [lanN|off] | voucher-choice [on|off] | anti-tether [on|off|status] | brand-pack <file> | pair | summary | test-coin | diag | box-diag | set-password | box-wifi-name | reconcile [rebase] | telegram | rotate-box-wifi | export [file] | import <file> | space | forget-summary | kiosk-wifi | verify | handout | lock-admin | unlock-admin | wifi-admin [on|off] | update [check] (installs the newest release from the website; same as self-update) | self-update [check] | box-update [check] (installs the coin box's newest firmware) | auto-update on|off
 #
 # Options:  --dry-run  print the router settings instead of applying them (needs nothing but the uci command)
 #           --yes      do not ask for confirmation
@@ -525,6 +525,9 @@ apply_isolation() {
 
 # isolation_on: both bridge tables are loaded (they need the kernel's bridge firewall support)
 isolation_on() { nft list table bridge piso_guest > /dev/null 2>&1 && nft list table bridge piso_kiosk > /dev/null 2>&1; }
+
+# anti_tether_on: the anti-tethering inet table is loaded
+anti_tether_on() { nft list table inet piso_anti_tether > /dev/null 2>&1; }
 
 # portal_uci <guest name>: the guest-facing portal: openNDS sends new guests to pisoportal (FAS) and only the guest network
 # is gated; guests may reach the portal's port. The same lines are applied by the setup and by an update (which is how a
@@ -1148,6 +1151,7 @@ check_all() {  # prints PASS/FAIL lines, returns the number of failures
 	_gp=$(conf_get GUEST_PORT)
 	[ -z "$_gp" ] || _ck "router port $_gp is on the guest network (an access point plugged in there is gated)" "uci -q get \$(net_section br-guest).ports | grep -qw '$_gp'"
 	isolation_on || log "WARN  guests can still reach each other and rental phones can still reach each other and the router's login pages: this router cannot load the bridge rules (install kmod-nft-bridge, then run piso-setup update)"
+	[ "$(conf_get ANTI_TETHER)" = off ] || anti_tether_on || log "WARN  anti-tethering is NOT active: this router cannot load the inet firewall rule (install nftables, then run piso-setup update)"
 	_ck "openNDS is running" "wait_until 30 'ndsctl status'"   # (it needs a few seconds after it was started)
 	_ck "openNDS sends new guests to the portal (FAS)" "[ \"\$(uci -q get opennds.@opennds[0].fasport)\" = $PORTAL_PORT ]"
 	_ck "the router looks for signed updates every hour (scheduler running)" update_timer_ok
@@ -1287,6 +1291,30 @@ cmd_voucher_choice() {
 			else echo "The choice is off: coins always buy time at once, as before."; fi ;;
 		"") echo "The voucher choice is $([ "$(conf_get VOUCHER_CHOICE)" = off ] && echo off || echo on) (a change made in the console after this may differ: see its Settings page). Change with: piso-setup voucher-choice on|off" ;;
 		*) echo "usage: piso-setup voucher-choice [on|off]" >&2; return 1 ;;
+	esac
+}
+
+# piso-setup anti-tether [on|off|status]: stops customers sharing paid Wi-Fi via hotspot/USB tethering (default on).
+cmd_anti_tether() {
+	case "${1:-status}" in
+		status)
+			if [ "$(conf_get ANTI_TETHER)" = off ]; then
+				echo "Anti-tethering is OFF. Turn it on: piso-setup anti-tether on"
+			else
+				echo "Anti-tethering is ON (TTL=1 out, TTL 61-63/125-127 dropped in). Turn it off: piso-setup anti-tether off"
+			fi ;;
+		on)
+			[ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"
+			conf_set ANTI_TETHER on; apply_isolation
+			if [ -x "$PISO_ROOT/etc/hotplug.d/firewall/50-piso-isolation" ] && ! anti_tether_on; then
+				echo "WARNING: could not load anti-tethering firewall rule (check: piso-setup diag)." >&2; return 1
+			fi
+			echo "Anti-tethering is now ON (TTL=1 out, TTL 61-63/125-127 dropped in)." ;;
+		off)
+			[ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"
+			conf_set ANTI_TETHER off; apply_isolation
+			echo "Anti-tethering is now OFF." ;;
+		*) echo "usage: piso-setup anti-tether [on|off|status]" >&2; return 1 ;;
 	esac
 }
 
@@ -1434,6 +1462,7 @@ cmd_diag() {
 	echo "--- coin box link"; cmd_box_diag 2>&1
 	echo "--- firewall tables"; nft list tables 2> /dev/null
 	echo "--- guests apart; phones reach the router and the coin box only (both tables must be listed; if not, this router lacks kmod-nft-bridge)"; nft list table bridge piso_guest 2>&1 | head -12; nft list table bridge piso_kiosk 2>&1 | head -40
+	echo "--- anti-tethering ($([ "$(conf_get ANTI_TETHER)" = off ] && echo off || echo on): TTL=1 out, TTL 61-63/125-127 dropped in)"; nft list table inet piso_anti_tether 2>&1 | head -20
 	echo "--- openNDS"; uci -q get opennds.@opennds[0].gatewayinterface; ndsctl status 2>&1 | head -12
 	echo "--- guests as openNDS sees them (a paying phone must be Authenticated)"; ndsctl json 2> /dev/null | grep -E '"(mac|ip|state|session_end|download_this_session)"' | head -40
 	echo "--- rules openNDS built for guests (an Authenticated phone's traffic must reach an accept rule)"
@@ -2380,7 +2409,7 @@ main() {
 		case "$1" in
 			--dry-run) DRY=1 ;;
 			--yes | -y) ASSUME_YES=1 ;;
-			status | wan-clash | pair | summary | wifi-name | guest-port | kiosk-wifi | verify | uninstall-info | test-coin | diag | box-diag | set-password | reconcile | telegram | rotate-box-wifi | box-wifi-name | handout | console | export | import | space | forget-summary | lock-admin | lock-admin-confirm | unlock-admin | wifi-admin | update | self-update | box-update | auto-update | voucher-choice | brand-pack) CMD="$1"; shift; ARG="$1"; ARGS="$*"; break ;;
+			status | wan-clash | pair | summary | wifi-name | guest-port | kiosk-wifi | verify | uninstall-info | test-coin | diag | box-diag | set-password | reconcile | telegram | rotate-box-wifi | box-wifi-name | handout | console | export | import | space | forget-summary | lock-admin | lock-admin-confirm | unlock-admin | wifi-admin | update | self-update | box-update | auto-update | voucher-choice | brand-pack | anti-tether) CMD="$1"; shift; ARG="$1"; ARGS="$*"; break ;;
 			-h | --help) sed -n '2,/^# Options:/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 			*) echo "unknown option: $1 (try --help)" >&2; exit 1 ;;
 		esac
@@ -2412,6 +2441,7 @@ main() {
 		auto-update) cmd_auto_update "$ARG" ;;
 		voucher-choice) cmd_voucher_choice "$ARG" ;;
 		brand-pack) cmd_brand_pack "$ARG" ;;
+		anti-tether) cmd_anti_tether "$ARG" ;;
 		lock-admin)
 			# shellcheck disable=SC2086 # one argument per MAC address
 			cmd_lock_admin $ARGS ;;

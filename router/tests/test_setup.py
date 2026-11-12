@@ -181,6 +181,20 @@ check("delete table bridge piso_kiosk" in nl and "ether saddr aa:bb:cc:dd:ee:09 
 check('iifname "phy*" ip daddr 10.0.0.1 tcp dport { 22, 80, 443, 8080, 8443, 8081, 8082 } counter drop' in nl and "dport 2050" not in nl,
       "the router's login pages and the console (and the coin box page one port up) are not offered on Wi-Fi, and only on the router's own kiosk address (a guest's web request to any website is not touched): " + nl[-900:])
 check('iifname "phy*" ether saddr != aa:bb:cc:dd:ee:09 meta mark set meta mark | 0x00200000' in nl, "what comes in by Wi-Fi (except the coin box) is marked for the firewall rule")
+tether_nl = nl.split("table inet piso_anti_tether {", 1)[1].split("\n}\n", 1)[0] if "table inet piso_anti_tether {" in nl else ""
+check("hook prerouting priority -150" in tether_nl and "hook postrouting priority 300" in tether_nl and "hook forward" not in tether_nl
+      and 'oifname "br-guest" meta nfproto ipv4 counter ip ttl set 1' in tether_nl
+      and 'iifname "br-guest" meta nfproto ipv4 ip ttl { 61, 62, 63, 125, 126, 127 } counter drop' in tether_nl,
+      "anti-tethering: drops incoming tethered IPv4 packets at prerouting (TTL 61-63 and 125-127) and clamps outgoing TTL to 1 at postrouting: " + nl[:900])
+# anti-tethering can be turned off
+open(f"{iso}/piso.conf", "w").write("ANTI_TETHER='off'\n")
+r, nl, ll = run_iso()
+check('ip ttl set 1' not in nl and "ARGS delete table inet piso_anti_tether" in nl, "when anti-tethering is off its table is deleted: " + nl[:400])
+os.rename(f"{iso}/sys/br-guest", f"{iso}/sys/br-guest.off")
+open(f"{iso}/piso.conf", "w").write("")
+r, nl, ll = run_iso()
+check('ip ttl set 1' not in nl and "ARGS delete table inet piso_anti_tether" in nl and ll == "", "when br-guest is absent anti-tether table is deleted without warnings: " + nl[:400])
+os.rename(f"{iso}/sys/br-guest.off", f"{iso}/sys/br-guest")
 # a router that cannot match the bridge name: the guest ports are named instead; and the rule is the same each time it runs
 open(f"{iso}/nft-noname", "w").close()
 r, nl, ll = run_iso()
@@ -200,10 +214,10 @@ r, nl, ll = run_iso()
 # a router that cannot load the rules logs it and carries on
 open(f"{iso}/nft-fail", "w").close()
 r, nl, ll = run_iso()
-check(r.returncode == 0 and ll.count("NOT active") == 2 and "guest isolation is NOT active" in ll and "phone isolation is NOT active" in ll, "a router that cannot load the bridge rules logs it and carries on (exit 0): " + ll)
+check(r.returncode == 0 and ll.count("NOT active") == 3 and "guest isolation is NOT active" in ll and "phone isolation is NOT active" in ll and "anti-tethering is NOT active" in ll, "a router that cannot load the bridge and firewall rules logs it and carries on (exit 0): " + ll)
 # RT-10: the old table is deleted in the same nft transaction that loads the new one, never on its own (a failed load leaves the old rules in place)
 check("ARGS delete table" not in nl, "RT-10: no separate `nft delete table` call: " + nl[:300])
-check(all(t in nl for t in ("table bridge piso_guest\ndelete table bridge piso_guest\ntable bridge piso_guest {", "table bridge piso_kiosk\ndelete table bridge piso_kiosk\ntable bridge piso_kiosk {")),
+check(all(t in nl for t in ("table bridge piso_guest\ndelete table bridge piso_guest\ntable bridge piso_guest {", "table inet piso_anti_tether\ndelete table inet piso_anti_tether\ntable inet piso_anti_tether {", "table bridge piso_kiosk\ndelete table bridge piso_kiosk\ntable bridge piso_kiosk {")),
       "RT-10: each rule file declares, deletes and re-creates its table in one file: " + nl[:500])
 os.remove(f"{iso}/nft-fail")
 # RT-18: a console bound to every address (CONSOLE_BIND 0.0.0.0 or empty) must still be closed on Wi-Fi
@@ -915,6 +929,7 @@ check(r.stdout.startswith("the modem's network (10.1.2.3/8)") and "rc=1" in r.st
 r = lib('wan_ip() { echo 192.168.1.50; }; wan_prefix() { echo 24; }; cmd_wan_clash; echo "rc=$?"')
 check(r.stdout.strip() == "rc=0", "and prints nothing when the ranges are apart: " + r.stdout + r.stderr)
 check("wan_clash" in open(SCRIPT).read().split("check_all() {")[1].split("\n}\n")[0], "the status checks include the modem's range")
+check("anti_tether_on" in open(SCRIPT).read().split("check_all() {")[1].split("\n}\n")[0], "the status checks include anti-tethering")
 # feature 046 (SU-11): with BOX_EXPECT_MAC only the board the setup program just wrote is paired; without it the first station, as before
 ASSOC = 'iwinfo() { [ "$2" = assoclist ] && for m in $STATIONS; do echo "$m  -50 dBm / -95 dBm"; done; }; box_ifname() { echo wlan0-3; }; '
 for stations, expect, want_first, want_other in (("aa:bb:cc:dd:ee:99 aa:bb:cc:dd:ee:01", "AA:BB:CC:DD:EE:01", "AA:BB:CC:DD:EE:01", "AA:BB:CC:DD:EE:99"),
@@ -1312,6 +1327,45 @@ check("OTHER=1" in r.stdout.split("SETTINGS")[1].split("STATUS")[0] and "VOUCHER
       "a choice the owner made in the console is replaced (other console settings stay): " + r.stdout)
 check("voucher choice is off" in r.stdout and "VOUCHER_CHOICE='on'" in r.stdout and "usage: piso-setup voucher-choice" in r.stderr and "rc=1" in r.stdout,
       "voucher-choice shows its state, turns on again, and refuses anything else: " + r.stdout + r.stderr)
+
+# ---- anti-tether: TTL-based prevention of hotspot / USB tethering on guest network ------------------------------------
+r = lib("rm -f $CONF; apply_isolation() { echo APPLY-CALLED; }; "
+        "cmd_anti_tether; "
+        "cmd_anti_tether status; "
+        "cmd_anti_tether off; conf_get ANTI_TETHER; "
+        "cmd_anti_tether; "
+        "cmd_anti_tether on; conf_get ANTI_TETHER; "
+        "cmd_anti_tether status; "
+        "cmd_anti_tether invalid; echo rc=$?",
+        env={"PISO_ROOT": root, "PISO_TEST_NONROOT": "1"})
+check(r.stdout.count("Anti-tethering is ON") == 3 and "Anti-tethering is now OFF" in r.stdout
+      and "Anti-tethering is OFF" in r.stdout and "Anti-tethering is now ON" in r.stdout
+      and r.stdout.count("APPLY-CALLED") == 2 and "usage: piso-setup anti-tether [on|off|status]" in r.stderr and "rc=1" in r.stdout,
+      "anti-tether command: defaults to ON, handles status, toggles off/on, calls apply_isolation, and refuses invalid args: " + r.stdout + r.stderr)
+if os.geteuid() != 0:
+    r = lib("rm -f $CONF; cmd_anti_tether on", env={"PISO_ROOT": root})
+    check(r.returncode != 0 and "run as root" in (r.stdout + r.stderr), "anti-tether refuses non-root changes: " + r.stdout + r.stderr)
+at_fail_root = f"{tmp}/at_fail_root"; os.makedirs(f"{at_fail_root}/etc/hotplug.d/firewall", exist_ok=True)
+open(f"{at_fail_root}/etc/hotplug.d/firewall/50-piso-isolation", "w").write("#!/bin/sh\nexit 0\n")
+os.chmod(f"{at_fail_root}/etc/hotplug.d/firewall/50-piso-isolation", 0o755)
+r = lib("rm -f $CONF; apply_isolation() { :; }; anti_tether_on() { return 1; }; cmd_anti_tether on; echo rc=$?",
+        env={"PISO_ROOT": at_fail_root, "PISO_TEST_NONROOT": "1"})
+check("WARNING: could not load anti-tethering" in r.stderr and "Anti-tethering is now ON" not in r.stdout and "rc=1" in r.stdout,
+      "anti-tether on warns and returns non-zero when the table fails to load: " + r.stdout + r.stderr)
+at_ck = ('wifi_only() { return 0; }; isolation_on() { return 0; }; agree_all() { return 0; }; wait_until() { return 0; }; '
+         'update_timer_ok() { return 0; }; update_check_recent() { return 0; }; wan_clash() { return 1; }; '
+         'ip() { echo "inet $LAN_IP/ inet $GUEST_IP/"; }; iwinfo() { :; }; uci() { :; }; box_up() { return 0; }; curl() { :; }; '
+         'ping() { return 0; }; anti_tether_on() { return 1; }; ')
+r = lib("rm -f $CONF; " + at_ck + "DRY=1 check_all; echo SPLIT; conf_set ANTI_TETHER off; DRY=1 check_all", env={"PISO_ROOT": root})
+p1, p2 = r.stdout.split("SPLIT")
+check("WARN  anti-tethering is NOT active" in p1 and "WARN  anti-tethering is NOT active" not in p2,
+      "check_all warns when anti-tethering fails to load while enabled, and skips when OFF: " + r.stdout)
+r = lib("rm -f $CONF; cmd_status() { :; }; curl() { :; }; pidof() { return 1; }; cmd_reconcile() { :; }; cmd_box_diag() { :; }; "
+        "uci() { :; }; ndsctl() { :; }; logread() { :; }; nft() { echo \"NFT:$*\"; }; cmd_diag",
+        env={"PISO_ROOT": root})
+check("NFT:list table inet piso_anti_tether" in r.stdout and "anti-tethering (on:" in r.stdout,
+      "cmd_diag inspects inet piso_anti_tether table: " + r.stdout)
+check("anti-tether [on|off|status]" in subprocess.run(["sh", SCRIPT, "--help"], capture_output=True, text=True).stdout, "--help lists anti-tether [on|off|status]")
 
 # ---- brand-pack: a logo pack the owner signed, installed by the portal program (feature 049, group 7) --------------------------------
 fbp = f"{tmp}/fake_portal_brand"
