@@ -21,7 +21,7 @@
 # Everything is generated here (Wi-Fi password, box admin password, gateway key) and printed once at the end and saved in
 # /root/piso-setup-summary.txt. Running the file again is safe: it keeps what it already made.
 #
-# Other commands (after setup): piso-setup status | wifi-name "<name>" | guest-port [lanN|off] | voucher-choice [on|off] | brand-pack <file> | pair | summary | test-coin | diag | box-diag | set-password | box-wifi-name | reconcile [rebase] | telegram | rotate-box-wifi | export [file] | import <file> | space | forget-summary | kiosk-wifi | verify | handout | lock-admin | unlock-admin | wifi-admin [on|off] | update [check] (installs the newest release from the website; same as self-update) | self-update [check] | box-update [check] (installs the coin box's newest firmware) | auto-update on|off
+# Other commands (after setup): piso-setup status | wifi-name "<name>" | guest-port [lanN|off] | voucher-choice [on|off] | anti-tether [on|off|status] | brand-pack <file> | pair | summary | test-coin | diag | box-diag | set-password | box-wifi-name | reconcile [rebase] | telegram | rotate-box-wifi | export [file] | import <file> | space | forget-summary | kiosk-wifi | verify | handout | lock-admin | unlock-admin | wifi-admin [on|off] | update [check] (installs the newest release from the website; same as self-update) | self-update [check] | box-update [check] (installs the coin box's newest firmware) | auto-update on|off
 #
 # Options:  --dry-run  print the router settings instead of applying them (needs nothing but the uci command)
 #           --yes      do not ask for confirmation
@@ -29,7 +29,7 @@
 
 VERSION="dev"
 # the release of this file (setup/RELEASE): routers install only a higher release that the owner signed
-PISO_RELEASE='1.5.38'
+PISO_RELEASE='1.5.39'
 # the CPU family the portal program in this file is built for (router_family below names the family of the router it runs on)
 PISO_ARCH='x86_64'
 
@@ -525,6 +525,9 @@ apply_isolation() {
 
 # isolation_on: both bridge tables are loaded (they need the kernel's bridge firewall support)
 isolation_on() { nft list table bridge piso_guest > /dev/null 2>&1 && nft list table bridge piso_kiosk > /dev/null 2>&1; }
+
+# anti_tether_on: the anti-tethering inet table is loaded
+anti_tether_on() { nft list table inet piso_anti_tether > /dev/null 2>&1; }
 
 # portal_uci <guest name>: the guest-facing portal: openNDS sends new guests to pisoportal (FAS) and only the guest network
 # is gated; guests may reach the portal's port. The same lines are applied by the setup and by an update (which is how a
@@ -1148,6 +1151,7 @@ check_all() {  # prints PASS/FAIL lines, returns the number of failures
 	_gp=$(conf_get GUEST_PORT)
 	[ -z "$_gp" ] || _ck "router port $_gp is on the guest network (an access point plugged in there is gated)" "uci -q get \$(net_section br-guest).ports | grep -qw '$_gp'"
 	isolation_on || log "WARN  guests can still reach each other and rental phones can still reach each other and the router's login pages: this router cannot load the bridge rules (install kmod-nft-bridge, then run piso-setup update)"
+	[ "$(conf_get ANTI_TETHER)" = off ] || anti_tether_on || log "WARN  anti-tethering is NOT active: this router cannot load the inet firewall rule (install nftables, then run piso-setup update)"
 	_ck "openNDS is running" "wait_until 30 'ndsctl status'"   # (it needs a few seconds after it was started)
 	_ck "openNDS sends new guests to the portal (FAS)" "[ \"\$(uci -q get opennds.@opennds[0].fasport)\" = $PORTAL_PORT ]"
 	_ck "the router looks for signed updates every hour (scheduler running)" update_timer_ok
@@ -1287,6 +1291,30 @@ cmd_voucher_choice() {
 			else echo "The choice is off: coins always buy time at once, as before."; fi ;;
 		"") echo "The voucher choice is $([ "$(conf_get VOUCHER_CHOICE)" = off ] && echo off || echo on) (a change made in the console after this may differ: see its Settings page). Change with: piso-setup voucher-choice on|off" ;;
 		*) echo "usage: piso-setup voucher-choice [on|off]" >&2; return 1 ;;
+	esac
+}
+
+# piso-setup anti-tether [on|off|status]: stops customers sharing paid Wi-Fi via hotspot/USB tethering (default on).
+cmd_anti_tether() {
+	case "${1:-status}" in
+		status)
+			if [ "$(conf_get ANTI_TETHER)" = off ]; then
+				echo "Anti-tethering is OFF. Turn it on: piso-setup anti-tether on"
+			else
+				echo "Anti-tethering is ON (TTL=1 out, TTL 61-63/125-127 dropped in). Turn it off: piso-setup anti-tether off"
+			fi ;;
+		on)
+			[ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"
+			conf_set ANTI_TETHER on; apply_isolation
+			if [ -x "$PISO_ROOT/etc/hotplug.d/firewall/50-piso-isolation" ] && ! anti_tether_on; then
+				echo "WARNING: could not load anti-tethering firewall rule (check: piso-setup diag)." >&2; return 1
+			fi
+			echo "Anti-tethering is now ON (TTL=1 out, TTL 61-63/125-127 dropped in)." ;;
+		off)
+			[ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"
+			conf_set ANTI_TETHER off; apply_isolation
+			echo "Anti-tethering is now OFF." ;;
+		*) echo "usage: piso-setup anti-tether [on|off|status]" >&2; return 1 ;;
 	esac
 }
 
@@ -1434,6 +1462,7 @@ cmd_diag() {
 	echo "--- coin box link"; cmd_box_diag 2>&1
 	echo "--- firewall tables"; nft list tables 2> /dev/null
 	echo "--- guests apart; phones reach the router and the coin box only (both tables must be listed; if not, this router lacks kmod-nft-bridge)"; nft list table bridge piso_guest 2>&1 | head -12; nft list table bridge piso_kiosk 2>&1 | head -40
+	echo "--- anti-tethering ($([ "$(conf_get ANTI_TETHER)" = off ] && echo off || echo on): TTL=1 out, TTL 61-63/125-127 dropped in)"; nft list table inet piso_anti_tether 2>&1 | head -20
 	echo "--- openNDS"; uci -q get opennds.@opennds[0].gatewayinterface; ndsctl status 2>&1 | head -12
 	echo "--- guests as openNDS sees them (a paying phone must be Authenticated)"; ndsctl json 2> /dev/null | grep -E '"(mac|ip|state|session_end|download_this_session)"' | head -40
 	echo "--- rules openNDS built for guests (an Authenticated phone's traffic must reach an accept rule)"
@@ -2380,7 +2409,7 @@ main() {
 		case "$1" in
 			--dry-run) DRY=1 ;;
 			--yes | -y) ASSUME_YES=1 ;;
-			status | wan-clash | pair | summary | wifi-name | guest-port | kiosk-wifi | verify | uninstall-info | test-coin | diag | box-diag | set-password | reconcile | telegram | rotate-box-wifi | box-wifi-name | handout | console | export | import | space | forget-summary | lock-admin | lock-admin-confirm | unlock-admin | wifi-admin | update | self-update | box-update | auto-update | voucher-choice | brand-pack) CMD="$1"; shift; ARG="$1"; ARGS="$*"; break ;;
+			status | wan-clash | pair | summary | wifi-name | guest-port | kiosk-wifi | verify | uninstall-info | test-coin | diag | box-diag | set-password | reconcile | telegram | rotate-box-wifi | box-wifi-name | handout | console | export | import | space | forget-summary | lock-admin | lock-admin-confirm | unlock-admin | wifi-admin | update | self-update | box-update | auto-update | voucher-choice | brand-pack | anti-tether) CMD="$1"; shift; ARG="$1"; ARGS="$*"; break ;;
 			-h | --help) sed -n '2,/^# Options:/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 			*) echo "unknown option: $1 (try --help)" >&2; exit 1 ;;
 		esac
@@ -2412,6 +2441,7 @@ main() {
 		auto-update) cmd_auto_update "$ARG" ;;
 		voucher-choice) cmd_voucher_choice "$ARG" ;;
 		brand-pack) cmd_brand_pack "$ARG" ;;
+		anti-tether) cmd_anti_tether "$ARG" ;;
 		lock-admin)
 			# shellcheck disable=SC2086 # one argument per MAC address
 			cmd_lock_admin $ARGS ;;
@@ -2808,19 +2838,23 @@ HTML
 #!/bin/sh
 # Who may talk to whom on the router's own networks, below the layer where the firewall's zones work. Installed as a firewall
 # hotplug script: applied again each time the firewall is reloaded; setup, update and `piso-setup wifi-admin` also run it.
-# Safe to run any number of times. Two small tables, both in the bridge family:
+# Safe to run any number of times. Three tables:
 #
-#  piso_guest  Guests do not reach each other. The guest Wi-Fi keeps the clients of one radio apart, but a guest on 2.4 GHz and one
-#              on 5 GHz, or anything behind an access point on a guest port, share the guest bridge. Frames for the router itself
-#              (DHCP, DNS, the portal) are delivered locally and never pass this rule.
-#  piso_kiosk  The kiosk network (rental phones): a phone reaches the router (internet, DHCP, DNS) and the coin box, nothing else.
-#              No phone to phone, none to the print server or to computers, and none the other way except the coin box. The
-#              router's own login pages (SSH, LuCI: ports 22, 80, 443, 8080, 8443) do not answer on Wi-Fi at all; a computer on a
-#              LAN cable is not touched. `piso-setup wifi-admin on` lets Wi-Fi in again. Packets from Wi-Fi are also marked so the
-#              firewall (rule Kiosk-Wi-Fi-No-Private) can refuse the modem's network to them.
+#  piso_guest        Guests do not reach each other. The guest Wi-Fi keeps the clients of one radio apart, but a guest on 2.4 GHz and one
+#                    on 5 GHz, or anything behind an access point on a guest port, share the guest bridge. Frames for the router itself
+#                    (DHCP, DNS, the portal) are delivered locally and never pass this rule.
+#  piso_kiosk        The kiosk network (rental phones): a phone reaches the router (internet, DHCP, DNS) and the coin box, nothing else.
+#                    No phone to phone, none to the print server or to computers, and none the other way except the coin box. The
+#                    router's own login pages (SSH, LuCI: ports 22, 80, 443, 8080, 8443) do not answer on Wi-Fi at all; a computer on a
+#                    LAN cable is not touched. `piso-setup wifi-admin on` lets Wi-Fi in again. Packets from Wi-Fi are also marked so the
+#                    firewall (rule Kiosk-Wi-Fi-No-Private) can refuse the modem's network to them.
+#  piso_anti_tether  Stops customers from sharing their paid internet via Wi-Fi hotspot or USB/Bluetooth tethering. Outgoing packets to
+#                    the guest network have TTL set to 1 (when a phone attempts to forward to a tethered device, TTL decrements to 0 and is
+#                    dropped). Packets arriving from tethered devices (TTL 61-63 or 125-127) are dropped at prerouting (before the router
+#                    decrements TTL). `piso-setup anti-tether off` disables it.
 #
-# Needs the kernel's nftables bridge support (kmod-nft-bridge). Without it nothing is changed and the reason is logged; the Wi-Fi
-# isolation of each radio stays as it was. `piso-setup diag` shows whether the tables are in place.
+# Needs the kernel's nftables bridge support (kmod-nft-bridge) for bridge isolation. Without it the Wi-Fi isolation of each radio
+# stays as it was. `piso-setup diag` shows whether the tables are in place.
 CONF="${PISO_CONF:-/etc/piso-setup.conf}"
 COIN="${PISO_COINSLOT_CONF:-/etc/coinslot.conf}"
 SYS="${PISO_SYS:-/sys/class/net}"
@@ -2835,11 +2869,16 @@ command -v "$NFT" > /dev/null 2>&1 || exit 0
 
 cget() { sed -n "s/^$2='\\(.*\\)'\$/\\1/p" "$1" 2> /dev/null | tail -n 1; }
 
-# load <table> <rules file>: replaces the table; false when the router cannot load it. The old table is removed in the same nft
+# load [family] <table> <rules file>: replaces the table; false when the router cannot load it. The old table is removed in the same nft
 # transaction that adds the new one ("table" first, so the delete works when there is none yet): when the load fails, the old
 # rules stay in place instead of leaving the network with none.
 load() {
-	{ echo "table bridge $1"; echo "delete table bridge $1"; cat "$2"; } > "$T2" 2> /dev/null || return 1
+	if [ "$#" -ge 3 ]; then
+		_fam="$1"; _tbl="$2"; _rf="$3"
+	else
+		_fam="bridge"; _tbl="$1"; _rf="$2"
+	fi
+	{ echo "table $_fam $_tbl"; echo "delete table $_fam $_tbl"; cat "$_rf"; } > "$T2" 2> /dev/null || return 1
 	"$NFT" -f "$T2" > /dev/null 2>&1
 }
 
@@ -2881,6 +2920,26 @@ EOT
 	fi
 else
 	"$NFT" delete table bridge piso_guest > /dev/null 2>&1
+fi
+
+# ---- anti-tethering (TTL) -----------------------------------------------------------------------------------------------------
+ANTI_TETHER=$(cget "$CONF" ANTI_TETHER)
+if [ -d "$SYS/$GUEST_BR" ] && [ "$ANTI_TETHER" != off ]; then
+	cat > "$T" << EOT
+table inet piso_anti_tether {
+	chain prerouting {
+		type filter hook prerouting priority -150; policy accept;
+		iifname "$GUEST_BR" meta nfproto ipv4 ip ttl { 61, 62, 63, 125, 126, 127 } counter drop comment "drop packets from tethered clients"
+	}
+	chain postrouting {
+		type filter hook postrouting priority 300; policy accept;
+		oifname "$GUEST_BR" meta nfproto ipv4 counter ip ttl set 1
+	}
+}
+EOT
+	load inet piso_anti_tether "$T" || fail "anti-tethering is NOT active: this router cannot load the inet firewall rule (install nftables)"
+else
+	"$NFT" delete table inet piso_anti_tether > /dev/null 2>&1
 fi
 
 # ---- rental phones ------------------------------------------------------------------------------------------------------------
