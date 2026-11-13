@@ -8,7 +8,7 @@ base64) after a '#@@B64 <destination> <mode> <sha256>' line. Run it after changi
 The portal program is built by CI (.github/workflows/router-program.yml) and committed to tools/pisoportal/bin; CI
 rebuilds this file right after, so the two always match. It also writes the file's sha256 and the website's copy of the
 one-line installer (setup/install.sh) and of setup/pisophone_setup.py."""
-import base64, hashlib, os, re, sys
+import base64, gzip, hashlib, os, re, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FILES = [  # (source in the repository, destination on the router, mode)
@@ -57,9 +57,10 @@ def build(arch=DEFAULT_ARCH):
         out += f"#@@FILE {dest} {mode}\n{body}"
     for src, dest, mode in binary_for(arch):
         raw = open(os.path.join(ROOT, src), "rb").read()
-        b64 = base64.b64encode(raw).decode()
-        # the checksum lets the router verify whichever decoder it used
-        out += f"#@@B64 {dest} {mode} {hashlib.sha256(raw).hexdigest()}\n" + "".join(b64[i:i + 76] + "\n" for i in range(0, len(b64), 76))
+        gz = gzip.compress(raw, compresslevel=9, mtime=0)
+        b64 = base64.b64encode(gz).decode()
+        # the checksum verifies the uncompressed executable after decoding and gunzip
+        out += f"#@@B64 {dest} {mode} {hashlib.sha256(raw).hexdigest()} gz\n" + "".join(b64[i:i + 76] + "\n" for i in range(0, len(b64), 76))
     return out
 
 
@@ -87,12 +88,49 @@ def outputs(text):
     return out
 
 
+def check_match(path, expected):
+    if not os.path.exists(path):
+        return False
+    actual = open(path).read()
+    if actual == expected:
+        return True
+    if not path.endswith(".sh"):
+        return False
+    marker = "\n#@@B64 "
+    if marker not in actual or marker not in expected:
+        return False
+    a_head, a_tail = actual.split(marker, 1)
+    e_head, e_tail = expected.split(marker, 1)
+    if a_head != e_head:
+        return False
+    a_hdr, a_b64 = a_tail.split("\n", 1)
+    e_hdr, e_b64 = e_tail.split("\n", 1)
+    if a_hdr != e_hdr or not a_hdr.endswith(" gz"):
+        return False
+    try:
+        return gzip.decompress(base64.b64decode(a_b64)) == gzip.decompress(base64.b64decode(e_b64))
+    except Exception:
+        return False
+
+
 if __name__ == "__main__":
     files = outputs(build())
     if "--check" in sys.argv:
-        stale = [p for p, t in files.items() if not os.path.exists(os.path.join(ROOT, p)) or open(os.path.join(ROOT, p)).read() != t]
+        stale = [p for p, t in files.items() if not p.endswith(".sha256") and not check_match(os.path.join(ROOT, p), t)]
+        # keep .sha256 and website copies strictly matching the committed .sh bytes
+        for p, t in files.items():
+            if p + ".sha256" in files and os.path.exists(os.path.join(ROOT, p)):
+                body = open(os.path.join(ROOT, p)).read()
+                exp_sha = hashlib.sha256(body.encode()).hexdigest() + f"  {os.path.basename(p)}\n"
+                sha_p = os.path.join(ROOT, p + ".sha256")
+                if not os.path.exists(sha_p) or open(sha_p).read() != exp_sha:
+                    stale.append(p + ".sha256")
+                if p.startswith("setup/"):
+                    web_p = os.path.join(ROOT, "website", p)
+                    if not os.path.exists(web_p) or open(web_p).read() != body:
+                        stale.append("website/" + p)
         if stale:
-            sys.exit(", ".join(stale) + " out of date: edit the parts in setup/src/ (not the generated files), then run python3 tools/build_piso_setup.py")
+            sys.exit(", ".join(sorted(set(stale))) + " out of date: edit the parts in setup/src/ (not the generated files), then run python3 tools/build_piso_setup.py")
         print("setup/piso-setup.sh (with its sha256) and the website's copies (website/setup/, install.sh, pisophone_setup.py) are up to date")
     else:
         for p, t in files.items():

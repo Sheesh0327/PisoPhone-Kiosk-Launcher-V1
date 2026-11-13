@@ -324,7 +324,7 @@ bb = subprocess.run(["sh", "-c", "command -v busybox"], capture_output=True, tex
 if bb:
     bbdir = f"{tmp}/bb"
     os.makedirs(bbdir)
-    for a in "sh awk sed grep tr rm mv chmod mkdir dirname cut sha256sum printf cat date head tail ln mktemp".split():
+    for a in "sh awk sed grep tr rm mv chmod mkdir dirname cut sha256sum printf cat date head tail ln mktemp gzip".split():
         os.symlink(bb, f"{bbdir}/{a}")
     # (functions stand in for the missing tools: a BusyBox built with "standalone shell" would find its own applets)
     r = subprocess.run([f"{bbdir}/sh", "-c", f". {SCRIPT}; base64() {{ return 127; }}; openssl() {{ return 127; }}; DRY=1; extract_payload {SCRIPT}"], env={"PATH": bbdir, "PISO_ROOT": f"{tmp}/bbroot", "PISO_SETUP_SOURCE_ONLY": "1",
