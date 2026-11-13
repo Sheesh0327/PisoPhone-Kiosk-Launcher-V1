@@ -324,7 +324,7 @@ bb = subprocess.run(["sh", "-c", "command -v busybox"], capture_output=True, tex
 if bb:
     bbdir = f"{tmp}/bb"
     os.makedirs(bbdir)
-    for a in "sh awk sed grep tr rm mv chmod mkdir dirname cut sha256sum printf cat date head tail ln".split():
+    for a in "sh awk sed grep tr rm mv chmod mkdir dirname cut sha256sum printf cat date head tail ln mktemp".split():
         os.symlink(bb, f"{bbdir}/{a}")
     # (functions stand in for the missing tools: a BusyBox built with "standalone shell" would find its own applets)
     r = subprocess.run([f"{bbdir}/sh", "-c", f". {SCRIPT}; base64() {{ return 127; }}; openssl() {{ return 127; }}; DRY=1; extract_payload {SCRIPT}"], env={"PATH": bbdir, "PISO_ROOT": f"{tmp}/bbroot", "PISO_SETUP_SOURCE_ONLY": "1",
@@ -333,6 +333,14 @@ if bb:
     check(os.path.exists(got) and open(got, "rb").read() == open(f"{ROOT}/tools/pisoportal/bin/pisoportal-mipsel", "rb").read() and "decoding with awk" in r.stdout,
           "BusyBox only (no base64, no openssl): the portal program is decoded by awk, byte for byte: " + r.stdout[-300:] + r.stderr[-300:])
     check(os.access(f"{tmp}/bbroot/etc/init.d/pisoportal", os.X_OK), "and the init scripts are executable (marker parsing without GNU sed extensions)")
+    if os.path.exists(f"{iso}/nft.log"): os.remove(f"{iso}/nft.log")
+    open(f"{iso}/coin.conf", "w").write("GW_BOX='10.0.0.10'\nGW_BOX_MAC='AA:BB:CC:DD:EE:09'\nCONSOLE_BIND='10.0.0.1'\n")
+    r_iso_bb = subprocess.run([f"{bbdir}/sh", f"{ROOT}/router/piso_isolation.sh"], capture_output=True, text=True,
+                              env={"PATH": bbdir, "PISO_NFT": f"{iso}/nft", "PISO_SYS": f"{iso}/sys", "PISO_CONF": f"{iso}/piso.conf", "PISO_COINSLOT_CONF": f"{iso}/coin.conf"})
+    nl_bb = open(f"{iso}/nft.log").read() if os.path.exists(f"{iso}/nft.log") else ""
+    check(r_iso_bb.returncode == 0 and "not found" not in (r_iso_bb.stdout + r_iso_bb.stderr)
+          and "tcp dport { 22, 80, 443, 8080, 8443, 8081, 8082 } counter drop" in nl_bb,
+          "BusyBox only (no paste): piso_isolation formats ports with awk and loads cleanly: " + r_iso_bb.stderr + nl_bb[-300:])
 else:
     print("note: busybox not installed; the BusyBox-only decoding test was skipped")
 # a damaged setup file is refused instead of installing a broken program

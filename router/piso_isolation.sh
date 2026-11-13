@@ -116,8 +116,8 @@ if [ -d "$SYS/$LAN_BR" ]; then
 	# the console is the admin page (and the coin box's page one port up): offered on a LAN cable only, like the login pages
 	CONSOLE_PORT=$(cget "$COIN" CONSOLE_PORT)
 	case "$CONSOLE_PORT" in "" | *[!0-9]*) CONSOLE_PORT=8081 ;; esac
-	ADMIN_PORTS=$(echo "$ADMIN_PORTS $CONSOLE_PORT $((CONSOLE_PORT + 1))" | tr ' ' '\n' | awk '!seen[$0]++' | paste -sd, - | sed 's/,/, /g')
-	CONSOLE_PORTS=$(echo "$CONSOLE_PORT $((CONSOLE_PORT + 1))" | tr ' ' '\n' | awk '$0 != 80 && $0 != 443 && !seen[$0]++' | paste -sd, - | sed 's/,/, /g')
+	ADMIN_PORTS=$(awk -v s="$ADMIN_PORTS $CONSOLE_PORT $((CONSOLE_PORT + 1))" 'BEGIN { n = split(s, a, " "); for (i = 1; i <= n; i++) if (a[i] != "" && !seen[a[i]]++) out = (out ? out ", " : "") a[i]; print out }')
+	CONSOLE_PORTS=$(awk -v s="$CONSOLE_PORT $((CONSOLE_PORT + 1))" 'BEGIN { n = split(s, a, " "); for (i = 1; i <= n; i++) if (a[i] != "" && a[i] != 80 && a[i] != 443 && !seen[a[i]]++) out = (out ? out ", " : "") a[i]; print out }')
 	case "$BOX_MAC" in [0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]:[0-9a-f][0-9a-f]) ;; *) BOX_MAC="" ;; esac
 	case "$BOX_IP" in *[!0-9.]*) BOX_IP="" ;; esac
 	case "$LAN_IP" in *[!0-9.]*) LAN_IP="" ;; esac
