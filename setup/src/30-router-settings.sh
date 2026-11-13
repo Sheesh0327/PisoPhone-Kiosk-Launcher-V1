@@ -230,6 +230,11 @@ add_list firewall.phone_noprivate.dest_ip='10.0.0.0/8'
 add_list firewall.phone_noprivate.dest_ip='172.16.0.0/12'
 add_list firewall.phone_noprivate.dest_ip='192.168.0.0/16'
 add_list firewall.phone_noprivate.dest_ip='169.254.0.0/16'
+# fw4 ignores /etc/hotplug.d/firewall/ on reloads unless registered as a fw4_compatible script include
+set firewall.piso_isolation=include
+set firewall.piso_isolation.type='script'
+set firewall.piso_isolation.path='/etc/hotplug.d/firewall/50-piso-isolation'
+set firewall.piso_isolation.fw4_compatible='1'
 
 # --- openNDS gates only the guest network -------------------------------------------------------------------------------
 set opennds.@opennds[0].enabled='1'

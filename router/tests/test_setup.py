@@ -157,6 +157,8 @@ check("set firewall.phone_noprivate.src='lan'" in out and "set firewall.phone_no
       and all(f"add_list firewall.phone_noprivate.dest_ip='{n}'" in out for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16")),
       "phones that come in by Wi-Fi (marked by the bridge rules) are refused the modem's network")
 check("0x00200000" in open(f"{ROOT}/router/piso_isolation.sh").read(), "and the bridge rules mark them with the same mark")
+check("set firewall.piso_isolation=include" in out and "set firewall.piso_isolation.path='/etc/hotplug.d/firewall/50-piso-isolation'" in out and "set firewall.piso_isolation.fw4_compatible='1'" in out,
+      "fw4 include registers 50-piso-isolation so isolation and anti-tethering persist across firewall reloads")
 
 # the bridge rules (router/piso_isolation.sh): guests apart, rental phones reach the router and the coin box only. A fake nft keeps what it is given.
 iso = f"{tmp}/iso"; shutil.rmtree(iso, ignore_errors=True)
@@ -1112,7 +1114,7 @@ ub, ul = open(f"{tmp}/uci.batch").read(), open(f"{tmp}/uci.log").read()
 check("set opennds.@opennds[0].fasport='2080'" in ub and "set opennds.@opennds[0].login_option_enabled='0'" in ub and "delete opennds.@opennds[0].themespec_path" in ub
       and "set firewall.guest_stream.dest_port='2080'" in ub and "set opennds.@opennds[0].gatewayname='Shop WiFi'" in ub, "update moves openNDS to the FAS portal: " + ub[:300])
 check("set dropbear.@dropbear[0].Interface='lan'" in ub, "and keeps SSH off the guest network")
-check(all(l.startswith(("set firewall.guest_stream", "set firewall.guest_nomodem", "delete firewall.guest_nomodem", "add_list firewall.guest_nomodem", "set firewall.guest_noprivate", "delete firewall.guest_noprivate", "add_list firewall.guest_noprivate", "set firewall.phone_noprivate", "delete firewall.phone_noprivate", "add_list firewall.phone_noprivate", "add_list dhcp.@dnsmasq", "del_list dhcp.@dnsmasq", "set opennds.", "delete opennds.", "add_list opennds.", "set dropbear.", "delete uhttpd.", "add_list uhttpd.", "#"))
+check(all(l.startswith(("set firewall.guest_stream", "set firewall.guest_nomodem", "delete firewall.guest_nomodem", "add_list firewall.guest_nomodem", "set firewall.guest_noprivate", "delete firewall.guest_noprivate", "add_list firewall.guest_noprivate", "set firewall.phone_noprivate", "delete firewall.phone_noprivate", "add_list firewall.phone_noprivate", "set firewall.piso_isolation", "add_list dhcp.@dnsmasq", "del_list dhcp.@dnsmasq", "set opennds.", "delete opennds.", "add_list opennds.", "set dropbear.", "delete uhttpd.", "add_list uhttpd.", "#"))
           for l in ub.splitlines() if l.strip()), "and touches nothing else (no Wi-Fi, network or passwords): " + ub)
 check("commit opennds" in ul and "commit firewall" in ul, "the change is committed")
 cc = open(f"{root}/etc/coinslot.conf").read()
