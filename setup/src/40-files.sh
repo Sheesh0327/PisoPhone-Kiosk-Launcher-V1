@@ -134,7 +134,7 @@ EOT
 	if grep -q '^GW_KEY=' "$_cf.new"; then mv "$_cf.new" "$_cf"; else rm -f "$_cf.new"; umask 022; die "could not write $_cf (is the router's flash full? piso-setup space)"; fi
 	umask 022
 	chmod 600 "$_cf"
-	apply_isolation   # (the coin box's address is in it: the rules for the rental phones name it)
+	[ "${PISO_SKIP_ISOLATION:-0}" = 1 ] || apply_isolation   # (the coin box's address is in it: the rules for the rental phones name it)
 }
 
 # abs_path <file>: the file's absolute path (install.sh starts the setup as ./piso-setup.sh from inside its folder)

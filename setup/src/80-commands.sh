@@ -252,7 +252,7 @@ cmd_update() {
 	[ -x /etc/init.d/pisoportal ] && /etc/init.d/pisoportal stop > /dev/null 2>&1 && PORTAL_RESTORE=1   # (no program is replaced while it runs; started again on an error)
 	remove_old_portal
 	extract_payload "$0"
-	write_coinslot_conf "$(conf_get GW_KEY)" "$(conf_get BOX_MAC)"
+	PISO_SKIP_ISOLATION=1 write_coinslot_conf "$(conf_get GW_KEY)" "$(conf_get BOX_MAC)"
 	sync_kiosk_wifi
 	[ -x /etc/init.d/pisoportal ] && { /etc/init.d/pisoportal enable; /etc/init.d/pisoportal start; }
 	PORTAL_RESTORE=0
