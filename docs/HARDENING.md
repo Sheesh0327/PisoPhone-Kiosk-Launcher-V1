@@ -22,7 +22,7 @@ Ordered by risk to money first. Items marked **decision** need the owner's answe
 | 13 | Security | The admin QR key is used inside a page the box serves over HTTP | sign in the owner's own app instead |
 | 14 | Security | `RELEASES_TOKEN` is readable from any branch; the security rules miss one-line keys | move it to the protected environment; add patterns |
 | 15 | Box | Replay windows on signed phone calls are wider than intended; one account per slot not enforced on the box | record timestamps; sign out the other account |
-| 17 | Router | Guests could reach the modem's own pages | router 1.5.7: one narrow firewall rule refuses the modem's addresses (192.168.1.1 and the router's default gateway); other private networks behind the router are still reachable and need a router check first |
+| 17 | Router | Guests could reach the modem's own pages | router 1.5.7/1.5.10: bridge isolation rules refuse the modem's addresses (192.168.1.1 and default gateway) and router admin ports; 1.5.39/1.5.40 registers fw4 include persistence and anti-tethering TTL rules |
 | 16 | Router | One guest can block others (voucher guessing limit is global; empty windows hold the slot) | per-device limits |
 
 

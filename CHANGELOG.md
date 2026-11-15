@@ -1,13 +1,20 @@
 # Changelog
 
-## Unreleased
-
-- Retire unused flash-encryption builds and provisioning tools. Normal ESP32-C3/ESP32 firmware, signed OTA, payment persistence and rollback remain supported.
-
 What changed for people who run PisoPhone sites. The phone app, the coin-box firmware and the router software are versioned
 separately (app: the CI build number, shown as hundreds.tens.ones, build 466 is 4.6.6; firmware: `PISO_FW_VERSION`; router: `setup/RELEASE`). Newest first.
 
 ## Unreleased
+
+- Router 1.5.40, **setup and isolation performance & reliability release.**
+  - **Firewall include persistence:** Registers `/etc/hotplug.d/firewall/50-piso-isolation` as a firewall include script (`type='script'`, `fw4_compatible='1'`) in UCI firewall settings, guaranteeing bridge guest/kiosk isolation and anti-tethering rules cleanly persist across `fw4 reload` and interface events.
+  - **BusyBox compatibility:** Replaces external `paste` command in `piso_isolation.sh` with BusyBox-safe `awk` when formatting admin and console port lists.
+  - **Gzip-compressed installer payload:** Embedded portal binary in `setup/piso-setup.sh` is now gzip-compressed with batched base64 decoding, shrinking the setup installer payload from ~1.69 MB down to ~861 KB and speeding up decoding during router installation.
+  - **Update speedup:** Skips redundant `apply_isolation` execution during `piso-setup update`.
+- Router 1.5.39, **anti-tethering protection via TTL rules and owner toggle.** Tested and verified live on hardware.
+  - **Downlink hotspot & USB tethering defeat:** Clamps outgoing IPv4 packets on `br-guest` to TTL=1 at nftables postrouting, preventing connected devices from sharing customer Wi-Fi through mobile hotspots or USB tethering.
+  - **Prerouting ingress packet filter:** Drops incoming tethered IPv4 packets (TTL 61-63 and 125-127) at nftables prerouting priority -150 before Linux `ip_forward` decrements TTL, neutralizing client-side TTL spoofing.
+  - **Owner toggle & status check:** Adds `piso-setup anti-tether [on|off|status]` command (default `on`), diagnostics dump in `piso-setup diag`, and integration with `piso-setup status` warning checks.
+- Retire unused flash-encryption builds and provisioning tools. Normal ESP32-C3/ESP32 firmware, signed OTA, payment persistence and rollback remain supported.
 - Router 1.5.38, **anti-tethering rollback and stability release.**
   - **Stability rollback:** Rolls back experimental TTL-based tethering guard to ensure uninterrupted internet access for paying devices and prevent connection drops during mobile hotspot/tethering activity.
 - Router 1.5.36, **captive portal connectivity fix and Philippine ISP CGNAT compatibility.**
