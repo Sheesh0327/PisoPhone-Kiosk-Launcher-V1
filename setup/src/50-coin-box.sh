@@ -25,6 +25,16 @@ box_wifi_key() {
 	if [ "$(conf_get BOX_WIFI_ROTATED)" = 1 ] && [ -n "$(conf_get BOX_WIFI_PASS_NEW)" ]; then conf_get BOX_WIFI_PASS_NEW; else printf '%s' "$BOX_DEFAULT_WIFI"; fi
 }
 
+clear_box_lease() {  # clear_box_lease [mac]: drop stale leases for BOX_IP or <mac> and flush ARP so a new box gets BOX_IP right away
+	_lf="${DHCP_LEASES:-$PISO_ROOT/tmp/dhcp.leases}"
+	if [ -f "$_lf" ]; then
+		_lt="$_lf.tmp.$$"
+		awk -v ip="$BOX_IP" -v mac="$1" 'tolower($3) != tolower(ip) && (mac == "" || tolower($2) != tolower(mac))' "$_lf" > "$_lt" 2> /dev/null && mv "$_lt" "$_lf"
+		rm -f "$_lt"
+	fi
+	[ "$DRY" = 1 ] || ip neigh del "$BOX_IP" dev br-lan > /dev/null 2>&1 || true
+}
+
 set_box_key() {  # set_box_key <password> <network name>: the box network's password and name, applied now
 	uci set wireless.box_ap.key="$1"; uci set wireless.box_ap.ssid="$2"
 	uci -q delete wireless.box_ap.macfilter; uci -q delete wireless.box_ap.maclist; uci commit wireless
@@ -79,7 +89,7 @@ pair_box() {
 		conf_set BOX_WIFI_ROTATED "${_was:-0}"
 		uci set wireless.box_ap.key="$_old"; uci set wireless.box_ap.ssid="$_old_ssid"
 		cmd_box_diag   # while the network is still as it was during the wait
-		lock_box_network ""
+		lock_box_network "$(conf_get BOX_MAC)"
 		[ -n "$_up" ] || die "the hidden coin box network is not on the air (check the router's 2.4 GHz radio: iwinfo), so the coin box could not join it. Then run: piso-setup pair"
 		[ -z "$_refused" ] || die "$PSK_HINT"
 		[ -z "$_other" ] || die "the coin box this setup wrote ($BOX_EXPECT_MAC) did not join the hidden $BOX_PAIR_SSID network; another one ($_other) did and was not paired. Check the power of the box that was written, then run: piso-setup pair"
@@ -107,6 +117,7 @@ lock_box_network() {  # lock_box_network <mac>: admit only this MAC (none at all
 		uci set dhcp.pisocoinbox=host; uci set dhcp.pisocoinbox.name='pisocoinbox'
 		uci set dhcp.pisocoinbox.mac="$1"; uci set dhcp.pisocoinbox.ip="$BOX_IP"
 	fi
+	clear_box_lease "$1"
 	uci commit wireless; uci commit dhcp
 	/etc/init.d/dnsmasq restart > /dev/null 2>&1
 	wifi reload > /dev/null 2>&1
@@ -128,9 +139,14 @@ provision_box() {
 	case "$BOXCODE" in
 		200 | 302 | 303) log "the box now has its own admin password" ;;
 		401)
-			# not the default and not what we stored: maybe the box was already set up by hand
-			if [ -n "$BOX_ADMIN_PASSWORD" ]; then box_curl "$BOX_ADMIN_PASSWORD" /save --data-urlencode "admin_pw=$_new"; fi
-			case "$BOXCODE" in 200 | 302 | 303) ;; *) die "the box refused the admin login (it has a password other than the factory default). Factory reset the box (hold GPIO 2 to ground for 5 seconds, or reflash with an erase) and run: piso-setup pair   -- or run this with BOX_ADMIN_PASSWORD=<its password>" ;; esac ;;
+			# a replacement box starts with the built-in default password even though the router remembers the previous box's password
+			if [ "$_cur" != "$BOX_DEFAULT_ADMIN" ]; then box_curl "$BOX_DEFAULT_ADMIN" /save --data-urlencode "admin_pw=$_new"; fi
+			if [ "$BOXCODE" = 401 ] && [ -n "$BOX_ADMIN_PASSWORD" ]; then box_curl "$BOX_ADMIN_PASSWORD" /save --data-urlencode "admin_pw=$_new"; fi
+			case "$BOXCODE" in
+				200 | 302 | 303) log "the box now has its own admin password" ;;
+				400) log "the box says the new password is weak: $BOXOUT"; die "the generated password was refused" ;;
+				*) die "the box refused the admin login (it has a password other than the factory default). Factory reset the box (hold GPIO 2 to ground for 5 seconds, or reflash with an erase) and run: piso-setup pair   -- or run this with BOX_ADMIN_PASSWORD=<its password>" ;;
+			esac ;;
 		400) log "the box says the new password is weak: $BOXOUT"; die "the generated password was refused" ;;
 		*) die "the box did not accept the setup request (HTTP ${BOXCODE:-none}). Is it at $BOX_IP?" ;;
 	esac

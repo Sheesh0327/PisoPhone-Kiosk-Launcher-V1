@@ -62,12 +62,28 @@ struct Sample {
     tx: u64,
 }
 
+#[derive(Clone, Debug)]
+struct PairState {
+    state: String,
+    since: u64,
+    detail: String,
+    pid: Option<u32>,
+    generation: u64,
+}
+
+impl Default for PairState {
+    fn default() -> Self {
+        PairState { state: "idle".into(), since: 0, detail: String::new(), pid: None, generation: 0 }
+    }
+}
+
 pub struct Console {
     pub(crate) core: Arc<Core>,
     sessions: Mutex<HashMap<String, u64>>,
     fails: Mutex<HashMap<String, (u32, u64)>>,
     wan: Mutex<VecDeque<Sample>>,
     prev: Mutex<HashMap<String, (u64, u64, u64)>>,
+    pair: Mutex<PairState>,
 }
 
 // ---- reading the router (pure parts first: they are tested) -----------------------------------------------------------------------
@@ -294,6 +310,7 @@ impl Console {
             fails: Mutex::new(HashMap::new()),
             wan: Mutex::new(VecDeque::new()),
             prev: Mutex::new(HashMap::new()),
+            pair: Mutex::new(PairState::default()),
         })
     }
 
@@ -531,6 +548,136 @@ impl Console {
             Err(_) => "{\"error\":\"BOX_DOWN\"}".into(),
         }
     }
+
+    fn pair_json(&self, p: &PairState) -> String {
+        let mac = conf_value(&self.core.cfg.setup_conf, "BOX_MAC");
+        format!(
+            "{{\"ok\":true,\"state\":\"{}\",\"mac\":\"{}\",\"since\":{},\"detail\":\"{}\"}}",
+            json_esc(&p.state),
+            json_esc(&mac),
+            p.since,
+            json_esc(&p.detail)
+        )
+    }
+
+    fn pair_get(&self) -> String {
+        let p = self.pair.lock().unwrap();
+        self.pair_json(&p)
+    }
+
+    fn pair_post(c: &Arc<Console>, body: &str) -> (&'static str, String) {
+        if jget(body, "cancel") == "1" {
+            let (pid, resp) = {
+                let mut p = c.pair.lock().unwrap();
+                let pid = if p.state == "running" { p.pid } else { None };
+                if pid.is_some() {
+                    p.state = "cancelling".into();
+                    p.since = now_secs();
+                    p.detail = "Cancelling pairing and restoring previous settings...".into();
+                } else if p.state != "cancelling" {
+                    p.state = "idle".into();
+                    p.since = now_secs();
+                    p.detail.clear();
+                }
+                (pid, c.pair_json(&p))
+            };
+            if let Some(pid) = pid {
+                let _ = Command::new("kill").args(["-TERM", &pid.to_string()]).output();
+            }
+            return ("200 OK", resp);
+        }
+        if c.core.has_open_window() {
+            return (
+                "409 Conflict",
+                "{\"error\":\"WINDOW_OPEN\",\"why\":\"A customer's coin window is open right now; try again in a minute.\"}".into(),
+            );
+        }
+        let mut p = c.pair.lock().unwrap();
+        if p.state == "running" || p.state == "cancelling" {
+            return ("200 OK", c.pair_json(&p));
+        }
+        let mut child = match Command::new("sh")
+            .args(["-c", "exec \"$1\" pair 2>&1", "_", &c.core.cfg.piso_setup])
+            .env("PISO_FROM_CONSOLE", "1")
+            .env("ASSUME_YES", "1")
+            .env("PISO_CONF", &c.core.cfg.setup_conf)
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+        {
+            Ok(ch) => ch,
+            Err(e) => {
+                let why = json_esc(&format!("could not start {}: {}", c.core.cfg.piso_setup, e));
+                return ("500 Internal Server Error", format!("{{\"error\":\"SPAWN_FAILED\",\"why\":\"{}\"}}", why));
+            }
+        };
+        p.generation += 1;
+        let gen = p.generation;
+        p.state = "running".into();
+        p.since = now_secs();
+        p.detail = "Opening pairing network...".into();
+        p.pid = Some(child.id());
+        let resp = c.pair_json(&p);
+        drop(p);
+
+        let console = Arc::clone(c);
+        std::thread::spawn(move || {
+            use std::io::BufRead;
+            let mut last_err = String::new();
+            if let Some(out) = child.stdout.take() {
+                for line in std::io::BufReader::new(out).lines().map_while(Result::ok) {
+                    let cleaned = clean_pair_line(&line);
+                    if cleaned.is_empty() {
+                        continue;
+                    }
+                    if let Some(err) = cleaned.strip_prefix("ERROR:") {
+                        last_err = err.trim().to_string();
+                    }
+                    let mut p = console.pair.lock().unwrap();
+                    if p.generation != gen {
+                        return;
+                    }
+                    p.detail = cleaned;
+                }
+            }
+            let ok = child.wait().map(|s| s.success()).unwrap_or(false);
+            if ok {
+                crate::reconcile::clear_cache();
+            }
+            let mut p = console.pair.lock().unwrap();
+            if p.generation != gen {
+                return;
+            }
+            p.pid = None;
+            p.since = now_secs();
+            if p.state == "cancelling" {
+                p.state = "idle".into();
+                p.detail = "Pairing cancelled. Previous coin box settings restored.".into();
+            } else if ok {
+                p.state = "done".into();
+                let mac = conf_value(&console.core.cfg.setup_conf, "BOX_MAC");
+                p.detail = if mac.is_empty() {
+                    "The new coin box is paired and ready.".into()
+                } else {
+                    format!("Paired with {}. The new coin box is ready.", mac)
+                };
+            } else {
+                p.state = "failed".into();
+                if !last_err.is_empty() {
+                    p.detail = last_err;
+                } else if p.detail.is_empty() {
+                    p.detail = "Pairing did not finish. Check power and Wi-Fi.".into();
+                }
+            }
+        });
+        ("200 OK", resp)
+    }
+}
+
+/// Strip setup formatting prefixes so console status shows plain progress messages.
+fn clean_pair_line(line: &str) -> String {
+    let s = line.trim();
+    let s = s.strip_prefix("== ").or_else(|| s.strip_prefix("TIP: ")).unwrap_or(s).trim();
+    s.chars().take(240).collect()
 }
 
 // ---- the server ---------------------------------------------------------------------------------------------------------------------
@@ -597,7 +744,7 @@ fn json(conn: &mut Incoming, code: &str, body: &str, extra: &str) {
     respond(&mut conn.s, code, "application/json", body, &format!("Cache-Control: no-store\r\n{}{}", CSP, extra));
 }
 
-fn handle(c: &Console, req: Request, mut conn: Incoming) {
+fn handle(c: &Arc<Console>, req: Request, mut conn: Incoming) {
     let ip = conn.s.peer_addr().map(|a| a.ip().to_string()).unwrap_or_default();
     let head_only = req.method == "HEAD";
     // a request's body is always read, whatever the answer: closing a connection with unread bytes resets it and the client sees an error
@@ -874,6 +1021,11 @@ fn handle(c: &Console, req: Request, mut conn: Incoming) {
                     c.core.nds.deauth(&mac);
                     json(&mut conn, "200 OK", "{\"ok\":true}", "");
                 }
+                ("GET", "/api/pair") => json(&mut conn, "200 OK", &c.pair_get(), ""),
+                ("POST", "/api/pair") => {
+                    let (code, out) = Console::pair_post(c, &body);
+                    json(&mut conn, code, &out, "");
+                }
                 _ => json(&mut conn, "404 Not Found", "{\"error\":\"NOT_FOUND\"}", ""),
             }
         }
@@ -1026,8 +1178,75 @@ mod tests {
         assert_eq!((today, total), (5, 26));
         assert_eq!(week, [0, 0, 0, 3, 0, 17, 5]);
         let (today_p, total_p, week_p, week_total, month_total) = revenue_period_stats(&text, now, tz);
-        assert_eq!((today_p, total_p, week_p), (today, total, week));
+        assert_eq!(today_p, today);
+        assert_eq!(total_p, total);
+        assert_eq!(week_p, week);
         assert_eq!(week_total, 25);
         assert_eq!(month_total, 25);
+    }
+
+    #[test]
+    fn clean_pair_line_strips_prefixes_and_bounds_length() {
+        assert_eq!(clean_pair_line("== Pairing the coin box "), "Pairing the coin box");
+        assert_eq!(clean_pair_line("  TIP: found it."), "found it.");
+        assert_eq!(clean_pair_line(&"x".repeat(300)).len(), 240);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn pair_job_runs_completes_and_can_cancel() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = std::env::temp_dir().join(format!("pisoportal-pair-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let conf = d.join("setup.conf");
+        std::fs::write(&conf, "BOX_MAC='AA:BB:CC:DD:EE:01'\n").unwrap();
+        let script = d.join("fake-setup.sh");
+        std::fs::write(
+            &script,
+            format!(
+                "#!/bin/sh\nset -e\n[ \"$1\" = pair ]\nif [ \"${{PAIR_MODE:-ok}}\" = slow ]; then\n  echo \"== Pairing the coin box\"\n  sleep 10\n  exit 0\nfi\necho \"== Pairing the coin box\"\necho \"BOX_MAC='11:22:33:44:55:66'\" > \"{}\"\necho \"the new coin box is paired\"\n",
+                conf.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let mut cfg = crate::config::Config::from_map(std::collections::HashMap::new());
+        cfg.data_dir = d.to_string_lossy().into_owned();
+        cfg.setup_conf = conf.to_string_lossy().into_owned();
+        cfg.piso_setup = script.to_string_lossy().into_owned();
+        let console = Console::new(Core::new(cfg));
+
+        assert!(console.pair_get().contains("\"state\":\"idle\""));
+        assert!(console.pair_get().contains("\"mac\":\"AA:BB:CC:DD:EE:01\""));
+
+        let (code, body) = Console::pair_post(&console, "{}");
+        assert_eq!(code, "200 OK");
+        assert!(body.contains("\"state\":\"running\""), "{}", body);
+        for _ in 0..50 {
+            if console.pair_get().contains("\"state\":\"done\"") {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let done = console.pair_get();
+        assert!(done.contains("\"state\":\"done\"") && done.contains("\"mac\":\"11:22:33:44:55:66\""), "{}", done);
+
+        // Cancel a running job cleanly
+        console.core.nds.state("00:00:00:00:00:00");
+        std::fs::write(&script, "#!/bin/sh\ntrap 'exit 1' TERM\necho \"== Waiting\"\nsleep 10 &\nwait $!\n").unwrap();
+        let (code, body) = Console::pair_post(&console, "{}");
+        assert_eq!(code, "200 OK", "{}", body);
+        let (ccode, cbody) = Console::pair_post(&console, "{\"cancel\":\"1\"}");
+        assert_eq!(ccode, "200 OK", "{}", cbody);
+        for _ in 0..50 {
+            if console.pair_get().contains("\"state\":\"idle\"") {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(console.pair_get().contains("\"state\":\"idle\""), "{}", console.pair_get());
+        let _ = std::fs::remove_dir_all(&d);
     }
 }

@@ -764,6 +764,72 @@ check("rc=0" not in r.stdout and "Power-cycle" in out and "piso-setup status" in
 check(Box.wifi and "ROT=1 NEW=" + Box.wifi in r.stdout and f"set wireless.box_ap.key={Box.wifi}" in ul and "set wireless.box_ap.ssid=PisoCoinBox-a1b2" in ul,
       "and the router keeps the new name and key (the box has them): " + out)
 
+# ---- replacement ESP32 pairing: default password fallback, stale DHCP lease cleanup, MAC restore, cmd_pair preservation ----
+# (a) replacement box starts on Coinslot@Setup while the router still stores the broken box's BOX_ADMIN_PASS
+Box.admin = "Coinslot@Setup"; Box.key = None
+cf_rep = f"{tmp}/conf_replace"
+open(cf_rep, "w").write("BOX_ADMIN_PASS='OldBoxPass12'\n")
+r = lib('provision_box OldBoxPass12 ' + "55" * 32 + '; echo "rc=$? PASS=$(conf_get BOX_ADMIN_PASS)"',
+        env={"BOX_IP": addr, "PISO_CONF": cf_rep})
+check("rc=0 PASS=OldBoxPass12" in r.stdout and Box.admin == "OldBoxPass12" and Box.key == "55" * 32,
+      "replacement box with factory password accepts stored BOX_ADMIN_PASS and key: " + r.stdout + r.stderr)
+
+# (b) clear_box_lease drops stale 10.0.0.10 and target MAC leases while keeping unrelated clients
+lf = f"{tmp}/dhcp.leases"
+open(lf, "w").write("1791858393 44:bd:8d:24:ce:b0 10.0.0.10 pisocoinbox 01:44\n"
+                    "1791858400 aa:bb:cc:00:00:09 10.0.0.99 OldTempBox 01:aa\n"
+                    "1791858999 11:22:33:44:55:66 10.0.30.50 CustomerPhone 01:11\n")
+lib('DRY=1; clear_box_lease AA:BB:CC:00:00:09', env={"DHCP_LEASES": lf, "BOX_IP": "10.0.0.10"})
+kept = open(lf).read()
+check("10.0.0.10" not in kept and "aa:bb:cc:00:00:09" not in kept and "CustomerPhone" in kept,
+      "clear_box_lease removes stale box leases and keeps other leases: " + repr(kept))
+
+# (c) failed/timed-out pair_box restores MAC allowlist to previously paired BOX_MAC
+open(f"{tmp}/uci.log", "w").close()
+cf_to = f"{tmp}/conf_pair_timeout"
+open(cf_to, "w").write("BOX_MAC='44:BD:8D:24:CE:B0'\nBOX_WIFI_ROTATED='1'\nBOX_WIFI_PASS_NEW='OldWifiKey1234567890'\n")
+r = lib('sleep() { :; }; box_station() { :; }; box_ifname() { echo wlan0-3; }; cmd_box_diag() { :; }; (pair_box); echo "rc=$?"',
+        env={"PAIR_WAIT": "10", "PISO_CONF": cf_to, "BOX_IP": "10.0.0.10"})
+ul_to = open(f"{tmp}/uci.log").read()
+check("add_list wireless.box_ap.maclist=44:BD:8D:24:CE:B0" in ul_to,
+      "timed-out pair_box restores MAC lock to the existing BOX_MAC: " + ul_to)
+
+# (d) cmd_pair adopts custom UCI box SSID/key, preserves BOX_ADMIN_PASS, updates BOX_MAC, rebases reconcile, and skips portal restart for console
+Box.admin = "Coinslot@Setup"; Box.wifi = None; Box.wifi_ssid = None; Box.key = None; Box.refuse_wifi = False
+open(f"{tmp}/uci.log", "w").close()
+cf_cp = f"{tmp}/conf_cmd_pair"
+open(cf_cp, "w").write(
+    f"GW_KEY='{'ab' * 32}'\nBOX_ADMIN_PASS='OldBoxPass12'\nBOX_MAC='44:BD:8D:24:CE:B0'\nBOX_IP='10.0.0.10'\nKIOSK_PASS='KioskPw12345'\n"
+)
+fake_bin_cp = f"{tmp}/bin_cp"
+cp_root = f"{tmp}/cp_root"
+os.makedirs(fake_bin_cp, exist_ok=True)
+os.makedirs(f"{cp_root}/etc", exist_ok=True)
+open(f"{fake_bin_cp}/pisoportal", "w").write(f"#!/bin/sh\necho \"$*\" >> {tmp}/cp_portal.log\n")
+os.chmod(f"{fake_bin_cp}/pisoportal", 0o755)
+open(f"{tmp}/cp_portal.log", "w").close()
+stubs_cp = (
+    'id() { echo 0; }; sleep() { :; }; box_up() { return 0; }; apply_isolation() { :; }; write_summary() { :; }; '
+    'PORTAL_BIN="' + fake_bin_cp + '/pisoportal"; '
+    'uci() { echo "$*" >> ' + tmp + '/uci.log; '
+    '[ "$1" = -q ] && shift; '
+    'if [ "$1" = get ] && [ "$2" = "wireless.box_ap.ssid" ]; then echo "PisoCoinBox-d5ff"; return 0; fi; '
+    'if [ "$1" = get ] && [ "$2" = "wireless.box_ap.key" ]; then echo "KeepRouterBoxKey1234"; return 0; fi; '
+    'return 0; }; '
+    'box_station() { echo "AA:BB:CC:DD:EE:99"; }; '
+    'cmd_pair; echo "rc=$? NEWMAC=$(conf_get BOX_MAC) ADMIN=$(conf_get BOX_ADMIN_PASS) WKEY=$(conf_get BOX_WIFI_PASS_NEW) BSSID=$(conf_get BOX_SSID_NAME)"'
+)
+r = lib(stubs_cp, env={"BOX_IP": addr, "PISO_CONF": cf_cp, "PISO_ROOT": cp_root, "PISO_STATE": f"{tmp}/cp_state", "ROTATE_SETTLE": "0", "PISO_FROM_CONSOLE": "1"})
+check("rc=0 NEWMAC=AA:BB:CC:DD:EE:99 ADMIN=OldBoxPass12 WKEY=KeepRouterBoxKey1234 BSSID=PisoCoinBox-d5ff" in r.stdout,
+      "cmd_pair preserves admin pass + custom UCI box Wi-Fi SSID/key and switches to new MAC: " + r.stdout + r.stderr)
+check(open(f"{tmp}/cp_state").read().strip() == "DONE paired with AA:BB:CC:DD:EE:99",
+      "cmd_pair marks setup state DONE instead of leaving RUNNING in status")
+check(Box.wifi == "KeepRouterBoxKey1234" and Box.wifi_ssid == "PisoCoinBox-d5ff" and Box.admin == "OldBoxPass12" and Box.key == "ab" * 32,
+      f"replacement ESP32 received preserved credentials: wifi={Box.wifi!r} ssid={Box.wifi_ssid!r} admin={Box.admin!r}")
+check("reconcile rebase" in open(f"{tmp}/cp_portal.log").read(), "cmd_pair rebases reconciliation baseline for the replacement box")
+check("PISO_FROM_CONSOLE:-0" in text.split("cmd_pair() {")[1].split("\n}\n")[0], "cmd_pair respects PISO_FROM_CONSOLE=1 so console sessions stay open")
+
+
 # ---- feature 011 part B: piso-setup box-wifi-name gives the box network the router's own name ----------------------------------
 def _bwn_conf(name, **kv):
     path = f"{tmp}/conf_{name}"

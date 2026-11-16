@@ -17,7 +17,21 @@ os.chmod(f"{tmp}/ubus", 0o755)
 open(f"{tmp}/leases", "w").write("1791858999 aa:bb:cc:00:00:01 10.0.30.1 Rowels-iPhone 01:aa\n")
 open(f"{tmp}/route", "w").write("Iface\tDestination\tGateway\tFlags\neth9\t00000000\t0101A8C0\t0003\n")
 open(f"{tmp}/dev", "w").write(" face |bytes packets errs drop fifo frame compressed multicast|bytes packets errs drop fifo colls carrier compressed\n  eth9: 1000 1 0 0 0 0 0 0 500 1 0 0 0 0 0 0\n")
-open(f"{tmp}/setup.conf", "w").write("BOX_ADMIN_PASS='box-pass-123'\n")
+open(f"{tmp}/setup.conf", "w").write("BOX_ADMIN_PASS='box-pass-123'\nBOX_MAC='AA:BB:CC:DD:EE:01'\n")
+open(f"{tmp}/piso-setup", "w").write(f"""#!/bin/sh
+[ "$1" = pair ] || exit 1
+echo "== Pairing the coin box"
+if [ -f "{tmp}/pair.slow" ]; then
+    trap 'echo "restored"; exit 1' TERM
+    sleep 10 &
+    wait $!
+    exit 1
+fi
+echo "BOX_ADMIN_PASS='box-pass-123'" > "{tmp}/setup.conf"
+echo "BOX_MAC='11:22:33:44:55:66'" >> "{tmp}/setup.conf"
+echo "The new coin box is paired"
+""")
+os.chmod(f"{tmp}/piso-setup", 0o755)
 
 
 seen = {}   # what the coin box last received from the router
@@ -54,7 +68,7 @@ class Stub(http.server.BaseHTTPRequestHandler):   # the coin box: a nonce for th
 stub = http.server.ThreadingHTTPServer(("127.0.0.1", CP + 10), Stub)
 threading.Thread(target=stub.serve_forever, daemon=True).start()
 env.extra.update(CONSOLE_PORT=CP, CONSOLE_BIND="127.0.0.1", UBUS=f"{tmp}/ubus", DHCP_LEASES=f"{tmp}/leases", ROUTE_FILE=f"{tmp}/route", NETDEV_FILE=f"{tmp}/dev",
-                 PISO_SETUP_CONF=f"{tmp}/setup.conf", GW_BOX=f"127.0.0.1:{CP + 10}")
+                 PISO_SETUP_CONF=f"{tmp}/setup.conf", PISO_SETUP=f"{tmp}/piso-setup", GW_BOX=f"127.0.0.1:{CP + 10}")
 
 
 def call(path, body=None, cookie=None, headers=None):
@@ -292,6 +306,26 @@ try:
     page = call("/")[1].decode()
     check("printBatch" not in ui and "vouchers/new" not in ui and "@media print" not in ui and "Print" not in page and "Make codes" not in page, "the console has no batch forms and no slip printing")
     check('data-t="set"' in page and "Voucher choice" in page and "Get a voucher code" in page, "the console has a Settings page with the voucher choice")
+    check('id="pairb"' in page and 'id="pairc"' in page and "Pair a replacement coin box" in page, "the console Settings page has the replacement coin box pairing card")
+
+    # ---- coin box replacement pairing (/api/pair) ---------------------------------------------------------------------------------
+    open(f"{tmp}/setup.conf", "w").write("BOX_ADMIN_PASS='box-pass-123'\nBOX_MAC='AA:BB:CC:DD:EE:01'\n")
+    check(call("/api/pair")[0] == 401 and call("/api/pair", {}, headers={"X-Piso": "0"}, cookie=cookie)[0] == 403, "pair: needs console session and header")
+    code, body, _h = call("/api/pair", cookie=cookie)
+    pj = json.loads(body)
+    check(code == 200 and pj["state"] == "idle" and pj["mac"] == "AA:BB:CC:DD:EE:01", f"pair: initial state shows paired MAC: {pj}")
+    code, body, _h = call("/api/pair", {}, cookie=cookie)
+    check(code == 200 and json.loads(body)["state"] in ("running", "done"), f"pair: start returns job state: {body}")
+    check(wait_until(lambda: json.loads(call("/api/pair", cookie=cookie)[1])["state"] == "done", 5), "pair: transitions to done")
+    done_pj = json.loads(call("/api/pair", cookie=cookie)[1])
+    check(done_pj["mac"] == "11:22:33:44:55:66" and "11:22:33:44:55:66" in done_pj["detail"], f"pair: reports newly paired MAC: {done_pj}")
+    open(f"{tmp}/pair.slow", "w").close()
+    code, body, _h = call("/api/pair", {}, cookie=cookie)
+    check(code == 200 and json.loads(body)["state"] == "running", f"pair: slow job starts running: {body}")
+    code, body, _h = call("/api/pair", {"cancel": "1"}, cookie=cookie)
+    check(code == 200 and json.loads(body)["state"] in ("cancelling", "idle"), f"pair: cancel stops running job: {body}")
+    check(wait_until(lambda: json.loads(call("/api/pair", cookie=cookie)[1])["state"] == "idle", 5), "pair: cancelled job returns cleanly to idle")
+    os.remove(f"{tmp}/pair.slow")
     # ---- AO-09: 200 idle sockets from one guest do not starve anyone else, and do not pile up threads ---------------------------------
     import http.client, socket
 

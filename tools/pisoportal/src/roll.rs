@@ -286,6 +286,12 @@ pub fn session_active(path: &str, now: u64, mac: &str) -> Option<Session> {
     session(path, now, mac)
 }
 
+/// True when `mac` has a recorded session on the roll whose paid or paused time has run out.
+pub fn is_expired(path: &str, now: u64, mac: &str) -> bool {
+    let entries = load(path);
+    find(&entries, mac).is_some_and(|e| e.left(now) == 0)
+}
+
 /// Read-only: seconds left and plan, if any.
 pub fn peek(path: &str, now: u64, mac: &str) -> Option<(Plan, u64)> {
     let entries = load(path);

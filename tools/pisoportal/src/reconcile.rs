@@ -166,6 +166,11 @@ pub fn cached(slot: &Slot, now: Instant, ttl: Duration, f: impl FnOnce() -> Mone
 
 static SLOT: Slot = Mutex::new(None);
 
+/// Clear the cached balance so the next console overview queries a newly paired coin box at once.
+pub fn clear_cache() {
+    *SLOT.lock().unwrap_or_else(|e| e.into_inner()) = None;
+}
+
 /// The console panel's money state: at most one `status` call to the box a minute, and nothing written (the hourly check stays
 /// the only one that saves the base).
 pub fn peek(cfg: &Config) -> Money {
