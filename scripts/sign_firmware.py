@@ -32,24 +32,28 @@ sys.path.insert(0, HERE)
 import owner_key  # noqa: E402  (shared key loading)
 
 VERSION_HEADER = os.path.join(HERE, "..", "esp32_firmware", "include", "FirmwareVersion.h")
+WIFI_VERSION_HEADER = os.path.join(HERE, "..", "esp32_wifi_firmware", "include", "FirmwareVersion.h")
+PRODUCTS = ("full", "phone", "wifi")
 CHIPS = ("esp32c3", "esp32")
 ESP_IMAGE_MAGIC = 0xE9
 
 
-def header_version():
+def header_version(product="full"):
+    hdr = WIFI_VERSION_HEADER if product == "wifi" else VERSION_HEADER
     try:
-        with open(VERSION_HEADER, encoding="utf-8") as f:
+        with open(hdr, encoding="utf-8") as f:
             m = re.search(r'#define\s+PISO_FW_VERSION\s+"([^"]+)"', f.read())
         return m.group(1) if m else None
     except OSError:
         return None
 
 
-def canonical(chip, version, sha256_hex, size):
-    return f"pisophone-fw-v1|{chip}|{version}|{sha256_hex}|{size}"
+def canonical(chip, version, sha256_hex, size, product="full"):
+    prefix = "pisowifi-fw-v1" if product == "wifi" else "pisophone-fw-v1"
+    return f"{prefix}|{chip}|{version}|{sha256_hex}|{size}"
 
 
-def make_manifest(private_key, chip, version, image_bytes):
+def make_manifest(private_key, chip, version, image_bytes, product="full"):
     hashes, _, ec = owner_key._crypto()
     if chip not in CHIPS:
         raise ValueError(f"chip must be one of {CHIPS}")
@@ -58,7 +62,7 @@ def make_manifest(private_key, chip, version, image_bytes):
     if len(image_bytes) < 1024 or image_bytes[0] != ESP_IMAGE_MAGIC:
         raise ValueError("this does not look like an ESP32 app image (first byte must be 0xE9)")
     sha = hashlib.sha256(image_bytes).hexdigest()
-    sig = private_key.sign(canonical(chip, version, sha, len(image_bytes)).encode(), ec.ECDSA(hashes.SHA256()))
+    sig = private_key.sign(canonical(chip, version, sha, len(image_bytes), product).encode(), ec.ECDSA(hashes.SHA256()))
     return {"chip": chip, "version": version, "sha256": sha, "size": len(image_bytes),
             "sig": base64.b64encode(sig).decode()}
 
@@ -68,17 +72,18 @@ def main():
     p.add_argument("--private", required=True, help="private key (PEM) made by make_owner_keys.py")
     p.add_argument("--chip", required=True, choices=CHIPS)
     p.add_argument("--image", required=True, help="the firmware.bin built by PlatformIO for that chip")
+    p.add_argument("--product", default="full", choices=PRODUCTS, help="full (default), phone, or wifi")
     p.add_argument("--version", help="defaults to PISO_FW_VERSION in FirmwareVersion.h")
     p.add_argument("--out", help="manifest path (default: <image>.manifest.json)")
     args = p.parse_args()
 
-    version = args.version or header_version()
+    version = args.version or header_version(args.product)
     if not version:
         sys.exit("Error: no --version given and none found in FirmwareVersion.h")
     try:
         with open(args.image, "rb") as f:
             image = f.read()
-        manifest = make_manifest(owner_key.load_private(args.private), args.chip, version, image)
+        manifest = make_manifest(owner_key.load_private(args.private), args.chip, version, image, args.product)
     except (ValueError, OSError) as e:
         sys.exit(f"Error: {e}")
     out = args.out or args.image + ".manifest.json"

@@ -15,32 +15,29 @@ import os
 import re
 import sys
 
-ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "esp32_firmware")
+ROOT_FULL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "esp32_firmware")
+ROOT_WIFI = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "esp32_wifi_firmware")
 
-# product -> (PISO_HAS_GATEWAY, PISO_HAS_PHONES, source files left out, words that must not appear, files whose text is checked)
+# product -> source root, macro settings, skipped files/headers, words that must not appear, allowlist
 PRODUCTS = {
     "phone": {
+        "root": ROOT_FULL,
         "has": {"PISO_HAS_GATEWAY": 0, "PISO_HAS_PHONES": 1},
         "defined": {"PISO_PRODUCT_PHONE"},
         "skip": [],
         "skip_headers": ["Gateway*.h", "WebServerGateway.h"],   # (not compiled: nothing includes them in this image)
         "words": r"gateway|openwrt|opennds|pisowifi|voucher|captive",
+        "web": True,
     },
     "wifi": {
-        "has": {"PISO_HAS_GATEWAY": 1, "PISO_HAS_PHONES": 0},
-        "defined": {"PISO_PRODUCT_WIFI"},
-        "skip": [],   # filled from envs/products.ini
-        "skip_headers": ["Accounts.h", "AccountProtocol.h", "AccountStorage.h", "PhoneProfiles.h", "PhoneProfileStore.h", "DeviceLabel.h", "SlotLicense.h",
-                         "CardCodec.h", "CardPubKey.h", "DeviceManager.h", "WebSocketsUdp.h", "ControllerWebSocket.h",
-                         "WebAssetsPhones.h", "WebServerAccounts.h", "WebServerProfiles.h", "WebServerTelemetry.h", "WebServerCoinslot.h", "ReplayCheck.h"],
-        "words": r"phone|kiosk|rental|licen[cs]e|slotlic|profile|account|\bpair|android|\bapp\b|trackeddevice|deviceslot|deviceconfig|devicetelemetry|devicecap|websocket|discovery|slotnum|slotactiv|slotcloud",
-        # (kiosk_cfg is only the name of the saved-settings area on the chip: boxes of the full product use it too, so the update path and a
-        # factory reset keep working the same way; it is not shown anywhere and does not do anything phone related)
-        # (revenue counters by coin source: the PisoWiFi-only box keeps the same totals as the full box, so its saved totals and its
-        # owner data keep the "phone" counter names (NVS key tot_phone_coins and so on). They count coins; there is no phone code behind them.)
-        "allow": [r'\b(totalPhoneCoinsLifetime|lastSavedTotalPhoneCoins|NVS_KEY_TOTAL_PHONE_COINS|unsyncedPhonePesos|phonePesos|outPhone|isPhone|hasPhoneCoins|phoneCoins|K_PHONE_COINS|lifetime_phone_coins|lifetime_phone_pulses|tot_phone_coins)\b', r'\\"phone\\":', r'"kiosk_cfg"', r'pisophone\.pages\.dev', r'\b(TPL|MODAL|ICON)_[A-Z_]+', r'LicensePubKey\.h', r'LICENSE_PUBKEY_\w+', r'LICENSE_PUB_KEY_H', r'pisophone-(admin|fw)-v1'],
-        # (the owner's public key file keeps its name, and the signed texts of the owner's tools keep their tags: both are shared by
-        # every product, the same signing tools make them)
+        "root": ROOT_WIFI,
+        "has": {},
+        "defined": set(),
+        "skip": [],
+        "skip_headers": [],
+        "words": r"phone|kiosk|pisophone|rental|licen[cs]e|slotlic|profile|account|\bpair|android|\bapp\b|trackeddevice|deviceslot|deviceconfig|devicetelemetry|devicecap|websocket|discovery|slotnum|slotactiv|slotcloud|superadmin|vault|orphan",
+        "allow": [],
+        "web": False,
     },
 }
 
@@ -81,7 +78,7 @@ def strip_comments(text):
 
 def read_skip(product):
     """The files a product leaves out, from build_src_filter in envs/products.ini."""
-    text = open(os.path.join(ROOT, "envs", "products.ini"), encoding="utf-8").read()
+    text = open(os.path.join(ROOT_FULL, "envs", "products.ini"), encoding="utf-8").read()
     section = {"phone": "phone_only", "wifi": "wifi_only"}[product]
     m = re.search(r"\[" + section + r"\](.*?)(?=\n\[|\Z)", text, re.S)
     if not m:
@@ -179,10 +176,11 @@ def resolve(text, has, defined):
 
 def sources(product):
     cfg = PRODUCTS[product]
-    skip = cfg["skip"] or read_skip(product)
+    root = cfg["root"]
+    skip = cfg["skip"] or (read_skip(product) if root == ROOT_FULL else [])
     files = []
     for d in ("src", "include"):
-        for name in sorted(os.listdir(os.path.join(ROOT, d))):
+        for name in sorted(os.listdir(os.path.join(root, d))):
             if not name.endswith((".cpp", ".h")):
                 continue
             if name == "WebAssets.h":
@@ -200,10 +198,11 @@ def sources(product):
 
 def view(product):
     cfg = PRODUCTS[product]
+    root = cfg["root"]
     files, skip = sources(product)
     result = {}
     for rel in files:
-        text = open(os.path.join(ROOT, rel), encoding="utf-8").read()
+        text = open(os.path.join(root, rel), encoding="utf-8").read()
         result[rel] = resolve(text, cfg["has"], cfg["defined"])
     return result, skip
 
@@ -221,17 +220,18 @@ def check(product):
                 line = re.sub(ok, "", line)
             if pattern.search(line):
                 problems.append(f"{product}: {rel}:{no}: {line.strip()[:110]}")
-    # the dashboard files the box serves (esp32_firmware/web/ as embed_web.py puts them in this image)
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    import embed_web
-    for name, _ctype, _ident, raw in embed_web.assets_for(cfg["has"]["PISO_HAS_PHONES"] == 1):
-        if name.endswith(".png") or name == "jsqr.js":   # (images; the vendored QR reader is not ours)
-            continue
-        for no, line in enumerate(raw.decode("utf-8").split("\n"), 1):
-            for ok in cfg.get("allow", []):
-                line = re.sub(ok, "", line)
-            if pattern.search(line):
-                problems.append(f"{product}: web/{name} (as served):{no}: {line.strip()[:110]}")
+    if cfg.get("web", True):
+        # the dashboard files the box serves (esp32_firmware/web/ as embed_web.py puts them in this image)
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import embed_web
+        for name, _ctype, _ident, raw in embed_web.assets_for(cfg["has"]["PISO_HAS_PHONES"] == 1):
+            if name.endswith(".png") or name == "jsqr.js":   # (images; the vendored QR reader is not ours)
+                continue
+            for no, line in enumerate(raw.decode("utf-8").split("\n"), 1):
+                for ok in cfg.get("allow", []):
+                    line = re.sub(ok, "", line)
+                if pattern.search(line):
+                    problems.append(f"{product}: web/{name} (as served):{no}: {line.strip()[:110]}")
     # a file that still includes a header left out of this image would not compile
     left_out = set(cfg.get("skip_headers", [])) | {n[:-4] + ".h" for n in skip if n.endswith(".cpp")}
     for rel, text in result.items():

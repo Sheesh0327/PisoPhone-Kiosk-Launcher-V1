@@ -20,6 +20,7 @@ on:
       - 'app/**'
       - 'protocol/**'
       - 'esp32_firmware/**'
+      - 'esp32_wifi_firmware/**'
       - 'scripts/**'
       - 'router/**'
       - 'setup/**'
@@ -46,6 +47,7 @@ on:
       - 'app/**'
       - 'protocol/**'
       - 'esp32_firmware/**'
+      - 'esp32_wifi_firmware/**'
       - 'scripts/**'
       - 'router/**'
       - 'setup/**'
@@ -118,8 +120,8 @@ jobs:
           W='\.github/workflows/quality\.yml'
           flag security '.'
           flag kotlin "^(app/|[^/]*\.kts$|\.editorconfig|config/detekt/|$W)"
-          flag firmware_build "^(esp32_firmware/|protocol/|$W)"
-          flag firmware_tests "^(esp32_firmware/|protocol/|scripts/|$W)"
+          flag firmware_build "^(esp32_firmware/|esp32_wifi_firmware/|protocol/|$W)"
+          flag firmware_tests "^(esp32_firmware/|esp32_wifi_firmware/|protocol/|scripts/|$W)"
           flag portal "^(tools/pisoportal/|router/|setup/|website/install\.sh|website/pisophone_setup\.py|tools/build_piso_setup\.py|scripts/(sign_router|owner_key|make_owner_keys)\.py|$W)"
           flag website "^(website/|esp32_firmware/web/(adminqr|jsqr)\.js|scripts/(make_admin_qr\.py|tests/test_admin_qr\.py|make_wifi_poster\.py|tests/test_make_wifi_poster\.py|tests/test_manual\.py|tests/test_start_pages\.py|make_firmware_bundles\.py|tests/test_make_firmware_bundles\.py)|scripts/check_published_apk\.py|scripts/tests/test_check_published_apk\.py|app/src/main/java/com/pisophone/kiosk/(security/KioskSecurity|network/KioskWifi|provisioning/QrProvisioning)\.kt|scripts/tests/test_provisioning\.js|scripts/tests/test_site_page\.py|scripts/check_vendored\.py|$W)"
 
@@ -222,10 +224,9 @@ jobs:
           sudo apt-get install -y -q libmbedtls-dev
           pip install clang-format==23.1.2 cryptography
       - name: Check C++ formatting
-        working-directory: esp32_firmware
         run: |
-          FILES=$(ls src/*.cpp include/*.h host_tests/*.cpp | grep -vE "include/(WebDashboard|SuperAdminTemplate|WebAssets)")
-          clang-format --dry-run --Werror $FILES
+          (cd esp32_firmware && FILES=$(ls src/*.cpp include/*.h host_tests/*.cpp | grep -vE "include/(WebDashboard|SuperAdminTemplate|WebAssets)") && clang-format --dry-run --Werror $FILES)
+          (cd esp32_wifi_firmware && FILES=$(ls src/*.cpp include/*.h host_tests/*.cpp) && clang-format --dry-run --Werror $FILES)
       - name: Check protocol test vectors are reproducible
         run: |
           python3 protocol/gen_vectors.py
@@ -246,7 +247,9 @@ jobs:
           python3 scripts/tests/test_portal_theme_ui.py
           python3 scripts/tests/test_portal_license_ui.py
       - name: Run host tests
-        run: sh esp32_firmware/host_tests/run.sh
+        run: |
+          sh esp32_firmware/host_tests/run.sh
+          sh esp32_wifi_firmware/host_tests/run.sh
       - name: Test the recovery code tool, the QR card printer and the firmware publisher
         run: |
           pip install qrcode pillow
@@ -263,26 +266,35 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        env: [esp32-c3-dev, esp32dev-dev]
+        include:
+          - dir: esp32_firmware
+            env: esp32-c3-dev
+          - dir: esp32_firmware
+            env: esp32dev-dev
+          - dir: esp32_wifi_firmware
+            env: esp32-c3-dev-wifi
+          - dir: esp32_wifi_firmware
+            env: esp32dev-dev-wifi
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/.platformio
-          key: pio-${{ matrix.env }}-${{ hashFiles('esp32_firmware/platformio.ini', 'esp32_firmware/envs/*.ini') }}
+          key: pio-${{ matrix.env }}-${{ hashFiles('esp32_firmware/platformio.ini', 'esp32_firmware/envs/*.ini', 'esp32_wifi_firmware/platformio.ini', 'esp32_wifi_firmware/envs/*.ini') }}
       - name: Install PlatformIO
         run: pip install platformio==6.2.0
       - name: Compile
-        working-directory: esp32_firmware
+        working-directory: ${{ matrix.dir }}
         run: pio run -e ${{ matrix.env }}
       - name: Owner keys built in
-        working-directory: esp32_firmware/include
+        working-directory: ${{ matrix.dir }}/include
         run: |
           # Not an error while the owner has not made the keys (docs/KEYS.md), but never silent: until then a box accepts
           # unsigned firmware updates.
-          for f in LicensePubKey.h SuperAdminPubKey.h; do
-            if grep -q '_LEN = 0;' "$f"; then echo "::warning file=esp32_firmware/include/$f::$f still holds the placeholder: this build accepts unsigned firmware/credentials (see docs/KEYS.md)"; fi
+          for f in LicensePubKey.h SuperAdminPubKey.h OwnerPubKey.h; do
+            [ -f "$f" ] || continue
+            if grep -q '_LEN = 0;' "$f"; then echo "::warning file=${{ matrix.dir }}/include/$f::$f still holds the placeholder: this build accepts unsigned firmware/credentials (see docs/KEYS.md)"; fi
           done
 
   pisoportal:

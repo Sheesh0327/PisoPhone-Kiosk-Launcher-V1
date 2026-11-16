@@ -21,6 +21,7 @@ on:
       - beta
     paths:
       - 'esp32_firmware/**'
+      - 'esp32_wifi_firmware/**'
       - '.github/workflows/firmware-images.yml'
   workflow_dispatch:
     inputs:
@@ -50,31 +51,32 @@ jobs:
       - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.platformio
-          key: pio-images-${{ hashFiles('esp32_firmware/platformio.ini', 'esp32_firmware/envs/*.ini') }}
+          key: pio-images-${{ hashFiles('esp32_firmware/platformio.ini', 'esp32_firmware/envs/*.ini', 'esp32_wifi_firmware/platformio.ini', 'esp32_wifi_firmware/envs/*.ini') }}
       - name: Install PlatformIO and esptool
         run: pip install platformio==6.2.0 esptool==4.8.1
       - name: Build and merge (one image per chip)
-        working-directory: esp32_firmware
         run: |
           set -eu
-          mkdir -p ../website/flash "$RUNNER_TEMP/ota"
-          VERSION=$(sed -n 's/^#define PISO_FW_VERSION "\(.*\)"/\1/p' include/FirmwareVersion.h)
-          [ -n "$VERSION" ] || { echo "::error::no PISO_FW_VERSION"; exit 1; }
+          mkdir -p website/flash "$RUNNER_TEMP/ota"
+          VERSION=$(sed -n 's/^#define PISO_FW_VERSION "\(.*\)"/\1/p' esp32_firmware/include/FirmwareVersion.h)
+          [ -n "$VERSION" ] || { echo "::error::no PISO_FW_VERSION in esp32_firmware"; exit 1; }
+          WIFI_VERSION=$(sed -n 's/^#define PISO_FW_VERSION "\(.*\)"/\1/p' esp32_wifi_firmware/include/FirmwareVersion.h)
+          [ -n "$WIFI_VERSION" ] || { echo "::error::no PISO_FW_VERSION in esp32_wifi_firmware"; exit 1; }
           builds=""
-          # env  esptool chip  chip name as esptool-js reports it  bootloader offset
-          # product: full = the whole TechNet PisoHub box; phone = PisoPhone only (no router code); wifi = PisoWiFi only (no phone code)
-          for spec in "esp32-c3-dev esp32c3 ESP32-C3 0x0 full" "esp32dev-dev esp32 ESP32 0x1000 full" \
-                      "esp32-c3-dev-phone esp32c3 ESP32-C3 0x0 phone" "esp32dev-dev-phone esp32 ESP32 0x1000 phone" \
-                      "esp32-c3-dev-wifi esp32c3 ESP32-C3 0x0 wifi" "esp32dev-dev-wifi esp32 ESP32 0x1000 wifi"; do
+          # dir  env  esptool chip  chip name as esptool-js reports it  bootloader offset  product
+          # product: full = the whole TechNet PisoHub box; phone = PisoPhone only (no router code); wifi = standalone PisoWiFi (esp32_wifi_firmware)
+          for spec in "esp32_firmware esp32-c3-dev esp32c3 ESP32-C3 0x0 full" "esp32_firmware esp32dev-dev esp32 ESP32 0x1000 full" \
+                      "esp32_firmware esp32-c3-dev-phone esp32c3 ESP32-C3 0x0 phone" "esp32_firmware esp32dev-dev-phone esp32 ESP32 0x1000 phone" \
+                      "esp32_wifi_firmware esp32-c3-dev-wifi esp32c3 ESP32-C3 0x0 wifi" "esp32_wifi_firmware esp32dev-dev-wifi esp32 ESP32 0x1000 wifi"; do
             set -- $spec
-            ENV=$1; CHIP=$2; NAME=$3; BOOT=$4; PRODUCT=$5
-            pio run -e "$ENV"
-            B=.pio/build/$ENV
+            DIR=$1; ENV=$2; CHIP=$3; NAME=$4; BOOT=$5; PRODUCT=$6
+            pio run -d "$DIR" -e "$ENV"
+            B="$DIR/.pio/build/$ENV"
             mkdir -p "$RUNNER_TEMP/ota/$PRODUCT"
             cp "$B/firmware.bin" "$RUNNER_TEMP/ota/$PRODUCT/firmware-$CHIP.bin"   # the app-only image for over-the-air updates
             APP0=$(find ~/.platformio/packages -name boot_app0.bin -path '*partitions*' | head -n 1)
             [ -n "$APP0" ] || { echo "::error::boot_app0.bin not found"; exit 1; }
-            OUT=../website/flash/$ENV.bin
+            OUT="website/flash/$ENV.bin"
             # the image starts at the bootloader's offset (0x0 on the C3, 0x1000 on the classic ESP32)
             python -m esptool --chip "$CHIP" merge_bin -o "$OUT" --target-offset "$BOOT" \
               --flash_mode keep --flash_freq keep --flash_size keep \
@@ -94,8 +96,8 @@ jobs:
             SIZE=$(stat -c %s "$OUT")
             builds="$builds{\"env\":\"$ENV\",\"product\":\"$PRODUCT\",\"chip\":\"$NAME\",\"file\":\"$ENV.bin\",\"offset\":$((BOOT)),\"size\":$SIZE,\"sha256\":\"$SHA\"},"
           done
-          printf '{"version":"%s","commit":"%s","builds":[%s]}\n' "$VERSION" "$GITHUB_SHA" "${builds%,}" | python3 -m json.tool > ../website/flash/manifest.json
-          cat ../website/flash/manifest.json
+          printf '{"version":"%s","commit":"%s","builds":[%s]}\n' "$VERSION" "$GITHUB_SHA" "${builds%,}" | python3 -m json.tool > website/flash/manifest.json
+          cat website/flash/manifest.json
       # A manual run with "bundle" on: package the normal firmware (scripts/make_firmware_bundles.py,
       # which reads each build's partition table and fails the run when a layout is wrong). No secrets here: no keys are ever packed.
       - name: Pack the normal firmware zip

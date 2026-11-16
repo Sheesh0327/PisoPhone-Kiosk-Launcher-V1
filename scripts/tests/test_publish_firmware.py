@@ -30,17 +30,24 @@ open(pem, "wb").write(key.private_bytes(serialization.Encoding.PEM, serializatio
 der = key.public_key().public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
 
 
-def sandbox(name, with_key_in_firmware):
+def sandbox(name, with_key_in_firmware, product="full"):
     d = os.path.join(tmp, name)
-    for sub in ("scripts", "esp32_firmware/include", "website/update"):
+    feed_sub = "website/update" if product == "full" else f"website/update/{product}"
+    fw_inc = "esp32_wifi_firmware/include" if product == "wifi" else "esp32_firmware/include"
+    for sub in ("scripts", fw_inc, feed_sub):
         os.makedirs(os.path.join(d, sub))
     for f in ("publish_firmware_ota.py", "sign_firmware.py", "owner_key.py"):
         shutil.copy(os.path.join(ROOT, "scripts", f), os.path.join(d, "scripts", f))
-    shutil.copy(os.path.join(ROOT, "esp32_firmware/include/FirmwareVersion.h"), os.path.join(d, "esp32_firmware/include"))
-    hdr = ("static const uint8_t LICENSE_PUBKEY_DER[] = {%s};\nstatic const size_t LICENSE_PUBKEY_LEN = sizeof(LICENSE_PUBKEY_DER);\n" % ",".join("0x%02x" % b for b in der)
-           if with_key_in_firmware else "static const size_t LICENSE_PUBKEY_LEN = 0;\n")
-    open(os.path.join(d, "esp32_firmware/include/LicensePubKey.h"), "w").write(hdr)
-    shutil.copy(os.path.join(ROOT, "website/update/firmware.json"), os.path.join(d, "website/update/firmware.json"))
+    shutil.copy(os.path.join(ROOT, fw_inc, "FirmwareVersion.h"), os.path.join(d, fw_inc))
+    if product == "wifi":
+        hdr = ("static const uint8_t OWNER_PUBKEY_DER[] = {%s};\nstatic const size_t OWNER_PUBKEY_LEN = sizeof(OWNER_PUBKEY_DER);\n" % ",".join("0x%02x" % b for b in der)
+               if with_key_in_firmware else "static const size_t OWNER_PUBKEY_LEN = 0;\n")
+        open(os.path.join(d, fw_inc, "OwnerPubKey.h"), "w").write(hdr)
+    else:
+        hdr = ("static const uint8_t LICENSE_PUBKEY_DER[] = {%s};\nstatic const size_t LICENSE_PUBKEY_LEN = sizeof(LICENSE_PUBKEY_DER);\n" % ",".join("0x%02x" % b for b in der)
+               if with_key_in_firmware else "static const size_t LICENSE_PUBKEY_LEN = 0;\n")
+        open(os.path.join(d, fw_inc, "LicensePubKey.h"), "w").write(hdr)
+    shutil.copy(os.path.join(ROOT, feed_sub, "firmware.json"), os.path.join(d, feed_sub, "firmware.json"))
     return d
 
 
@@ -49,8 +56,9 @@ def run(d, *args):
     return p.returncode, p.stdout + p.stderr
 
 
-def feed(d):
-    return json.load(open(os.path.join(d, "website/update/firmware.json")))
+def feed(d, product="full"):
+    feed_sub = "website/update" if product == "full" else f"website/update/{product}"
+    return json.load(open(os.path.join(d, feed_sub, "firmware.json")))
 
 
 version = __import__("re").search(r'PISO_FW_VERSION "([^"]+)"', open(os.path.join(ROOT, "esp32_firmware/include/FirmwareVersion.h")).read()).group(1)
@@ -114,6 +122,26 @@ rc, out = run(d, "--json-only")
 check(rc == 0 and "sig" not in feed(d)["chips"]["esp32"] and feed(d)["chips"]["esp32c3"].get("sig"), "a manifest that belongs to another image is not announced")
 rc, out = run(d)
 check(rc != 0, "without --images or --json-only it says what is missing")
+
+# wifi product: reads esp32_wifi_firmware/include/{FirmwareVersion,OwnerPubKey}.h and signs with pisowifi-fw-v1|
+wifi_version = __import__("re").search(r'PISO_FW_VERSION "([^"]+)"', open(os.path.join(ROOT, "esp32_wifi_firmware/include/FirmwareVersion.h")).read()).group(1)
+dw = sandbox("wifi_signed", True, product="wifi")
+wifi_build_before = feed(dw, "wifi")["build"]
+rc, out = run(dw, "--product", "wifi", "--images", images, "--key", pem)
+check(rc == 0, "wifi signing and publishing works: " + out[-200:])
+fw_feed = feed(dw, "wifi")
+check(fw_feed["version"] == wifi_version and fw_feed["build"] == wifi_build_before + 1, "wifi firmware.json carries esp32_wifi_firmware version")
+for chip, e in fw_feed["chips"].items():
+    img = open(os.path.join(images, f"firmware-{chip}.bin"), "rb").read()
+    text = f"pisowifi-fw-v1|{chip}|{wifi_version}|{hashlib.sha256(img).hexdigest()}|{len(img)}"
+    try:
+        key.public_key().verify(base64.b64decode(e["sig"]), text.encode(), ec.ECDSA(hashes.SHA256()))
+        good = e["sha256"] == hashlib.sha256(img).hexdigest() and e["size"] == len(img)
+    except Exception:
+        good = False
+    check(good, f"wifi {chip}: checksum, size and pisowifi-fw-v1 signature are right")
+rc, out = run(sandbox("wifi_nokey", True, product="wifi"), "--product", "wifi", "--images", images)
+check(rc != 0 and "owner public key" in out, "wifi: no signing key while OwnerPubKey.h has an owner key: refused")
 
 shutil.rmtree(tmp, ignore_errors=True)
 print("test_publish_firmware: %d checks, %d failures" % (checks, failures))
