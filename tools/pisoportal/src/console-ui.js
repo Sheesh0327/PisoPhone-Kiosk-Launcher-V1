@@ -1,5 +1,5 @@
 // TechNet PisoHub console: the page's behaviour. PISO_UI_VERSION rises with every change that is published (scripts/sign_console_ui.py).
-window.PISO_UI_VERSION = 12;
+window.PISO_UI_VERSION = 13;
 (function(){
 var $=function(i){return document.getElementById(i)},tab='over',timer=null,last={},sales=null,TABS=['over','cli','ph','sales','vch','set'];
 if($('t-brand'))TABS.push('brand'); /* (a newer script on an older console page, which has no Branding screen, still starts) */
@@ -60,7 +60,7 @@ function upd(v,now){var e=$('upd');if(!v){e.className='msg hide';return}var gold
 function over(j){last.over=j;upd(j.versions,j.now);money(j.money);var m=j.week||[],wk=m.reduce(function(a,b){return a+b},0);
  $('hm').textContent=peso(j.today);$('hs').textContent='This week '+peso(wk)+' · all time '+peso(j.total);
  $('tiles').innerHTML=tile('Customers online',j.online,j.waiting+' waiting to pay')+tile('Internet',sp(j.rx_kbps),'down; up '+sp(j.tx_kbps))+
-  tile('Coin box',j.box_ok?'OK':'Offline',j.box_ok?(j.box_signed?'answering, answers signed':'answering. Update its firmware: answers are not signed yet'):'check power and Wi-Fi',j.box_ok?'ok':'bad')+tile('Records',j.ledger_ok?'OK':'Check',j.ledger_lines+' lines'+(j.ledger_ok?'':' (line '+j.ledger_lines+' is wrong)'),j.ledger_ok?'ok':'bad')+
+  tile('Coin box',j.box_ok?'OK':'Offline',j.box_ok?(j.box_signed?'answering, answers signed':'answering. Update its firmware: answers are not signed yet'):'check power and Wi-Fi, or pair in Settings',j.box_ok?'ok':'bad')+tile('Records',j.ledger_ok?'OK':'Check',j.ledger_lines+' lines'+(j.ledger_ok?'':' (line '+j.ledger_lines+' is wrong)'),j.ledger_ok?'ok':'bad')+
   (j.ledger_kept!==undefined?tile('Sales detail',j.ledger_kept+(j.ledger_kept===1?' month':' months'),j.ledger_pruned?(j.ledger_pruned+(j.ledger_pruned===1?' older month was':' older months were')+' deleted to save space. Your total ('+peso(j.total)+') and each deleted month\'s total are kept.'+((j.ledger_kept-1<j.ledger_wanted)?' The space allows fewer than the '+j.ledger_wanted+' closed months you asked for (Settings).':'')):'nothing deleted'):'')+
   tile('Router',Math.floor(j.uptime/3600)+' h','up; '+Math.round(j.mem_kb/1024)+' MB memory free')+
   ((j.alerts&&j.alerts.length)?tile('Alerts',j.alerts.length,j.alerts.map(esc).join('<br>'),'gold'):'');draw(j.history)}
@@ -73,7 +73,8 @@ function cli(j){var a=j.clients||[];$('cl').innerHTML=a.map(function(c){var on=c
 function theme(){var r=document.documentElement;return r.dataset.theme||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light')}
 function boxOrigin(){return 'http://'+location.hostname+':'+((+location.port||80)+1)}
 function boxTheme(){var f=$('boxf');if(f&&f.contentWindow&&f.src)try{f.contentWindow.postMessage({piso:'theme',theme:theme()},boxOrigin())}catch(e){}}
-function ph(){var f=$('boxf');if(!f.getAttribute('src')){f.onload=boxTheme;f.src=boxOrigin()+'/?embed=1&theme='+theme()}$('boxdirect').href=boxOrigin()+'/'}
+function ph(){var f=$('boxf');if(!f.getAttribute('src')){f.onload=boxTheme;f.src=boxOrigin()+'/?embed=1&theme='+theme()}$('boxdirect').href=boxOrigin()+'/';
+ var n=$('phnote');if(n){if(last.over&&last.over.box_ok===false){n.className='msg gold';n.innerHTML='<b>Coin box offline.</b> Check power and Wi-Fi, or pair a replacement ESP32. <button class="b" id="phset" type="button">Open pairing in Settings</button>';$('phset').onclick=function(){document.querySelector('#tabs button[data-t="set"]').click()}}else{n.className='msg hide';n.innerHTML=''}}}
 /* sales */
 function soldOut(j){if(j&&j.error==='NOT_FOUND'){$('t-'+tab).insertAdjacentHTML('afterbegin','<p class="msg">This router is on an older version. Run <b>piso-setup update</b> to use this page.</p>');return true}return false}
 /* kinds: coin = coins that bought time at once, vcoin = coins that bought a voucher code (income when the coins were counted), voucher = printed slips of older releases */
@@ -101,6 +102,21 @@ $('fss').onchange=function(){var s=$('fss');$('setm').textContent='';api('/api/s
 $('lkb').onchange=function(){var m=Math.round(+$('lkb').value);if(!(m===0||(m>=256&&m<=16384))){$('setm').textContent='Use 0, or a number from 256 to 16384.';return}$('setm').textContent='';api('/api/settings',{ledger_max_kb:String(m)}).then(function(j){$('setm').textContent=j.ok?'Saved. Old months are deleted when the next month starts.':(j.why||'Could not save.');if(j.ok)sets(j)}).catch(function(){})};
 $('lkm').onchange=function(){var m=Math.round(+$('lkm').value);if(!(m>=1&&m<=60)){$('setm').textContent='Use a number from 1 to 60.';return}$('setm').textContent='';api('/api/settings',{ledger_keep_months:String(m)}).then(function(j){$('setm').textContent=j.ok?'Saved.':(j.why||'Could not save.');if(j.ok)sets(j)}).catch(function(){})};
 $('vcs').onchange=function(){var s=$('vcs');$('setm').textContent='';api('/api/settings',{voucher_choice:s.value}).then(function(j){$('setm').textContent=j.ok?'Saved. Open customer pages follow at once.':'Could not save.';if(j.ok)s.value=j.voucher_choice?'on':'off'}).catch(function(){})};
+/* coin box pairing */
+var pwas='';
+function pairShow(j){if(!$('pairb')||!j)return;if(j.error==='NOT_FOUND'){$('pairb').disabled=true;$('pairm').textContent='Update the router (piso-setup update) to pair from the console.';return}
+ var s=j.state||'idle',run=s==='running'||s==='cancelling',b=$('pairb'),c=$('pairc'),m=$('pairm');
+ $('pairmac').textContent=j.mac?'Paired box: '+j.mac:'No box paired yet';
+ b.disabled=run;b.textContent=run?'Pairing...':'Pair a replacement coin box';
+ c.className=run?'b dg':'b dg hide';c.disabled=s==='cancelling';
+ m.textContent=j.detail||(run?'Looking for a new coin box...':'');
+ m.style.color=s==='failed'?'var(--bad)':s==='done'?'var(--ok)':'';
+ if(pwas==='running'&&s==='done')api('/api/overview').then(function(o){last.over=o}).catch(function(){});pwas=s}
+if($('pairb')){$('pairb').onclick=function(){var w=(last.over&&last.over.box_ok)?'Your current coin box is still online \u2014 unplug it first if you are replacing it. ':'';
+  ask('Pair a replacement coin box?',w+'Power on the new (or factory-reset) ESP32 near the router. Pairing stays open for up to 7 minutes and copies your passwords and Wi-Fi automatically.','Start pairing',false,function(){
+   $('pairb').disabled=true;$('pairm').style.color='';$('pairm').textContent='Starting pairing...';
+   api('/api/pair',{}).then(function(j){if(j.ok)pairShow(j);else{$('pairb').disabled=false;$('pairm').style.color='var(--bad)';$('pairm').textContent=j.why||'Could not start pairing.'}}).catch(function(){$('pairb').disabled=false})})};
+ $('pairc').onclick=function(){api('/api/pair',{cancel:'1'}).then(pairShow).catch(function(){})}}
 /* prices: the editor keeps what is typed until it is saved (the page refreshes every few seconds and must not overwrite it) */
 var pdirty=false;
 function prow(p,m){return '<div class="tr"><span class="s">&#8369;</span><input type="number" class="tp" min="1" max="1000" step="1" value="'+(+p||'')+'" aria-label="Pesos"><span class="s">buys</span><input type="number" class="tm" min="1" max="10080" step="1" value="'+(+m||'')+'" aria-label="Minutes"><span class="s tx">'+(m>=60?mins(m):'min')+'</span><button class="b rm" aria-label="Remove this line">Remove</button></div>'}
@@ -158,6 +174,6 @@ $('bpk').onchange=function(){var f=this.files[0],inp=this;if(!f)return;var m=$('
    if(j.ok){m.textContent='Installed. Your logo'+(j.picture_bytes?' and welcome picture are':' is')+' ready; press Publish to show '+(j.picture_bytes?'them':'it')+' to customers.';brand(true)}
    else{m.textContent='Not installed: '+(j.why||'the file was refused')+'.';m.style.color='var(--bad)'}inp.value=''}).catch(function(){m.textContent='Could not send the file.';m.style.color='var(--bad)';inp.value=''})};
  r.readAsText(f)};
-function refresh(){if(tab==='brand'){brand();return}if(tab==='ph'){ph();return}var p={over:'/api/overview',cli:'/api/clients',sales:'/api/sales?days='+($('rng').value||30),vch:'/api/vouchers',set:'/api/settings'}[tab],f={over:over,cli:cli,sales:sale,vch:vch,set:sets}[tab];api(p).then(f).catch(function(){});if(tab==='set'){api('/api/pricing').then(prices).catch(function(){})}}
+function refresh(){if(tab==='brand'){brand();return}if(tab==='ph'){ph();return}var p={over:'/api/overview',cli:'/api/clients',sales:'/api/sales?days='+($('rng').value||30),vch:'/api/vouchers',set:'/api/settings'}[tab],f={over:over,cli:cli,sales:sale,vch:vch,set:sets}[tab];api(p).then(f).catch(function(){});if(tab==='set'){api('/api/pricing').then(prices).catch(function(){});if($('pairb'))api('/api/pair').then(pairShow).catch(function(){})}}
 api('/api/overview').then(function(j){if(j.version)showApp();else showLogin()}).catch(showLogin);
 })();

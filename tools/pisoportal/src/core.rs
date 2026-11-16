@@ -258,7 +258,7 @@ const GRANT_RETRIES: u32 = 15;
 impl Core {
     pub fn new(cfg: Config) -> Arc<Core> {
         let box_ = BoxLink::new(&cfg.gw_box, &cfg.gw_key).remember_in(&format!("{}/box_signed", cfg.data_dir));
-        let nds = Nds { ndsctl: cfg.ndsctl.clone() };
+        let nds = Nds::new(cfg.ndsctl.clone());
         let vchoice =
             AtomicBool::new(crate::config::parse_switch(&crate::config::override_get(&cfg.data_dir, "VOUCHER_CHOICE"), cfg.voucher_choice));
         let pricing = RwLock::new(Arc::new(Pricing::load(&cfg)));
@@ -486,22 +486,84 @@ impl Core {
         }
     }
 
+    /// Whether any customer currently has an open coin window.
+    pub fn has_open_window(&self) -> bool {
+        self.st.lock().unwrap().window.is_some()
+    }
+
+    fn session_rates(&self, mac: &str, s: &roll::Session, now: u64) -> (u32, u32) {
+        if s.plan == Plan::Hyper {
+            let mut st = self.st.lock().unwrap();
+            match st.fair.get_mut(mac) {
+                Some(f) if f.throttled => {
+                    if now.saturating_sub(f.since) < self.cfg.fair_throttle_min * 60 {
+                        (self.cfg.fair_down, self.cfg.fair_up)
+                    } else {
+                        f.throttled = false;
+                        f.since = now;
+                        (s.down, s.up)
+                    }
+                }
+                _ => (s.down, s.up),
+            }
+        } else {
+            (s.down, s.up)
+        }
+    }
+
+    fn reset_fair_offset(&self, mac: &str) {
+        let mut st = self.st.lock().unwrap();
+        if let Some(f) = st.fair.get_mut(mac) {
+            f.offset_kb = 0;
+        }
+    }
+
+    /// Grant openNDS access using fair-use speeds if the client is currently throttled, and reset the session byte offset when
+    /// openNDS resets its session counters on re-auth.
+    fn grant_session(&self, mac: &str, s: &roll::Session, now: u64) -> bool {
+        let (down, up) = self.session_rates(mac, s, now);
+        let ok = self.nds.grant(mac, s.minutes, down, up, s.qdown, s.qup);
+        if ok {
+            self.reset_fair_offset(mac);
+        }
+        ok
+    }
+
     /// A device that is not online but has paid time on the roll (after a power cut or a router restart openNDS forgot
     /// its sessions) is put back online. Returns true when it is online afterwards.
+    /// If the device's session on the roll has expired (and is not paused), cuts off OpenNDS immediately rather than waiting
+    /// for OpenNDS's checkinterval sweep.
     pub fn reconnect(&self, mac: &str) -> bool {
         // a clock that was just set right must move the stale sessions first, or a paid one looks expired (RT-01)
         self.check_clock();
         let now = now_secs();
-        let _g = self.files.lock().unwrap();
-        // (a paused device is left as it is, slowed or off: only its own Resume puts it back at full speed)
-        let Some(s) = roll::session_active(&self.cfg.roll_path(), now, mac) else { return false };
-        let cur = self.nds.state(mac);
-        if cur == "Authenticated" {
-            return true;
+        let (s, expired) = {
+            let _g = self.files.lock().unwrap();
+            // (a paused device is left as it is, slowed or off: only its own Resume puts it back at full speed)
+            match roll::session_active(&self.cfg.roll_path(), now, mac) {
+                Some(s) => (Some(s), false),
+                None => (None, roll::is_expired(&self.cfg.roll_path(), now, mac)),
+            }
+        };
+        let Some(s) = s else {
+            if expired && self.nds.deauth_if_authenticated(mac) {
+                log!("expired session {} deauthenticated", mac);
+            }
+            return false;
+        };
+        let (down, up) = self.session_rates(mac, &s, now);
+        match self.nds.ensure_granted(mac, s.minutes, down, up, s.qdown, s.qup) {
+            crate::nds::EnsureResult::AlreadyOnline => true,
+            crate::nds::EnsureResult::Granted => {
+                self.reset_fair_offset(mac);
+                log!("reconnect {} {} min granted", mac, s.minutes);
+                true
+            }
+            crate::nds::EnsureResult::Refused => {
+                log!("reconnect {} {} min REFUSED by openNDS", mac, s.minutes);
+                false
+            }
         }
-        let ok = self.nds.grant(mac, s.minutes, s.down, s.up, s.qdown, s.qup);
-        log!("reconnect {} {} min {}", mac, s.minutes, if ok { "granted" } else { "REFUSED by openNDS" });
-        ok
     }
 
     /// Called every tick for a device openNDS lists as not let on. When it has paid time on the roll (openNDS was restarted by an
@@ -509,7 +571,7 @@ impl Core {
     /// with a page that says "online" and a phone with no internet until the page happens to be opened again. A device that is in
     /// the middle of paying, or paused, is left alone.
     pub fn heal(&self, mac: &str) {
-        if self.st.lock().unwrap().window.as_ref().is_some_and(|w| w.mac == mac) {
+        if self.window_open_for(mac) {
             return;
         }
         if self.reconnect(mac) {
@@ -585,7 +647,7 @@ impl Core {
         let Some(s) = s else { return Err(("none", 0)) };
         let mut online = false;
         for attempt in 0..3 {
-            if self.nds.grant(mac, s.minutes, s.down, s.up, s.qdown, s.qup) {
+            if self.grant_session(mac, &s, now) {
                 online = true;
                 break;
             }
@@ -610,6 +672,7 @@ impl Core {
     // ---- voucher codes -----------------------------------------------------------------------------------------------------------
     /// Spend a voucher code for this device: Ok(minutes added) or Err(why, seconds to wait).
     pub fn redeem(&self, mac: &str, code: &str) -> Result<u32, (&'static str, u64)> {
+        self.check_clock();
         let now = now_secs();
         {
             let mut st = self.st.lock().unwrap();
@@ -640,6 +703,7 @@ impl Core {
             if !crate::voucher::mark_used(&dir, &hash, now, mac) {
                 return Err(("io", 0));
             }
+            let was_paused = roll::peek_state(&self.cfg.roll_path(), now, mac).is_some_and(|p| p.paused);
             match roll::mint(&self.cfg.roll_path(), now, mac, &wid, plan, batch.pesos, batch.minutes, up, down, false) {
                 Ok(mode) => {
                     // A voucher bought with coins was income when its coins were counted (kind "vbuy"): spending it is time use, no
@@ -661,19 +725,19 @@ impl Core {
                     return Err(("io", 0));
                 }
             }
-            Ok((batch.minutes, plan))
+            let s = roll::session(&self.cfg.roll_path(), now, mac);
+            Ok((batch.minutes, plan, s, was_paused))
         })();
         match result {
-            Ok((minutes, plan)) => {
-                let s = {
-                    let _g = self.files.lock().unwrap();
-                    roll::session(&self.cfg.roll_path(), now_secs(), mac)
-                };
+            Ok((minutes, plan, s, was_paused)) => {
                 if let Some(s) = s {
-                    let ok = self.nds.grant(mac, s.minutes, s.down, s.up, s.qdown, s.qup);
+                    let ok = self.grant_session(mac, &s, now);
                     log!("voucher {} +{} min on {}: {}", mac, minutes, plan.as_str(), if ok { "granted" } else { "REFUSED by openNDS" });
                 }
                 let mut st = self.st.lock().unwrap();
+                if was_paused {
+                    st.last_resume.insert(mac.to_string(), now);
+                }
                 st.redeem_fails.remove(mac);
                 st.results.remove(mac);
                 self.bump(&mut st);
@@ -726,6 +790,7 @@ impl Core {
     /// Open a coin window for a device. Returns what the device should see now. `voucher`: the customer chose "Get a voucher code"
     /// (honoured only while the owner leaves that choice on): the coins buy a code, nothing is connected.
     pub fn start(self: &Arc<Self>, mac: &str, plan: Plan, forfeit: bool, voucher: bool) -> View {
+        self.check_clock();
         let voucher = voucher && self.voucher_choice();
         let cd = self.cooldown_left(mac);
         if cd > 0 {
@@ -738,6 +803,15 @@ impl Core {
                 return View::Mismatch { plan: p, left };
             }
         }
+        {
+            let g = self.st.lock().unwrap();
+            let _ = self
+                .cv
+                .wait_timeout_while(g, Duration::from_millis(1500), |s| {
+                    s.window.as_ref().is_some_and(|w| w.mac == mac && w.early.is_some())
+                })
+                .unwrap();
+        }
         if self.st.lock().unwrap().window.as_ref().is_some_and(|w| w.mac != mac) {
             return View::Busy(self.cfg.busy_retry);
         }
@@ -748,7 +822,10 @@ impl Core {
         }
         let mut st = self.st.lock().unwrap();
         if let Some(w) = &st.window {
-            return if w.mac == mac { self.window_view(w) } else { View::Busy(self.cfg.busy_retry) };
+            if w.mac == mac {
+                return if w.early.is_some() { View::Error("ACK_PENDING".into()) } else { self.window_view(w) };
+            }
+            return View::Busy(self.cfg.busy_retry);
         }
         st.results.remove(mac);
         let sid = random_hex(32);
@@ -1154,25 +1231,23 @@ impl Core {
     /// `ack_now` is false when the box never said it is idle: an acknowledgement erases every coin it holds for the window, also
     /// the ones the router has not seen yet, so it is left to recovery (which waits for "idle" and credits what came late).
     fn settle(&self, sid: &str, mac: &str, plan: Plan, wid: &str, forfeit: bool, pulses: u32, pr: &Pricing, ack_now: bool) -> View {
+        self.check_clock();
         let minutes = minutes_for(pr, plan, pulses);
         let now = now_secs();
         let t0 = Instant::now();
-        if let Err(e) = self.record(sid, mac, plan, wid, forfeit, pulses, minutes, now) {
-            return e;
+        let (s, was_paused) = match self.record_and_session(sid, mac, plan, wid, forfeit, pulses, minutes, now) {
+            Ok(res) => res,
+            Err(e) => return e,
+        };
+        if was_paused {
+            let mut st = self.st.lock().unwrap();
+            st.last_resume.insert(mac.to_string(), now);
         }
         let t_rec = t0.elapsed().as_millis();
         // the customer is let on first, the box is acknowledged after: the window is on the roll already, so the order is safe
-        let s = {
-            let _g = self.files.lock().unwrap();
-            roll::session(&self.cfg.roll_path(), now_secs(), mac)
-        };
-        let Some(s) = s else {
-            self.ack_and_clear(sid);
-            return View::Error("NO_SESSION".into());
-        };
         let mut online = false;
         for attempt in 0..3 {
-            if self.nds.grant(mac, s.minutes, s.down, s.up, s.qdown, s.qup) {
+            if self.grant_session(mac, &s, now) {
                 online = true;
                 break;
             }
@@ -1206,6 +1281,7 @@ impl Core {
     /// would), acknowledge the box. The device is NOT connected and no time is granted.
     #[allow(clippy::too_many_arguments)]
     fn settle_voucher(&self, sid: &str, mac: &str, plan: Plan, wid: &str, pulses: u32, pr: &Pricing, ack_now: bool) -> View {
+        self.check_clock();
         let minutes = minutes_for(pr, plan, pulses);
         let now = now_secs();
         let v = match self.record_voucher(sid, mac, plan, wid, pulses, minutes, now) {
@@ -1252,11 +1328,19 @@ impl Core {
         }
     }
 
-    /// Record a closed window on the roll and the ledger (once: the same window id never credits twice).
     #[allow(clippy::too_many_arguments)]
-    fn record(&self, sid: &str, mac: &str, plan: Plan, wid: &str, forfeit: bool, pulses: u32, minutes: u32, now: u64) -> Result<(), View> {
+    fn record_locked(
+        &self,
+        sid: &str,
+        mac: &str,
+        plan: Plan,
+        wid: &str,
+        forfeit: bool,
+        pulses: u32,
+        minutes: u32,
+        now: u64,
+    ) -> Result<(), View> {
         let (down, up) = rates(&self.pricing(), plan);
-        let _g = self.files.lock().unwrap();
         match roll::mint(&self.cfg.roll_path(), now, mac, wid, plan, pulses, minutes, up, down, forfeit) {
             Ok(mode) => {
                 if mode != roll::Mode::Dup {
@@ -1279,6 +1363,33 @@ impl Core {
                 Err(View::Error("ROLL_WRITE".into()))
             }
         }
+    }
+
+    /// Record a closed window on the roll and open/resume the session atomically under one `files` lock and timestamp.
+    #[allow(clippy::too_many_arguments)]
+    fn record_and_session(
+        &self,
+        sid: &str,
+        mac: &str,
+        plan: Plan,
+        wid: &str,
+        forfeit: bool,
+        pulses: u32,
+        minutes: u32,
+        now: u64,
+    ) -> Result<(roll::Session, bool), View> {
+        let _g = self.files.lock().unwrap();
+        let was_paused = roll::peek_state(&self.cfg.roll_path(), now, mac).is_some_and(|p| p.paused);
+        self.record_locked(sid, mac, plan, wid, forfeit, pulses, minutes, now)?;
+        let s = roll::session(&self.cfg.roll_path(), now, mac).ok_or_else(|| View::Error("NO_SESSION".into()))?;
+        Ok((s, was_paused))
+    }
+
+    /// Record a closed window on the roll and the ledger (once: the same window id never credits twice).
+    #[allow(clippy::too_many_arguments)]
+    fn record(&self, sid: &str, mac: &str, plan: Plan, wid: &str, forfeit: bool, pulses: u32, minutes: u32, now: u64) -> Result<(), View> {
+        let _g = self.files.lock().unwrap();
+        self.record_locked(sid, mac, plan, wid, forfeit, pulses, minutes, now)
     }
 
     fn ack_and_clear(&self, sid: &str) -> bool {
@@ -1328,6 +1439,7 @@ impl Core {
     /// holds are credited once (a recorded window is only acknowledged), then acknowledged.
     pub fn recover(&self) {
         let _one = self.recovering.lock().unwrap();
+        self.check_clock();
         for sid in self.open_sids() {
             // checked for each record: a window may have opened since the list was read
             if self.is_live(&sid) {
@@ -1422,11 +1534,17 @@ impl Core {
                                 // the marker now says every coin is credited: a failed acknowledgement below must not credit them twice
                                 let _ = write_synced(&format!("{}.rec", self.open_file(sid)), &format!("recorded {}\n", boxed));
                                 log!("recover: window {} credited {} late coins ({} min) to {}", &sid[..8], late, minutes, mac);
-                                if let Some(s) = {
+                                let now = now_secs();
+                                let (active, paused) = {
                                     let _g = self.files.lock().unwrap();
-                                    roll::session(&self.cfg.roll_path(), now_secs(), mac)
-                                } {
-                                    let _ = self.nds.grant(mac, s.minutes, s.down, s.up, s.qdown, s.qup);
+                                    let p = roll::peek_state(&self.cfg.roll_path(), now, mac).is_some_and(|st| st.paused);
+                                    let s = if p { None } else { roll::session_active(&self.cfg.roll_path(), now, mac) };
+                                    (s, p)
+                                };
+                                if paused {
+                                    self.slow_down_paused(mac, now);
+                                } else if let Some(s) = active {
+                                    let _ = self.grant_session(mac, &s, now);
                                 }
                             }
                             Err(_) => {
@@ -1758,5 +1876,306 @@ mod tests {
             "the first recovery is still waiting on the box, on its own thread"
         );
         drop(held);
+    }
+
+    #[test]
+    fn rt01_settle_and_redeem_shift_stale_clock_before_mint() {
+        let now = now_secs();
+        let s0 = now - 7200;
+        // 1) Top-up settle() after a forward clock jump
+        let core = core_with_stale_clock("settle-rt01", s0 + 100, s0);
+        let roll_path = core.cfg.roll_path();
+        roll::save(&roll_path, &[entry("c1", MAC_A, 60, s0 + 50)]).unwrap();
+        let pr = core.pricing();
+        let v = core.settle("00000000000000000000000000000001", MAC_A, Plan::Hyper, "w-topup", false, 1, &pr, false);
+        assert!(matches!(v, View::Final { .. }), "top-up settle succeeded: {:?}", v);
+        let got = roll::load(&roll_path);
+        assert_eq!(got.len(), 1, "existing paid session shifted and preserved instead of deleted");
+        assert!(got[0].left(now_secs()) > 3600, "kept 60 min + added top-up time: {} s", got[0].left(now_secs()));
+
+        // 2) Voucher redeem() after a forward clock jump
+        let core_v = core_with_stale_clock("redeem-rt01", s0 + 100, s0);
+        let roll_v = core_v.cfg.roll_path();
+        roll::save(&roll_v, &[entry("c1", MAC_A, 60, s0 + 50)]).unwrap();
+        let issued = crate::voucher::issue(&core_v.cfg.data_dir, s0 + 50, MAC_B, "wv", "hyper", 15, 1).unwrap();
+        let added = core_v.redeem(MAC_A, &issued.code).expect("voucher should redeem after clock shift");
+        assert_eq!(added, 15);
+        let got_v = roll::load(&roll_v);
+        assert_eq!(got_v.len(), 1);
+        assert!(got_v[0].left(now_secs()) > 3600 + 800, "kept 60 min + added 15 min voucher: {} s", got_v[0].left(now_secs()));
+    }
+
+    #[test]
+    fn settle_does_not_ack_box_when_no_session_is_created() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let hits = Arc::new(AtomicUsize::new(0));
+        let hits_c = Arc::clone(&hits);
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = l.local_addr().unwrap().to_string();
+        let _srv = std::thread::spawn(move || {
+            while let Ok((mut s, _)) = l.accept() {
+                hits_c.fetch_add(1, Ordering::SeqCst);
+                use std::io::Write;
+                let _ = s.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}");
+            }
+        });
+        let d = std::env::temp_dir().join(format!("pisoportal-nosess-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(d.join("open")).unwrap();
+        let mut cfg = Config::from_map(std::collections::HashMap::new());
+        cfg.data_dir = d.to_string_lossy().into_owned();
+        cfg.ndsctl = "/nonexistent/ndsctl".into();
+        cfg.gw_box = addr;
+        cfg.gw_key = "test-gateway-key-123456".into();
+        let core = Core::new(cfg);
+        let sid = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let pr = core.pricing();
+        let v = core.settle(sid, MAC_A, Plan::Hyper, "w0", false, 0, &pr, true);
+        assert!(matches!(v, View::Error(ref e) if e == "NO_SESSION"), "expected NO_SESSION, got {:?}", v);
+        assert_eq!(hits.load(Ordering::SeqCst), 0, "must never call ack when NO_SESSION occurs");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn topup_and_reconnect_preserve_fair_use_throttle_and_reset_offset() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = std::env::temp_dir().join(format!("pisoportal-fair-pres-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        let args_log = d.join("args.log");
+        let script = d.join("nds.sh");
+        let sh = format!(
+            "#!/bin/sh\necho \"$*\" >> \"{}\"\ncase \"$1\" in\n  json) printf '{{\"state\":\"Authenticated\"}}\\n' ;;\n  auth) echo \"ok\" ;;\n  deauth) echo \"ok\" ;;\nesac\n",
+            args_log.display()
+        );
+        std::fs::write(&script, sh).unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let mut cfg = Config::from_map(std::collections::HashMap::new());
+        cfg.data_dir = d.to_string_lossy().into_owned();
+        cfg.ndsctl = script.to_string_lossy().into_owned();
+        cfg.fair_down = 256;
+        cfg.fair_up = 128;
+        cfg.fair_throttle_min = 10;
+        let core = Core::new(cfg);
+        let now = now_secs();
+        core.st
+            .lock()
+            .unwrap()
+            .fair
+            .insert(MAC_A.into(), FairState { used_kb: 50_000, offset_kb: 12_345, throttled: true, since: now - 30 });
+        let s = roll::Session { minutes: 60, left_secs: 3600, up: 0, down: 0, qup: 0, qdown: 0, plan: Plan::Hyper };
+        assert!(core.grant_session(MAC_A, &s, now));
+
+        let logged = fs::read_to_string(&args_log).unwrap();
+        assert!(logged.contains(&format!("auth {} 60 128 256 0 0", MAC_A)), "granted at fair-use cap: {}", logged);
+        assert_eq!(core.st.lock().unwrap().fair.get(MAC_A).unwrap().offset_kb, 0, "offset_kb reset after openNDS re-auth");
+    }
+
+    #[test]
+    fn recover_recorded_keeps_paused_session_paused() {
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = l.local_addr().unwrap().to_string();
+        let _srv = std::thread::spawn(move || {
+            use std::io::{Read, Write};
+            while let Ok((mut s, _)) = l.accept() {
+                let mut req = Vec::new();
+                let mut tmp = [0u8; 512];
+                while !req.windows(4).any(|w| w == b"\r\n\r\n") {
+                    match s.read(&mut tmp) {
+                        Ok(0) | Err(_) => break,
+                        Ok(n) => req.extend_from_slice(&tmp[..n]),
+                    }
+                }
+                let req = String::from_utf8_lossy(&req);
+                let body = if req.contains("/challenge") {
+                    r#"{"nonce":"0123456789abcdef0123456789abcdef"}"#
+                } else if req.contains("/status") {
+                    r#"{"success":true,"state":"idle","pulses":3}"#
+                } else {
+                    r#"{"success":true,"acknowledged_pulses":3}"#
+                };
+                let resp = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{}", body.len(), body);
+                let _ = s.write_all(resp.as_bytes());
+                let _ = s.flush();
+                let _ = s.shutdown(std::net::Shutdown::Both);
+            }
+        });
+        let d = std::env::temp_dir().join(format!("pisoportal-rec-pause-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(d.join("open")).unwrap();
+        let mut cfg = Config::from_map(std::collections::HashMap::new());
+        cfg.data_dir = d.to_string_lossy().into_owned();
+        cfg.ndsctl = "/nonexistent/ndsctl".into();
+        cfg.gw_box = addr;
+        cfg.gw_key = "test-gateway-key-123456".into();
+        let core = Core::new(cfg);
+
+        let now = now_secs();
+        let sid = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        let mut e = entry("c1", MAC_A, 60, now - 120);
+        e.pa = now - 60;
+        e.rp = 3540;
+        roll::save(&core.cfg.roll_path(), &[e]).unwrap();
+        fs::write(d.join("open").join(sid), format!("{} hyper w1 0 0\n", MAC_A)).unwrap();
+        fs::write(d.join("open").join(format!("{}.rec", sid)), "recorded 1\n").unwrap();
+
+        core.recover_recorded(sid, "recorded 1\n");
+
+        let peeked = roll::peek_state(&core.cfg.roll_path(), now_secs(), MAC_A).unwrap();
+        assert!(peeked.paused, "recover_recorded must never unpause a paused customer");
+        assert!(peeked.left > 3540, "late coins added to paused remaining time: {} s", peeked.left);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn heal_is_not_blocked_once_window_publishes_early_final() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = std::env::temp_dir().join(format!("pisoportal-heal-early-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        let calls = d.join("calls.log");
+        let script = d.join("nds.sh");
+        let sh = format!(
+            "#!/bin/sh\necho \"$*\" >> \"{}\"\ncase \"$1\" in\n  json) if grep -q '^auth ' \"{}\"; then printf '{{\"state\":\"Authenticated\"}}\\n'; else printf '{{\"state\":\"Preauthenticated\"}}\\n'; fi ;;\n  auth) echo \"ok\" ;;\nesac\n",
+            calls.display(),
+            calls.display()
+        );
+        std::fs::write(&script, sh).unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let mut cfg = Config::from_map(std::collections::HashMap::new());
+        cfg.data_dir = d.to_string_lossy().into_owned();
+        cfg.ndsctl = script.to_string_lossy().into_owned();
+        let core = Core::new(cfg);
+        roll::save(&core.cfg.roll_path(), &[entry("c1", MAC_A, 60, now_secs())]).unwrap();
+        core.st.lock().unwrap().window = Some(Window {
+            sid: "cccccccccccccccccccccccccccccccc".into(),
+            wid: "w1".into(),
+            mac: MAC_A.into(),
+            plan: Plan::Hyper,
+            forfeit: false,
+            pricing: core.pricing(),
+            voucher: false,
+            state: WState::Closing,
+            pulses: 1,
+            last_seq: 1,
+            deadline: Instant::now(),
+            total: 10,
+            stop: true,
+            box_ended: true,
+            early: Some(View::Final { plan: Plan::Hyper, pulses: 1, minutes: 60, left: 3600, online: false, voucher: None }),
+        });
+
+        core.heal(MAC_A);
+        let log = fs::read_to_string(&calls).unwrap_or_default();
+        assert!(log.contains(&format!("auth {} ", MAC_A)), "heal() proceeded once window had early View::Final: {}", log);
+    }
+
+    #[test]
+    fn has_open_window_reflects_active_window() {
+        let cfg = Config::from_map(std::collections::HashMap::new());
+        let core = Core::new(cfg);
+        assert!(!core.has_open_window());
+        core.st.lock().unwrap().window = Some(Window {
+            sid: "dddddddddddddddddddddddddddddddd".into(),
+            wid: "w2".into(),
+            mac: MAC_A.into(),
+            plan: Plan::Hyper,
+            forfeit: false,
+            pricing: core.pricing(),
+            voucher: false,
+            state: WState::Armed,
+            pulses: 0,
+            last_seq: 0,
+            deadline: Instant::now(),
+            total: 10,
+            stop: false,
+            box_ended: false,
+            early: None,
+        });
+        assert!(core.has_open_window());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn reconnect_under_lock_does_not_deauth_already_authenticated_client() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = std::env::temp_dir().join(format!("pisoportal-reconnect-race-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        let state_file = d.join("state");
+        let log_file = d.join("calls.log");
+        fs::write(&state_file, "Preauthenticated").unwrap();
+        let script = d.join("nds.sh");
+        let sh = format!(
+            "#!/bin/sh\necho \"$*\" >> \"{log}\"\nSF=\"{sf}\"\ncase \"$1\" in\n  json) printf '{{\"state\":\"%s\"}}\\n' \"$(cat \"$SF\")\" ;;\n  deauth) printf 'Preauthenticated' > \"$SF\" ;;\n  auth) sleep 0.04; printf 'Authenticated' > \"$SF\"; echo \"ok\" ;;\nesac\n",
+            log = log_file.display(),
+            sf = state_file.display()
+        );
+        fs::write(&script, sh).unwrap();
+        fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let mut cfg = Config::from_map(std::collections::HashMap::new());
+        cfg.data_dir = d.to_string_lossy().into_owned();
+        cfg.ndsctl = script.to_string_lossy().into_owned();
+        let core = Core::new(cfg);
+        roll::save(&core.cfg.roll_path(), &[entry("c1", MAC_A, 60, now_secs())]).unwrap();
+
+        let c1 = Arc::clone(&core);
+        let h1 = std::thread::spawn(move || c1.reconnect(MAC_A));
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        assert!(core.reconnect(MAC_A));
+        assert!(h1.join().unwrap());
+
+        let calls = fs::read_to_string(&log_file).unwrap();
+        assert!(!calls.contains("deauth"), "overlapping reconnect() calls must not deauth each other: {}", calls);
+        let _ = fs::remove_dir_all(&d);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn reconnect_deauths_expired_session_but_keeps_paused_session() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = std::env::temp_dir().join(format!("pisoportal-reconnect-exp-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        let state_file = d.join("state");
+        let log_file = d.join("calls.log");
+        fs::write(&state_file, "Authenticated").unwrap();
+        let script = d.join("nds.sh");
+        let sh = format!(
+            "#!/bin/sh\necho \"$*\" >> \"{log}\"\nSF=\"{sf}\"\ncase \"$1\" in\n  json) printf '{{\"state\":\"%s\"}}\\n' \"$(cat \"$SF\")\" ;;\n  deauth) printf 'Preauthenticated' > \"$SF\" ;;\n  auth) printf 'Authenticated' > \"$SF\"; echo \"ok\" ;;\nesac\n",
+            log = log_file.display(),
+            sf = state_file.display()
+        );
+        fs::write(&script, sh).unwrap();
+        fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
+
+        let mut cfg = Config::from_map(std::collections::HashMap::new());
+        cfg.data_dir = d.to_string_lossy().into_owned();
+        cfg.ndsctl = script.to_string_lossy().into_owned();
+        let core = Core::new(cfg);
+        let now = now_secs();
+
+        // 1. New visitor (no roll row): zero ndsctl calls
+        assert!(!core.reconnect(MAC_B));
+        assert!(!log_file.exists(), "unknown device must not invoke ndsctl");
+
+        // 2. Paused device: stays Authenticated (no deauth)
+        let mut paused = entry("p1", MAC_A, 60, now - 60);
+        paused.pa = now - 10;
+        paused.rp = 1800;
+        roll::save(&core.cfg.roll_path(), &[paused]).unwrap();
+        assert!(!core.reconnect(MAC_A));
+        assert_eq!(fs::read_to_string(&state_file).unwrap(), "Authenticated", "paused client must stay authenticated");
+
+        // 3. Expired device: immediately deauthenticated
+        roll::save(&core.cfg.roll_path(), &[entry("e1", MAC_A, 1, now - 120)]).unwrap();
+        assert!(!core.reconnect(MAC_A));
+        assert_eq!(fs::read_to_string(&state_file).unwrap(), "Preauthenticated", "expired client must be deauthenticated");
+        let calls = fs::read_to_string(&log_file).unwrap();
+        assert!(calls.contains(&format!("deauth {}", MAC_A)), "expected deauth in log: {}", calls);
+        let _ = fs::remove_dir_all(&d);
     }
 }
