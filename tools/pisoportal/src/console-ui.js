@@ -1,5 +1,5 @@
 // TechNet PisoHub console: the page's behaviour. PISO_UI_VERSION rises with every change that is published (scripts/sign_console_ui.py).
-window.PISO_UI_VERSION = 14;
+window.PISO_UI_VERSION = 15;
 (function(){
 var $=function(i){return document.getElementById(i)},tab='over',timer=null,last={},sales=null,TABS=['over','cli','ph','sales','vch','set'];
 if($('t-brand'))TABS.push('brand');
@@ -111,14 +111,14 @@ if($('pairb')){$('pairb').onclick=function(){var w=(last.over&&last.over.box_ok)
    api('/api/pair',{}).then(function(j){if(j.ok)pairShow(j);else{$('pairb').disabled=false;$('pairm').style.color='var(--bad)';$('pairm').textContent=j.why||'Could not start pairing.'}}).catch(function(){$('pairb').disabled=false})})};
  $('pairc').onclick=function(){api('/api/pair',{cancel:'1'}).then(pairShow).catch(function(){})}}
 function tmsg(t,k){var m=$('tgm');if(!m)return;m.style.color=k?'var(--'+k+')':'';m.textContent=t}
-function tgShow(j){if(!$('tgs')||!j)return;if(j.error==='NOT_FOUND'){$('tgb').disabled=$('tgx').disabled=true;$('tgs').textContent='Update router to configure Telegram.';return}
- $('tgs').textContent=j.set?'Current key: '+(j.hint||'set')+(j.chat?' · chat '+j.chat:' · no chat ID'):'No Telegram bot set.';
- var c=$('tgc');if(c&&document.activeElement!==c&&!c.dataset.d)c.value=j.chat||''}
-if($('tgb')){$('tgc').oninput=function(){this.dataset.d='1'};
- var tgPost=function(b,p,body,fn){b.disabled=true;tmsg(p);api('/api/telegram',body).then(function(j){b.disabled=false;if(j.ok)fn(j);else tmsg(j.why||'Failed.','bad')}).catch(function(){b.disabled=false;tmsg('No router reply.','bad')})};
- $('tgb').onclick=function(){var t=$('tgt').value.trim(),c=$('tgc').value.trim();if(!t&&!c){tmsg('Enter key or chat ID.','bad');return}
-  tgPost(this,'Saving...',{token:t,chat:c},function(j){$('tgt').value='';delete $('tgc').dataset.d;tgShow(j);tmsg('Saved and monitor restarted.','ok')})};
- $('tgx').onclick=function(){tgPost(this,'Sending test...',{action:'test'},function(){tmsg('Test sent.','ok')})}}
+function tgShow(j){var s=$('tgs'),c=$('tgc');if(!s||!j)return;if(j.error==='NOT_FOUND'){$('tgb').disabled=$('tgx').disabled=1;if($('tgd'))$('tgd').disabled=1;s.textContent='Update router first.';return}
+ s.textContent=j.set?'Key: '+(j.hint||'set')+(j.chat?' · chat '+j.chat:' · no chat'):'No bot set.';if(c&&document.activeElement!==c&&!c.dataset.d)c.value=j.chat||''}
+if($('tgb')){var tgt=$('tgt'),tgc=$('tgc');tgc.oninput=function(){this.dataset.d='1'};
+ var tgOk=function(j,m){tgt.value='';delete tgc.dataset.d;tgShow(j);tmsg(m,'ok')},tgPost=function(b,p,body,fn){b.disabled=1;tmsg(p);api('/api/telegram',body).then(function(j){b.disabled=0;j.ok?fn(j):tmsg(j.why||'Failed.','bad')}).catch(function(){b.disabled=0;tmsg('No reply.','bad')})};
+ $('tgb').onclick=function(){var t=tgt.value.trim(),c=tgc.value.trim();if(!t&&!c){tmsg('Enter key or ID.','bad');return}
+  tgPost(this,'Saving...',{token:t,chat:c},function(j){tgOk(j,'Saved'+(j.bot?' (@'+j.bot+')':'')+(j.chat?'.':'. Send /start & Detect chat.'))})};
+ if($('tgd'))$('tgd').onclick=function(){tgPost(this,'Checking...',{action:'pair',token:tgt.value.trim()},function(j){tgOk(j,'Chat '+j.chat+' saved.')})};
+ $('tgx').onclick=function(){tgPost(this,'Sending...',{action:'test'},function(){tmsg('Test sent.','ok')})}}
 var pdirty=false;
 function prow(p,m){return '<div class="tr"><span class="s">&#8369;</span><input type="number" class="tp" min="1" max="1000" step="1" value="'+(+p||'')+'" aria-label="Pesos"><span class="s">buys</span><input type="number" class="tm" min="1" max="10080" step="1" value="'+(+m||'')+'" aria-label="Minutes"><span class="s tx">'+(m>=60?mins(m):'min')+'</span><button class="b rm" aria-label="Remove this line">Remove</button></div>'}
 function pfill(id,list){$(id).innerHTML=(list||[]).map(function(t){return prow(t[0],t[1])}).join('')}

@@ -342,13 +342,27 @@ try:
     open(f"{tmp}/mon-state/commands.set", "w").write("1")
     open(f"{tmp}/monitor.conf", "w").write("SITE_NAME='Shop'\nREPORT_HOUR='21'\n#HEALTHCHECK_URL='https://hc.example/1'\n")
     open(f"{tmp}/piso_monitor.svc", "w").write(f"#!/bin/sh\necho \"svc:$1\" >> {tmp}/mon.log\n")
-    open(f"{tmp}/piso-monitor", "w").write(f"#!/bin/sh\necho \"bin:$*:$PISO_MONITOR_CONF:$MON_STATE\" >> {tmp}/mon.log\n")
+    open(f"{tmp}/piso-monitor", "w").write(
+        f"#!/bin/sh\n"
+        f"echo \"bin:$*:$PISO_MONITOR_CONF:$MON_STATE\" >> {tmp}/mon.log\n"
+        f"[ \"$1\" = verify ] && {{ [ -e {tmp}/badtok ] && {{ echo BAD_TOKEN; exit 2; }}; echo \"OK testbot\"; exit 0; }}\n"
+        f"[ \"$1\" = detect ] && {{ echo \"CHAT 6184345139\"; exit 0; }}\n"
+        f"exit 0\n"
+    )
     os.chmod(f"{tmp}/piso_monitor.svc", 0o755)
     os.chmod(f"{tmp}/piso-monitor", 0o755)
     tok1 = "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+    # Rejects putting bot's own ID in Chat ID
+    code, body, _h = call("/api/telegram", {"token": tok1, "chat": "123456"}, cookie=cookie)
+    check(code == 400 and json.loads(body).get("error") == "BOT_ID_AS_CHAT", f"telegram: rejects bot ID as chat: {code} {body}")
+    # Rejects token when verify exits 2 without writing monitor.conf
+    open(f"{tmp}/badtok", "w").close()
     code, body, _h = call("/api/telegram", {"token": tok1, "chat": "777888"}, cookie=cookie)
+    os.remove(f"{tmp}/badtok")
+    check(code == 400 and json.loads(body).get("error") == "BAD_TOKEN", f"telegram: rejected invalid key: {code} {body}")
+    code, body, _h = call("/api/telegram", {"token": f"bot{tok1}", "chat": "777888"}, cookie=cookie)
     j = json.loads(body)
-    check(code == 200 and j["set"] is True and j["hint"] == "123456...ew11" and j["chat"] == "777888" and tok1.encode() not in body, f"telegram: saved & masked: {j}")
+    check(code == 200 and j["set"] is True and j["hint"] == "123456...ew11" and j["chat"] == "777888" and j.get("bot") == "testbot" and tok1.encode() not in body, f"telegram: saved & masked: {j}")
     mc = open(f"{tmp}/monitor.conf").read()
     check("SITE_NAME='Shop'" in mc and "#HEALTHCHECK_URL='https://hc.example/1'" in mc and f"TG_TOKEN='{tok1}'" in mc and "TG_CHAT='777888'" in mc, f"telegram: conf preserved: {mc}")
     check((os.stat(f"{tmp}/monitor.conf").st_mode & 0o777) == 0o600, "telegram: monitor.conf stays 0600")
@@ -359,6 +373,10 @@ try:
     tok2 = "987654:XYZ-DEF1234ghIkl-zyx57W2v1u129999"
     j = json.loads(call("/api/telegram", {"token": tok2}, cookie=cookie)[1])
     check(j["hint"] == "987654...9999" and j["chat"] == "777888" and tok2 not in repr(j), f"telegram: rotated key preserves chat: {j}")
+    # Detect chat via action=pair stops service, detects chat ID, saves, restarts
+    code, body, _h = call("/api/telegram", {"action": "pair"}, cookie=cookie)
+    jp = json.loads(body)
+    check(code == 200 and jp["chat"] == "6184345139" and "TG_CHAT='6184345139'" in open(f"{tmp}/monitor.conf").read(), f"telegram: pair detected chat: {code} {jp}")
     code, body, _h = call("/api/telegram", {"action": "test"}, cookie=cookie)
     check(code == 200 and json.loads(body).get("sent") is True, f"telegram: test send ok: {code} {body}")
     check(f"bin:send Test message from PisoHub Console.:{tmp}/monitor.conf:{tmp}/mon-state" in open(f"{tmp}/mon.log").read(), "telegram: test send ran monitor bin")

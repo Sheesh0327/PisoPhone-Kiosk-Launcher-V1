@@ -304,6 +304,20 @@ fn http_get_auth(addr: &str, path: &str, user: &str, pass: &str) -> Result<Strin
 
 static TG_LOCK: Mutex<()> = Mutex::new(());
 
+fn clean_tg_token(raw: &str) -> String {
+    let t = raw.trim().trim_matches(|c| c == '\'' || c == '"').trim();
+    let b = t.as_bytes();
+    if b.len() > 3 && b[..3].eq_ignore_ascii_case(b"bot") && b[3].is_ascii_digit() {
+        t[3..].to_string()
+    } else {
+        t.to_string()
+    }
+}
+
+fn tg_bot_id(tok: &str) -> Option<&str> {
+    tok.split_once(':').map(|(id, _)| id).filter(|id| !id.is_empty())
+}
+
 fn valid_tg_token(s: &str) -> bool {
     let Some((id, sec)) = s.split_once(':') else { return false };
     (5..=15).contains(&id.len())
@@ -348,10 +362,10 @@ fn upsert_tg_conf(old: &str, token: Option<&str>, chat: Option<&str>) -> String 
                 }
             }
             (Some("TG_CHAT"), _, Some(ch)) => {
-                if !saw_chat {
+                if !saw_chat && !ch.is_empty() {
                     out.push_str(&format!("TG_CHAT='{}'\n", ch));
-                    saw_chat = true;
                 }
+                saw_chat = true;
             }
             _ => {
                 out.push_str(line);
@@ -363,20 +377,61 @@ fn upsert_tg_conf(old: &str, token: Option<&str>, chat: Option<&str>) -> String 
         out.push_str(&format!("TG_TOKEN='{}'\n", tok));
     }
     if let (Some(ch), false) = (chat, saw_chat) {
-        out.push_str(&format!("TG_CHAT='{}'\n", ch));
+        if !ch.is_empty() {
+            out.push_str(&format!("TG_CHAT='{}'\n", ch));
+        }
     }
     out
 }
 
 fn tg_state_json(cfg: &crate::config::Config) -> String {
+    tg_state_json_bot(cfg, "")
+}
+
+fn tg_state_json_bot(cfg: &crate::config::Config, bot: &str) -> String {
     let tok = conf_value(&cfg.monitor_conf, "TG_TOKEN");
     let chat = conf_value(&cfg.monitor_conf, "TG_CHAT");
-    format!("{{\"ok\":true,\"set\":{},\"hint\":\"{}\",\"chat\":\"{}\"}}", !tok.is_empty(), json_esc(&mask_tg_token(&tok)), json_esc(&chat))
+    if bot.is_empty() {
+        format!("{{\"ok\":true,\"set\":{},\"hint\":\"{}\",\"chat\":\"{}\"}}", !tok.is_empty(), json_esc(&mask_tg_token(&tok)), json_esc(&chat))
+    } else {
+        format!(
+            "{{\"ok\":true,\"set\":{},\"hint\":\"{}\",\"chat\":\"{}\",\"bot\":\"{}\"}}",
+            !tok.is_empty(),
+            json_esc(&mask_tg_token(&tok)),
+            json_esc(&chat),
+            json_esc(bot)
+        )
+    }
+}
+
+fn run_monitor_out(bin: &str, conf: &str, state: &str, args: &[&str]) -> Option<(i32, String, String)> {
+    let out = Command::new(bin).env("PISO_MONITOR_CONF", conf).env("MON_STATE", state).args(args).output().ok()?;
+    let code = out.status.code().unwrap_or(if out.status.success() { 0 } else { 1 });
+    Some((code, String::from_utf8_lossy(&out.stdout).into_owned(), String::from_utf8_lossy(&out.stderr).into_owned()))
 }
 
 fn run_monitor(bin: &str, cfg: &crate::config::Config, args: &[&str]) -> bool {
-    let out = Command::new(bin).env("PISO_MONITOR_CONF", &cfg.monitor_conf).env("MON_STATE", &cfg.monitor_state).args(args).output();
-    matches!(out, Ok(o) if o.status.success())
+    matches!(run_monitor_out(bin, &cfg.monitor_conf, &cfg.monitor_state, args), Some((0, _, _)))
+}
+
+fn verify_tg_token(cfg: &crate::config::Config, tok: &str) -> Result<String, &'static str> {
+    if !std::path::Path::new(&cfg.monitor_bin).exists() {
+        return Ok(String::new());
+    }
+    let tmp = format!("{}/pisotg-v-{}.conf", std::env::temp_dir().to_string_lossy(), random_hex(8));
+    if crate::util::write_atomic_private(&tmp, format!("TG_TOKEN='{}'\n", tok).as_bytes()).is_err() {
+        return Ok(String::new());
+    }
+    let res = run_monitor_out(&cfg.monitor_bin, &tmp, &cfg.monitor_state, &["verify"]);
+    let _ = std::fs::remove_file(&tmp);
+    match res {
+        Some((2, _, _)) => Err("Telegram rejected this API key. Check @BotFather."),
+        Some((0, out, _)) => Ok(out
+            .lines()
+            .find_map(|l| l.trim().strip_prefix("OK ").map(|s| s.trim().trim_start_matches('@').to_string()))
+            .unwrap_or_default()),
+        _ => Ok(String::new()),
+    }
 }
 
 fn tg_test(cfg: &crate::config::Config) -> (&'static str, String) {
@@ -384,47 +439,147 @@ fn tg_test(cfg: &crate::config::Config) -> (&'static str, String) {
         return ("400 Bad Request", "{\"error\":\"NO_TOKEN\",\"why\":\"Save a bot API key first\"}".into());
     }
     if conf_value(&cfg.monitor_conf, "TG_CHAT").is_empty() {
-        return ("400 Bad Request", "{\"error\":\"NO_CHAT\",\"why\":\"Set a chat ID first\"}".into());
+        return ("400 Bad Request", "{\"error\":\"NO_CHAT\",\"why\":\"Set a chat ID or click Detect chat first\"}".into());
     }
-    if run_monitor(&cfg.monitor_bin, cfg, &["send", "Test message from PisoHub Console."]) {
-        ("200 OK", "{\"ok\":true,\"sent\":true}".into())
+    match run_monitor_out(&cfg.monitor_bin, &cfg.monitor_conf, &cfg.monitor_state, &["send", "Test message from PisoHub Console."]) {
+        Some((0, _, _)) => ("200 OK", "{\"ok\":true,\"sent\":true}".into()),
+        Some((_, _, err)) => {
+            let line = err.lines().rev().find(|l| l.contains("TG_ERR:")).unwrap_or("");
+            let why = if line.contains("TG_ERR:403:") {
+                if line.contains("to the bot") {
+                    "Chat ID cannot be the bot ID. Click Detect chat after messaging your bot."
+                } else {
+                    "Send /start to your bot in Telegram first, then click Test again."
+                }
+            } else if line.contains("TG_ERR:401:") || line.contains("TG_ERR:404:") {
+                "Telegram rejected the Bot API key. Check @BotFather."
+            } else if line.contains("TG_ERR:400:") {
+                "Chat ID was not found by Telegram. Send /start and click Detect chat."
+            } else {
+                "Could not send to Telegram"
+            };
+            ("502 Bad Gateway", format!("{{\"error\":\"SEND_FAILED\",\"why\":\"{}\"}}", json_esc(why)))
+        }
+        None => ("502 Bad Gateway", "{\"error\":\"SEND_FAILED\",\"why\":\"Could not send to Telegram\"}".into()),
+    }
+}
+
+fn tg_apply_conf(cfg: &crate::config::Config, tok: Option<&str>, chat: Option<&str>, reset_cmd: bool) -> Result<(), &'static str> {
+    let _g = TG_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let old = read(&cfg.monitor_conf);
+    let next = upsert_tg_conf(&old, tok, chat);
+    if crate::util::write_atomic_private(&cfg.monitor_conf, next.as_bytes()).is_err() {
+        return Err("WRITE_FAILED");
+    }
+    let _ = std::fs::remove_file(format!("{}/offset", cfg.monitor_state));
+    if reset_cmd {
+        let _ = std::fs::remove_file(format!("{}/commands.set", cfg.monitor_state));
+    }
+    if std::path::Path::new(&cfg.monitor_service).exists() {
+        let _ = run_monitor(&cfg.monitor_service, cfg, &["enable"]);
+        if !run_monitor(&cfg.monitor_service, cfg, &["restart"]) {
+            return Err("RESTART_FAILED");
+        }
+    }
+    Ok(())
+}
+
+fn tg_save_inner(cfg: &crate::config::Config, tok: &str, chat: &str) -> Result<String, (&'static str, String)> {
+    if tok.is_empty() && chat.is_empty() {
+        return Err(("400 Bad Request", "{\"error\":\"EMPTY\",\"why\":\"Enter a bot API key or chat ID\"}".into()));
+    }
+    if !tok.is_empty() && !valid_tg_token(tok) {
+        return Err(("400 Bad Request", "{\"error\":\"BAD_TOKEN\",\"why\":\"Invalid bot API key format\"}".into()));
+    }
+    if !chat.is_empty() && !valid_tg_chat(chat) {
+        return Err(("400 Bad Request", "{\"error\":\"BAD_CHAT\",\"why\":\"Chat ID must be digits (optional -)\"}".into()));
+    }
+    let old_tok = conf_value(&cfg.monitor_conf, "TG_TOKEN");
+    let old_chat = conf_value(&cfg.monitor_conf, "TG_CHAT");
+    let eff_tok = if !tok.is_empty() { tok } else { old_tok.as_str() };
+    if !chat.is_empty() && tg_bot_id(eff_tok) == Some(chat) {
+        return Err((
+            "400 Bad Request",
+            "{\"error\":\"BOT_ID_AS_CHAT\",\"why\":\"That is the bot ID, not your personal Chat ID. Leave Chat ID blank and click Detect chat.\"}".into(),
+        ));
+    }
+    let bot = if !tok.is_empty() {
+        verify_tg_token(cfg, tok).map_err(|why| ("400 Bad Request", format!("{{\"error\":\"BAD_TOKEN\",\"why\":\"{}\"}}", json_esc(why))))?
     } else {
-        ("502 Bad Gateway", "{\"error\":\"SEND_FAILED\",\"why\":\"Could not send to Telegram\"}".into())
+        String::new()
+    };
+    let stale_bot_chat = !tok.is_empty()
+        && chat.is_empty()
+        && !old_chat.is_empty()
+        && (tg_bot_id(&old_tok) == Some(old_chat.as_str()) || tg_bot_id(tok) == Some(old_chat.as_str()));
+    let chat_arg = if !chat.is_empty() {
+        Some(chat)
+    } else if stale_bot_chat {
+        Some("")
+    } else {
+        None
+    };
+    match tg_apply_conf(cfg, (!tok.is_empty()).then_some(tok), chat_arg, true) {
+        Ok(()) => Ok(tg_state_json_bot(cfg, &bot)),
+        Err("WRITE_FAILED") => Err(("500 Internal Server Error", "{\"error\":\"WRITE_FAILED\",\"why\":\"Could not write monitor settings\"}".into())),
+        Err(_) => Err(("500 Internal Server Error", "{\"error\":\"RESTART_FAILED\",\"why\":\"Monitor restart failed\"}".into())),
+    }
+}
+
+fn tg_pair(cfg: &crate::config::Config, body: &str) -> (&'static str, String) {
+    let tok_in = clean_tg_token(&jget(body, "token"));
+    if !tok_in.is_empty() {
+        if let Err(e) = tg_save_inner(cfg, &tok_in, "") {
+            return e;
+        }
+    }
+    let eff_tok = conf_value(&cfg.monitor_conf, "TG_TOKEN");
+    if eff_tok.is_empty() {
+        return ("400 Bad Request", "{\"error\":\"NO_TOKEN\",\"why\":\"Enter and save a bot API key first\"}".into());
+    }
+    let has_svc = std::path::Path::new(&cfg.monitor_service).exists();
+    if has_svc {
+        let _ = run_monitor(&cfg.monitor_service, cfg, &["stop"]);
+    }
+    let res = run_monitor_out(&cfg.monitor_bin, &cfg.monitor_conf, &cfg.monitor_state, &["detect"]);
+    let detected = res.as_ref().and_then(|(code, out, _)| {
+        (*code == 0)
+            .then(|| out.lines().find_map(|l| l.trim().strip_prefix("CHAT ")).map(|s| s.trim().to_string()))
+            .flatten()
+            .filter(|c| valid_tg_chat(c) && tg_bot_id(&eff_tok) != Some(c.as_str()))
+    });
+    if let Some(chat) = detected {
+        return match tg_apply_conf(cfg, None, Some(&chat), false) {
+            Ok(()) => ("200 OK", tg_state_json(cfg)),
+            Err("WRITE_FAILED") => ("500 Internal Server Error", "{\"error\":\"WRITE_FAILED\",\"why\":\"Could not write monitor settings\"}".into()),
+            Err(_) => ("500 Internal Server Error", "{\"error\":\"RESTART_FAILED\",\"why\":\"Monitor restart failed\"}".into()),
+        };
+    }
+    if has_svc {
+        let _ = run_monitor(&cfg.monitor_service, cfg, &["restart"]);
+    }
+    match res {
+        Some((2, _, _)) => ("400 Bad Request", "{\"error\":\"BAD_TOKEN\",\"why\":\"Telegram rejected this API key. Check @BotFather.\"}".into()),
+        Some((3, _, _)) => ("502 Bad Gateway", "{\"error\":\"NET\",\"why\":\"Could not reach Telegram. Check router internet.\"}".into()),
+        _ => ("404 Not Found", "{\"error\":\"NO_CHAT\",\"why\":\"No message found yet. Open your bot in Telegram, send /start, then click Detect chat.\"}".into()),
     }
 }
 
 fn tg_save(cfg: &crate::config::Config, body: &str) -> (&'static str, String) {
-    if jget(body, "action") == "test" {
+    let act = jget(body, "action");
+    if act == "test" {
         return tg_test(cfg);
     }
-    let tok_s = jget(body, "token");
+    if act == "pair" {
+        return tg_pair(cfg, body);
+    }
+    let tok = clean_tg_token(&jget(body, "token"));
     let chat_s = jget(body, "chat");
-    let tok = tok_s.trim();
     let chat = chat_s.trim();
-    if tok.is_empty() && chat.is_empty() {
-        return ("400 Bad Request", "{\"error\":\"EMPTY\",\"why\":\"Enter a bot API key or chat ID\"}".into());
+    match tg_save_inner(cfg, &tok, chat) {
+        Ok(out) => ("200 OK", out),
+        Err(e) => e,
     }
-    if !tok.is_empty() && !valid_tg_token(tok) {
-        return ("400 Bad Request", "{\"error\":\"BAD_TOKEN\",\"why\":\"Invalid bot API key format\"}".into());
-    }
-    if !chat.is_empty() && !valid_tg_chat(chat) {
-        return ("400 Bad Request", "{\"error\":\"BAD_CHAT\",\"why\":\"Chat ID must be digits (optional -)\"}".into());
-    }
-    let _g = TG_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-    let old = read(&cfg.monitor_conf);
-    let next = upsert_tg_conf(&old, (!tok.is_empty()).then_some(tok), (!chat.is_empty()).then_some(chat));
-    if crate::util::write_atomic_private(&cfg.monitor_conf, next.as_bytes()).is_err() {
-        return ("500 Internal Server Error", "{\"error\":\"WRITE_FAILED\",\"why\":\"Could not write monitor settings\"}".into());
-    }
-    let _ = std::fs::remove_file(format!("{}/offset", cfg.monitor_state));
-    let _ = std::fs::remove_file(format!("{}/commands.set", cfg.monitor_state));
-    if std::path::Path::new(&cfg.monitor_service).exists() {
-        let _ = run_monitor(&cfg.monitor_service, cfg, &["enable"]);
-        if !run_monitor(&cfg.monitor_service, cfg, &["restart"]) {
-            return ("500 Internal Server Error", "{\"error\":\"RESTART_FAILED\",\"why\":\"Monitor restart failed\"}".into());
-        }
-    }
-    ("200 OK", tg_state_json(cfg))
 }
 
 impl Console {
@@ -865,7 +1020,7 @@ fn body_of(req: &Request, conn: &mut Incoming) -> String {
 
 fn same_origin(req: &Request) -> bool {
     match (req.header("origin"), req.header("host")) {
-        (Some(o), Some(h)) => o.trim_start_matches("http://") == h,
+        (Some(o), Some(h)) => o.strip_prefix("http://").is_some_and(|s| s.trim_end_matches('/').eq_ignore_ascii_case(h)),
         (None, _) => true,
         _ => false,
     }
@@ -1393,6 +1548,7 @@ mod tests {
     #[test]
     fn telegram_validation_and_mask() {
         assert!(valid_tg_token("123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"));
+        assert_eq!(clean_tg_token("  bot123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11 "), "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11");
         assert!(!valid_tg_token("1234:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"));
         assert!(!valid_tg_token("123456:short"));
         assert!(!valid_tg_token("123456:ABC'DEF1234ghIkl-zyx57W2v1u123ew11"));
@@ -1422,7 +1578,14 @@ mod tests {
             use std::os::unix::fs::PermissionsExt;
             std::fs::write(&svc, format!("#!/bin/sh\necho \"svc:$1\" >> {}\n", log)).unwrap();
             std::fs::set_permissions(&svc, std::fs::Permissions::from_mode(0o755)).unwrap();
-            std::fs::write(&bin, format!("#!/bin/sh\necho \"bin:$*\" >> {}\n", log)).unwrap();
+            std::fs::write(
+                &bin,
+                format!(
+                    "#!/bin/sh\necho \"bin:$*\" >> {}\n[ \"$1\" = verify ] && {{ echo \"OK shopbot\"; exit 0; }}\n[ \"$1\" = detect ] && {{ echo \"CHAT 6184345139\"; exit 0; }}\nexit 0\n",
+                    log
+                ),
+            )
+            .unwrap();
             std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
         }
         let mut cfg = crate::config::Config::from_map(HashMap::new());
@@ -1436,10 +1599,14 @@ mod tests {
         assert!(std::path::Path::new(&format!("{}/offset", st)).exists());
 
         let tok = "987654:ABC-DEF1234ghIkl-zyx57W2v1u123ew11";
-        let (code, body) = tg_save(&cfg, &format!("{{\"token\":\"{}\",\"chat\":\"-10055\"}}", tok));
+        let (code, body) = tg_save(&cfg, &format!("{{\"token\":\"{}\",\"chat\":\"987654\"}}", tok));
+        assert_eq!(code, "400 Bad Request", "bot ID rejected as chat: {}", body);
+        assert!(body.contains("BOT_ID_AS_CHAT"), "{}", body);
+
+        let (code, body) = tg_save(&cfg, &format!("{{\"token\":\"bot{}\",\"chat\":\"-10055\"}}", tok));
         assert_eq!(code, "200 OK", "{}", body);
         assert!(body.contains("\"set\":true") && body.contains("\"hint\":\"987654...ew11\""), "{}", body);
-        assert!(body.contains("\"chat\":\"-10055\""), "{}", body);
+        assert!(body.contains("\"chat\":\"-10055\"") && body.contains("\"bot\":\"shopbot\""), "{}", body);
         assert!(!body.contains(tok), "raw token leaked: {}", body);
         let saved = std::fs::read_to_string(&conf).unwrap();
         assert!(saved.contains("SITE_NAME='Shop'") && saved.contains("#HEALTHCHECK_URL='https://hc.example/1'"), "{}", saved);
@@ -1453,6 +1620,9 @@ mod tests {
             assert_eq!(mode, 0o600);
             let calls = std::fs::read_to_string(&log).unwrap();
             assert!(calls.contains("svc:enable\n") && calls.contains("svc:restart\n"), "{}", calls);
+            let (pcode, pbody) = tg_save(&cfg, "{\"action\":\"pair\"}");
+            assert_eq!(pcode, "200 OK", "{}", pbody);
+            assert!(pbody.contains("\"chat\":\"6184345139\""), "{}", pbody);
             let (tcode, tbody) = tg_save(&cfg, "{\"action\":\"test\"}");
             assert_eq!(tcode, "200 OK", "{}", tbody);
             assert!(std::fs::read_to_string(&log).unwrap().contains("bin:send Test message"), "{}", log);

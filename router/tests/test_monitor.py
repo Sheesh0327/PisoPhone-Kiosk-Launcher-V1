@@ -28,6 +28,11 @@ class H(BaseHTTPRequestHandler):
 
     def do_GET(self):
         u = urlparse(self.path); q = parse_qs(u.query)
+        if u.path.endswith("/getMe"):
+            if os.path.exists(f"{tmp}/badtok"):
+                b = b'{"ok":false,"error_code":401,"description":"Unauthorized"}'
+                self.send_response(401); self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b); return
+            return self.reply({"ok": True, "result": {"id": 999000, "is_bot": True, "username": "shopbot"}})
         if u.path.endswith("/getUpdates"):
             off = int(q.get("offset", ["0"])[0])
             res = [m for m in queue if m["update_id"] >= off]
@@ -57,6 +62,9 @@ class H(BaseHTTPRequestHandler):
         if self.path.endswith("/sendMessage"):
             if os.path.exists(f"{tmp}/tgdown"):
                 self.send_response(500); self.end_headers(); return
+            if os.path.exists(f"{tmp}/tg403"):
+                b = b'{"ok":false,"error_code":403,"description":"Forbidden: the bot can\'t send messages to the bot"}'
+                self.send_response(403); self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b); return
             body = parse_qs(raw)
             if os.path.exists(f"{tmp}/failhtml") and body.get("parse_mode", [""])[0] == "HTML":
                 self.send_response(400); self.end_headers(); return
@@ -592,6 +600,30 @@ check("2 checks passed" in w_replies[5] and "1032 kB" in w_replies[5],
 r_usage = subprocess.run(["sh", MON, "invalidarg"], env=w_env, capture_output=True, text=True, timeout=10)
 check("phone" not in r_usage.stdout.lower() and "/phones" not in r_usage.stdout.lower() and "PisoWiFi site" in r_usage.stdout,
       f"wifi_only CLI usage omits phone wording: {r_usage.stdout}")
+
+# verify, detect, empty TG_CHAT poll skip, and send TG_ERR reporting
+v_conf = os.path.join(tmp, "v_mon.conf")
+open(v_conf, "w").write("TG_TOKEN='999000:ABC'\n")
+v_env = dict(env, PISO_MONITOR_CONF=v_conf, MON_STATE=os.path.join(tmp, "v_state"))
+r_v1 = subprocess.run(["sh", MON, "verify"], env=v_env, capture_output=True, text=True, timeout=10)
+check(r_v1.returncode == 0 and "OK shopbot" in r_v1.stdout, f"verify returns OK @username: {r_v1.stdout} {r_v1.stderr}")
+open(f"{tmp}/badtok", "w").close()
+r_v2 = subprocess.run(["sh", MON, "verify"], env=v_env, capture_output=True, text=True, timeout=10)
+os.remove(f"{tmp}/badtok")
+check(r_v2.returncode == 2 and "BAD_TOKEN" in r_v2.stdout, f"verify returns 2 on 401 Unauthorized: rc={r_v2.returncode} out={r_v2.stdout}")
+
+queue.append({"update_id": 100, "message": {"chat": {"id": 999000}, "text": "bot"}})
+queue.append({"update_id": 101, "message": {"chat": {"id": 6184345139}, "text": "/start"}})
+r_p0 = subprocess.run(["sh", MON, "poll", "1"], env=v_env, capture_output=True, text=True, timeout=10)
+check(r_p0.returncode == 0 and not os.path.exists(os.path.join(tmp, "v_state", "offset")),
+      "poll skips getUpdates while TG_CHAT is unset so /start is not discarded")
+r_det = subprocess.run(["sh", MON, "detect"], env=v_env, capture_output=True, text=True, timeout=10)
+check(r_det.returncode == 0 and "CHAT 6184345139" in r_det.stdout, f"detect ignores bot ID and picks owner chat: rc={r_det.returncode} out={r_det.stdout}")
+
+open(f"{tmp}/tg403", "w").close()
+r_s403 = subprocess.run(["sh", MON, "send", "hello"], env=env, capture_output=True, text=True, timeout=10)
+os.remove(f"{tmp}/tg403")
+check(r_s403.returncode == 1 and "TG_ERR:403:" in r_s403.stderr, f"send prints TG_ERR code to stderr on failure: {r_s403.stderr}")
 
 print(f"{checks} checks, {failures} failures")
 sys.exit(1 if failures else 0)

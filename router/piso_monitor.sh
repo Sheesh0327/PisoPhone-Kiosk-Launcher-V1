@@ -91,24 +91,35 @@ tg_card() {
 # tg_send <text>: to the owner's chat with HTML card formatting and plain-text fallback on 400.
 tg_send_m() {
 	_to="$1"; shift
-	[ -n "$TG_TOKEN" ] && [ -n "$TG_CHAT" ] || return 1
+	_TG_ERR=""
+	[ -n "$TG_TOKEN" ] && [ -n "$TG_CHAT" ] || { _TG_ERR="TG_ERR:NO_CONFIG"; return 1; }
 	_s_esc=$(html_esc "$SITE_NAME")
 	case "$1" in
 		"<b>$_s_esc · "*) _t="$1" ;;
 		*) _t="<b>$_s_esc</b> · $1" ;;
 	esac
-	_code=$(curl -s -m "$_to" -o /dev/null -w '%{http_code}' \
+	_resp=$(curl -s -m "$_to" -w '\n%{http_code}' \
 		--data-urlencode "chat_id=$TG_CHAT" \
 		--data-urlencode "parse_mode=HTML" \
 		--data-urlencode "text=$_t" \
 		"$TG_API/bot$TG_TOKEN/sendMessage")
+	_code=$(printf '%s\n' "$_resp" | tail -n 1)
 	[ "$_code" = 200 ] && return 0
-	[ "$_code" = 400 ] || return 1
+	if [ "$_code" != 400 ]; then
+		_desc=$(printf '%s\n' "$_resp" | sed -n 's/.*"description":"\([^"]*\)".*/\1/p' | head -n 1)
+		_TG_ERR="TG_ERR:${_code:-000}:${_desc}"
+		return 1
+	fi
 	_plain=$(strip_html "$_t" | cut -c1-3800)
-	curl -s -m "$_to" -o /dev/null -w '%{http_code}' \
+	_resp=$(curl -s -m "$_to" -w '\n%{http_code}' \
 		--data-urlencode "chat_id=$TG_CHAT" \
 		--data-urlencode "text=$_plain" \
-		"$TG_API/bot$TG_TOKEN/sendMessage" | grep -q '^200$'
+		"$TG_API/bot$TG_TOKEN/sendMessage")
+	_code=$(printf '%s\n' "$_resp" | tail -n 1)
+	[ "$_code" = 200 ] && return 0
+	_desc=$(printf '%s\n' "$_resp" | sed -n 's/.*"description":"\([^"]*\)".*/\1/p' | head -n 1)
+	_TG_ERR="TG_ERR:${_code:-000}:${_desc}"
+	return 1
 }
 tg_send() { tg_send_m 20 "$1"; }
 
@@ -1039,7 +1050,7 @@ handle_command() {  # handle_command <chat> <text>
 
 # poll_updates <long poll seconds>: one getUpdates round; every message goes through handle_command.
 poll_updates() {
-	[ -n "$TG_TOKEN" ] || { sleep "$1"; return 0; }
+	[ -n "$TG_TOKEN" ] && [ -n "$TG_CHAT" ] || { sleep "$1"; return 0; }
 	_off=$(cat "$S/offset" 2> /dev/null); _off=${_off:-0}
 	_r=$(curl -s -m $(($1 + 10)) "$TG_API/bot$TG_TOKEN/getUpdates?timeout=$1&offset=$_off&allowed_updates=%5B%22message%22%5D") || { sleep 5; return 0; }
 	printf '%s' "$_r" | grep -q '"ok":true' || { sleep 5; return 0; }
@@ -1071,6 +1082,36 @@ do_pair() {
 		_t=$((_t + 1))
 	done
 	echo "No message arrived."; return 1
+}
+
+tg_verify() {
+	[ -n "$TG_TOKEN" ] || { echo "BAD_TOKEN"; return 2; }
+	_resp=$(curl -s -m 6 -w '\n%{http_code}' "$TG_API/bot$TG_TOKEN/getMe") || { echo "NET"; return 3; }
+	_code=$(printf '%s\n' "$_resp" | tail -n 1)
+	if [ "$_code" = 200 ] && printf '%s' "$_resp" | grep -q '"ok":true'; then
+		_u=$(printf '%s' "$_resp" | sed -n 's/.*"username":"\([^"]*\)".*/\1/p' | head -n 1)
+		echo "OK $_u"
+		return 0
+	fi
+	case "$_code" in
+		401 | 404) echo "BAD_TOKEN"; return 2 ;;
+		*) echo "NET"; return 3 ;;
+	esac
+}
+
+tg_detect() {
+	[ -n "$TG_TOKEN" ] || { echo "BAD_TOKEN"; return 2; }
+	_resp=$(curl -s -m 6 -w '\n%{http_code}' "$TG_API/bot$TG_TOKEN/getUpdates?timeout=2&allowed_updates=%5B%22message%22%5D") || { echo "NET"; return 3; }
+	_code=$(printf '%s\n' "$_resp" | tail -n 1)
+	case "$_code" in 401 | 404) echo "BAD_TOKEN"; return 2 ;; esac
+	[ "$_code" = 200 ] && printf '%s' "$_resp" | grep -q '"ok":true' || { echo "NET"; return 3; }
+	_bot_id="${TG_TOKEN%%:*}"
+	_chat=$(printf '%s' "$_resp" | grep -o '"chat":{"id":-\{0,1\}[0-9]*' | sed 's/.*"id"://' | awk -v b="$_bot_id" '$1 != b { c = $1 } END { print c }')
+	case "$_chat" in
+		"" | *[!-0-9]*) echo "NO_MSG"; return 1 ;;
+	esac
+	echo "CHAT $_chat"
+	return 0
 }
 
 do_run() {
@@ -1114,7 +1155,9 @@ case "$1" in
 	run) do_run ;;
 	tick) do_tick ;;
 	pair) do_pair ;;
-	send) shift; tg_send "$(html_esc "$*")" ;;
+	verify) tg_verify ;;
+	detect) tg_detect ;;
+	send) shift; tg_send "$(html_esc "$*")" || { [ -n "$_TG_ERR" ] && echo "$_TG_ERR" >&2; exit 1; } ;;
 	note) shift; note "$*" ;;             # for the setup program and tests
 	poll) poll_updates "${2:-1}" ;;       # for tests: one round
 	*) show_usage; exit 1 ;;

@@ -184,11 +184,11 @@ r, nl, ll = run_iso()
 check(r.returncode == 0 and nl.count("delete table bridge piso_guest") == 1 and 'meta ibrname "br-guest" counter drop' in nl and ll == "",
       "the guest bridge rule drops what would pass from one guest port to another: " + nl[:400])
 check("delete table bridge piso_kiosk" in nl and "ether saddr aa:bb:cc:dd:ee:09 accept" in nl and "ether daddr aa:bb:cc:dd:ee:09 accept" in nl and "arp daddr ip 10.0.0.10 accept" in nl
-      and 'iifname "phy*" counter drop' in nl and 'oifname "phy*" counter drop' in nl and 'iifname "wlan*" counter drop' in nl,
-      "rental phones: only the coin box (by its address) is let through, everything else on a Wi-Fi port is dropped")
-check('iifname "phy*" ip daddr 10.0.0.1 tcp dport { 22, 80, 443, 8080, 8443, 8081, 8082 } counter drop' in nl and "dport 2050" not in nl,
-      "the router's login pages and the console (and the coin box page one port up) are not offered on Wi-Fi, and only on the router's own kiosk address (a guest's web request to any website is not touched): " + nl[-900:])
-check('iifname "phy*" ether saddr != aa:bb:cc:dd:ee:09 meta mark set meta mark | 0x00200000' in nl, "what comes in by Wi-Fi (except the coin box) is marked for the firewall rule")
+      and 'meta ibrname "br-lan" iifname "phy*" counter drop' in nl and 'meta ibrname "br-lan" oifname "phy*" counter drop' in nl and 'meta ibrname "br-lan" iifname "wlan*" counter drop' in nl,
+      "rental phones: only the coin box (by its address) is let through, everything else on a br-lan Wi-Fi port is dropped")
+check('meta ibrname "br-lan" iifname "phy*" ip daddr 10.0.0.1 tcp dport { 22, 80, 443, 8080, 8443, 8081, 8082 } counter drop' in nl and "dport 2050" not in nl,
+      "the router's login pages and the console (and the coin box page one port up) are not offered on br-lan Wi-Fi, leaving br-guest port-80 redirect intact: " + nl[-900:])
+check('meta ibrname "br-lan" iifname "phy*" ether saddr != aa:bb:cc:dd:ee:09 meta mark set meta mark | 0x00200000' in nl, "what comes in by br-lan Wi-Fi (except the coin box) is marked for the firewall rule")
 tether_nl = nl.split("table inet piso_anti_tether {", 1)[1].split("\n}\n", 1)[0] if "table inet piso_anti_tether {" in nl else ""
 check("hook prerouting priority -150" in tether_nl and "hook postrouting priority 300" in tether_nl and "hook forward" not in tether_nl
       and 'oifname "br-guest" meta nfproto ipv4 counter ip ttl set 1' in tether_nl
@@ -203,15 +203,25 @@ open(f"{iso}/piso.conf", "w").write("")
 r, nl, ll = run_iso()
 check('ip ttl set 1' not in nl and "ARGS delete table inet piso_anti_tether" in nl and ll == "", "when br-guest is absent anti-tether table is deleted without warnings: " + nl[:400])
 os.rename(f"{iso}/sys/br-guest.off", f"{iso}/sys/br-guest")
-# a router that cannot match the bridge name: the guest ports are named instead; and the rule is the same each time it runs
+# a router that cannot match the bridge name: the guest ports are named instead; piso_kiosk scopes ONLY to br-lan Wi-Fi ports, never br-guest ports (preserving 10.0.0.1 redirect)
 open(f"{iso}/nft-noname", "w").close()
 r, nl, ll = run_iso()
 check(r.returncode == 0 and 'iifname { "phy0-ap1","phy1-ap1" } oifname { "phy0-ap1","phy1-ap1" } counter drop' in nl and ll == "", "without bridge-name matching the guest ports are listed instead: " + nl[:300])
+pk_empty = nl.rsplit("table bridge piso_kiosk {", 1)[1]
+check('iifname "phy*"' not in pk_empty and "tcp dport" not in pk_empty,
+      "without bridge-name matching and empty br-lan Wi-Fi, piso_kiosk loads cleanly without blocking br-guest phy* ports: " + nl[-400:])
+os.makedirs(f"{iso}/sys/br-lan/brif/phy0-ap2", exist_ok=True)
+os.makedirs(f"{iso}/sys/br-lan/brif/lan1", exist_ok=True)
+r, nl, ll = run_iso()
+pk = nl.rsplit("table bridge piso_kiosk {", 1)[1]
+check(r.returncode == 0 and 'iifname { "phy0-ap2" }' in pk and "phy0-ap1" not in pk and "lan1" not in pk and 'iifname "phy*"' not in pk and ll == "",
+      "without bridge-name matching, piso_kiosk matches only br-lan Wi-Fi ports (never br-guest or Ethernet): " + pk)
+shutil.rmtree(f"{iso}/sys/br-lan/brif/phy0-ap2"); shutil.rmtree(f"{iso}/sys/br-lan/brif/lan1")
 os.remove(f"{iso}/nft-noname")
 # the admin switch, and a router before the box is paired
 open(f"{iso}/piso.conf", "w").write("WIFI_ADMIN='on'\n"); open(f"{iso}/coin.conf", "w").write("GW_BOX='10.0.0.10'\nGW_BOX_MAC=''\nCONSOLE_BIND='10.0.0.1'\n")
 r, nl, ll = run_iso()
-check("tcp dport" not in nl and "ether saddr aa:bb" not in nl and 'iifname "phy*" counter drop' in nl and 'iifname "phy*" meta mark set meta mark | 0x00200000' in nl,
+check("tcp dport" not in nl and "ether saddr aa:bb" not in nl and 'meta ibrname "br-lan" iifname "phy*" counter drop' in nl and 'meta ibrname "br-lan" iifname "phy*" meta mark set meta mark | 0x00200000' in nl,
       "wifi-admin on leaves the login pages open on Wi-Fi; before the box is paired phones are isolated and no address is named: " + nl[-500:])
 # the console as the front page (port 80): its ports are listed once each
 open(f"{iso}/coin.conf", "w").write("GW_BOX='10.0.0.10'\nGW_BOX_MAC='AA:BB:CC:DD:EE:09'\nCONSOLE_BIND='10.0.0.1'\nCONSOLE_PORT='80'\n"); open(f"{iso}/piso.conf", "w").write("")
@@ -234,13 +244,13 @@ open(f"{iso}/bin/ip", "w").write('#!/bin/sh\n[ -e ' + iso + '/ip-fail ] && exit 
 for bind in ("0.0.0.0", ""):
     open(f"{iso}/coin.conf", "w").write(f"GW_BOX='10.0.0.10'\nGW_BOX_MAC='AA:BB:CC:DD:EE:09'\nCONSOLE_BIND='{bind}'\n")
     r, nl, ll = run_iso()
-    check('iifname "phy*" ip daddr 10.0.0.1 tcp dport { 22, 80, 443, 8080, 8443, 8081, 8082 } counter drop' in nl,
+    check('meta ibrname "br-lan" iifname "phy*" ip daddr 10.0.0.1 tcp dport { 22, 80, 443, 8080, 8443, 8081, 8082 } counter drop' in nl,
           f"RT-18: CONSOLE_BIND '{bind}': the router's own address is read from br-lan: " + nl[-600:])
 open(f"{iso}/ip-fail", "w").close()
 for bind in ("0.0.0.0", ""):
     open(f"{iso}/coin.conf", "w").write(f"GW_BOX='10.0.0.10'\nGW_BOX_MAC='AA:BB:CC:DD:EE:09'\nCONSOLE_BIND='{bind}'\n")
     r, nl, ll = run_iso()
-    check('iifname "phy*" tcp dport { 8081, 8082 } counter drop' in nl and "ip daddr 0.0.0.0" not in nl and "dport { 22, 80" not in nl,
+    check('meta ibrname "br-lan" iifname "phy*" tcp dport { 8081, 8082 } counter drop' in nl and "ip daddr 0.0.0.0" not in nl and "dport { 22, 80" not in nl,
           f"RT-18: CONSOLE_BIND '{bind}', router address unknown: the console ports are closed for any address, ports 80 and 443 are left alone: " + nl[-600:])
 os.remove(f"{iso}/ip-fail"); os.remove(f"{iso}/bin/ip")
 
