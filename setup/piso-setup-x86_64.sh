@@ -29,7 +29,7 @@
 
 VERSION="dev"
 # the release of this file (setup/RELEASE): routers install only a higher release that the owner signed
-PISO_RELEASE='1.5.45'
+PISO_RELEASE='1.5.46'
 # the CPU family the portal program in this file is built for (router_family below names the family of the router it runs on)
 PISO_ARCH='x86_64'
 
@@ -2610,6 +2610,7 @@ exit $?
 CONF="${PISO_MONITOR_CONF:-/etc/piso-monitor.conf}"
 # shellcheck source=/dev/null
 [ -r "$CONF" ] && . "$CONF"
+[ -n "$TG_TOKEN" ] && [ "$TG_CHAT" = "${TG_TOKEN%%:*}" ] && TG_CHAT=""
 TG_API="${TG_API:-https://api.telegram.org}"
 S="${MON_STATE:-/tmp/piso-monitor}"
 PORTAL="${PORTAL:-/usr/bin/pisoportal}"
@@ -3591,8 +3592,31 @@ cmd_help_text() {
 /autoupdate · /update · /restart · /reboot"
 }
 
+save_paired_chat() {
+	TG_CHAT="$1"
+	[ -n "$CONF" ] || return 0
+	(
+		umask 077
+		if [ -r "$CONF" ]; then
+			grep -v '^TG_CHAT=' "$CONF" > "$CONF.tmp" 2> /dev/null || : > "$CONF.tmp"
+		else
+			: > "$CONF.tmp"
+		fi
+		printf "TG_CHAT='%s'\n" "$TG_CHAT" >> "$CONF.tmp"
+		mv "$CONF.tmp" "$CONF" 2> /dev/null
+	)
+}
+
 handle_command() {  # handle_command <chat> <text>
-	if [ "$1" != "$TG_CHAT" ]; then say "ignored a message from chat $1"; return 0; fi
+	case "$1" in "" | *[!-0-9]* | "${TG_TOKEN%%:*}") return 0 ;; esac
+	if [ -z "$TG_CHAT" ]; then
+		save_paired_chat "$1"
+		say "paired owner chat $TG_CHAT"
+		note "Telegram connected to chat $TG_CHAT."
+	elif [ "$1" != "$TG_CHAT" ]; then
+		say "ignored a message from chat $1"
+		return 0
+	fi
 	set -f   # the words of the message, split on purpose; never file names
 	# shellcheck disable=SC2086
 	set -- $2
@@ -3640,7 +3664,7 @@ handle_command() {  # handle_command <chat> <text>
 
 # poll_updates <long poll seconds>: one getUpdates round; every message goes through handle_command.
 poll_updates() {
-	[ -n "$TG_TOKEN" ] && [ -n "$TG_CHAT" ] || { sleep "$1"; return 0; }
+	[ -n "$TG_TOKEN" ] || { sleep "$1"; return 0; }
 	_off=$(cat "$S/offset" 2> /dev/null); _off=${_off:-0}
 	_r=$(curl -s -m $(($1 + 10)) "$TG_API/bot$TG_TOKEN/getUpdates?timeout=$1&offset=$_off&allowed_updates=%5B%22message%22%5D") || { sleep 5; return 0; }
 	printf '%s' "$_r" | grep -q '"ok":true' || { sleep 5; return 0; }
@@ -3691,11 +3715,15 @@ tg_verify() {
 
 tg_detect() {
 	[ -n "$TG_TOKEN" ] || { echo "BAD_TOKEN"; return 2; }
+	_bot_id="${TG_TOKEN%%:*}"
+	case "$TG_CHAT" in
+		"" | *[!-0-9]* | "$_bot_id") ;;
+		*) echo "CHAT $TG_CHAT"; return 0 ;;
+	esac
 	_resp=$(curl -s -m 6 -w '\n%{http_code}' "$TG_API/bot$TG_TOKEN/getUpdates?timeout=2&allowed_updates=%5B%22message%22%5D") || { echo "NET"; return 3; }
 	_code=$(printf '%s\n' "$_resp" | tail -n 1)
 	case "$_code" in 401 | 404) echo "BAD_TOKEN"; return 2 ;; esac
 	if [ "$_code" != 200 ] || ! printf '%s' "$_resp" | grep -q '"ok":true'; then echo "NET"; return 3; fi
-	_bot_id="${TG_TOKEN%%:*}"
 	_chat=$(printf '%s' "$_resp" | grep -o '"chat":{"id":-\{0,1\}[0-9]*' | sed 's/.*"id"://' | awk -v b="$_bot_id" '$1 != b { c = $1 } END { print c }')
 	case "$_chat" in
 		"" | *[!-0-9]*) echo "NO_MSG"; return 1 ;;

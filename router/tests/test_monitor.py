@@ -601,9 +601,9 @@ r_usage = subprocess.run(["sh", MON, "invalidarg"], env=w_env, capture_output=Tr
 check("phone" not in r_usage.stdout.lower() and "/phones" not in r_usage.stdout.lower() and "PisoWiFi site" in r_usage.stdout,
       f"wifi_only CLI usage omits phone wording: {r_usage.stdout}")
 
-# verify, detect, empty TG_CHAT poll skip, and send TG_ERR reporting
+# verify, auto-pair on /start when TG_CHAT unset or bot ID, detect, and send TG_ERR reporting
 v_conf = os.path.join(tmp, "v_mon.conf")
-open(v_conf, "w").write("TG_TOKEN='999000:ABC'\n")
+open(v_conf, "w").write("TG_TOKEN='999000:ABC'\nTG_CHAT='999000'\n")
 v_env = dict(env, PISO_MONITOR_CONF=v_conf, MON_STATE=os.path.join(tmp, "v_state"))
 r_v1 = subprocess.run(["sh", MON, "verify"], env=v_env, capture_output=True, text=True, timeout=10)
 check(r_v1.returncode == 0 and "OK shopbot" in r_v1.stdout, f"verify returns OK @username: {r_v1.stdout} {r_v1.stderr}")
@@ -612,13 +612,22 @@ r_v2 = subprocess.run(["sh", MON, "verify"], env=v_env, capture_output=True, tex
 os.remove(f"{tmp}/badtok")
 check(r_v2.returncode == 2 and "BAD_TOKEN" in r_v2.stdout, f"verify returns 2 on 401 Unauthorized: rc={r_v2.returncode} out={r_v2.stdout}")
 
+queue.clear()
 queue.append({"update_id": 100, "message": {"chat": {"id": 999000}, "text": "bot"}})
 queue.append({"update_id": 101, "message": {"chat": {"id": 6184345139}, "text": "/start"}})
+n_before = len(sent)
 r_p0 = subprocess.run(["sh", MON, "poll", "1"], env=v_env, capture_output=True, text=True, timeout=10)
-check(r_p0.returncode == 0 and not os.path.exists(os.path.join(tmp, "v_state", "offset")),
-      "poll skips getUpdates while TG_CHAT is unset so /start is not discarded")
+v_saved = open(v_conf).read()
+check(r_p0.returncode == 0 and "TG_CHAT='6184345139'" in v_saved and "TG_CHAT='999000'" not in v_saved
+      and len(sent) == n_before + 1 and sent[-1][0] == "6184345139",
+      f"poll auto-pairs owner chat on /start and clears stale bot-ID chat: conf={v_saved!r} sent={sent[n_before:]}")
+queue.append({"update_id": 102, "message": {"chat": {"id": 777777}, "text": "/status"}})
+n_after = len(sent)
+subprocess.run(["sh", MON, "poll", "1"], env=v_env, capture_output=True, text=True, timeout=10)
+check(len(sent) == n_after and "TG_CHAT='6184345139'" in open(v_conf).read(),
+      "subsequent messages from other chats are ignored after auto-pairing")
 r_det = subprocess.run(["sh", MON, "detect"], env=v_env, capture_output=True, text=True, timeout=10)
-check(r_det.returncode == 0 and "CHAT 6184345139" in r_det.stdout, f"detect ignores bot ID and picks owner chat: rc={r_det.returncode} out={r_det.stdout}")
+check(r_det.returncode == 0 and "CHAT 6184345139" in r_det.stdout, f"detect returns auto-paired chat: rc={r_det.returncode} out={r_det.stdout}")
 
 open(f"{tmp}/tg403", "w").close()
 r_s403 = subprocess.run(["sh", MON, "send", "hello"], env=env, capture_output=True, text=True, timeout=10)
