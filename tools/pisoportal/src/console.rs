@@ -371,12 +371,12 @@ fn upsert_tg_conf(old: &str, token: Option<&str>, chat: Option<&str>) -> String 
 fn tg_state_json(cfg: &crate::config::Config) -> String {
     let tok = conf_value(&cfg.monitor_conf, "TG_TOKEN");
     let chat = conf_value(&cfg.monitor_conf, "TG_CHAT");
-    format!(
-        "{{\"ok\":true,\"set\":{},\"hint\":\"{}\",\"chat\":\"{}\"}}",
-        !tok.is_empty(),
-        json_esc(&mask_tg_token(&tok)),
-        json_esc(&chat)
-    )
+    format!("{{\"ok\":true,\"set\":{},\"hint\":\"{}\",\"chat\":\"{}\"}}", !tok.is_empty(), json_esc(&mask_tg_token(&tok)), json_esc(&chat))
+}
+
+fn run_monitor(bin: &str, cfg: &crate::config::Config, args: &[&str]) -> bool {
+    let out = Command::new(bin).env("PISO_MONITOR_CONF", &cfg.monitor_conf).env("MON_STATE", &cfg.monitor_state).args(args).output();
+    matches!(out, Ok(o) if o.status.success())
 }
 
 fn tg_test(cfg: &crate::config::Config) -> (&'static str, String) {
@@ -386,14 +386,10 @@ fn tg_test(cfg: &crate::config::Config) -> (&'static str, String) {
     if conf_value(&cfg.monitor_conf, "TG_CHAT").is_empty() {
         return ("400 Bad Request", "{\"error\":\"NO_CHAT\",\"why\":\"Set a chat ID first\"}".into());
     }
-    match Command::new(&cfg.monitor_bin)
-        .env("PISO_MONITOR_CONF", &cfg.monitor_conf)
-        .env("MON_STATE", &cfg.monitor_state)
-        .args(["send", "Test message from PisoHub Console."])
-        .output()
-    {
-        Ok(o) if o.status.success() => ("200 OK", "{\"ok\":true,\"sent\":true}".into()),
-        _ => ("502 Bad Gateway", "{\"error\":\"SEND_FAILED\",\"why\":\"Could not send to Telegram\"}".into()),
+    if run_monitor(&cfg.monitor_bin, cfg, &["send", "Test message from PisoHub Console."]) {
+        ("200 OK", "{\"ok\":true,\"sent\":true}".into())
+    } else {
+        ("502 Bad Gateway", "{\"error\":\"SEND_FAILED\",\"why\":\"Could not send to Telegram\"}".into())
     }
 }
 
@@ -423,17 +419,8 @@ fn tg_save(cfg: &crate::config::Config, body: &str) -> (&'static str, String) {
     let _ = std::fs::remove_file(format!("{}/offset", cfg.monitor_state));
     let _ = std::fs::remove_file(format!("{}/commands.set", cfg.monitor_state));
     if std::path::Path::new(&cfg.monitor_service).exists() {
-        let _ = Command::new(&cfg.monitor_service)
-            .env("PISO_MONITOR_CONF", &cfg.monitor_conf)
-            .env("MON_STATE", &cfg.monitor_state)
-            .arg("enable")
-            .output();
-        let out = Command::new(&cfg.monitor_service)
-            .env("PISO_MONITOR_CONF", &cfg.monitor_conf)
-            .env("MON_STATE", &cfg.monitor_state)
-            .arg("restart")
-            .output();
-        if !matches!(out, Ok(o) if o.status.success()) {
+        let _ = run_monitor(&cfg.monitor_service, cfg, &["enable"]);
+        if !run_monitor(&cfg.monitor_service, cfg, &["restart"]) {
             return ("500 Internal Server Error", "{\"error\":\"RESTART_FAILED\",\"why\":\"Monitor restart failed\"}".into());
         }
     }
