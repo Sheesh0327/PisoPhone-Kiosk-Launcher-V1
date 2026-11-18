@@ -622,24 +622,30 @@ impl Console {
         let console = Arc::clone(c);
         std::thread::spawn(move || {
             use std::io::BufRead;
-            let mut last_err = String::new();
-            if let Some(out) = child.stdout.take() {
-                for line in std::io::BufReader::new(out).lines().map_while(Result::ok) {
-                    let cleaned = clean_pair_line(&line);
-                    if cleaned.is_empty() {
-                        continue;
+            let reader = child.stdout.take().map(|out| {
+                let c2 = Arc::clone(&console);
+                std::thread::spawn(move || {
+                    let mut last_err = String::new();
+                    for line in std::io::BufReader::new(out).lines().map_while(Result::ok) {
+                        let cleaned = clean_pair_line(&line);
+                        if cleaned.is_empty() {
+                            continue;
+                        }
+                        if let Some(err) = cleaned.strip_prefix("ERROR:") {
+                            last_err = err.trim().to_string();
+                        }
+                        let mut p = c2.pair.lock().unwrap();
+                        if p.generation != gen || p.state != "running" {
+                            break;
+                        }
+                        p.detail = cleaned;
                     }
-                    if let Some(err) = cleaned.strip_prefix("ERROR:") {
-                        last_err = err.trim().to_string();
-                    }
-                    let mut p = console.pair.lock().unwrap();
-                    if p.generation != gen {
-                        return;
-                    }
-                    p.detail = cleaned;
-                }
-            }
+                    last_err
+                })
+            });
             let ok = child.wait().map(|s| s.success()).unwrap_or(false);
+            let cancelling = console.pair.lock().unwrap().state == "cancelling";
+            let last_err = if cancelling { String::new() } else { reader.and_then(|r| r.join().ok()).unwrap_or_default() };
             if ok {
                 crate::reconcile::clear_cache();
             }
@@ -1235,7 +1241,11 @@ mod tests {
 
         // Cancel a running job cleanly
         console.core.nds.state("00:00:00:00:00:00");
-        std::fs::write(&script, "#!/bin/sh\ntrap 'exit 1' TERM\necho \"== Waiting\"\nsleep 10 &\nwait $!\n").unwrap();
+        std::fs::write(
+            &script,
+            "#!/bin/sh\np=''\ntrap '[ -n \"$p\" ] && kill \"$p\" 2>/dev/null; exit 1' TERM\necho \"== Waiting\"\nsleep 10 >/dev/null 2>&1 &\np=$!\nwait \"$p\"\n",
+        )
+        .unwrap();
         let (code, body) = Console::pair_post(&console, "{}");
         assert_eq!(code, "200 OK", "{}", body);
         let (ccode, cbody) = Console::pair_post(&console, "{\"cancel\":\"1\"}");

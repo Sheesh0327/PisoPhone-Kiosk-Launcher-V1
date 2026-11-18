@@ -22,9 +22,11 @@ open(f"{tmp}/piso-setup", "w").write(f"""#!/bin/sh
 [ "$1" = pair ] || exit 1
 echo "== Pairing the coin box"
 if [ -f "{tmp}/pair.slow" ]; then
-    trap 'echo "restored"; exit 1' TERM
-    sleep 10 &
-    wait $!
+    p=""
+    trap '[ -n "$p" ] && kill "$p" 2>/dev/null; echo "restored"; exit 1' TERM
+    sleep 10 >/dev/null 2>&1 &
+    p=$!
+    wait "$p"
     exit 1
 fi
 echo "BOX_ADMIN_PASS='box-pass-123'" > "{tmp}/setup.conf"
