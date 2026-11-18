@@ -373,6 +373,13 @@ r = run("apply")
 check(r.returncode == 0 and Box.manifests[-1]["sig"] == "WIFI-SIG" and Box.uploads[-1] == IMAGE + b"W",
       f"wifi: box-update fetches /update/wifi/firmware.json instead of full: {Box.manifests} rc={r.returncode} out={r.stdout}")
 
+# missing /update/wifi/firmware.json refuses instead of falling back to full firmware.json
+os.remove(f"{www}/wifi/firmware.json")
+Box.uploads.clear()
+r = run("apply")
+check(r.returncode == 0 and "No box firmware information" in r.stdout and "/update/wifi" in r.stdout and not Box.uploads,
+      f"wifi: missing /update/wifi/firmware.json never falls back to full: rc={r.returncode} out={r.stdout}")
+
 # ---- the hourly timer carries it ---------------------------------------------------------------------------------------------------
 check(subprocess.run(["sh", "-n", inst]).returncode == 0, "the installed command is valid shell")
 check(re.search(r"box-update \[check\]", open(SCRIPT).read()) is not None, "the usage line lists box-update")

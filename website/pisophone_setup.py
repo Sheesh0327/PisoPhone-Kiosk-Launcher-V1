@@ -2849,12 +2849,40 @@ def flash_manifest(branch, cache_dir, opener=urllib.request.urlopen, emit=say):
     return manifest
 
 
+def box_product_for(choice):
+    """Maps a setup product/mode choice ("wifi", "phone", "both", "full") to the ESP32 firmware product."""
+    if choice == "wifi":
+        return "wifi"
+    if choice == "phone":
+        return "phone"
+    if choice in ("both", "full", "", None):
+        return "full"
+    raise SetupError(f"unsupported coin box product {choice!r}.")
+
+
 def choose_build(manifest, chip, product="full"):
     """The image of a product ("full", "phone" or "wifi") for a chip ("ESP32-C3", "ESP32"), or None. A list entry without a
     product is the full one; the image of another product is never taken instead."""
+    if product not in ("full", "phone", "wifi"):
+        raise SetupError(f"unsupported coin box product {product!r}.")
     name = (chip or "").upper()
     return next((b for b in manifest["builds"]
                  if str(b.get("chip", "")).upper() == name and (b.get("product") or "full") == product), None)
+
+
+def verify_product_image(image_path, product):
+    """Defense-in-depth check on real firmware binaries (>=100 KB) so a full image can never be flashed for wifi-only or vice versa."""
+    if product not in ("full", "phone", "wifi"):
+        raise SetupError(f"unsupported coin box product {product!r}.")
+    with open(image_path, "rb") as f:
+        data = f.read()
+    if len(data) < 100_000:
+        return
+    if product == "wifi":
+        if b"TechNet PisoWiFi" not in data or b"TechNet PisoHub admin" in data:
+            raise SetupError("refused to write non-PisoWiFi coin box firmware when PisoWiFi only was selected.")
+    elif b"TechNet PisoWiFi" in data:
+        raise SetupError("refused to write PisoWiFi-only firmware when a PisoPhone coin box build was selected.")
 
 
 def fetch_image(branch, build, cache_dir, opener=urllib.request.urlopen):
@@ -2888,6 +2916,8 @@ def fetch_image(branch, build, cache_dir, opener=urllib.request.urlopen):
 def flash_box(branch, port, emit, cache_dir, opener=urllib.request.urlopen, tool=None, image=None, product="full"):
     """Writes the PisoPhone software to the board on `port`: detects the chip, takes the image for it (checked), erases the
     whole flash (a used box then forgets its old Wi-Fi), writes and verifies it, restarts the board. Returns (chip, version)."""
+    if product not in ("full", "phone", "wifi"):
+        raise SetupError(f"unsupported coin box product {product!r}.")
     tool = tool or esptool_module()
     if tool is None:
         raise SetupError("the flashing tool is missing: run  pip install esptool  and start this again.")
@@ -2907,16 +2937,21 @@ def flash_box(branch, port, emit, cache_dir, opener=urllib.request.urlopen, tool
         raise SetupError("the board did not say which chip it has. " + board_advice("failed to connect"))
     chip = match.group(1).upper()
     if image:   # a merged image of your own build (terminal mode), written from the start of the flash
-        build, manifest = {"offset": 0}, {"version": "your own build"}
-        emit(f"{chip} found. Writing {image}.")
+        build, manifest = {"offset": 0, "file": os.path.basename(image)}, {"version": "your own build"}
+        fw_ver = "your own build"
+        emit(f"{chip} found. Writing {image} ({product}).")
     else:
         manifest = flash_manifest(branch, cache_dir, opener, emit)
         build = choose_build(manifest, chip, product)
         if not build:
             chips = list(dict.fromkeys(b["chip"] for b in manifest["builds"] if (b.get("product") or "full") == product))
+            if product == "wifi" and not chips:
+                raise SetupError(f"this board is an {chip}; no PisoWiFi-only coin box software matches it in the software list.")
             raise SetupError(f"this board is an {chip}; PisoPhone software exists for {' and '.join(chips) or 'no board'}.")
-        emit(f"{chip} found. Software version {manifest.get('version', '?')} ({build['size'] / 1048576:.2f} MB).")
+        fw_ver = build.get("version") or manifest.get("version", "?")
+        emit(f"{chip} found. Software version {fw_ver} ({build['size'] / 1048576:.2f} MB, {product}: {build['file']}).")
         image = fetch_image(branch, build, cache_dir, opener)
+    verify_product_image(image, product)
     emit("== Writing the coin box software (erasing the board first; about a minute)")
     last = [-10]
 
@@ -2935,7 +2970,7 @@ def flash_box(branch, port, emit, cache_dir, opener=urllib.request.urlopen, tool
     except SetupError as e:
         raise SetupError(with_advice(e, str(e)))
     emit("Written and verified. The board restarts by itself; keep it powered (the USB cable does that) while it is set up.")
-    return chip, manifest.get("version", "?")
+    return chip, fw_ver
 
 
 def preflight(branch, opener=urllib.request.urlopen, tool=esptool_module, which=shutil.which):
@@ -2992,7 +3027,8 @@ def run_setup(args, ssh, read=input, read_secret=getpass.getpass, probe=port_ope
               board_finder=usb_boards, flasher=None, mac_reader=None, opener=urllib.request.urlopen):
     if flasher is None:
         def flasher(port, emit):
-            return flash_box(args.branch, port, emit, flash_cache_dir(), product="wifi" if getattr(args, "product", None) == "wifi" else "full")
+            chosen = answers.get("SHOP_PRODUCT") or getattr(args, "product", None)
+            return flash_box(args.branch, port, emit, flash_cache_dir(), product=box_product_for(chosen))
     host = args.router or find_router(probe)
     if not host:
         raise SetupError(
@@ -5067,7 +5103,11 @@ class Session:
             self.install.update(running=True, stage=0, activity="Starting...", error=None, banner=None, ok=False, lines=[])
             self.result = None
             answers = self.install_answers()
-            flash_product = "wifi" if self.product() == "wifi" else "full"
+            if self.mode not in ("full", "wifi"):
+                raise SetupError(f"cannot run router installation in {self.mode!r} mode.")
+            flash_product = box_product_for(answers.get("SHOP_PRODUCT"))
+            if (self.mode == "wifi") != (flash_product == "wifi"):
+                raise SetupError("PisoWiFi-only selection mismatch: refusing to flash non-PisoWiFi firmware.")
             write_box = not (self.skip_flash or self.flashed)
             host_hint = self.router["host"]
 
@@ -5103,6 +5143,7 @@ class Session:
                     if len(boards) > 1:
                         raise SetupError("several USB boards are connected: unplug all but the coin box.")
                     stage(0)
+                    self.log(f"== Firmware product for coin box: {flash_product}")
                     self.core.flash_box(boards[0][0], self.log, product=flash_product)
                     try:
                         mac = self.core.board_mac(boards[0][0])

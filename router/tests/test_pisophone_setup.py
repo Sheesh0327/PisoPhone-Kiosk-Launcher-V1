@@ -343,7 +343,7 @@ def site_opener(req, timeout=None):
 
 
 def e2e(answers=(), secrets_=(), lan="192.168.1.1", probe="factory", result="ok", up=lambda h: True, moved=True, needpw=None,
-        saved_pw=None, inet=True, opener=site_opener, **opts):
+        saved_pw=None, inet=True, opener=site_opener, flasher="FAKE", **opts):
     for f in ("needpw", "ssh.log", "ssh-input.log", "ssh-upload.log", "wget.log", "uci.log", "network.log"):
         if os.path.exists(f"{tmp}/{f}"):
             os.remove(f"{tmp}/{f}")
@@ -373,7 +373,9 @@ def e2e(answers=(), secrets_=(), lan="192.168.1.1", probe="factory", result="ok"
     rc, err = None, None
     try:
         rc = ps.run_setup(types.SimpleNamespace(**a), ps.Ssh(tmp), read=reader(*answers), read_secret=reader(*secrets_),
-                          board_finder=lambda: list(BOARDS), flasher=lambda port, emit: FLASHED.append(port), mac_reader=lambda port: MAC_READ.get("mac", ""),
+                          board_finder=lambda: list(BOARDS),
+                          flasher=(lambda port, emit: FLASHED.append(port)) if flasher == "FAKE" else flasher,
+                          mac_reader=lambda port: MAC_READ.get("mac", ""),
                           probe=lambda h: h == (open(f"{tmp}/lan").read().strip()) and up(h),
                           wait=lambda probe, renew: moved and probe("10.0.0.1"), open_page=lambda url, chromium=True: opened.append(url),
                           opener=opener)
@@ -941,6 +943,90 @@ err = flash_error(tool=None)
 ps.esptool_module = orig
 check(err and "pip install esptool" in err, "esptool missing: how to get it: " + str(err))
 
+# product selection and binary identity guard for PisoWiFi vs full PisoHub
+check(ps.box_product_for("wifi") == "wifi" and ps.box_product_for("phone") == "phone"
+      and ps.box_product_for("both") == "full" and ps.box_product_for("full") == "full"
+      and ps.box_product_for("") == "full" and ps.box_product_for(None) == "full",
+      "box_product_for maps installer choices to firmware products")
+try:
+    ps.box_product_for("tablet")
+    check(False, "unknown box product must be refused")
+except ps.SetupError as e:
+    check("tablet" in str(e), "unknown box product says what was passed: " + str(e))
+
+WIFI_REAL = b"\xe9" + b"TechNet PisoWiFi" + b"\0" * 100_000
+HUB_REAL = b"\xe9" + b"TechNet PisoHub admin" + b"\0" * 100_000
+MIXED_REAL = b"\xe9" + b"TechNet PisoWiFi" + b"TechNet PisoHub admin" + b"\0" * 100_000
+WIFI32_REAL = b"\xe9" + b"TechNet PisoWiFi" + b"\0" * 100_050
+wmanifest = {"version": "3.12.6", "builds": [
+    {"env": "esp32-c3-dev", "chip": "ESP32-C3", "product": "full", "version": "3.12.6",
+     "file": "esp32-c3-dev.bin", "offset": 0, "size": len(HUB_REAL), "sha256": hashlib.sha256(HUB_REAL).hexdigest()},
+    {"env": "esp32-c3-dev-wifi", "chip": "ESP32-C3", "product": "wifi", "version": "3.12.7",
+     "file": "esp32-c3-dev-wifi.bin", "offset": 0, "size": len(WIFI_REAL), "sha256": hashlib.sha256(WIFI_REAL).hexdigest()},
+    {"env": "esp32dev-dev-wifi", "chip": "ESP32", "product": "wifi", "version": "3.12.7",
+     "file": "esp32dev-dev-wifi.bin", "offset": 4096, "size": len(WIFI32_REAL), "sha256": hashlib.sha256(WIFI32_REAL).hexdigest()},
+]}
+wfiles = {
+    "flash/esp32-c3-dev.bin": HUB_REAL,
+    "flash/esp32-c3-dev-wifi.bin": WIFI_REAL,
+    "flash/esp32dev-dev-wifi.bin": WIFI32_REAL,
+}
+wreqs, wlines = [], []
+wtool = FakeEsptool("4.8.1")
+wchip, wver = ps.flash_box("main", "COM5", wlines.append, tempfile.mkdtemp(dir=tmp),
+                           website(wreqs, files=wfiles, manifest=wmanifest), wtool, product="wifi")
+check((wchip, wver) == ("ESP32-C3", "3.12.7") and wreqs == ["flash/manifest.json", "flash/esp32-c3-dev-wifi.bin"],
+      f"flash_box(product='wifi') selects esp32-c3-dev-wifi.bin and its version: chip={wchip} ver={wver} reqs={wreqs}")
+check(wtool.calls[1][-1].endswith("esp32-c3-dev-wifi.bin") and any("wifi: esp32-c3-dev-wifi.bin" in l for l in wlines),
+      "wifi firmware filename and product are logged and written")
+
+mixed_path = os.path.join(tmp, "mixed.bin")
+open(mixed_path, "wb").write(MIXED_REAL)
+try:
+    ps.verify_product_image(mixed_path, "wifi")
+    check(False, "verify_product_image must reject mixed PisoHub/PisoWiFi strings")
+except ps.SetupError as e:
+    check("PisoHub" in str(e) or "PisoWiFi" in str(e), "mixed image refused cleanly: " + str(e))
+
+bad_wifi_manifest = {"version": "3.12.7", "builds": [
+    {"env": "esp32-c3-dev-wifi", "chip": "ESP32-C3", "product": "wifi", "version": "3.12.7",
+     "file": "esp32-c3-dev-wifi.bin", "offset": 0, "size": len(HUB_REAL), "sha256": hashlib.sha256(HUB_REAL).hexdigest()},
+]}
+bad_tool = FakeEsptool("4.8.1")
+try:
+    ps.flash_box("main", "COM5", lambda l: None, tempfile.mkdtemp(dir=tmp),
+                 website([], files={"flash/esp32-c3-dev-wifi.bin": HUB_REAL}, manifest=bad_wifi_manifest), bad_tool, product="wifi")
+    check(False, "full PisoHub binary must be refused before write_flash when product='wifi'")
+except ps.SetupError as e:
+    check(len(bad_tool.calls) == 1 and str(e),
+          f"wifi mode refuses full PisoHub binary before write_flash (calls={len(bad_tool.calls)}): {e}")
+
+bad_full_manifest = {"version": "3.12.6", "builds": [
+    {"env": "esp32-c3-dev", "chip": "ESP32-C3", "product": "full", "version": "3.12.6",
+     "file": "esp32-c3-dev.bin", "offset": 0, "size": len(WIFI_REAL), "sha256": hashlib.sha256(WIFI_REAL).hexdigest()},
+]}
+bad_full_tool = FakeEsptool("4.8.1")
+try:
+    ps.flash_box("main", "COM5", lambda l: None, tempfile.mkdtemp(dir=tmp),
+                 website([], files={"flash/esp32-c3-dev.bin": WIFI_REAL}, manifest=bad_full_manifest), bad_full_tool, product="full")
+    check(False, "PisoWiFi binary must be refused before write_flash when product='full'")
+except ps.SetupError as e:
+    check(len(bad_full_tool.calls) == 1 and str(e),
+          f"full mode refuses PisoWiFi binary before write_flash (calls={len(bad_full_tool.calls)}): {e}")
+
+full_only_manifest = {"version": "3.12.6", "builds": [
+    {"env": "esp32-c3-dev", "chip": "ESP32-C3", "product": "full",
+     "file": "esp32-c3-dev.bin", "offset": 0, "size": len(HUB_REAL), "sha256": hashlib.sha256(HUB_REAL).hexdigest()},
+]}
+no_wifi_tool = FakeEsptool("4.8.1")
+try:
+    ps.flash_box("main", "COM5", lambda l: None, tempfile.mkdtemp(dir=tmp),
+                 website([], files={"flash/esp32-c3-dev.bin": HUB_REAL}, manifest=full_only_manifest), no_wifi_tool, product="wifi")
+    check(False, "missing wifi build in manifest must fail instead of falling back to full")
+except ps.SetupError as e:
+    check(len(no_wifi_tool.calls) == 1 and "wifi" in str(e).lower(),
+          f"missing wifi build never falls back to full (calls={len(no_wifi_tool.calls)}): {e}")
+
 # the terminal flow: a board is written before the router; --no-flash, several boards, none
 BOARDS[:] = [("COM5", "CH340")]
 FLASHED.clear()
@@ -963,6 +1049,27 @@ check(r.rc != 0 and r.err and "several USB boards" in r.err and FLASHED == [], "
 BOARDS[:] = []
 r = e2e(answers=("Tindahan WiFi", "Aling Nena", "y", "n"), secrets_=("routerpass1", "routerpass1", "kioskpass1", "kioskpass1", "boxadmin99", "boxadmin99"))
 check(r.rc == 0 and "No coin box board found on USB" in r.out, "no board: it says so and goes on with the router")
+
+BOARDS[:] = [("COM5", "CH340")]
+seen_flash = []
+orig_flash_box = ps.flash_box
+
+
+def rec_flash_box(branch, port, emit, cache_dir, opener=None, tool=None, image=None, product="full"):
+    seen_flash.append((branch, port, product))
+    return ("ESP32-C3", "3.12.7")
+
+
+ps.flash_box = rec_flash_box
+try:
+    r = e2e(answers=("Tindahan WiFi", "Aling Nena", "y", "", "n"),
+            secrets_=("routerpass1", "routerpass1", "kioskpass1", "kioskpass1", "boxadmin99", "boxadmin99"),
+            product="wifi", flasher=None)
+finally:
+    ps.flash_box = orig_flash_box
+    BOARDS[:] = []
+check(r.rc == 0 and "product=[wifi]" in r.out and seen_flash == [("main", "COM5", "wifi")],
+      f"CLI run_setup default flasher passes product='wifi' to flash_box: seen={seen_flash} out={r.out[-300:]}")
 
 # main(): options and the missing ssh
 sys.stdout, sys.stderr = io.StringIO(), io.StringIO()

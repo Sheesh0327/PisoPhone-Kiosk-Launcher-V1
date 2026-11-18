@@ -94,7 +94,8 @@ jobs:
           PY
             SHA=$(sha256sum "$OUT" | cut -c1-64)
             SIZE=$(stat -c %s "$OUT")
-            builds="$builds{\"env\":\"$ENV\",\"product\":\"$PRODUCT\",\"chip\":\"$NAME\",\"file\":\"$ENV.bin\",\"offset\":$((BOOT)),\"size\":$SIZE,\"sha256\":\"$SHA\"},"
+            FW_VER=$( [ "$PRODUCT" = wifi ] && echo "$WIFI_VERSION" || echo "$VERSION" )
+            builds="$builds{\"env\":\"$ENV\",\"product\":\"$PRODUCT\",\"chip\":\"$NAME\",\"version\":\"$FW_VER\",\"file\":\"$ENV.bin\",\"offset\":$((BOOT)),\"size\":$SIZE,\"sha256\":\"$SHA\"},"
           done
           printf '{"version":"%s","commit":"%s","builds":[%s]}\n' "$VERSION" "$GITHUB_SHA" "${builds%,}" | python3 -m json.tool > website/flash/manifest.json
           cat website/flash/manifest.json

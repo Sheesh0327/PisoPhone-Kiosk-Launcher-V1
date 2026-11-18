@@ -1807,5 +1807,18 @@ applied = open(f"{tmp}/applied.uci").read() if os.path.exists(f"{tmp}/applied.uc
 parts = ("STAGE2-RAN" in out, "KIOSK_PASS" not in conf_now, "SHOP_PRODUCT='wifi'" in conf_now, bool(applied), "wireless.kiosk_" not in applied, "wireless.guest_radio0" in applied)
 check(all(parts),
       "wifi switch completed: KIOSK_PASS deleted, product wifi stored, no kiosk Wi-Fi written: " + out[-300:] + conf_now + " parts=" + str(parts))
+
+w_ck = ('wifi_only() { return 0; }; isolation_on() { return 0; }; agree_all() { return 0; }; wait_until() { return 0; }; '
+        'update_timer_ok() { return 0; }; update_check_recent() { return 0; }; wan_clash() { return 1; }; '
+        'ip() { echo "inet $LAN_IP/ inet $GUEST_IP/"; }; iwinfo() { :; }; uci() { :; }; box_up() { return 0; }; '
+        'ping() { return 0; }; anti_tether_on() { return 0; }; ')
+r = lib('rm -f $CONF; ' + w_ck + 'curl() { echo "<title>TechNet PisoHub admin</title>"; }; DRY=1 check_all; echo "RC1=$?"; '
+        'curl() { echo "<title>TechNet PisoWiFi</title>"; }; DRY=1 check_all; echo "RC2=$?"',
+        env={"PISO_ROOT": root})
+check("FAIL  coin box runs full PisoHub firmware instead of PisoWiFi-only firmware" in r.stdout.split("RC1=")[0]
+      and "runs full PisoHub firmware" not in r.stdout.split("RC1=")[1].split("RC2=")[0]
+      and int(r.stdout.split("RC1=")[1].splitlines()[0]) == int(r.stdout.split("RC2=")[1].splitlines()[0]) + 1,
+      "wifi_only check_all fails (+1 error) when coin box serves full PisoHub dashboard, passes on PisoWiFi: " + r.stdout)
+
 print(f"{checks} checks, {failures} failures")
 sys.exit(1 if failures else 0)
