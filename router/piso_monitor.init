@@ -6,7 +6,7 @@ START=98
 USE_PROCD=1
 
 start_service() {
-	rm -rf /tmp/piso-monitor
+	mkdir -p /tmp/piso-monitor
 	procd_open_instance monitor
 	procd_set_param command /usr/bin/piso-monitor.sh run
 	procd_set_param respawn 3600 5 0

@@ -1813,6 +1813,7 @@ box_info() {
 
 # box_phones_busy: how many rental phones have time running (the box restarts for a few seconds while it installs)
 box_phones_busy() {
+	wifi_only && { echo 0; return 0; }
 	curl -s -m 10 -u "admin:$(conf_get BOX_ADMIN_PASS)" "http://$BOX_IP/api/status" 2> /dev/null | grep -o '"active": *true' | wc -l
 }
 
@@ -1939,8 +1940,9 @@ cmd_reconcile() { /usr/bin/pisoportal reconcile "$@"; }
 telegram_connect() {
 	_tok="$1"; _site="$2"
 	[ -x /usr/bin/piso-monitor.sh ] || die "the monitor is not installed: run the setup first"
+	[ -x /etc/init.d/piso_monitor ] && /etc/init.d/piso_monitor stop > /dev/null 2>&1
 	echo "TG_TOKEN='$_tok'" > /etc/piso-monitor.conf; chmod 600 /etc/piso-monitor.conf
-	rm -rf /tmp/piso-monitor
+	mkdir -p /tmp/piso-monitor; rm -f /tmp/piso-monitor/paired.chat
 	PISO_MONITOR_CONF=/etc/piso-monitor.conf /usr/bin/piso-monitor.sh pair || return 1
 	_chat=$(cat /tmp/piso-monitor/paired.chat 2> /dev/null)
 	[ -n "$_chat" ] || return 1
@@ -1963,7 +1965,10 @@ cmd_telegram() {
 	echo "1. In Telegram, talk to @BotFather: /newbot, choose a name, copy the token it gives you."
 	printf '2. Paste the token here: '; read -r _tok
 	[ -n "$_tok" ] || { echo "No token."; return 1; }
-	_def=$(conf_get SITE_NAME); _def="${_def:-PisoPhone}"
+	_def=$(conf_get SITE_NAME)
+	if [ -z "$_def" ]; then
+		if wifi_only; then _def="PisoWiFi"; else _def="PisoPhone"; fi
+	fi
 	printf '3. Name of this site (shown in every message) [%s]: ' "$_def"; read -r _site; _site="${_site:-$_def}"
 	valid_plain "$_site$_tok" || { echo "Please avoid quotes, backslashes, \$ and backticks."; return 1; }
 	telegram_connect "$_tok" "$_site"

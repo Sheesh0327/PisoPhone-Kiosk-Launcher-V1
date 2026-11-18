@@ -5,6 +5,11 @@ separately (app: the CI build number, shown as hundreds.tens.ones, build 466 is 
 
 ## Unreleased
 
+- Router 1.5.41, **Telegram remote management & card UI overhaul (PisoPhone & PisoWiFi-only).** Tested and verified live on hardware.
+  - **Remote monitoring & shop control:** Adds `/phones`, `/clients`, `/kick`, `/settings` (`/set_voucher_on|off`, `/set_send_on|off`, `report_hour`), `/pricing` (`hyper`, `prorata`, `endurance`, `speed`, `reset`), and `/autoupdate` commands in `piso_monitor.sh`, plus automatic Telegram command menu registration (`setMyCommands`) and persistent `/tmp/piso-monitor` state across restarts.
+  - **Lightweight phone checks & offline outbox:** Polls coin box `/api/status` every 5 minutes (alerting only on paid-time phone drops, unplugged battery <= 15%, and unhandled orphan coins) and queues missed one-shot alerts in `/tmp/piso-monitor/outbox` during WAN drops (flushed up to 3 per tick).
+  - **PisoWiFi-only clean separation:** When `SHOP_PRODUCT=wifi`, disables phone polling and `phones.cache`, omits `/phones` and rental-phone wording from `/status`, `/help`, `setMyCommands`, `reconcile`, OTA checks (`box_phones_busy`), usage output, and setup wizard prompts, and defaults `SITE_NAME` to `PisoWiFi`.
+  - **Compact HTML card UI & BusyBox awk fix:** Renders bold card headers, slim dividers, summarized `/report`, `/reconcile`, and `/diag` cards (`parse_mode=HTML` with automatic HTTP 400 plain-text fallback and stripped plain-text `alerts.txt`), and fixes BusyBox `awk` JSON record-separator regex (`[{]`) for Telegram updates.
 - Router 1.5.40, **setup and isolation performance & reliability release.**
   - **Firewall include persistence:** Registers `/etc/hotplug.d/firewall/50-piso-isolation` as a firewall include script (`type='script'`, `fw4_compatible='1'`) in UCI firewall settings, guaranteeing bridge guest/kiosk isolation and anti-tethering rules cleanly persist across `fw4 reload` and interface events.
   - **BusyBox compatibility:** Replaces external `paste` command in `piso_isolation.sh` with BusyBox-safe `awk` when formatting admin and console port lists.

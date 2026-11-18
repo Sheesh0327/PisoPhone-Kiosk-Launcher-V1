@@ -41,6 +41,7 @@ box_info() {
 
 # box_phones_busy: how many rental phones have time running (the box restarts for a few seconds while it installs)
 box_phones_busy() {
+	wifi_only && { echo 0; return 0; }
 	curl -s -m 10 -u "admin:$(conf_get BOX_ADMIN_PASS)" "http://$BOX_IP/api/status" 2> /dev/null | grep -o '"active": *true' | wc -l
 }
 

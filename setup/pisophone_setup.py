@@ -5674,7 +5674,7 @@ a{color:var(--acc)}.hide{display:none!important}
  <div class="hero"><img src="@@MASCOT@@" alt=""><h1>Check that it all works</h1></div>
  <div class="card"><h2>1. Test a coin</h2><p class="mut">Tap the button, then insert one coin when the box beeps (within 30 seconds).</p><button class="primary" id="btnCoin">Test a coin</button><div id="coinBox"></div></div>
  <div class="card"><h2>2. Try it as a customer</h2><p class="mut" id="custText"></p></div>
- <div class="card"><h2>Alerts on your phone (optional)</h2><p class="mut">Telegram messages when the coin box goes offline or the revenue does not add up, plus a daily report. You need a bot token from @BotFather.</p>
+ <div class="card"><h2>Remote monitoring &amp; control via Telegram (Recommended)</h2><p class="mut" id="tgLead">Telegram alerts, live phone/guest status, daily revenue reports, and remote commands (/status, /phones, /clients, /settings, /pricing). You need a bot token from @BotFather.</p>
   <input id="tgToken" placeholder="123456789:AAH..." autocomplete="off"><div class="err" id="tgErr"></div><button id="btnTg">Connect Telegram</button><div id="tgBox"></div></div>
  <div class="card"><h2>Saved on this computer</h2><div id="savedList"></div><p class="mut small" id="savedDir"></p></div>
  <div class="card"><h2>Time cards</h2><p class="mut">Print QR time cards for this unit's coin box now, or any day later (the same page, any number of batches).</p><button id="btnToCards">Open Owner tools</button></div>
@@ -5828,6 +5828,7 @@ function paint5(){
  if(c.lines.length)cb.append(h('pre',{},c.lines.join('\n')));
  if(c.ok===true)cb.append(note('ok','The box counted the coin: the box and the portal work.'));else if(c.ok===false&&!c.running)cb.append(note('bad','The coin test did not pass. Read the lines above, then try again.'));
  $('#custText').textContent='With any phone join the Wi-Fi "'+(S.final.GUEST_SSID||S.review.public_wifi)+'". The payment page opens by itself. Pick a plan, tap Insert Coin, insert a coin: it shows at once. Tap Done: you are online.';
+ $('#tgLead').textContent=S.mode==='wifi'?'Telegram alerts, live Wi-Fi guest status, daily revenue reports, and remote commands (/status, /clients, /settings, /pricing). You need a bot token from @BotFather.':'Telegram alerts, live phone/guest status, daily revenue reports, and remote commands (/status, /phones, /clients, /settings, /pricing). You need a bot token from @BotFather.';
  const t=S.telegram,tb=$('#tgBox');clear(tb);$('#btnTg').disabled=t.running;$('#tgErr').textContent=t.error||'';
  if(t.ok)tb.append(note('ok','Telegram is connected.'));
  if(t.lines.length)tb.append(h('pre',{},t.lines.join('\n')));
