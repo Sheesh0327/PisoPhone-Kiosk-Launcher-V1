@@ -967,6 +967,31 @@ try:
     check(env.get("/ping")[1] == "ok" and time.time() - t < 1, "while everybody else is still served at once")
     for h in hold + [extra]:
         h.close()
+
+    # ---- guest HTTP port-80 redirect: Host of LAN/admin/guest-without-port redirects to canonical portal URL ----
+    e_redir = Env(offset=62, PORTAL_BIND="127.0.0.1", CONSOLE_BIND="10.0.0.1")
+    try:
+        check(e_redir.start(), "portal starts with concrete PORTAL_BIND for redirect test")
+        import http.client
+        def rget(path, host):
+            c = http.client.HTTPConnection("127.0.0.1", e_redir.PP, timeout=10)
+            c.request("GET", path, headers={"Host": host})
+            r = c.getresponse()
+            body = r.read().decode()
+            hdrs = {k.lower(): v for k, v in r.getheaders()}
+            c.close()
+            return r.status, body, hdrs
+        want_loc = f"http://127.0.0.1:{e_redir.PP}/"
+        for h in ("10.0.0.1", "10.0.0.1:80", "admin.hub", "127.0.0.1", "127.0.0.1:80"):
+            st, _, hd = rget("/", h)
+            check(st == 302 and hd.get("location") == want_loc and hd.get("cache-control") == "no-store",
+                  f"Host {h} redirects to {want_loc}: got {st} {hd}")
+        st, b, _ = rget("/", f"127.0.0.1:{e_redir.PP}")
+        check(st == 200 and "TechNet" in b, f"Host 127.0.0.1:{e_redir.PP} serves splash page: {st}")
+        st, b, _ = rget("/ping", "10.0.0.1")
+        check(st == 200 and b == "ok", f"/ping never redirects: {st} {b}")
+    finally:
+        e_redir.close()
 finally:
     env.close()
 finish()
