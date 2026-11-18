@@ -1,8 +1,8 @@
 // TechNet PisoHub console: the page's behaviour. PISO_UI_VERSION rises with every change that is published (scripts/sign_console_ui.py).
-window.PISO_UI_VERSION = 13;
+window.PISO_UI_VERSION = 14;
 (function(){
 var $=function(i){return document.getElementById(i)},tab='over',timer=null,last={},sales=null,TABS=['over','cli','ph','sales','vch','set'];
-if($('t-brand'))TABS.push('brand'); /* (a newer script on an older console page, which has no Branding screen, still starts) */
+if($('t-brand'))TABS.push('brand');
 function esc(t){return String(t).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
 function api(path,body){var o=body===undefined?{}:{method:'POST',headers:{'X-Piso':'1','Content-Type':'application/json'},body:JSON.stringify(body)};
  return fetch(path,o).then(function(r){if(r.status===401&&path!=='/api/login'){showLogin();throw new Error('login')}return r.json().then(function(j){j._code=r.status;return j})})}
@@ -21,7 +21,6 @@ $('out').onclick=function(){api('/api/logout',{}).then(showLogin)};
 $('th').onclick=function(){var r=document.documentElement,d=(r.dataset.theme||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light'))==='dark';r.dataset.theme=d?'light':'dark';try{localStorage.setItem('piso_theme',r.dataset.theme)}catch(e){}if(last.over)draw(last.over.history);boxTheme()};
 try{var T=localStorage.getItem('piso_theme');if(T)document.documentElement.dataset.theme=T}catch(e){}
 document.querySelectorAll('#tabs button').forEach(function(b){b.onclick=function(){tab=b.dataset.t;document.querySelectorAll('#tabs button').forEach(function(x){x.className=x===b?'on':''});TABS.forEach(function(t){$('t-'+t).className=t===tab?'':'hide'});refresh()}});
-/* a confirmation that names what it does; Escape closes it and focus goes back to the button that opened it */
 function ask(title,text,verb,danger,go){var d=$('dlg'),from=document.activeElement;$('dt').textContent=title;$('dp').textContent=text;var y=$('dyes');y.textContent=verb;y.className='go';if(danger)y.style.background='var(--bad)';else y.style.background='';
  $('dno').onclick=function(){d.close()};y.onclick=function(){d.close();go()};d.onclose=function(){if(from&&from.focus)from.focus()};if(d.showModal)d.showModal();else if(confirm(title+'\n'+text))go()}
 var ICO={'Customers online':'<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5c2.2.6 3.5 2.6 3.5 5.5"/>','Internet':'<path d="M3 12h4l3-8 4 16 3-8h4"/>','Coin box':'<ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/>','Records':'<path d="M6 3h9l4 4v14H6zM14 3v5h5M9 14l2 2 4-4"/>','Sales detail':'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>','Router':'<rect x="3" y="14" width="18" height="6" rx="2"/><path d="M7 17h.01M11 17h.01M8 10a6 6 0 0 1 8 0M5.5 7.5a10 10 0 0 1 13 0"/>','Alerts':'<path d="M12 3l10 18H2zM12 10v5M12 18h.01"/>','Total':'<path d="M4 20V10M10 20V4M16 20v-6M2 20h20"/>','Coins':'<circle cx="12" cy="12" r="8"/><path d="M9.5 9.5h4a1.5 1.5 0 0 1 0 3h-3a1.5 1.5 0 0 0 0 3h4M12 7.5v1.5M12 15.5V17"/>','Voucher codes':'<path d="M3 9V6a1 1 0 0 1 1-1h16a1 1 0 0 1 1 1v3a2.5 2.5 0 0 0 0 5v3a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-3a2.5 2.5 0 0 0 0-5z"/><path d="M14 5v14" stroke-dasharray="2 3"/>','Old printed slips':'<path d="M6 3h9l4 4v14H6zM14 3v5h5M9 13h6M9 17h6"/>'};
@@ -32,7 +31,6 @@ function draw(h){var c=$('cv'),g=c.getContext('2d'),w=c.width,ht=c.height;g.clea
  var mx=1,col=[css('--bfg'),css('--teal')];h.forEach(function(p){mx=Math.max(mx,p[1],p[2])});
  [1,2].forEach(function(l){g.beginPath();h.forEach(function(p,i){var x=i*(w/(h.length-1)),y=ht-4-(ht-12)*p[l]/mx;i?g.lineTo(x,y):g.moveTo(x,y)});g.strokeStyle=col[l-1];g.lineWidth=3;g.stroke()});
  $('cvl').innerHTML='<span style="color:'+col[0]+'">&#9632;</span> download &nbsp; <span style="color:'+col[1]+'">&#9632;</span> upload &nbsp; last ~'+Math.round((h[h.length-1][0]-h[0][0])/60)+' min, peak '+sp(mx)}
-/* the money line: the coin box's count against the sales record, both numbers, and why they may differ (feature 036) */
 function money(m){var e=$('mny');if(!m){e.className='msg hide';return}var l=peso(m.ledger),b=peso(m.box),d=peso(m.diff),c='',t='';
  if(m.state==='agrees'){c='ok';t='<b>Money agrees.</b> Coin box counted '+b+', sales record '+l+'.'}
  else if(m.state==='box_ahead'){c='';t='Coin box counted '+b+', sales record '+l+'. <b>Difference '+d+'</b>: coins counted but not yet in the record. Normal for a minute while a customer is paying; if it stays, tell your installer.'}
@@ -43,7 +41,6 @@ function money(m){var e=$('mny');if(!m){e.className='msg hide';return}var l=peso
  else{c='n';t='<b>No sales recorded yet.</b> Coin box counted '+b+'.'}
  if(m.restarted&&m.state!=='bad_ledger'&&m.state!=='box_silent')t+=" The box's count restarted when its revenue was collected; compared from here.";
  e.className='msg '+c;e.innerHTML=t}
-/* the update line: is the router, is the coin box up to date, or waiting for an update (feature 044). Gold only for a wait longer than a day or a failure. */
 function upd(v,now){var e=$('upd');if(!v){e.className='msg hide';return}var gold=false,out=[];
  function one(n,r,cmd){if(!r){out.push(n+': not checked yet.');return}var l=esc(r.latest),run=esc(r.running),d=esc(r.detail),old=now-r.since>=86400,days=Math.max(1,Math.floor((now-r.since)/86400)),w=days+(days===1?' day':' days');
   if(r.state==='current')out.push(n+' '+run+' is up to date.');
@@ -69,7 +66,6 @@ function cli(j){var a=j.clients||[];$('cl').innerHTML=a.map(function(c){var on=c
  if($('clc'))$('clc').textContent=a.length?a.filter(function(c){return c.state==='Authenticated'}).length+' online, '+a.filter(function(c){return c.state!=='Authenticated'}).length+' waiting':'';
  $('clnote').textContent='Updates every few seconds. A disconnected customer keeps the paid time and can connect again.';
  document.querySelectorAll('#cl button.b').forEach(function(b){b.onclick=function(){ask('Disconnect '+b.dataset.nm+'?','Their paid time stays; they can reconnect.','Disconnect '+b.dataset.nm,true,function(){api('/api/kick',{mac:b.dataset.mac}).then(refresh)})}})}
-/* rental phones: the coin box's own page, passed through by the router one port above the console; it follows this page's light or dark */
 function theme(){var r=document.documentElement;return r.dataset.theme||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light')}
 function boxOrigin(){return 'http://'+location.hostname+':'+((+location.port||80)+1)}
 function boxTheme(){var f=$('boxf');if(f&&f.contentWindow&&f.src)try{f.contentWindow.postMessage({piso:'theme',theme:theme()},boxOrigin())}catch(e){}}
@@ -77,7 +73,6 @@ function ph(){var f=$('boxf');if(!f.getAttribute('src')){f.onload=boxTheme;f.src
  var n=$('phnote');if(n){if(last.over&&last.over.box_ok===false){n.className='msg gold';n.innerHTML='<b>Coin box offline.</b> Check power and Wi-Fi, or pair a replacement ESP32. <button class="b" id="phset" type="button">Open pairing in Settings</button>';$('phset').onclick=function(){document.querySelector('#tabs button[data-t="set"]').click()}}else{n.className='msg hide';n.innerHTML=''}}}
 /* sales */
 function soldOut(j){if(j&&j.error==='NOT_FOUND'){$('t-'+tab).insertAdjacentHTML('afterbegin','<p class="msg">This router is on an older version. Run <b>piso-setup update</b> to use this page.</p>');return true}return false}
-/* kinds: coin = coins that bought time at once, vcoin = coins that bought a voucher code (income when the coins were counted), voucher = printed slips of older releases */
 function tot(x){return (x.coin||0)+(x.vcoin||0)+(x.voucher||0)}
 function sale(j){if(soldOut(j))return;sales=j;var d=j.days||[],mx=1,k=j.kinds||{},co=k.coin||0,vc=k.vcoin||0,vo=k.voucher||0,vi=k.vi||0,vv=j.vouchers||{redeemed:0,waiting:0},n=d.reduce(function(a,x){return a+x.n},0),best=null;
  d.forEach(function(x){var t=tot(x);if(t>mx)mx=t;if(!best||t>best.t)best={d:x.d,t:t}});
@@ -92,7 +87,6 @@ function sale(j){if(soldOut(j))return;sales=j;var d=j.days||[],mx=1,k=j.kinds||{
  $('sl').innerHTML=d.slice().reverse().map(function(x){return '<tr><td>'+esc(x.d)+'</td><td class="n">'+peso(x.coin)+'</td><td class="n">'+peso(x.vcoin||0)+(x.vi?' <span class="s">('+x.vi+')</span>':'')+'</td>'+(vo?'<td class="n">'+peso(x.voucher)+'</td>':'')+'<td class="n"><b>'+peso(tot(x))+'</b></td><td class="n hm">'+x.n+'</td></tr>'}).join('')}
 $('rng').onchange=refresh;
 $('csv').onclick=function(){if(!sales)return;var t='day,use_now,voucher_codes,vouchers_issued,old_slips,total,payments\n'+sales.days.map(function(x){return [x.d,x.coin,x.vcoin||0,x.vi||0,x.voucher,tot(x),x.n].join(',')}).join('\n')+'\n',a=document.createElement('a');a.href=URL.createObjectURL(new Blob([t],{type:'text/csv'}));a.download='sales-'+$('rng').value+'-days.csv';a.click()};
-/* vouchers: the list of what was issued (no codes), and cancelling an unused one */
 function vch(j){if(soldOut(j))return;var a=j.batches||[];$('vl2').innerHTML=a.slice().reverse().map(function(b){var left=b.count-b.used,gone=b.expires&&b.expires*1e3<Date.now();
  return '<tr><td><b>'+(b.bought===false?esc(b.label||'Printed slips'):'Bought with coins')+'</b><div class="s">'+dt(b.created)+(b.count>1?' · '+b.count+' codes':'')+' · '+(b.plan==='endurance'?'Endurance':'HyperSpeed')+'</div></td><td>'+mins(b.minutes)+' · '+peso(b.pesos)+'</td><td>'+(b.void?chip('Cancelled','bad'):!left?chip('Used','ok'):b.used?chip(b.used+' of '+b.count+' used'):chip('Not used','gold'))+'</td><td>'+(gone?chip('Expired','bad'):b.expires?dt(b.expires):'No expiry')+'</td><td>'+(b.void||!left||gone?'':'<button class="b dg" data-v="'+b.id+'" data-n="'+esc(b.bought===false?(b.label||b.id):dt(b.created))+'" data-l="'+left+'">Cancel</button>')+'</td></tr>'}).join('')||'<tr><td colspan="5" class="empty">No vouchers yet.<div class="s">Customers get one when they choose "Get a voucher code" at payment.</div></td></tr>';
  document.querySelectorAll('#vl2 button[data-v]').forEach(function(b){b.onclick=function(){ask('Cancel this voucher ('+b.dataset.n+')?',b.dataset.l+' unused code'+(b.dataset.l==='1'?'':'s')+' will stop working. The customer already paid; the money stays in the sales.','Cancel the voucher',true,function(){api('/api/vouchers/void',{batch:b.dataset.v}).then(refresh)})}})}
@@ -102,7 +96,6 @@ $('fss').onchange=function(){var s=$('fss');$('setm').textContent='';api('/api/s
 $('lkb').onchange=function(){var m=Math.round(+$('lkb').value);if(!(m===0||(m>=256&&m<=16384))){$('setm').textContent='Use 0, or a number from 256 to 16384.';return}$('setm').textContent='';api('/api/settings',{ledger_max_kb:String(m)}).then(function(j){$('setm').textContent=j.ok?'Saved. Old months are deleted when the next month starts.':(j.why||'Could not save.');if(j.ok)sets(j)}).catch(function(){})};
 $('lkm').onchange=function(){var m=Math.round(+$('lkm').value);if(!(m>=1&&m<=60)){$('setm').textContent='Use a number from 1 to 60.';return}$('setm').textContent='';api('/api/settings',{ledger_keep_months:String(m)}).then(function(j){$('setm').textContent=j.ok?'Saved.':(j.why||'Could not save.');if(j.ok)sets(j)}).catch(function(){})};
 $('vcs').onchange=function(){var s=$('vcs');$('setm').textContent='';api('/api/settings',{voucher_choice:s.value}).then(function(j){$('setm').textContent=j.ok?'Saved. Open customer pages follow at once.':'Could not save.';if(j.ok)s.value=j.voucher_choice?'on':'off'}).catch(function(){})};
-/* coin box pairing */
 var pwas='';
 function pairShow(j){if(!$('pairb')||!j)return;if(j.error==='NOT_FOUND'){$('pairb').disabled=true;$('pairm').textContent='Update the router (piso-setup update) to pair from the console.';return}
  var s=j.state||'idle',run=s==='running'||s==='cancelling',b=$('pairb'),c=$('pairc'),m=$('pairm');
@@ -117,7 +110,15 @@ if($('pairb')){$('pairb').onclick=function(){var w=(last.over&&last.over.box_ok)
    $('pairb').disabled=true;$('pairm').style.color='';$('pairm').textContent='Starting pairing...';
    api('/api/pair',{}).then(function(j){if(j.ok)pairShow(j);else{$('pairb').disabled=false;$('pairm').style.color='var(--bad)';$('pairm').textContent=j.why||'Could not start pairing.'}}).catch(function(){$('pairb').disabled=false})})};
  $('pairc').onclick=function(){api('/api/pair',{cancel:'1'}).then(pairShow).catch(function(){})}}
-/* prices: the editor keeps what is typed until it is saved (the page refreshes every few seconds and must not overwrite it) */
+function tmsg(t,k){var m=$('tgm');if(!m)return;m.style.color=k?'var(--'+k+')':'';m.textContent=t}
+function tgShow(j){if(!$('tgs')||!j)return;if(j.error==='NOT_FOUND'){$('tgb').disabled=$('tgx').disabled=true;$('tgs').textContent='Update router to configure Telegram.';return}
+ $('tgs').textContent=j.set?'Current key: '+(j.hint||'set')+(j.chat?' · chat '+j.chat:' · no chat ID'):'No Telegram bot set.';
+ var c=$('tgc');if(c&&document.activeElement!==c&&!c.dataset.d)c.value=j.chat||''}
+if($('tgb')){$('tgc').oninput=function(){this.dataset.d='1'};
+ var tgPost=function(b,p,body,fn){b.disabled=true;tmsg(p);api('/api/telegram',body).then(function(j){b.disabled=false;if(j.ok)fn(j);else tmsg(j.why||'Failed.','bad')}).catch(function(){b.disabled=false;tmsg('No router reply.','bad')})};
+ $('tgb').onclick=function(){var t=$('tgt').value.trim(),c=$('tgc').value.trim();if(!t&&!c){tmsg('Enter key or chat ID.','bad');return}
+  tgPost(this,'Saving...',{token:t,chat:c},function(j){$('tgt').value='';delete $('tgc').dataset.d;tgShow(j);tmsg('Saved and monitor restarted.','ok')})};
+ $('tgx').onclick=function(){tgPost(this,'Sending test...',{action:'test'},function(){tmsg('Test sent.','ok')})}}
 var pdirty=false;
 function prow(p,m){return '<div class="tr"><span class="s">&#8369;</span><input type="number" class="tp" min="1" max="1000" step="1" value="'+(+p||'')+'" aria-label="Pesos"><span class="s">buys</span><input type="number" class="tm" min="1" max="10080" step="1" value="'+(+m||'')+'" aria-label="Minutes"><span class="s tx">'+(m>=60?mins(m):'min')+'</span><button class="b rm" aria-label="Remove this line">Remove</button></div>'}
 function pfill(id,list){$(id).innerHTML=(list||[]).map(function(t){return prow(t[0],t[1])}).join('')}
@@ -133,8 +134,6 @@ $('add-e').onclick=function(){$('rows-e').insertAdjacentHTML('beforeend',prow(''
 $('prs').onclick=function(){pmsg('');var body={hyper:pcollect('rows-h'),endurance:pcollect('rows-e'),prorata:String(Math.round(+$('pro').value||0)),down:String(Math.round((+$('edn').value||0)*1000)),up:String(Math.round((+$('eup').value||0)*1000))};
  api('/api/pricing',body).then(function(j){if(j.ok){pdirty=false;prices(j,true);pmsg('Saved. New payments use these prices.')}else pmsg(j.why?'Not saved: '+j.why+'.':'Not saved.',true)}).catch(function(){})};
 $('prr').onclick=function(){ask('Go back to the settings file?','The prices you changed here are forgotten; the router\'s settings file applies again.','Go back',true,function(){api('/api/pricing',{reset:'1'}).then(function(j){pdirty=false;if(j.ok){prices(j,true);pmsg('Done. The settings file\'s prices apply.')}}).catch(function(){})})};
-/* Branding (feature 049): a draft the owner edits, a preview of it, and Publish. The draft is saved on the router as it is typed; customers see
-   nothing until Publish. */
 var bm=null,bst=null,blang='en',bsave=null,bbusy=false,bload=false;
 var BNAME={technet:'TechNet',dagat:'Dagat (sea)',tropiko:'Tropiko',ginto:'Ginto (gold)',rosas:'Rosas (rose)',berde:'Berde (green)'};
 var BLAY={classic:['Classic','A bar with your name across the top. The standard layout.'],banner:['Banner','Your logo and name large and centred at the top.'],compact:['Compact','Smaller, with the house rules folded away: more fits on the screen.'],poster:['Poster','A big heading in your colour; the coin button always stays in reach.']};
@@ -174,6 +173,6 @@ $('bpk').onchange=function(){var f=this.files[0],inp=this;if(!f)return;var m=$('
    if(j.ok){m.textContent='Installed. Your logo'+(j.picture_bytes?' and welcome picture are':' is')+' ready; press Publish to show '+(j.picture_bytes?'them':'it')+' to customers.';brand(true)}
    else{m.textContent='Not installed: '+(j.why||'the file was refused')+'.';m.style.color='var(--bad)'}inp.value=''}).catch(function(){m.textContent='Could not send the file.';m.style.color='var(--bad)';inp.value=''})};
  r.readAsText(f)};
-function refresh(){if(tab==='brand'){brand();return}if(tab==='ph'){ph();return}var p={over:'/api/overview',cli:'/api/clients',sales:'/api/sales?days='+($('rng').value||30),vch:'/api/vouchers',set:'/api/settings'}[tab],f={over:over,cli:cli,sales:sale,vch:vch,set:sets}[tab];api(p).then(f).catch(function(){});if(tab==='set'){api('/api/pricing').then(prices).catch(function(){});if($('pairb'))api('/api/pair').then(pairShow).catch(function(){})}}
+function refresh(){if(tab==='brand'){brand();return}if(tab==='ph'){ph();return}var p={over:'/api/overview',cli:'/api/clients',sales:'/api/sales?days='+($('rng').value||30),vch:'/api/vouchers',set:'/api/settings'}[tab],f={over:over,cli:cli,sales:sale,vch:vch,set:sets}[tab];api(p).then(f).catch(function(){});if(tab==='set'){api('/api/pricing').then(prices).catch(function(){});if($('pairb'))api('/api/pair').then(pairShow).catch(function(){});if($('tgs'))api('/api/telegram').then(tgShow).catch(function(){})}}
 api('/api/overview').then(function(j){if(j.version)showApp();else showLogin()}).catch(showLogin);
 })();
