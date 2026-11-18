@@ -29,7 +29,7 @@
 
 VERSION="dev"
 # the release of this file (setup/RELEASE): routers install only a higher release that the owner signed
-PISO_RELEASE='1.5.44'
+PISO_RELEASE='1.5.45'
 # the CPU family the portal program in this file is built for (router_family below names the family of the router it runs on)
 PISO_ARCH='x86_64'
 
@@ -3694,7 +3694,7 @@ tg_detect() {
 	_resp=$(curl -s -m 6 -w '\n%{http_code}' "$TG_API/bot$TG_TOKEN/getUpdates?timeout=2&allowed_updates=%5B%22message%22%5D") || { echo "NET"; return 3; }
 	_code=$(printf '%s\n' "$_resp" | tail -n 1)
 	case "$_code" in 401 | 404) echo "BAD_TOKEN"; return 2 ;; esac
-	[ "$_code" = 200 ] && printf '%s' "$_resp" | grep -q '"ok":true' || { echo "NET"; return 3; }
+	if [ "$_code" != 200 ] || ! printf '%s' "$_resp" | grep -q '"ok":true'; then echo "NET"; return 3; fi
 	_bot_id="${TG_TOKEN%%:*}"
 	_chat=$(printf '%s' "$_resp" | grep -o '"chat":{"id":-\{0,1\}[0-9]*' | sed 's/.*"id"://' | awk -v b="$_bot_id" '$1 != b { c = $1 } END { print c }')
 	case "$_chat" in
