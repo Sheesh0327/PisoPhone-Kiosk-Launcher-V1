@@ -392,7 +392,12 @@ fn tg_state_json_bot(cfg: &crate::config::Config, bot: &str) -> String {
     let tok = conf_value(&cfg.monitor_conf, "TG_TOKEN");
     let chat = conf_value(&cfg.monitor_conf, "TG_CHAT");
     if bot.is_empty() {
-        format!("{{\"ok\":true,\"set\":{},\"hint\":\"{}\",\"chat\":\"{}\"}}", !tok.is_empty(), json_esc(&mask_tg_token(&tok)), json_esc(&chat))
+        format!(
+            "{{\"ok\":true,\"set\":{},\"hint\":\"{}\",\"chat\":\"{}\"}}",
+            !tok.is_empty(),
+            json_esc(&mask_tg_token(&tok)),
+            json_esc(&chat)
+        )
     } else {
         format!(
             "{{\"ok\":true,\"set\":{},\"hint\":\"{}\",\"chat\":\"{}\",\"bot\":\"{}\"}}",
@@ -504,7 +509,8 @@ fn tg_save_inner(cfg: &crate::config::Config, tok: &str, chat: &str) -> Result<S
         ));
     }
     let bot = if !tok.is_empty() {
-        verify_tg_token(cfg, tok).map_err(|why| ("400 Bad Request", format!("{{\"error\":\"BAD_TOKEN\",\"why\":\"{}\"}}", json_esc(why))))?
+        verify_tg_token(cfg, tok)
+            .map_err(|why| ("400 Bad Request", format!("{{\"error\":\"BAD_TOKEN\",\"why\":\"{}\"}}", json_esc(why))))?
     } else {
         String::new()
     };
@@ -521,7 +527,9 @@ fn tg_save_inner(cfg: &crate::config::Config, tok: &str, chat: &str) -> Result<S
     };
     match tg_apply_conf(cfg, (!tok.is_empty()).then_some(tok), chat_arg, true) {
         Ok(()) => Ok(tg_state_json_bot(cfg, &bot)),
-        Err("WRITE_FAILED") => Err(("500 Internal Server Error", "{\"error\":\"WRITE_FAILED\",\"why\":\"Could not write monitor settings\"}".into())),
+        Err("WRITE_FAILED") => {
+            Err(("500 Internal Server Error", "{\"error\":\"WRITE_FAILED\",\"why\":\"Could not write monitor settings\"}".into()))
+        }
         Err(_) => Err(("500 Internal Server Error", "{\"error\":\"RESTART_FAILED\",\"why\":\"Monitor restart failed\"}".into())),
     }
 }
@@ -551,7 +559,9 @@ fn tg_pair(cfg: &crate::config::Config, body: &str) -> (&'static str, String) {
     if let Some(chat) = detected {
         return match tg_apply_conf(cfg, None, Some(&chat), false) {
             Ok(()) => ("200 OK", tg_state_json(cfg)),
-            Err("WRITE_FAILED") => ("500 Internal Server Error", "{\"error\":\"WRITE_FAILED\",\"why\":\"Could not write monitor settings\"}".into()),
+            Err("WRITE_FAILED") => {
+                ("500 Internal Server Error", "{\"error\":\"WRITE_FAILED\",\"why\":\"Could not write monitor settings\"}".into())
+            }
             Err(_) => ("500 Internal Server Error", "{\"error\":\"RESTART_FAILED\",\"why\":\"Monitor restart failed\"}".into()),
         };
     }
@@ -559,9 +569,15 @@ fn tg_pair(cfg: &crate::config::Config, body: &str) -> (&'static str, String) {
         let _ = run_monitor(&cfg.monitor_service, cfg, &["restart"]);
     }
     match res {
-        Some((2, _, _)) => ("400 Bad Request", "{\"error\":\"BAD_TOKEN\",\"why\":\"Telegram rejected this API key. Check @BotFather.\"}".into()),
+        Some((2, _, _)) => {
+            ("400 Bad Request", "{\"error\":\"BAD_TOKEN\",\"why\":\"Telegram rejected this API key. Check @BotFather.\"}".into())
+        }
         Some((3, _, _)) => ("502 Bad Gateway", "{\"error\":\"NET\",\"why\":\"Could not reach Telegram. Check router internet.\"}".into()),
-        _ => ("404 Not Found", "{\"error\":\"NO_CHAT\",\"why\":\"No message found yet. Open your bot in Telegram, send /start, then click Detect chat.\"}".into()),
+        _ => (
+            "404 Not Found",
+            "{\"error\":\"NO_CHAT\",\"why\":\"No message found yet. Open your bot in Telegram, send /start, then click Detect chat.\"}"
+                .into(),
+        ),
     }
 }
 
