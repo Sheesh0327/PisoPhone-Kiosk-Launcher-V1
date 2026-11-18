@@ -339,46 +339,36 @@ fn upsert_tg_conf(old: &str, token: Option<&str>, chat: Option<&str>) -> String 
     let (mut out, mut saw_tok, mut saw_chat) = (String::new(), false, false);
     for line in old.lines() {
         let t = line.trim_start();
-        if !t.starts_with('#') {
-            if let Some((k, _)) = t.split_once('=') {
-                let key = k.trim();
-                if key == "TG_TOKEN" {
-                    if let Some(tok) = token {
-                        if !saw_tok {
-                            out.push_str(&format!("TG_TOKEN='{}'\n", tok));
-                            saw_tok = true;
-                        }
-                        continue;
-                    }
-                }
-                if key == "TG_CHAT" {
-                    if let Some(ch) = chat {
-                        if !saw_chat {
-                            out.push_str(&format!("TG_CHAT='{}'\n", ch));
-                            saw_chat = true;
-                        }
-                        continue;
-                    }
+        let key = (!t.starts_with('#')).then(|| t.split_once('=').map(|(k, _)| k.trim())).flatten();
+        match (key, token, chat) {
+            (Some("TG_TOKEN"), Some(tok), _) => {
+                if !saw_tok {
+                    out.push_str(&format!("TG_TOKEN='{}'\n", tok));
+                    saw_tok = true;
                 }
             }
+            (Some("TG_CHAT"), _, Some(ch)) => {
+                if !saw_chat {
+                    out.push_str(&format!("TG_CHAT='{}'\n", ch));
+                    saw_chat = true;
+                }
+            }
+            _ => {
+                out.push_str(line);
+                out.push('\n');
+            }
         }
-        out.push_str(line);
-        out.push('\n');
     }
-    if let Some(tok) = token {
-        if !saw_tok {
-            out.push_str(&format!("TG_TOKEN='{}'\n", tok));
-        }
+    if let (Some(tok), false) = (token, saw_tok) {
+        out.push_str(&format!("TG_TOKEN='{}'\n", tok));
     }
-    if let Some(ch) = chat {
-        if !saw_chat {
-            out.push_str(&format!("TG_CHAT='{}'\n", ch));
-        }
+    if let (Some(ch), false) = (chat, saw_chat) {
+        out.push_str(&format!("TG_CHAT='{}'\n", ch));
     }
     out
 }
 
-fn tg_state_json(cfg: &Config) -> String {
+fn tg_state_json(cfg: &crate::config::Config) -> String {
     let tok = conf_value(&cfg.monitor_conf, "TG_TOKEN");
     let chat = conf_value(&cfg.monitor_conf, "TG_CHAT");
     format!(
@@ -389,7 +379,7 @@ fn tg_state_json(cfg: &Config) -> String {
     )
 }
 
-fn tg_test(cfg: &Config) -> (&'static str, String) {
+fn tg_test(cfg: &crate::config::Config) -> (&'static str, String) {
     if conf_value(&cfg.monitor_conf, "TG_TOKEN").is_empty() {
         return ("400 Bad Request", "{\"error\":\"NO_TOKEN\",\"why\":\"Save a bot API key first\"}".into());
     }
@@ -407,7 +397,7 @@ fn tg_test(cfg: &Config) -> (&'static str, String) {
     }
 }
 
-fn tg_save(cfg: &Config, body: &str) -> (&'static str, String) {
+fn tg_save(cfg: &crate::config::Config, body: &str) -> (&'static str, String) {
     if jget(body, "action") == "test" {
         return tg_test(cfg);
     }
@@ -438,16 +428,13 @@ fn tg_save(cfg: &Config, body: &str) -> (&'static str, String) {
             .env("MON_STATE", &cfg.monitor_state)
             .arg("enable")
             .output();
-        match Command::new(&cfg.monitor_service)
+        let out = Command::new(&cfg.monitor_service)
             .env("PISO_MONITOR_CONF", &cfg.monitor_conf)
             .env("MON_STATE", &cfg.monitor_state)
             .arg("restart")
-            .output()
-        {
-            Ok(o) if o.status.success() => {}
-            _ => {
-                return ("500 Internal Server Error", "{\"error\":\"RESTART_FAILED\",\"why\":\"Saved, but monitor restart failed\"}".into());
-            }
+            .output();
+        if !matches!(out, Ok(o) if o.status.success()) {
+            return ("500 Internal Server Error", "{\"error\":\"RESTART_FAILED\",\"why\":\"Monitor restart failed\"}".into());
         }
     }
     ("200 OK", tg_state_json(cfg))
@@ -1451,7 +1438,7 @@ mod tests {
             std::fs::write(&bin, format!("#!/bin/sh\necho \"bin:$*\" >> {}\n", log)).unwrap();
             std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
         }
-        let mut cfg = Config::from_map(HashMap::new());
+        let mut cfg = crate::config::Config::from_map(HashMap::new());
         cfg.monitor_conf = conf.clone();
         cfg.monitor_state = st.clone();
         cfg.monitor_service = svc;
