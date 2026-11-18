@@ -2,7 +2,7 @@
   "version": "1.5.41",
   "sha256": "87dd7f7ab74913c470032297a47397f0b215176b4b2430c9c55d182a2f017777",
   "size": 922492,
-  "rollout": 0,
-  "changelog": "Router software release 1.5.41",
-  "sig": "MEYCIQCUhqWT+PomizJiCM6pPzv8gODuoyi8+uB/9+prOmXK1QIhANfHE3PaPSsdKAs+/1iFYOy9MQjIJi6q9e9Qq+amiAfg"
+  "rollout": 100,
+  "changelog": "Updated Telegram Monitoring",
+  "sig": "MEQCIAnf2xvOypIZUyfKWMZ5SNqTrVg1S0p2MLzjZJbHGfjNAiBVC2W1esTRUkcCT3WK63mL/cJtR/FI8gFNdAxTdtSbJA=="
 }
