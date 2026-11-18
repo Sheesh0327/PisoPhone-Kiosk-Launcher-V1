@@ -2,7 +2,6 @@
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>TechNet PisoHub Console</title><link rel="icon" href="/brand.png">
 <style>
-/* One look for every TechNet admin page: near-black canvas, hairline borders, small muted labels, a white primary button (dark in the light theme). */
 :root{color-scheme:light dark;--bg:#fafafa;--s1:#fff;--s2:#f4f4f5;--tx:#09090b;--mut:#6a6a73;--ln:#e4e4e7;--ln2:#d4d4d8;--pri:#09090b;--prifg:#fafafa;--bfg:#27272a;--teal:#0f9f7a;--gold:#8a5a00;--goldf:#d9a21a;--ok:#15803d;--bad:#b42318;--sel:#e4e4e7}
 @media(prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#09090b;--s1:#0f0f11;--s2:#18181b;--tx:#fafafa;--mut:#8b8b94;--ln:#232327;--ln2:#33333a;--pri:#fafafa;--prifg:#09090b;--bfg:#e4e4e7;--teal:#2dd4a4;--gold:#e7b84a;--goldf:#5b4713;--ok:#4ade80;--bad:#f87171;--sel:#27272a}}
 :root[data-theme=dark]{--bg:#09090b;--s1:#0f0f11;--s2:#18181b;--tx:#fafafa;--mut:#8b8b94;--ln:#232327;--ln2:#33333a;--pri:#fafafa;--prifg:#09090b;--bfg:#e4e4e7;--teal:#2dd4a4;--gold:#e7b84a;--goldf:#5b4713;--ok:#4ade80;--bad:#f87171;--sel:#27272a}
@@ -150,7 +149,6 @@ main{padding:16px 16px 40px}footer{padding:12px 16px}.hm{display:none}
 <dialog id="dlg"><h3 id="dt"></h3><p id="dp" class="s"></p><div class="row"><button class="b" id="dno">Cancel</button><button class="go" id="dyes"></button></div></dialog>
 <script src="/verify.js"></script>
 <script>
-/* The menu, the current-screen mark and the title in the top bar belong to the page, so any signed script (older or newer) drives the layout the same way. */
 (function(){var side=document.getElementById('side'),mn=document.getElementById('mn'),sc=document.getElementById('scrim'),tabs=document.getElementById('tabs'),pt=document.getElementById('pt');
 function mark(){var all=tabs.querySelectorAll('button'),on=tabs.querySelector('button.on')||all[0];all.forEach(function(b){if(b===on)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current')});pt.textContent=on.textContent.trim()}
 function put(o){side.classList.toggle('open',o);sc.classList.toggle('open',o);mn.setAttribute('aria-expanded',o?'true':'false')}
