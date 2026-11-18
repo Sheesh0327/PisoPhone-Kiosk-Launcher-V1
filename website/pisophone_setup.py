@@ -44,11 +44,13 @@ Build a standalone program with Nuitka (no Python needed on the computer that ru
     python -m nuitka --onefile --include-package=esptool --include-package=serial setup/pisophone_setup.py"""
 import argparse
 import base64
+import binascii
 import contextlib
 import csv
 import datetime
 import getpass
 import glob
+import gzip
 import hashlib
 import http.client
 import http.server
@@ -65,6 +67,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import tarfile
 import tempfile
 import threading
 import time
@@ -72,6 +75,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import webbrowser
+import zlib
 
 APP_NAME = "TechNet PisoHub Setup"
 USER_AGENT = "TechNetPisoHubSetup/1.0 (+https://pisophone.pages.dev)"   # a name a website can recognise (Python's own is often refused)
@@ -1981,15 +1985,34 @@ def installer_command(branch, *args):
             f"exit 3; fi; sh /tmp/piso-install.sh {run}")
 
 
+def _setup_wrapper(inner_cmd, cleanup=""):
+    """Wraps a setup invocation so answers arrive on stdin (never on a command line) and structured markers follow."""
+    reads = "; ".join(f"IFS= read -r {n}" for n in ANSWER_ORDER)
+    tail = f"{cleanup}; " if cleanup else ""
+    return (f"{reads}; export {' '.join(ANSWER_ORDER)}; {inner_cmd}; rc=$?; {tail}echo; echo \"@@PISO-RC $rc\"; "
+            f"echo \"@@PISO-STATE $(cat /tmp/piso-setup.state 2>/dev/null)\"; "
+            f"if [ -r /root/piso-setup-summary.txt ]; then echo @@PISO-SUMMARY; cat /root/piso-setup-summary.txt; fi; "
+            f"if [ -r /root/piso-handout.html ]; then echo @@PISO-HANDOUT; cat /root/piso-handout.html; fi; echo @@PISO-END")
+
+
 def setup_command(branch):
     """The remote command for the setup itself: the answers are read from the connection's input (never on a command line,
     where any process on the router could read them), then the installer runs the setup, then the results are sent back
     between markers."""
-    reads = "; ".join(f"IFS= read -r {n}" for n in ANSWER_ORDER)
-    return (f"{reads}; export {' '.join(ANSWER_ORDER)}; {installer_command(branch)}; rc=$?; echo; echo \"@@PISO-RC $rc\"; "
-            f"echo \"@@PISO-STATE $(cat /tmp/piso-setup.state 2>/dev/null)\"; "
-            f"if [ -r /root/piso-setup-summary.txt ]; then echo @@PISO-SUMMARY; cat /root/piso-setup-summary.txt; fi; "
-            f"if [ -r /root/piso-handout.html ]; then echo @@PISO-HANDOUT; cat /root/piso-handout.html; fi; echo @@PISO-END")
+    return _setup_wrapper(installer_command(branch))
+
+
+def staged_installer_command(remote_dir, *args):
+    """Remote command that runs a pre-staged, pre-decoded piso-setup.sh without downloading or decoding on the router."""
+    run = " ".join(shlex.quote(a) for a in ("--yes", *args))
+    qdir = shlex.quote(remote_dir)
+    return f"sh {qdir}/piso-setup.sh {run}; rc=$?; rm -rf {qdir}; exit $rc"
+
+
+def staged_setup_command(remote_dir):
+    """Remote command for first setup using the pre-decoded bundle already uploaded to remote_dir."""
+    qdir = shlex.quote(remote_dir)
+    return _setup_wrapper(f"sh {qdir}/piso-setup.sh --yes", cleanup=f"rm -rf {qdir}")
 
 
 # ---- the first setup needs the router's internet ----------------------------------------------------------------------------------
@@ -2012,9 +2035,43 @@ READ_PACKAGER_COMMAND = ("echo @@RELEASE; cat /etc/openwrt_release 2>/dev/null; 
                          "echo @@APK; if command -v apk >/dev/null 2>&1; then echo yes; else echo no; fi; "
                          "echo @@OPKG; if command -v opkg >/dev/null 2>&1; then echo yes; else echo no; fi")
 
+ARMV7_ARCHS = frozenset({
+    "arm_cortex-a7_neon-vfpv4",
+    "arm_cortex-a15_neon-vfpv4",
+    "arm_cortex-a9_neon",
+    "arm_cortex-a9_vfpv3-d16",
+})
+
+
+def arch_from_release(release_lines):
+    """Maps /etc/openwrt_release DISTRIB_ARCH to the setup bundle CPU family (matches setup/install.sh)."""
+    lines = release_lines.splitlines() if isinstance(release_lines, str) else release_lines
+    raw = ""
+    for line in lines:
+        m = re.match(r"\s*DISTRIB_ARCH=['\"]?([^'\"]*)['\"]?\s*$", line)
+        if m:
+            raw = m.group(1).strip()
+            break
+    if not raw or raw.startswith("mipsel_"):
+        return "mipsel"
+    if raw.startswith("mips_"):
+        return "mips"
+    if raw.startswith("aarch64_"):
+        return "aarch64"
+    if raw in ARMV7_ARCHS:
+        return "armv7"
+    if raw == "x86_64":
+        return "x86_64"
+    raise SetupError(f'this router\'s CPU ("{raw}") has no PisoPhone portal program built yet. Nothing was changed. Tell the owner which router this is.')
+
+
+def bundle_filename(arch):
+    """Setup filename for a CPU family (matches setup/install.sh and tools/build_piso_setup.py)."""
+    return "piso-setup.sh" if not arch or arch == "mipsel" else f"piso-setup-{arch}.sh"
+
 
 def check_router_packager(ssh, host):
-    """Raises ApkRouter when the router installs packages with apk (or has no opkg): decided before the router is changed."""
+    """Raises ApkRouter when the router installs packages with apk (or has no opkg), else returns its bundle CPU arch."""
     lines = []
     if run_remote(ssh, host, READ_PACKAGER_COMMAND, lines.append)["exit"] == 255 and login_refused(ssh, host):
         raise SetupError(login_refused_message(ssh))
@@ -2033,6 +2090,15 @@ def check_router_packager(ssh, host):
     word = lambda name: (parts.get(name) or [""])[0].strip()
     if word("APK") == "yes" or word("OPKG") == "no":
         raise ApkRouter(release)
+    return arch_from_release(parts.get("RELEASE", []))
+
+
+def read_router_arch(ssh, host):
+    """Reads /etc/openwrt_release to determine the router CPU family when check_router_packager did not run earlier."""
+    lines = []
+    if run_remote(ssh, host, "cat /etc/openwrt_release 2>/dev/null", lines.append)["exit"] == 255 and login_refused(ssh, host):
+        raise SetupError(login_refused_message(ssh))
+    return arch_from_release(lines)
 
 
 def router_has_internet(ssh, host):
@@ -2131,16 +2197,202 @@ def renew_address():
             pass
 
 
-def install(ssh, host, answers, branch, out_dir, emit, wait_move, stage=lambda n: None):
+def _fetch_bytes(url, opener, what, timeout=60):
+    """Downloads a URL with USER_AGENT, wrapping network errors in SetupError."""
+    try:
+        with opener(urllib.request.Request(url, headers={"User-Agent": USER_AGENT}), timeout=timeout) as r:
+            return r.read()
+    except (urllib.error.URLError, OSError, http.client.HTTPException) as e:
+        raise SetupError(f"could not download {what} ({e})")
+
+
+def _validate_setup_script(raw_bytes, name):
+    if not raw_bytes.startswith(b"#!/bin/sh") or (b"\n# ---- payload: the portal files" not in raw_bytes
+                                                and not raw_bytes.startswith(b"# ---- payload: the portal files")):
+        raise SetupError(f"{name} is not a valid PisoPhone setup file")
+
+
+def fetch_cached_router_setup(branch, arch, cache_dir, opener=urllib.request.urlopen, emit=say):
+    """Fetches and SHA-256 verifies piso-setup[-<arch>].sh, reusing router-cache/ when the checksum matches."""
+    name = bundle_filename(arch)
+    base = f"{site_url(branch)}/setup"
+    sha_text = _fetch_bytes(f"{base}/{name}.sha256", opener, f"{name}.sha256", timeout=30).decode("ascii", "replace").strip()
+    want = sha_text[:64].lower()
+    if not re.fullmatch(r"[0-9a-f]{64}", want):
+        raise SetupError(f"the website's checksum for {name} is not valid")
+    path = os.path.join(cache_dir, f"{want[:16]}-{name}")
+    try:
+        with open(path, "rb") as f:
+            cached = f.read()
+        if hashlib.sha256(cached).hexdigest() == want:
+            _validate_setup_script(cached, name)
+            emit(f"Using cached {name} on this computer...")
+            return cached
+    except OSError:
+        pass
+    emit(f"Downloading {name} ({branch}) on this computer...")
+    raw = _fetch_bytes(f"{base}/{name}", opener, name, timeout=60)
+    if hashlib.sha256(raw).hexdigest() != want:
+        raise SetupError(f"the downloaded {name} does not match its checksum")
+    _validate_setup_script(raw, name)
+    try:
+        os.makedirs(cache_dir, exist_ok=True)
+        with open(path + ".part", "wb") as f:
+            f.write(raw)
+        os.replace(path + ".part", path)
+    except OSError:
+        pass
+    return raw
+
+
+def rewrite_b64_to_bin(raw_bytes, name):
+    """Decodes #@@B64 sections (base64 + optional gz, SHA-256 checked) into raw ELF bytes and replaces them with #@@BIN."""
+    out_lines = []
+    binaries = {}
+    in_payload = False
+    cur = None
+
+    def flush():
+        if cur is None:
+            return
+        clean = b"".join(cur["b64"]).replace(b"\r", b"").replace(b"\n", b"").replace(b" ", b"").replace(b"\t", b"")
+        try:
+            data = base64.b64decode(clean, validate=True)
+        except (binascii.Error, ValueError) as e:
+            raise SetupError(f"could not base64-decode {cur['dest']} in {name}: {e}")
+        if cur["enc"] == "gz":
+            try:
+                data = gzip.decompress(data)
+            except (OSError, EOFError, zlib.error) as e:
+                raise SetupError(f"could not decompress {cur['dest']} in {name}: {e}")
+        elif cur["enc"]:
+            raise SetupError(f"unsupported payload encoding {cur['enc']!r} in {name}")
+        if not data:
+            raise SetupError(f"empty binary payload for {cur['dest']} in {name}")
+        actual = hashlib.sha256(data).hexdigest()
+        if cur["sum"] and actual != cur["sum"]:
+            raise SetupError(f"checksum mismatch decoding {cur['dest']} in {name}")
+        rel = "pre" + cur["dest"]
+        binaries[rel] = (data, int(cur["mode"], 8))
+        out_lines.append(f"#@@BIN {cur['dest']} {cur['mode']} {actual} {rel}\n".encode("ascii"))
+
+    for line in raw_bytes.splitlines(keepends=True):
+        if not in_payload:
+            out_lines.append(line)
+            if line.startswith(b"# ---- payload: the portal files"):
+                in_payload = True
+            continue
+        if line.startswith(b"#@@B64 "):
+            flush()
+            try:
+                parts = line[len(b"#@@B64 "):].decode("ascii", "strict").strip().split()
+            except UnicodeDecodeError as e:
+                raise SetupError(f"invalid #@@B64 header in {name}: {e}")
+            if len(parts) < 2:
+                raise SetupError(f"incomplete #@@B64 header in {name}")
+            dest, mode = parts[0], parts[1]
+            sum_hex = parts[2].lower() if len(parts) > 2 else ""
+            enc = parts[3] if len(parts) > 3 else ""
+            if (not dest.startswith("/") or ".." in dest.split("/") or len("pre" + dest) > 100
+                    or not re.fullmatch(r"[0-7]{3,4}", mode)
+                    or (sum_hex and not re.fullmatch(r"[0-9a-f]{64}", sum_hex))):
+                raise SetupError(f"invalid #@@B64 header for {dest} in {name}")
+            cur = {"dest": dest, "mode": mode, "sum": sum_hex, "enc": enc, "b64": []}
+        elif line.startswith(b"#@@"):
+            flush()
+            cur = None
+            out_lines.append(line)
+        elif cur is not None:
+            cur["b64"].append(line)
+        else:
+            out_lines.append(line)
+    flush()
+    if not in_payload:
+        raise SetupError(f"{name} has no portal payload marker")
+    return b"".join(out_lines), binaries
+
+
+def build_router_tar(script_bytes, binaries):
+    """Packs piso-setup.sh and pre-decoded raw binaries into a POSIX USTAR tar archive (BusyBox tar compatible)."""
+    def info_for(arcname, mode, size=0, kind=tarfile.REGTYPE):
+        ti = tarfile.TarInfo(arcname)
+        ti.type = kind
+        ti.mode = mode
+        ti.size = size
+        ti.mtime = 0
+        ti.uname = "root"
+        ti.gname = "root"
+        return ti
+
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w", format=tarfile.USTAR_FORMAT) as tf:
+        dirs = set()
+        for rel in sorted(binaries):
+            cur = ""
+            for part in rel.split("/")[:-1]:
+                cur = f"{cur}/{part}" if cur else part
+                if cur not in dirs:
+                    dirs.add(cur)
+                    tf.addfile(info_for(cur, 0o755, kind=tarfile.DIRTYPE))
+        tf.addfile(info_for("piso-setup.sh", 0o755, len(script_bytes)), io.BytesIO(script_bytes))
+        for rel in sorted(binaries):
+            data, mode_int = binaries[rel]
+            tf.addfile(info_for(rel, mode_int, len(data)), io.BytesIO(data))
+    return buf.getvalue()
+
+
+def prepare_router_bundle(branch, arch, cache_dir, opener=urllib.request.urlopen, emit=say):
+    """Downloads/caches the router setup script, decodes binary payloads on the PC, and returns USTAR tar bytes."""
+    name = bundle_filename(arch)
+    raw = fetch_cached_router_setup(branch, arch, cache_dir, opener=opener, emit=emit)
+    script_bytes, binaries = rewrite_b64_to_bin(raw, name)
+    tar_bytes = build_router_tar(script_bytes, binaries)
+    emit(f"Pre-decoded {name} on this computer ({len(tar_bytes) / 1048576:.2f} MB ready to upload).")
+    return tar_bytes
+
+
+def upload_router_bundle(ssh, host, tar_bytes, emit):
+    """Streams the pre-decoded tar bundle to /root (if RAM < 24 MB) or /tmp on the router and returns the remote staging dir."""
+    cmd = (
+        "M=$(sed -n 's/^MemAvailable: *\\([0-9]*\\) kB.*/\\1/p' /proc/meminfo 2>/dev/null | head -n 1); "
+        "if [ \"${M:-0}\" -gt 0 ] 2>/dev/null && [ \"${M:-0}\" -lt 24000 ]; then L=root; DIR=/root/piso-stage; "
+        "else L=tmp; DIR=/tmp/piso-stage; fi; "
+        "rm -rf \"$DIR\" && mkdir -p \"$DIR\" && tar -xf - -C \"$DIR\" && [ -s \"$DIR/piso-setup.sh\" ] && echo \"@@PISO-DIR /$L/piso-stage\""
+    )
+    lines = []
+    r = run_remote(ssh, host, cmd, lines.append, data=tar_bytes)
+    if r["exit"] == 255 and login_refused(ssh, host):
+        raise SetupError(login_refused_message(ssh))
+    remote_dir = next((line[len("@@PISO-DIR "):].strip() for line in lines if line.startswith("@@PISO-DIR ")), "")
+    if r["exit"] != 0 or not remote_dir:
+        for line in lines:
+            emit(line)
+        raise SetupError("could not copy the setup software to the router (see the messages above).")
+    return remote_dir
+
+
+def stage_router_bundle(ssh, host, branch, arch, emit, opener):
+    """Prepares and uploads a pre-decoded setup bundle, returning None to fall back to router wget if PC fetch fails."""
+    try:
+        tar_bytes = prepare_router_bundle(branch, arch, router_cache_dir(), opener=opener, emit=emit)
+    except SetupError as e:
+        emit(f"Could not prepare the setup software on this computer ({e}); letting the router download it itself...")
+        return None
+    emit("Copying the pre-decoded setup software to the router...")
+    return upload_router_bundle(ssh, host, tar_bytes, emit)
+
+
+def install(ssh, host, answers, branch, out_dir, emit, wait_move, stage=lambda n: None, opener=urllib.request.urlopen):
     """The installation: on a factory router the router is first moved to 10.0.0.1 (wait_move() waits for that)
     before anything else to avoid IP conflicts with modems on 192.168.1.1, then the setup runs with the answers.
     Returns the result (ok, state, saved files, summary); raises SetupError when it could not run to its end.
 
-    The router needs internet for the first setup: it downloads the installer and its packages itself. Before the setup runs
-    the router's internet is tested, and without it the setup stops with a message that names the requirement."""
+    The router needs internet for the first setup: opkg downloads packages on the router, and this computer pre-decodes
+    the setup binary before uploading (falling back to router-side wget if this computer cannot reach the website)."""
+    arch = None
     moved = False
     if host != TARGET_IP:   # (the factory address, or the one this router started at: moved to 10.0.0.1 first)
-        check_router_packager(ssh, host)
+        arch = check_router_packager(ssh, host)
         stage(0)
         emit(f"Moving router from {host} to {TARGET_IP} before anything else (moving it to {TARGET_IP} avoids modem IP conflict)...")
         r = run_remote(ssh, host, move_command(), emit)
@@ -2163,7 +2415,11 @@ def install(ssh, host, answers, branch, out_dir, emit, wait_move, stage=lambda n
                          "router's WAN port, wait a minute until the modem is online, then try again.")
     values = "".join(answers.get(key, "") + "\n" for key in ANSWER_ORDER)
     save_router_password(out_dir, answers.get("ROOT_PASSWORD"), host)   # before the router changes it: a repeat can log in
-    result = run_remote(ssh, host, setup_command(branch), emit, data=values)
+    if arch is None:
+        arch = read_router_arch(ssh, host)
+    remote_dir = stage_router_bundle(ssh, host, branch, arch, emit, opener)
+    cmd = staged_setup_command(remote_dir) if remote_dir else setup_command(branch)
+    result = run_remote(ssh, host, cmd, emit, data=values)
 
     saved = []
     stamp = time.strftime("%Y%m%d-%H%M")
@@ -2209,8 +2465,14 @@ def failure_message(result):
     return f"the setup stopped: {reason}.{more} Fix that and run it again: it continues where it stopped."
 
 
-def update_router(ssh, host, branch, emit):
-    r = run_remote(ssh, host, installer_command(branch, "update"), emit)
+def update_router(ssh, host, branch, emit, opener=urllib.request.urlopen):
+    """Updates an already-installed router: main keeps signed OTA self-update; test branches pre-decode on this computer."""
+    cmd = None
+    if branch != "main":
+        remote_dir = stage_router_bundle(ssh, host, branch, read_router_arch(ssh, host), emit, opener)
+        if remote_dir:
+            cmd = staged_installer_command(remote_dir, "update")
+    r = run_remote(ssh, host, cmd or installer_command(branch, "update"), emit)
     if r["exit"] != 0:
         raise SetupError("the update did not finish (see the messages above). It is safe to run it again.")
 
@@ -2727,7 +2989,7 @@ def flash_in_terminal(args, read, board_finder, flasher):
 
 
 def run_setup(args, ssh, read=input, read_secret=getpass.getpass, probe=port_open, wait=wait_for_move, open_page=open_url,
-              board_finder=usb_boards, flasher=None, mac_reader=None):
+              board_finder=usb_boards, flasher=None, mac_reader=None, opener=urllib.request.urlopen):
     if flasher is None:
         def flasher(port, emit):
             return flash_box(args.branch, port, emit, flash_cache_dir(), product="wifi" if getattr(args, "product", None) == "wifi" else "full")
@@ -2744,7 +3006,7 @@ def run_setup(args, ssh, read=input, read_secret=getpass.getpass, probe=port_ope
         if state == "factory":
             raise SetupError("this router has not been set up yet: run this script without --update")
         say("Installing the current PisoPhone software (you are asked for the router password)...")
-        update_router(ssh, host, args.branch, say)
+        update_router(ssh, host, args.branch, say, opener=opener)
         say()
         say("UPDATE DONE.")
         return 0
@@ -2787,7 +3049,7 @@ def run_setup(args, ssh, read=input, read_secret=getpass.getpass, probe=port_ope
             say("box powered on). Do not close this window.")
             say()
 
-    result = install(ssh, host, answers, args.branch, args.out, say, lambda: wait(probe=probe, renew=renew_address), stage)
+    result = install(ssh, host, answers, args.branch, args.out, say, lambda: wait(probe=probe, renew=renew_address), stage, opener=opener)
     host = result["host"]
     say()
     for label, path in result["saved"]:
@@ -3005,6 +3267,11 @@ def serial_access_fix(port, system, emit, run=run_command):
 def flash_cache_dir():
     """Where the downloaded coin box software is kept, so the next unit does not download it again."""
     return os.path.join(default_out_dir(), "firmware-cache")
+
+
+def router_cache_dir():
+    """Where downloaded router setup scripts are kept by checksum so repeated installs avoid re-downloading."""
+    return os.path.join(default_out_dir(), "router-cache")
 
 
 def default_out_dir():
@@ -4214,8 +4481,9 @@ LOG_KEEP = 3000
 class Core:
     """What the setup does with the network, the router and the coin box; tests replace it with a fake."""
 
-    def __init__(self, branch, workdir):
+    def __init__(self, branch, workdir, opener=urllib.request.urlopen):
         self.branch = branch
+        self.opener = opener
         self.ssh = Ssh(workdir, hidden=True)
         self.ssh.set_password("")   # never wait for a password on a terminal there is not
 
@@ -4251,7 +4519,7 @@ class Core:
 
     def install(self, host, answers, out_dir, emit, stage, notify):
         return install(self.ssh, host, answers, self.branch, out_dir, emit,
-                       lambda: wait_for_move(renew=renew_address, notify=notify), stage)
+                       lambda: wait_for_move(renew=renew_address, notify=notify), stage, opener=self.opener)
 
     def run(self, host, password, command, emit):
         """A command on the router (the root password is known by now): its output line by line; returns its exit status."""

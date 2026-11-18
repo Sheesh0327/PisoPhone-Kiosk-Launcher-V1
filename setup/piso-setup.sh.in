@@ -674,6 +674,15 @@ decode_b64() {
 	return 1
 }
 
+# install_prog <src> <dest> <mode> <clean1> [clean2]: copy a binary atomically and clean staging dirs on failure
+install_prog() {
+	{ cp "$1" "$2.new" && chmod "$3" "$2.new" && mv "$2.new" "$2"; } && return 0
+	rm -f "$2.new"
+	[ -n "$4" ] && rm -rf "$4"
+	[ -n "$5" ] && rm -rf "$5"
+	die "could not install $2 (is the router's flash full? df -h /overlay)"
+}
+
 extract_payload() {
 	step "Installing the portal files"
 	_self="$1"
@@ -685,7 +694,7 @@ extract_payload() {
 	# in the middle leaves the old files working (each was emptied first, and a cut left an empty init script: no portal after a reboot)
 	sed -n 's/^#@@FILE //p' "$_self" | while read -r _dest _mode; do mkdir -p "$(dirname "$PISO_ROOT$_dest")"; : > "$PISO_ROOT$_dest.new"; chmod "$_mode" "$PISO_ROOT$_dest.new"; done
 	# a program is only replaced once its new copy is decoded and checked: a failed update leaves the old one working
-	sed -n 's/^#@@B64 //p' "$_self" | while read -r _dest _rest; do mkdir -p "$(dirname "$PISO_ROOT$_dest")"; done
+	sed -n 's/^#@@B64 //p; s/^#@@BIN //p' "$_self" | while read -r _dest _rest; do mkdir -p "$(dirname "$PISO_ROOT$_dest")"; done
 	# text files are copied as they are; a binary (the portal program) is stored as base64 lines, decoded in RAM (/tmp: the
 	# flash may be nearly full) and then moved into place
 	_tmpd="${TMPDIR:-/tmp}/piso-payload.$$"
@@ -713,10 +722,24 @@ extract_payload() {
 		tr -d '\r' < "$_t.b64" > "$_t.clean"
 		decode_b64 "$_t.clean" "$_t.new" "$_sum" "$_enc" || { rm -rf "$_tmpd"; die "could not decode $_dest (the setup file may be damaged: copy it again)"; }
 		# copied next to the old one, then renamed over it: never a half-written program, even after a power cut
-		{ cp "$_t.new" "$f.new" && chmod "$_mode" "$f.new" && mv "$f.new" "$f"; } || { rm -f "$f.new"; rm -rf "$_tmpd"; die "could not install $f (is the router's flash full? df -h /overlay)"; }
+		install_prog "$_t.new" "$f" "$_mode" "$_tmpd"
 		log "installed $f"
 	done
-	rm -rf "$_tmpd"
+	_sdir=$(dirname "$_self")
+	# pre-decoded binaries uploaded from a computer sit under pre/ next to this script
+	# shellcheck disable=SC2013 # one word per program: path|mode|sha256|relpath
+	for _e in $(sed -n 's/^#@@BIN \([^ ]*\) \([^ ]*\) *\([^ ]*\) *\([^ ]*\).*/\1|\2|\3|\4/p' "$_self"); do
+		_dest="${_e%%|*}"; _r="${_e#*|}"; _mode="${_r%%|*}"; _r2="${_r#*|}"; _sum="${_r2%%|*}"; _rel="${_r2#*|}"
+		case "$_rel" in /* | ../* | */../* | */.. | .. | "") rm -rf "$_tmpd" "$_sdir/pre"; die "invalid pre-decoded path for $_dest" ;; esac
+		f="$PISO_ROOT$_dest"; _src="$_sdir/$_rel"
+		[ -s "$_src" ] || { rm -rf "$_tmpd" "$_sdir/pre"; die "could not find pre-decoded $_dest"; }
+		if [ -n "$_sum" ] && command -v sha256sum > /dev/null 2>&1 && [ "$(sha256sum "$_src" | cut -d' ' -f1)" != "$_sum" ]; then
+			rm -rf "$_tmpd" "$_sdir/pre"; die "pre-decoded $_dest failed checksum (copy it again)"
+		fi
+		install_prog "$_src" "$f" "$_mode" "$_tmpd" "$_sdir/pre"
+		log "installed $f (pre-decoded binary)"
+	done
+	rm -rf "$_tmpd" "$_sdir/pre"
 	# the installed command without the payload (about 1 MB of flash): it is only used for the commands, never to install
 	# (written next to it and renamed: this file may be the one being run, and the shell is still reading it)
 	if sed '/^# ---- payload: the portal files/,$d' "$_self" > "$SELF_PATH.new" 2> /dev/null; then
@@ -777,6 +800,7 @@ abs_path() {
 drop_installer_copy() {
 	case "$SELF_COPY" in
 		"$PISO_ROOT/tmp/piso-setup.sh" | "$PISO_ROOT/root/piso-setup.sh") rm -f "$SELF_COPY"; log "removed the installer copy $SELF_COPY (the installed command is $SELF_PATH)" ;;
+		"$PISO_ROOT/tmp/piso-stage/piso-setup.sh" | "$PISO_ROOT/root/piso-stage/piso-setup.sh") rm -rf "$(dirname "$SELF_COPY")"; log "removed the staged installer $(dirname "$SELF_COPY") (the installed command is $SELF_PATH)" ;;
 	esac
 	return 0
 }

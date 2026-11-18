@@ -1,7 +1,7 @@
 """Tests of setup/piso-setup.sh (the one-file router setup) without a router: a fake uci with canned radios, the generated
 settings, the payload, the helpers, and the coin box provisioning against a fake box.
 Run with:  python3 router/tests/test_setup.py"""
-import urllib.parse, http.server, os, re, shutil, subprocess, sys, tempfile, threading, base64
+import urllib.parse, http.server, os, re, shutil, subprocess, sys, tempfile, threading, base64, hashlib
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SCRIPT = f"{ROOT}/setup/piso-setup.sh"
@@ -324,7 +324,7 @@ bb = subprocess.run(["sh", "-c", "command -v busybox"], capture_output=True, tex
 if bb:
     bbdir = f"{tmp}/bb"
     os.makedirs(bbdir)
-    for a in "sh awk sed grep tr rm mv chmod mkdir dirname cut sha256sum printf cat date head tail ln mktemp gzip".split():
+    for a in "sh awk sed grep tr rm cp mv chmod mkdir dirname cut sha256sum printf cat date head tail ln mktemp gzip".split():
         os.symlink(bb, f"{bbdir}/{a}")
     # (functions stand in for the missing tools: a BusyBox built with "standalone shell" would find its own applets)
     r = subprocess.run([f"{bbdir}/sh", "-c", f". {SCRIPT}; base64() {{ return 127; }}; openssl() {{ return 127; }}; DRY=1; extract_payload {SCRIPT}"], env={"PATH": bbdir, "PISO_ROOT": f"{tmp}/bbroot", "PISO_SETUP_SOURCE_ONLY": "1",
@@ -354,6 +354,46 @@ open(f"{tmp}/badroot/usr/bin/pisoportal", "w").write("the working program")
 r = lib(f'PISO_ROOT={tmp}/badroot; DRY=1; extract_payload {bad}; echo rc=$?')
 check("rc=" not in r.stdout and "could not decode" in (r.stdout + r.stderr), "a damaged payload (checksum mismatch) stops the setup: " + r.stdout[-200:])
 check(open(f"{tmp}/badroot/usr/bin/pisoportal").read() == "the working program", "and the program already on the router is left as it was")
+# pre-decoded binaries (#@@BIN): installed cleanly without base64, openssl or awk b64d, verified by sha256, and pre/ is removed
+pre_stage = f"{tmp}/prestage"
+os.makedirs(f"{pre_stage}/pre/usr/bin")
+real_bin = open(f"{ROOT}/tools/pisoportal/bin/pisoportal-mipsel", "rb").read()
+shutil.copy(f"{ROOT}/tools/pisoportal/bin/pisoportal-mipsel", f"{pre_stage}/pre/usr/bin/pisoportal")
+pre_sum = hashlib.sha256(real_bin).hexdigest()
+pre_sh = f"{pre_stage}/piso-setup.sh"
+open(pre_sh, "w", newline="\n").write(t[:t.index("\n#@@B64 ")] + f"\n#@@BIN /usr/bin/pisoportal 755 {pre_sum} pre/usr/bin/pisoportal\n")
+if bb:
+    r = subprocess.run(
+        [f"{bbdir}/sh", "-c", f". {pre_sh}; base64() {{ return 127; }}; openssl() {{ return 127; }}; b64d() {{ return 127; }}; DRY=1; extract_payload {pre_sh}"],
+        env={"PATH": bbdir, "PISO_ROOT": f"{tmp}/bbpre", "PISO_SETUP_SOURCE_ONLY": "1",
+             "PISO_SELF_PATH": f"{tmp}/bbpre/piso-setup", "PISO_LOG": f"{tmp}/bbprelog"},
+        capture_output=True, text=True, timeout=60,
+    )
+    got_pre = f"{tmp}/bbpre/usr/bin/pisoportal"
+    check(r.returncode == 0 and os.path.exists(got_pre) and open(got_pre, "rb").read() == real_bin
+          and "(pre-decoded binary)" in r.stdout and "decoding with awk" not in r.stdout
+          and not os.path.exists(f"{pre_stage}/pre"),
+          "BusyBox #@@BIN (no base64/openssl/awk b64d): installs binary, verifies sha256, cleans pre/: " + r.stdout[-300:] + r.stderr[-300:])
+bad_pre = f"{tmp}/badpre"
+os.makedirs(f"{bad_pre}/pre/usr/bin")
+open(f"{bad_pre}/pre/usr/bin/pisoportal", "wb").write(b"corrupt elf")
+open(f"{bad_pre}/piso-setup.sh", "w", newline="\n").write(open(pre_sh).read())
+os.makedirs(f"{tmp}/badpreroot/usr/bin")
+open(f"{tmp}/badpreroot/usr/bin/pisoportal", "w").write("the working program")
+r = lib(f'PISO_ROOT={tmp}/badpreroot; DRY=1; extract_payload {bad_pre}/piso-setup.sh; echo rc=$?')
+check("rc=" not in r.stdout and "failed checksum" in (r.stdout + r.stderr) and not os.path.exists(f"{bad_pre}/pre"),
+      "a corrupted pre-decoded binary stops the setup and cleans pre/: " + r.stdout[-200:] + r.stderr[-200:])
+check(open(f"{tmp}/badpreroot/usr/bin/pisoportal").read() == "the working program", "and the old binary on the router is left untouched")
+trav_pre = f"{tmp}/travpre"
+os.makedirs(trav_pre)
+open(f"{trav_pre}/piso-setup.sh", "w", newline="\n").write(t[:t.index("\n#@@B64 ")] + f"\n#@@BIN /usr/bin/pisoportal 755 {pre_sum} ../evil\n")
+r = lib(f'PISO_ROOT={tmp}/travroot; DRY=1; extract_payload {trav_pre}/piso-setup.sh; echo rc=$?')
+check("rc=" not in r.stdout and "invalid pre-decoded path" in (r.stdout + r.stderr), "unsafe #@@BIN relpath is refused: " + r.stdout[-200:])
+drop_stage = f"{tmp}/droproot/tmp/piso-stage"
+os.makedirs(drop_stage)
+open(f"{drop_stage}/piso-setup.sh", "w").write("#!/bin/sh\n")
+lib(f'PISO_ROOT={tmp}/droproot; SELF_COPY={drop_stage}/piso-setup.sh; drop_installer_copy')
+check(not os.path.exists(drop_stage), "drop_installer_copy removes the staged installer directory")
 
 # ---- stored settings -------------------------------------------------------------------------------------------------------
 r = lib('conf_set A "x y"; conf_set A "second"; conf_set B 2; echo "$(conf_get A)|$(conf_get B)"; K=$(secret K 12); echo "$K|$(secret K 12)"; secret G 64 hex')
