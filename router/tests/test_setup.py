@@ -143,6 +143,12 @@ check("set wireless.radio0.htmode='HT20'" in out and "set wireless.radio1.htmode
 check(out.count("delete wireless.@wifi-iface[") == 3 and "delete wireless.@wifi-iface[2]" in out and out.index("[2]") < out.index("[0]"), "router's own default networks removed (highest first)")
 check("macfilter" not in out and "dhcp.pisocoinbox" not in out, "box network is open for pairing until the box's MAC is known")
 check("set firewall.guest.forward='REJECT'" in out and "set firewall.guest_wan.dest='wan'" in out and "set firewall.guest_stream.dest_port='2080'" in out, "guests reach the internet only (and the portal port)")
+check("set firewall.guest_lan_redirect=redirect" in out and "set firewall.guest_lan_redirect.src='guest'" in out
+      and "set firewall.guest_lan_redirect.src_dip='10.0.0.1'" in out and "set firewall.guest_lan_redirect.src_dport='80'" in out
+      and "set firewall.guest_lan_redirect.dest_port='2080'" in out and "set firewall.guest_lan_redirect.target='DNAT'" in out
+      and "set firewall.guest_http_redirect=redirect" in out and "set firewall.guest_http_redirect.src_dip='10.0.30.1'" in out
+      and "set firewall.guest_http_redirect.dest_port='2080'" in out,
+      "guests accessing 10.0.0.1 or 10.0.30.1 on port 80 are redirected to the portal port without affecting LAN")
 check("set firewall.guest_nomodem.src='guest'" in out and "set firewall.guest_nomodem.dest='wan'" in out and "set firewall.guest_nomodem.target='REJECT'" in out
       and "add_list firewall.guest_nomodem.dest_ip='192.168.1.1'" in out and out.index("set firewall.guest_nomodem=rule") < out.index("set opennds.@opennds[0].enabled"),
       "guests are refused the modem's address (192.168.1.1) in the router's firewall")
@@ -271,7 +277,8 @@ check("set wireless.box_ap.macfilter='allow'" in r.stdout and "add_list wireless
       and "set dhcp.pisocoinbox.ip='10.0.0.10'" in r.stdout, "paired box: MAC allow-list and fixed address")
 check("set wireless.guest_radio0.ssid='Juan Net'" in r.stdout, "a renamed customer Wi-Fi keeps its name on re-run")
 r = run("--dry-run", env={"GUEST_IP": "192.168.31.1", "COUNTRY": "US"})
-check("country='US'" in r.stdout and "ipaddr='192.168.31.1'" in r.stdout, "guest address and country can be overridden")
+check("country='US'" in r.stdout and "ipaddr='192.168.31.1'" in r.stdout and "set firewall.guest_http_redirect.src_dip='192.168.31.1'" in r.stdout,
+      "guest address and country can be overridden")
 r = lib('echo "$LAN_IP $BOX_IP"')
 check(r.stdout.strip() == "10.0.0.1 10.0.0.10", "default LAN 10.0.0.1, box 10.0.0.10: " + r.stdout)
 fake_uci({"radio0": "2g"}, lan="10.0.0.1/24")
@@ -1226,9 +1233,11 @@ open(conf_up, "a").write("GUEST_NAME='Shop WiFi'\nBOX_MAC='AA:BB:CC:DD:EE:09'\n"
 r = run("update", env={"PISO_TEST_NONROOT": "1", "PISO_ROOT": root, "PISO_CONF": conf_up, "PISO_SELF_PATH": f"{tmp}/installed/piso-setup"})
 ub, ul = open(f"{tmp}/uci.batch").read(), open(f"{tmp}/uci.log").read()
 check("set opennds.@opennds[0].fasport='2080'" in ub and "set opennds.@opennds[0].login_option_enabled='0'" in ub and "delete opennds.@opennds[0].themespec_path" in ub
-      and "set firewall.guest_stream.dest_port='2080'" in ub and "set opennds.@opennds[0].gatewayname='Shop WiFi'" in ub, "update moves openNDS to the FAS portal: " + ub[:300])
+      and "set firewall.guest_stream.dest_port='2080'" in ub and "set firewall.guest_lan_redirect.src_dip='10.0.0.1'" in ub
+      and "set firewall.guest_http_redirect.src_dip='10.0.30.1'" in ub and "set opennds.@opennds[0].gatewayname='Shop WiFi'" in ub,
+      "update moves openNDS to the FAS portal: " + ub[:300])
 check("set dropbear.@dropbear[0].Interface='lan'" in ub, "and keeps SSH off the guest network")
-check(all(l.startswith(("set firewall.guest_stream", "set firewall.guest_nomodem", "delete firewall.guest_nomodem", "add_list firewall.guest_nomodem", "set firewall.guest_noprivate", "delete firewall.guest_noprivate", "add_list firewall.guest_noprivate", "set firewall.phone_noprivate", "delete firewall.phone_noprivate", "add_list firewall.phone_noprivate", "set firewall.piso_isolation", "add_list dhcp.@dnsmasq", "del_list dhcp.@dnsmasq", "set opennds.", "delete opennds.", "add_list opennds.", "set dropbear.", "delete uhttpd.", "add_list uhttpd.", "#"))
+check(all(l.startswith(("set firewall.guest_stream", "set firewall.guest_lan_redirect", "set firewall.guest_http_redirect", "set firewall.guest_nomodem", "delete firewall.guest_nomodem", "add_list firewall.guest_nomodem", "set firewall.guest_noprivate", "delete firewall.guest_noprivate", "add_list firewall.guest_noprivate", "set firewall.phone_noprivate", "delete firewall.phone_noprivate", "add_list firewall.phone_noprivate", "set firewall.piso_isolation", "add_list dhcp.@dnsmasq", "del_list dhcp.@dnsmasq", "set opennds.", "delete opennds.", "add_list opennds.", "set dropbear.", "delete uhttpd.", "add_list uhttpd.", "#"))
           for l in ub.splitlines() if l.strip()), "and touches nothing else (no Wi-Fi, network or passwords): " + ub)
 check("commit opennds" in ul and "commit firewall" in ul, "the change is committed")
 cc = open(f"{root}/etc/coinslot.conf").read()

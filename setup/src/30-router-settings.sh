@@ -192,6 +192,26 @@ set firewall.guest_stream.src='guest'
 set firewall.guest_stream.proto='tcp'
 set firewall.guest_stream.dest_port='$PORTAL_PORT'
 set firewall.guest_stream.target='ACCEPT'
+# guests typing http://$LAN_IP (or http://admin.hub, or http://$GUEST_IP without :$PORTAL_PORT) are sent to the portal instead of hitting REJECT;
+# scoped to src='guest' so admin access on the LAN bridge is untouched
+set firewall.guest_lan_redirect=redirect
+set firewall.guest_lan_redirect.name='Guest-LAN-To-Portal'
+set firewall.guest_lan_redirect.family='ipv4'
+set firewall.guest_lan_redirect.src='guest'
+set firewall.guest_lan_redirect.src_dip='$LAN_IP'
+set firewall.guest_lan_redirect.proto='tcp'
+set firewall.guest_lan_redirect.src_dport='80'
+set firewall.guest_lan_redirect.dest_port='$PORTAL_PORT'
+set firewall.guest_lan_redirect.target='DNAT'
+set firewall.guest_http_redirect=redirect
+set firewall.guest_http_redirect.name='Guest-HTTP-To-Portal'
+set firewall.guest_http_redirect.family='ipv4'
+set firewall.guest_http_redirect.src='guest'
+set firewall.guest_http_redirect.src_dip='$GUEST_IP'
+set firewall.guest_http_redirect.proto='tcp'
+set firewall.guest_http_redirect.src_dport='80'
+set firewall.guest_http_redirect.dest_port='$PORTAL_PORT'
+set firewall.guest_http_redirect.target='DNAT'
 # guests reach the internet, not the modem's own pages (its login page, its settings): traffic from the guest network to the modem's
 # addresses is refused. It is one narrow rule in the router's firewall; the withdrawn 1.5.5 attempt blocked whole private ranges in
 # openNDS's list.

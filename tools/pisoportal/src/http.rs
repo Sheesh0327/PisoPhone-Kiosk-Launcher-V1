@@ -2,6 +2,7 @@
 //! everything else (Insert Coin, coins, Done, the result) travels over it. A device is the MAC address the router itself
 //! sees behind its connection (ARP), never what the page says.
 use crate::brandpack::{self, read_image};
+use crate::config::Config;
 use crate::core::{log, Core};
 use crate::pricing::{fmt_min, Plan, Pricing};
 use crate::util::{b64_decode, b64_encode, jget, json_esc, query_get, sha256_hex, url_decode, valid_mac};
@@ -257,6 +258,24 @@ fn same_origin(req: &Request) -> bool {
     }
     let host = req.header("host").unwrap_or("");
     origin.split_once("://").is_some_and(|(_, h)| h.trim_end_matches('/').eq_ignore_ascii_case(host))
+}
+
+/// Canonical portal URL (`http://<bind>:<port>/`) when a guest arrives on port 80 via the router's LAN, admin, or guest IP.
+fn portal_redirect(cfg: &Config, req: &Request) -> Option<String> {
+    if cfg.bind.is_empty() || cfg.bind == "0.0.0.0" || cfg.port == 80 || req.path == "/ping" || req.path == "/ws" {
+        return None;
+    }
+    let host_hdr = req.header("host")?.trim();
+    let host = crate::boxview::host_of(host_hdr)?;
+    let port = match host_hdr.strip_prefix('[') {
+        Some(rest) => rest.split_once(']').and_then(|(_, after)| after.strip_prefix(':')),
+        None => host_hdr.rsplit_once(':').map(|(_, p)| p),
+    };
+    let expected = cfg.port.to_string();
+    let is_lan = !cfg.console_bind.is_empty() && cfg.console_bind != "0.0.0.0" && host.eq_ignore_ascii_case(&cfg.console_bind);
+    let is_guest_wrong_port = host.eq_ignore_ascii_case(&cfg.bind) && port != Some(expected.as_str());
+    let is_admin_name = host.eq_ignore_ascii_case("admin.hub");
+    (is_lan || is_guest_wrong_port || is_admin_name).then(|| format!("http://{}:{}/", cfg.bind, cfg.port))
 }
 
 // ---- connection limits ------------------------------------------------------------------------------------------------------------
@@ -625,6 +644,9 @@ fn handle(p: Arc<Portal>, stream: TcpStream, peer: SocketAddr) {
     if req.method != "GET" && !head_only {
         return respond(&mut conn.s, "405 Method Not Allowed", "text/plain", "", "Allow: GET, HEAD\r\n");
     }
+    if let Some(loc) = portal_redirect(&p.core.cfg, &req) {
+        return respond(&mut conn.s, "302 Found", "text/plain", "", &format!("Location: {}\r\nCache-Control: no-store\r\n", loc));
+    }
     match req.path.as_str() {
         "/ping" => respond(&mut conn.s, "200 OK", "text/plain", if head_only { "" } else { "ok" }, "Cache-Control: no-store\r\n"),
         "/ws" => {
@@ -892,5 +914,33 @@ mod tests {
         let _c1 = l.take(3).unwrap(); // a slot given back can be taken again
         let used = l.used.lock().unwrap().0;
         assert_eq!(used, 3);
+    }
+
+    #[test]
+    fn portal_redirects_guest_port80_hosts() {
+        let mut cfg = Config::from_map(HashMap::new());
+        cfg.bind = "10.0.30.1".into();
+        cfg.port = 2080;
+        cfg.console_bind = "10.0.0.1".into();
+        let mk = |path: &str, host: Option<&str>| Request {
+            method: "GET".into(),
+            path: path.into(),
+            query: String::new(),
+            headers: host.map(|h| vec![("host".to_string(), h.to_string())]).unwrap_or_default(),
+        };
+        let expected = Some("http://10.0.30.1:2080/".to_string());
+        assert_eq!(portal_redirect(&cfg, &mk("/", Some("10.0.0.1"))), expected);
+        assert_eq!(portal_redirect(&cfg, &mk("/status", Some("10.0.0.1:80"))), expected);
+        assert_eq!(portal_redirect(&cfg, &mk("/", Some("admin.hub"))), expected);
+        assert_eq!(portal_redirect(&cfg, &mk("/", Some("ADMIN.HUB:80"))), expected);
+        assert_eq!(portal_redirect(&cfg, &mk("/", Some("10.0.30.1"))), expected);
+        assert_eq!(portal_redirect(&cfg, &mk("/", Some("10.0.30.1:80"))), expected);
+        assert_eq!(portal_redirect(&cfg, &mk("/", Some("10.0.30.1:2080"))), None);
+        assert_eq!(portal_redirect(&cfg, &mk("/send", Some("10.0.30.1:2080"))), None);
+        assert_eq!(portal_redirect(&cfg, &mk("/ping", Some("10.0.0.1"))), None);
+        assert_eq!(portal_redirect(&cfg, &mk("/ws", Some("10.0.0.1"))), None);
+        assert_eq!(portal_redirect(&cfg, &mk("/", None)), None);
+        cfg.bind = "0.0.0.0".into();
+        assert_eq!(portal_redirect(&cfg, &mk("/", Some("10.0.0.1"))), None);
     }
 }
