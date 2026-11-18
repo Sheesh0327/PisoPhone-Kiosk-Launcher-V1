@@ -70,7 +70,9 @@ class Stub(http.server.BaseHTTPRequestHandler):   # the coin box: a nonce for th
 stub = http.server.ThreadingHTTPServer(("127.0.0.1", CP + 10), Stub)
 threading.Thread(target=stub.serve_forever, daemon=True).start()
 env.extra.update(CONSOLE_PORT=CP, CONSOLE_BIND="127.0.0.1", UBUS=f"{tmp}/ubus", DHCP_LEASES=f"{tmp}/leases", ROUTE_FILE=f"{tmp}/route", NETDEV_FILE=f"{tmp}/dev",
-                 PISO_SETUP_CONF=f"{tmp}/setup.conf", PISO_SETUP=f"{tmp}/piso-setup", GW_BOX=f"127.0.0.1:{CP + 10}")
+                 PISO_SETUP_CONF=f"{tmp}/setup.conf", PISO_SETUP=f"{tmp}/piso-setup", GW_BOX=f"127.0.0.1:{CP + 10}",
+                 PISO_MONITOR_CONF=f"{tmp}/monitor.conf", PISO_MONITOR_BIN=f"{tmp}/piso-monitor",
+                 PISO_MONITOR_SERVICE=f"{tmp}/piso_monitor.svc", MON_STATE=f"{tmp}/mon-state")
 
 
 def call(path, body=None, cookie=None, headers=None):
@@ -328,6 +330,38 @@ try:
     check(code == 200 and json.loads(body)["state"] in ("cancelling", "idle"), f"pair: cancel stops running job: {body}")
     check(wait_until(lambda: json.loads(call("/api/pair", cookie=cookie)[1])["state"] == "idle", 5), "pair: cancelled job returns cleanly to idle")
     os.remove(f"{tmp}/pair.slow")
+    # ---- Telegram bot key management -------------------------------------------------------------------------------------------------------------
+    check(call("/api/telegram")[0] == 401 and call("/api/telegram", {"token": "x"})[0] == 401, "telegram: needs a session")
+    check(call("/api/telegram", {"token": "x"}, cookie=cookie, headers={"X-Piso": "0"})[0] == 403, "telegram: POST needs X-Piso")
+    j = json.loads(call("/api/telegram", cookie=cookie)[1])
+    check(j == {"ok": True, "set": False, "hint": "", "chat": ""}, f"telegram: initial unset state: {j}")
+    check(call("/api/telegram", {"token": "not-a-token"}, cookie=cookie)[0] == 400, "telegram: invalid token rejected")
+    check(call("/api/telegram", {"chat": "abc"}, cookie=cookie)[0] == 400, "telegram: invalid chat ID rejected")
+    os.makedirs(f"{tmp}/mon-state", exist_ok=True)
+    open(f"{tmp}/mon-state/offset", "w").write("42")
+    open(f"{tmp}/mon-state/commands.set", "w").write("1")
+    open(f"{tmp}/monitor.conf", "w").write("SITE_NAME='Shop'\nREPORT_HOUR='21'\n#HEALTHCHECK_URL='https://hc.example/1'\n")
+    open(f"{tmp}/piso_monitor.svc", "w").write(f"#!/bin/sh\necho \"svc:$1\" >> {tmp}/mon.log\n")
+    open(f"{tmp}/piso-monitor", "w").write(f"#!/bin/sh\necho \"bin:$*:$PISO_MONITOR_CONF:$MON_STATE\" >> {tmp}/mon.log\n")
+    os.chmod(f"{tmp}/piso_monitor.svc", 0o755)
+    os.chmod(f"{tmp}/piso-monitor", 0o755)
+    tok1 = "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+    code, body, _h = call("/api/telegram", {"token": tok1, "chat": "777888"}, cookie=cookie)
+    j = json.loads(body)
+    check(code == 200 and j["set"] is True and j["hint"] == "123456...ew11" and j["chat"] == "777888" and tok1.encode() not in body, f"telegram: saved & masked: {j}")
+    mc = open(f"{tmp}/monitor.conf").read()
+    check("SITE_NAME='Shop'" in mc and "#HEALTHCHECK_URL='https://hc.example/1'" in mc and f"TG_TOKEN='{tok1}'" in mc and "TG_CHAT='777888'" in mc, f"telegram: conf preserved: {mc}")
+    check((os.stat(f"{tmp}/monitor.conf").st_mode & 0o777) == 0o600, "telegram: monitor.conf stays 0600")
+    check(not os.path.exists(f"{tmp}/mon-state/offset") and not os.path.exists(f"{tmp}/mon-state/commands.set"), "telegram: stale offset and commands.set cleared")
+    log = open(f"{tmp}/mon.log").read()
+    check("svc:enable\n" in log and "svc:restart\n" in log, f"telegram: monitor service enabled and restarted: {log}")
+    # Rotating key alone keeps existing chat ID
+    tok2 = "987654:XYZ-DEF1234ghIkl-zyx57W2v1u129999"
+    j = json.loads(call("/api/telegram", {"token": tok2}, cookie=cookie)[1])
+    check(j["hint"] == "987654...9999" and j["chat"] == "777888" and tok2 not in repr(j), f"telegram: rotated key preserves chat: {j}")
+    code, body, _h = call("/api/telegram", {"action": "test"}, cookie=cookie)
+    check(code == 200 and json.loads(body).get("sent") is True, f"telegram: test send ok: {code} {body}")
+    check(f"bin:send Test message from PisoHub Console.:{tmp}/monitor.conf:{tmp}/mon-state" in open(f"{tmp}/mon.log").read(), "telegram: test send ran monitor bin")
     # ---- AO-09: 200 idle sockets from one guest do not starve anyone else, and do not pile up threads ---------------------------------
     import http.client, socket
 

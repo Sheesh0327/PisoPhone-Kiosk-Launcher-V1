@@ -302,6 +302,157 @@ fn http_get_auth(addr: &str, path: &str, user: &str, pass: &str) -> Result<Strin
     Ok(body.to_string())
 }
 
+static TG_LOCK: Mutex<()> = Mutex::new(());
+
+fn valid_tg_token(s: &str) -> bool {
+    let Some((id, sec)) = s.split_once(':') else { return false };
+    (5..=15).contains(&id.len())
+        && id.bytes().all(|b| b.is_ascii_digit())
+        && (20..=80).contains(&sec.len())
+        && sec.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+}
+
+fn valid_tg_chat(s: &str) -> bool {
+    let rest = s.strip_prefix('-').unwrap_or(s);
+    (1..=20).contains(&rest.len()) && rest.bytes().all(|b| b.is_ascii_digit())
+}
+
+fn mask_tg_token(s: &str) -> String {
+    let n = s.chars().count();
+    if n == 0 {
+        return String::new();
+    }
+    if !s.is_ascii() || n <= 10 {
+        return "****".into();
+    }
+    let head = match s.find(':') {
+        Some(i) if (4..=12).contains(&i) => i,
+        _ => 6,
+    };
+    if head + 4 >= n {
+        return "****".into();
+    }
+    format!("{}...{}", &s[..head], &s[n - 4..])
+}
+
+fn upsert_tg_conf(old: &str, token: Option<&str>, chat: Option<&str>) -> String {
+    let (mut out, mut saw_tok, mut saw_chat) = (String::new(), false, false);
+    for line in old.lines() {
+        let t = line.trim_start();
+        if !t.starts_with('#') {
+            if let Some((k, _)) = t.split_once('=') {
+                let key = k.trim();
+                if key == "TG_TOKEN" {
+                    if let Some(tok) = token {
+                        if !saw_tok {
+                            out.push_str(&format!("TG_TOKEN='{}'\n", tok));
+                            saw_tok = true;
+                        }
+                        continue;
+                    }
+                }
+                if key == "TG_CHAT" {
+                    if let Some(ch) = chat {
+                        if !saw_chat {
+                            out.push_str(&format!("TG_CHAT='{}'\n", ch));
+                            saw_chat = true;
+                        }
+                        continue;
+                    }
+                }
+            }
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    if let Some(tok) = token {
+        if !saw_tok {
+            out.push_str(&format!("TG_TOKEN='{}'\n", tok));
+        }
+    }
+    if let Some(ch) = chat {
+        if !saw_chat {
+            out.push_str(&format!("TG_CHAT='{}'\n", ch));
+        }
+    }
+    out
+}
+
+fn tg_state_json(cfg: &Config) -> String {
+    let tok = conf_value(&cfg.monitor_conf, "TG_TOKEN");
+    let chat = conf_value(&cfg.monitor_conf, "TG_CHAT");
+    format!(
+        "{{\"ok\":true,\"set\":{},\"hint\":\"{}\",\"chat\":\"{}\"}}",
+        !tok.is_empty(),
+        json_esc(&mask_tg_token(&tok)),
+        json_esc(&chat)
+    )
+}
+
+fn tg_test(cfg: &Config) -> (&'static str, String) {
+    if conf_value(&cfg.monitor_conf, "TG_TOKEN").is_empty() {
+        return ("400 Bad Request", "{\"error\":\"NO_TOKEN\",\"why\":\"Save a bot API key first\"}".into());
+    }
+    if conf_value(&cfg.monitor_conf, "TG_CHAT").is_empty() {
+        return ("400 Bad Request", "{\"error\":\"NO_CHAT\",\"why\":\"Set a chat ID first\"}".into());
+    }
+    match Command::new(&cfg.monitor_bin)
+        .env("PISO_MONITOR_CONF", &cfg.monitor_conf)
+        .env("MON_STATE", &cfg.monitor_state)
+        .args(["send", "Test message from PisoHub Console."])
+        .output()
+    {
+        Ok(o) if o.status.success() => ("200 OK", "{\"ok\":true,\"sent\":true}".into()),
+        _ => ("502 Bad Gateway", "{\"error\":\"SEND_FAILED\",\"why\":\"Could not send to Telegram\"}".into()),
+    }
+}
+
+fn tg_save(cfg: &Config, body: &str) -> (&'static str, String) {
+    if jget(body, "action") == "test" {
+        return tg_test(cfg);
+    }
+    let tok_s = jget(body, "token");
+    let chat_s = jget(body, "chat");
+    let tok = tok_s.trim();
+    let chat = chat_s.trim();
+    if tok.is_empty() && chat.is_empty() {
+        return ("400 Bad Request", "{\"error\":\"EMPTY\",\"why\":\"Enter a bot API key or chat ID\"}".into());
+    }
+    if !tok.is_empty() && !valid_tg_token(tok) {
+        return ("400 Bad Request", "{\"error\":\"BAD_TOKEN\",\"why\":\"Invalid bot API key format\"}".into());
+    }
+    if !chat.is_empty() && !valid_tg_chat(chat) {
+        return ("400 Bad Request", "{\"error\":\"BAD_CHAT\",\"why\":\"Chat ID must be digits (optional -)\"}".into());
+    }
+    let _g = TG_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let old = read(&cfg.monitor_conf);
+    let next = upsert_tg_conf(&old, (!tok.is_empty()).then_some(tok), (!chat.is_empty()).then_some(chat));
+    if crate::util::write_atomic_private(&cfg.monitor_conf, next.as_bytes()).is_err() {
+        return ("500 Internal Server Error", "{\"error\":\"WRITE_FAILED\",\"why\":\"Could not write monitor settings\"}".into());
+    }
+    let _ = std::fs::remove_file(format!("{}/offset", cfg.monitor_state));
+    let _ = std::fs::remove_file(format!("{}/commands.set", cfg.monitor_state));
+    if std::path::Path::new(&cfg.monitor_service).exists() {
+        let _ = Command::new(&cfg.monitor_service)
+            .env("PISO_MONITOR_CONF", &cfg.monitor_conf)
+            .env("MON_STATE", &cfg.monitor_state)
+            .arg("enable")
+            .output();
+        match Command::new(&cfg.monitor_service)
+            .env("PISO_MONITOR_CONF", &cfg.monitor_conf)
+            .env("MON_STATE", &cfg.monitor_state)
+            .arg("restart")
+            .output()
+        {
+            Ok(o) if o.status.success() => {}
+            _ => {
+                return ("500 Internal Server Error", "{\"error\":\"RESTART_FAILED\",\"why\":\"Saved, but monitor restart failed\"}".into());
+            }
+        }
+    }
+    ("200 OK", tg_state_json(cfg))
+}
+
 impl Console {
     fn new(core: Arc<Core>) -> Arc<Console> {
         Arc::new(Console {
@@ -1032,6 +1183,11 @@ fn handle(c: &Arc<Console>, req: Request, mut conn: Incoming) {
                     let (code, out) = Console::pair_post(c, &body);
                     json(&mut conn, code, &out, "");
                 }
+                ("GET", "/api/telegram") => json(&mut conn, "200 OK", &tg_state_json(&c.core.cfg), ""),
+                ("POST", "/api/telegram") => {
+                    let (code, out) = tg_save(&c.core.cfg, &body);
+                    json(&mut conn, code, &out, "");
+                }
                 _ => json(&mut conn, "404 Not Found", "{\"error\":\"NOT_FOUND\"}", ""),
             }
         }
@@ -1257,6 +1413,76 @@ mod tests {
             std::thread::sleep(Duration::from_millis(20));
         }
         assert!(console.pair_get().contains("\"state\":\"idle\""), "{}", console.pair_get());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn telegram_validation_and_mask() {
+        assert!(valid_tg_token("123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"));
+        assert!(!valid_tg_token("1234:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"));
+        assert!(!valid_tg_token("123456:short"));
+        assert!(!valid_tg_token("123456:ABC'DEF1234ghIkl-zyx57W2v1u123ew11"));
+        assert!(!valid_tg_token("123456:ABC$DEF1234ghIkl-zyx57W2v1u123ew11"));
+        assert!(valid_tg_chat("123456789"));
+        assert!(valid_tg_chat("-1001234567890"));
+        assert!(!valid_tg_chat("'123"));
+        assert!(!valid_tg_chat(""));
+        assert_eq!(mask_tg_token(""), "");
+        assert_eq!(mask_tg_token("123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"), "123456...ew11");
+    }
+
+    #[test]
+    fn telegram_save_preserves_conf_clears_state_and_restarts() {
+        let d = format!("/tmp/pisotg-{}", crate::util::random_hex(8));
+        let st = format!("{}/state", d);
+        let conf = format!("{}/piso-monitor.conf", d);
+        let svc = format!("{}/svc.sh", d);
+        let bin = format!("{}/mon.sh", d);
+        let log = format!("{}/log", d);
+        std::fs::create_dir_all(&st).unwrap();
+        std::fs::write(&conf, "SITE_NAME='Shop'\nREPORT_HOUR='21'\n#HEALTHCHECK_URL='https://hc.example/1'\n").unwrap();
+        std::fs::write(format!("{}/offset", st), "99").unwrap();
+        std::fs::write(format!("{}/commands.set", st), "1").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::write(&svc, format!("#!/bin/sh\necho \"svc:$1\" >> {}\n", log)).unwrap();
+            std::fs::set_permissions(&svc, std::fs::Permissions::from_mode(0o755)).unwrap();
+            std::fs::write(&bin, format!("#!/bin/sh\necho \"bin:$*\" >> {}\n", log)).unwrap();
+            std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let mut cfg = Config::from_map(HashMap::new());
+        cfg.monitor_conf = conf.clone();
+        cfg.monitor_state = st.clone();
+        cfg.monitor_service = svc;
+        cfg.monitor_bin = bin;
+
+        let (code, body) = tg_save(&cfg, "{\"token\":\"bad\"}");
+        assert_eq!(code, "400 Bad Request", "{}", body);
+        assert!(std::path::Path::new(&format!("{}/offset", st)).exists());
+
+        let tok = "987654:ABC-DEF1234ghIkl-zyx57W2v1u123ew11";
+        let (code, body) = tg_save(&cfg, &format!("{{\"token\":\"{}\",\"chat\":\"-10055\"}}", tok));
+        assert_eq!(code, "200 OK", "{}", body);
+        assert!(body.contains("\"set\":true") && body.contains("\"hint\":\"987654...ew11\""), "{}", body);
+        assert!(body.contains("\"chat\":\"-10055\""), "{}", body);
+        assert!(!body.contains(tok), "raw token leaked: {}", body);
+        let saved = std::fs::read_to_string(&conf).unwrap();
+        assert!(saved.contains("SITE_NAME='Shop'") && saved.contains("#HEALTHCHECK_URL='https://hc.example/1'"), "{}", saved);
+        assert!(saved.contains(&format!("TG_TOKEN='{}'", tok)) && saved.contains("TG_CHAT='-10055'"), "{}", saved);
+        assert!(!std::path::Path::new(&format!("{}/offset", st)).exists());
+        assert!(!std::path::Path::new(&format!("{}/commands.set", st)).exists());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&conf).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600);
+            let calls = std::fs::read_to_string(&log).unwrap();
+            assert!(calls.contains("svc:enable\n") && calls.contains("svc:restart\n"), "{}", calls);
+            let (tcode, tbody) = tg_save(&cfg, "{\"action\":\"test\"}");
+            assert_eq!(tcode, "200 OK", "{}", tbody);
+            assert!(std::fs::read_to_string(&log).unwrap().contains("bin:send Test message"), "{}", log);
+        }
         let _ = std::fs::remove_dir_all(&d);
     }
 }
