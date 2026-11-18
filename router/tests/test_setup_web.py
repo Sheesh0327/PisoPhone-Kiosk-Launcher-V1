@@ -732,6 +732,21 @@ page = page.decode() if isinstance(page, bytes) else page
 check('id="kioskPw"' in page and "S.mode==='wifi'" in page and page.count('name="mode"') == 3 and "checked" not in page.split('name="mode"')[1].split(">")[0],
       "the page has the three choices, none checked, and hides the rental-phone password for PisoWiFi only")
 server.shutdown()
+wcore = FakeCore()
+_, _wsess, wserv = start(core=wcore, mode="wifi")
+wc = Client(wserv)
+wc.call("POST", "/api/login", {"pin": "123456"})
+wc.wait(lambda s: s["checks"] is not None, "wifi checks")
+wc.do("next")
+wc.wait(lambda s: s["router"]["host"] == "192.168.1.1", "wifi router")
+wc.do("next")
+wc.do("set", values={"GUEST_SSID": "Tindahan WiFi", "SITE_NAME": "Aling Nena"})
+wc.do("next")
+wc.wait(lambda s: s["usb"]["boards"] is not None, "wifi boards")
+wc.do("start_install")
+wc.wait(lambda s: s["install"]["ok"], "wifi install finishes")
+check(wcore.products == ["wifi"], "PisoWiFi-only GUI install flashes the wifi image, not full: " + str(wcore.products))
+wserv.shutdown()
 # ---- feature 045 (SU-18): the setup log file, so a failed real run leaves evidence to send ----------------------------------------------
 import glob, stat
 

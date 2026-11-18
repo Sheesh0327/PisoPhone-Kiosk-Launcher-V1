@@ -5067,6 +5067,7 @@ class Session:
             self.install.update(running=True, stage=0, activity="Starting...", error=None, banner=None, ok=False, lines=[])
             self.result = None
             answers = self.install_answers()
+            flash_product = "wifi" if self.product() == "wifi" else "full"
             write_box = not (self.skip_flash or self.flashed)
             host_hint = self.router["host"]
 
@@ -5102,7 +5103,7 @@ class Session:
                     if len(boards) > 1:
                         raise SetupError("several USB boards are connected: unplug all but the coin box.")
                     stage(0)
-                    self.core.flash_box(boards[0][0], self.log)
+                    self.core.flash_box(boards[0][0], self.log, product=flash_product)
                     try:
                         mac = self.core.board_mac(boards[0][0])
                     except Exception:

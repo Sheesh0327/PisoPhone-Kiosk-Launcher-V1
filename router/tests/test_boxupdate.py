@@ -360,6 +360,19 @@ run("auto")
 x = rec()
 check(x and x[:2] == ["current", "3.6.0"] and x[3] == "3.6.0", f"044: after a good install the box is current: {x}")
 
+# ---- PisoWiFi-only reads /update/wifi/firmware.json instead of full -------------------------------------------------------------------
+reset(extra_conf="SHOP_PRODUCT='wifi'\n", version="3.12.6")
+publish("9.9.9", image=IMAGE)
+os.makedirs(f"{www}/wifi", exist_ok=True)
+wdata = {"version": "3.12.7", "build": 2, "changelog": "WiFi only", "chips": {
+    "esp32c3": {"url": f"{site}/update/wifi/firmware-esp32c3.bin", "sha256": hashlib.sha256(IMAGE + b"W").hexdigest(), "size": len(IMAGE) + 1, "sig": "WIFI-SIG"}
+}}
+open(f"{www}/wifi/firmware-esp32c3.bin", "wb").write(IMAGE + b"W")
+open(f"{www}/wifi/firmware.json", "w").write(json.dumps(wdata, indent=2))
+r = run("apply")
+check(r.returncode == 0 and Box.manifests[-1]["sig"] == "WIFI-SIG" and Box.uploads[-1] == IMAGE + b"W",
+      f"wifi: box-update fetches /update/wifi/firmware.json instead of full: {Box.manifests} rc={r.returncode} out={r.stdout}")
+
 # ---- the hourly timer carries it ---------------------------------------------------------------------------------------------------
 check(subprocess.run(["sh", "-n", inst]).returncode == 0, "the installed command is valid shell")
 check(re.search(r"box-update \[check\]", open(SCRIPT).read()) is not None, "the usage line lists box-update")

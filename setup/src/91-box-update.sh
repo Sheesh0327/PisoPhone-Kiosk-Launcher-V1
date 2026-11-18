@@ -30,7 +30,7 @@ fw_field() {
 	' "$1"
 }
 
-# box_info: ask the box what it runs (BOX_FW, BOX_CHIP, BOX_IMG = the state of its newest image); false when it does not answer
+# box_info: ask the box what it runs (BOX_FW, BOX_CHIP, BOX_IMG = the state of its newest image); false when it does not answe
 box_info() {
 	_d=$(curl -s -m 10 -u "admin:$(conf_get BOX_ADMIN_PASS)" "http://$BOX_IP/api/diagnostics" 2> /dev/null)
 	BOX_FW=$(printf '%s' "$_d" | sed -n 's/.*"firmware": *"\([^"]*\)".*/\1/p' | head -n 1)
@@ -69,6 +69,8 @@ cmd_box_update() {
 	rm -rf "$_work"; (umask 077; mkdir -p "$_work") || die "could not create $_work"
 
 	_base=$(conf_get UPDATE_URL); _base="${_base:-$UPDATE_URL_DEFAULT}"
+	_base="${_base%/}"
+	wifi_only && _base="$_base/wifi"
 	if ! fetch_url "$_base/firmware.json" "$_work/firmware.json" 65536; then
 		log "No box firmware information at $_base (offline, or nothing published yet)."
 		record_update_state box unknown "" "" "the website cannot be reached (offline, or nothing published yet)"
