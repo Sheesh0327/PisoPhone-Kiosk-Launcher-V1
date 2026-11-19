@@ -126,7 +126,7 @@ function show(n){var l=document.getElementsByClassName("v"),i;for(i=0;i<l.length
 function pn(p){return p==="endurance"?"Endurance":"HyperSpeed"}
 function fmt(m){m=+m||0;if(m<60)return m+" min";var h=Math.floor(m/60),r=m%60;return h+(h>1?" hrs":" hr")+(r?" "+r+" min":"")}
 function fsec(s){return fmt(Math.ceil((+s||0)/60))}
-function tone(f,t,d){var o=ctx.createOscillator(),g=ctx.createGain();o.type="triangle";o.frequency.value=f;g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.35,t+.01);g.gain.exponentialRampToValueAtTime(.0001,t+d);o.connect(g);g.connect(ctx.destination);o.start(t);o.stop(t+d+.05)}
+function tone(f,t,d,level){var o=ctx.createOscillator(),g=ctx.createGain();o.type="triangle";o.frequency.value=f;g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(level||.35,t+.01);g.gain.exponentialRampToValueAtTime(.0001,t+d);o.connect(g);g.connect(ctx.destination);o.start(t);o.stop(t+d+.05)}
 /* beeps: the fallback when the phone cannot speak */
 function ding(n){try{if(!ctx)return;if(ctx.state!=="running")ctx.resume();var t=ctx.currentTime,i;n=Math.min(n,4);for(i=0;i<n;i++){tone(988,t+i*.22,.12);tone(1319,t+i*.22+.1,.3)}}catch(e){}}
 /* speech is the default. Chrome drops an utterance nobody holds (keep), and a cancel() right before speak() can swallow it (a gap);
@@ -145,7 +145,8 @@ function say(t,fb){if(!SS||!SU){fb();return}
  clearTimeout(sq);var busy=false;try{busy=SS.speaking||SS.pending}catch(e){}
  if(busy){try{SS.cancel()}catch(e){}}
  sq=setTimeout(function(){talk(t,fb)},busy?120:0)}
-function prime(){try{if(SS&&SU&&!unl){unl=1;var u=new SU(" ");u.volume=0;keep.push(u);u.onend=u.onerror=function(){var i=keep.indexOf(u);if(i>=0)keep.splice(i,1)};SS.speak(u)}}catch(x){}try{if(A){ctx=window.__ctx=window.__ctx||new A();ctx.resume()}}catch(x){}}
+function openAudio(){if(A&&!ctx)ctx=window.__ctx=window.__ctx||new A();if(ctx&&ctx.state!=="running")ctx.resume().catch(function(){})}
+function prime(){try{if(SS&&SU&&!unl){unl=1;var u=new SU(" ");u.volume=0;keep.push(u);u.onend=u.onerror=function(){var i=keep.indexOf(u);if(i>=0)keep.splice(i,1)};SS.speak(u)}}catch(x){}try{openAudio()}catch(x){}}
 function later(f){(window.requestAnimationFrame||setTimeout)(function(){setTimeout(f,0)})}
 /* the first tap anywhere unlocks speech and sound (after the screen has changed: starting the engine can freeze a phone for a moment) */
 function first(){document.removeEventListener("click",first,true);later(prime)}
@@ -173,7 +174,24 @@ function msg(t,btns){put("mtext",t);var b=el("mbtns");b.innerHTML="";var i,x;for
 function again(){clearTimeout(wk);wk=null;send({t:"hello",fas:fas,reset:true})}
 function startPlan(p,f,v){plan=p;if(woke){woke=false;try{history.replaceState(null,"",location.pathname+clean())}catch(e){}}send({t:"start",plan:p,forfeit:!!f,mode:v?"voucher":"now"})}
 function wait(p){show("live");put("lplan",pn(p));put("lsub","Getting the coin slot ready");put("lpes","");put("lmin","Please wait, do not insert coins yet");el("lcd").style.display="none";el("ldone").style.display="none";el("lhint").style.display="none"}
-var go=function(){var r=document.querySelector("input[name=p]:checked");var p=r?r.value:"endurance";wait(p);startPlan(p,false,vch&&el("mv").checked);later(prime)};
+/* Two bars at 132 BPM, synthesized once on the phone. The quiet loop leaves room for coin announcements. */
+var coinSound=false,music=null,tune=null,topUp=false;
+function coinMusic(on){
+ if(!on){if(music){music.stop();music=null}return}
+ if(!coinSound||!ctx||music)return;
+ try{
+  if(!tune){
+   var notes=[67,0,71,74,76,74,71,0,69,72,76,0,74,71,69,62],rate=16000,step=3636;
+   var buffer=ctx.createBuffer(1,notes.length*step,rate),samples=buffer.getChannelData(0);
+   notes.forEach(function(note,i){if(!note)return;var f=Math.PI*880*Math.pow(2,(note-69)/12)/rate;
+    for(var k=0;k<step;k++)samples[i*step+k]=.065*Math.min(k/64,1)*(1-k/step)*(Math.sin(f*k)+.25*Math.sin(2*f*k))});
+   tune=buffer
+  }
+  var src=ctx.createBufferSource();src.buffer=tune;src.loop=true;src.connect(ctx.destination);src.start();music=src
+ }catch(e){}}
+var go=function(e){var r=document.querySelector("input[name=p]:checked");var p=r?r.value:"endurance";wait(p);
+ coinSound=e.isTrusted&&!topUp;if(coinSound)try{openAudio()}catch(x){}
+ startPlan(p,false,vch&&el("mv").checked);later(prime)};
 el("go").onclick=go;
 el("ldone").onclick=function(){this.disabled=true;this.textContent="Closing…";send({t:"done"})};
 el("lcancel").onclick=function(){send({t:"done"})};
@@ -212,7 +230,8 @@ function vlist(a){var b=el("vls"),i,h="";for(i=0;i<a.length;i++){var c=String(a[
  b.innerHTML=h;el("vlist").style.display=a.length?"block":"none";var l=b.getElementsByTagName("button");for(i=0;i<l.length;i++)l[i].onclick=function(){redeem(this.getAttribute("data-c"))}}
 function view(j){
 var s=j.s;
-if(s!=="armed")stopTick();if(s!=="idle"&&s!=="final"&&s!=="paused")tstop();if(s!=="final"){foff(false);clearTimeout(wk);wk=null}
+if(s==="armed")coinMusic(true);else{coinMusic(false);if(s!=="starting")coinSound=false;stopTick()}
+if(s!=="idle"&&s!=="final"&&s!=="paused")tstop();if(s!=="final"){foff(false);clearTimeout(wk);wk=null}
 /* a window that stays in "Counting coins" is asked about again by a new connection every 3 s (a phone may have paused the old one) */
 if(s==="closing"){if(!cw)cw=setInterval(connect,3e3)}else if(cw){clearInterval(cw);cw=0}
 if(s==="idle"||s==="paused"){
@@ -228,7 +247,7 @@ if(s==="idle"||s==="paused"){
   put("pzc",cap);if(cap&&j.pl<1||j.left<120||j.pw>0)el("pz").setAttribute("aria-disabled","true");
   if(ps){tstop();tl=j.left;put("t",clock(tl));put("fleft",clock(tl));el("tbar").style.width="100%";put("chip","Paused");el("chip").className="chip gold";put("tin","Paused, internet almost stopped · time left");el("tbar").style.background="var(--mut)";put("tby","Time is on hold. "+(j.by>0?at(j.by*1e3,"Resume by"):"Resume soon")+"; time not resumed by then is lost.")}else tstart(j.left)}
  else{on.style.display="none";tstop();tt=0}
- put("go",tm?"Add more time":"Insert Coin");el("go").className="btn coin"+(ps?" alt":"");put("gos",tm?"":"Coins add up: every coin adds more time");
+ topUp=tm;put("go",tm?"Add more time":"Insert Coin");el("go").className="btn coin"+(ps?" alt":"");put("gos",tm?"":"Coins add up: every coin adds more time");
  var b=el("ibusy");if(j.cooldown>0){b.style.display="block";b.textContent="Too many empty tries. Wait about "+j.cooldown+" s."}else if(j.busy>0){b.style.display="block";b.textContent="Another customer is paying. Try again in a few seconds."}else b.style.display="none";
  return}
 if(s==="starting"){wait(j.plan);el("lv").style.display=j.v?"block":"none";return}
@@ -254,12 +273,12 @@ msg("Coin payment is not available right now. Try again, or ask the attendant ("
 /* one socket at a time. connect() also replaces a socket that went quiet: a phone that paused the page leaves it half open and the
    last state never arrives */
 function connect(){
- clearTimeout(rt);rt=0;var o=ws;ws=null;if(o){o.onopen=o.onmessage=o.onclose=o.onerror=null;try{o.close()}catch(e){}}
+ clearTimeout(rt);rt=0;coinMusic(false);var o=ws;ws=null;if(o){o.onopen=o.onmessage=o.onclose=o.onerror=null;try{o.close()}catch(e){}}
  var p=location.protocol==="https:"?"wss://":"ws://",w;lc=rx=Date.now();
  try{w=ws=new WebSocket(p+location.host+"/ws")}catch(e){put("conn","This phone's browser cannot run the coin page.");show("conn");return}
  w.onopen=function(){if(ws!==w)return;rx=Date.now();send({t:"hello",fas:fas})};
  w.onmessage=function(m){if(ws!==w)return;rx=Date.now();var j;try{j=JSON.parse(m.data)}catch(e){return}if(j.t==="info"){cont=j.cont||"";vch=!!j.vc;if(!vch)el("vchoice").style.display="none";return}if(j.t==="pong")return;if(j.t==="state")view(j);else reply(j)};
- w.onclose=function(){if(ws!==w)return;ws=null;stopTick();put("conn","Connection lost. Reconnecting…");if(!el("v-live").style.display||el("v-live").style.display==="none")show("conn");rt=setTimeout(connect,1500)};
+ w.onclose=function(){if(ws!==w)return;ws=null;coinMusic(false);stopTick();put("conn","Connection lost. Reconnecting…");if(!el("v-live").style.display||el("v-live").style.display==="none")show("conn");rt=setTimeout(connect,1500)};
  w.onerror=function(){try{w.close()}catch(e){}}}
 /* a heartbeat: a ping every 4 s; no answer for 10 s and the connection is made again */
 function beat(){var w=ws;if(!w){if(!rt)connect();return}
@@ -269,7 +288,7 @@ function beat(){var w=ws;if(!w){if(!rt)connect();return}
 /* back on screen, the page shown again from the cache, the phone's network back: ask again (a new connection when the old one has been quiet) */
 function resync(){var w=ws;if(w&&w.readyState===1&&Date.now()-rx<5e3)send({t:"hello",fas:fas});else if(!w||w.readyState>1||Date.now()-lc>1500)connect()}
 document.addEventListener("visibilitychange",function(){if(document.hidden)return;try{if(SS&&SS.paused)SS.resume()}catch(e){}resync()});
-window.addEventListener("pageshow",resync);
+window.addEventListener("pagehide",function(){coinMusic(false)});window.addEventListener("pageshow",resync);
 window.addEventListener("online",resync);
 show("conn");connect();setInterval(beat,4e3);setTimeout(function(){if(!ws||ws.readyState!==1){put("conn","Still connecting. Check you are on the TechNet Wi-Fi.");el("rl").style.display="block"}},8e3);
 })();

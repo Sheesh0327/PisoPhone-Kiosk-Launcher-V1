@@ -509,12 +509,12 @@ def qr_svg(text, module=8, quiet=4):
 
 
 def wifi_qr_text(ssid, password, hidden=True):
-    """The text phones read as "join this Wi-Fi": WIFI:T:WPA;S:<name>;P:<password>;H:true;; (backslash, semicolon, comma, colon and double quote are escaped;
-    a name or password made only of hex digits is quoted so the phone does not take it for hex)."""
+    """Build a Wi-Fi join payload, escaping backslash, semicolon, comma, colon and double quote."""
     def esc(value):
-        value = re.sub(r'([\\;,:"])', r"\\\1", value)
-        return f'"{value}"' if re.fullmatch(r"[0-9A-Fa-f]+", value) else value
-    return f"WIFI:T:WPA;S:{esc(ssid)};P:{esc(password)};{'H:true;' if hidden else ''};"
+        return re.sub(r'([\\;,:"])', r"\\\1", value)
+
+    name = f'"{ssid}"' if re.fullmatch(r"[0-9A-Fa-f]+", ssid) else esc(ssid)
+    return f"WIFI:T:WPA;S:{name};P:{esc(password)};{'H:true;' if hidden else ''};"
 
 
 # ---- TechNet brand pictures (small PNGs, embedded so the page and the printouts are one file) ---------------------------------

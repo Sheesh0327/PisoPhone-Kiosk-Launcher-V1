@@ -224,7 +224,7 @@ try:
     s, j = jcall("GET", "/api/brand", cookie=cookie)
     check(j["logo"] is True and j["picture"] is True, "the editor knows both are installed")
     s, h, b = call("GET", "/brand/preview", cookie=cookie)
-    check(b'src="/brand/logo"' in b and b'src="/brand/picture"' in b, "and the preview shows both")
+    check(b'src="/brand/logo"' in b and b'url("/brand/picture")' in b, "the preview shows the logo and the backdrop")
     check(jcall("POST", "/api/brand/picture/remove", {}, cookie=cookie)[1] == {"ok": True}, "removing welcome picture")
     check(call("GET", "/brand/picture", cookie=cookie)[0] == 404 and call("GET", "/brand/logo", cookie=cookie)[0] == 200, "removing picture keeps the logo")
     s, j = jcall("POST", "/api/brand/pack", good_pack, cookie=cookie, raw=True)
@@ -306,9 +306,14 @@ try:
             pathlib.Path(snapshots).mkdir(parents=True, exist_ok=True)
             pg.screenshot(path=f"{snapshots}/console_branding_tab.png", full_page=True)
 
-        pg.click('#bpics button[data-rm="picture"]')
-        pg.wait_for_function("document.getElementById('bpkm').textContent.indexOf('Welcome picture removed') === 0", timeout=5000)
-        check(pg.locator("#bpics img").count() == 1, "removing the welcome picture leaves the logo")
+        backdrop = "el => getComputedStyle(el, '::before').backgroundImage"
+        wait_for_backdrop = """() => {
+            const body = document.getElementById('bprev').contentDocument?.body;
+            return body && body.ownerDocument.defaultView.getComputedStyle(body, '::before')
+                .backgroundImage.includes('/brand/picture');
+        }"""
+        pg.wait_for_function(wait_for_backdrop, timeout=8000)
+        check(frame.locator('#hd img[src="/brand/picture"]').count() == 0, "the preview has no inline welcome image")
 
         # Publish asks first, then customers get it
         pg.click("#bpub")
@@ -320,6 +325,17 @@ try:
         check("Mang Jun Computer Shop" in g and 'class="l-poster"' in g and "Cheap today!" in g and 'data-f="Mura ngayon!"' in g, "customers now get the new page, with both languages")
         check("Live: your branding" in pg.text_content("#bchips") and "not published" not in pg.text_content("#bchips"), "the screen says so")
         check(call("GET", "/brand/logo", port=env.PP, x_piso=False)[0] == 200, "and the logo is public now")
+
+        customer = br.new_page(viewport={"width": 390, "height": 844})
+        customer.goto(f"http://127.0.0.1:{env.PP}/?fas=test")
+        check("/brand/picture" in customer.locator("body").evaluate(backdrop)
+              and customer.locator('img[src="/brand/picture"]').count() == 0,
+              "the published welcome picture covers the customer's portal as a backdrop")
+        customer.close()
+        pg.click('#bpics button[data-rm="picture"]')
+        pg.wait_for_function("document.getElementById('bpkm').textContent.indexOf('Welcome picture removed') === 0", timeout=5000)
+        check(pg.locator("#bpics img").count() == 1 and b'url("/brand/picture")' not in guest(),
+              "removing the welcome picture removes the backdrop and keeps the logo")
 
         # Restore asks first and keeps the draft
         pg.click("#brest")

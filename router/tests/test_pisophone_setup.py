@@ -769,7 +769,7 @@ for prod, kiosk_secrets in (("wifi", ()), ("both", ("kioskpass1", "kioskpass1"))
 # ---- QR codes and the Wi-Fi join card -------------------------------------------------------------------------------------------
 check(ps.wifi_qr_text("PisoKiosk", "3hC4RATnpQMJ") == "WIFI:T:WPA;S:PisoKiosk;P:3hC4RATnpQMJ;H:true;;", "the Wi-Fi QR text: " + ps.wifi_qr_text("PisoKiosk", "3hC4RATnpQMJ"))
 check(ps.wifi_qr_text("My;Net", "a:b,c\\d") == "WIFI:T:WPA;S:My\\;Net;P:a\\:b\\,c\\\\d;H:true;;", "special characters are escaped: " + ps.wifi_qr_text("My;Net", "a:b,c\\d"))
-check(ps.wifi_qr_text("Net", "12345678") == 'WIFI:T:WPA;S:Net;P:"12345678";H:true;;', "a password of only hex digits is quoted")
+check(ps.wifi_qr_text("Cafe", "12345678") == 'WIFI:T:WPA;S:"Cafe";P:12345678;H:true;;', "a hex-like SSID is quoted and the numeric passphrase is passed through")
 check(ps.wifi_qr_text("Net", "pw123456", hidden=False) == "WIFI:T:WPA;S:Net;P:pw123456;;", "a visible network has no H:true")
 try:
     ps.qr_matrix("x" * 214)

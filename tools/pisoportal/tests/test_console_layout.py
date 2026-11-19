@@ -393,10 +393,9 @@ try:
                 for svg in page.locator(selector).all()
             ]
 
-        def check_codes(page, selector, url):
+        def check_codes(page, selector, url, wifi=r"WIFI:T:WPA;S:PisoAdmin-a1b2;P:Demo\;Pass<&12;H:true;;"):
             decoded = codes(page, selector)
-            expected = [r"WIFI:T:WPA;S:PisoAdmin-a1b2;P:Demo\;Pass<&12;H:true;;", url]
-            check([code.text if code else None for code in decoded] == expected, "the Wi-Fi and Console QR codes decode")
+            check([code.text if code else None for code in decoded] == [wifi, url], "the Wi-Fi and Console QR codes decode")
 
         console_url = f"http://admin.hub:{CP}/"
         for width, scheme in ((1280, "light"), (1280, "dark"), (390, "light")):
@@ -442,6 +441,20 @@ try:
         check_codes(page, ".qr svg", "http://admin.hub/")
         if snapshots:
             page.screenshot(path=f"{snapshots}/pisophone-admin-card.png")
+        # A WPA passphrase made of hex characters must survive scanning verbatim.
+        hex_password = "AB0123456789CD0123456789"
+        hex_wifi = f"WIFI:T:WPA;S:{ssid};P:{hex_password};H:true;;"
+        setup_conf.write_text(f"ADMIN_SSID_NAME='{ssid}'\nADMIN_PASS='{hex_password}'\n")
+        ctx, pg = sign_in(br, 1280, 844, "light")
+        open_screen(pg, 1280, "set")
+        pg.locator("#admw .qr svg").first.wait_for(state="visible")
+        check_codes(pg, "#admw .qr svg", console_url, hex_wifi)
+        pg.goto(f"http://127.0.0.1:{CP}/admin-wifi/card")
+        check_codes(pg, ".qr svg", console_url, hex_wifi)
+        ctx.close()
+
+        page.set_content(wizard.admin_card_html("Demo shop", ssid, hex_password))
+        check_codes(page, ".qr svg", "http://admin.hub/", hex_wifi)
         br.close()
 finally:
     env.close()

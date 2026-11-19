@@ -141,14 +141,26 @@ try:
             c.close()
 
         def speech_page(mode):
-            """A fresh phone: `mode` says what its speech engine does. Records what was spoken and how many beeps were played."""
+            """A fresh phone: `mode` says what its speech engine does. Records speech, fallback beeps, and the coin-slot loop."""
             ctx = br.new_context()
             pg2 = ctx.new_page()
             pg2.on("pageerror", lambda e: print("PAGE ERROR:", e))
-            pg2.add_init_script("""(function(){var mode=%r;window.__spoken=[];window.__beeps=0;window.__cancels=0;
-              function Osc(){this.frequency={};this.connect=function(){};this.start=function(){window.__beeps++};this.stop=function(){}}
+            pg2.add_init_script("""(function(){var mode=%r;window.__spoken=[];window.__beeps=0;window.__music=[];window.__cancels=0;
+              function Osc(){this.frequency={};this.connect=function(){};this.start=function(){
+                  var note=this.frequency.value;
+                  if(note===988||note===1319)window.__beeps++;
+                };this.stop=function(){}}
               function Ctx(){this.state='running';this.currentTime=0;this.destination={};this.resume=function(){return Promise.resolve()};
                 this.createOscillator=function(){return new Osc()};
+                this.createBuffer=function(ch,n,rate){
+                  var data=new Float32Array(n);
+                  return {duration:n/rate,getChannelData:function(){return data}}
+                };
+                this.createBufferSource=function(){return {connect:function(){},
+                  start:function(){var samples=this.buffer.getChannelData(0);
+                    window.__music.push([this.loop,this.buffer.duration,samples.some(function(s){return s!==0})])},
+                  stop:function(){window.__music.push("stop")}
+                }};
                 this.createGain=function(){return {gain:{setValueAtTime:function(){},exponentialRampToValueAtTime:function(){}},connect:function(){}}}}
               window.AudioContext=Ctx;window.webkitAudioContext=Ctx;
               if(mode==='none'){Object.defineProperty(window,'speechSynthesis',{value:undefined,configurable:true});Object.defineProperty(window,'SpeechSynthesisUtterance',{value:undefined,configurable:true});return}
@@ -176,13 +188,61 @@ try:
 
         ctx2, p2 = speech_page("ok")
         pay_three(p2)
+        check(p2.evaluate("window.__music") == [[True, 3.636, True]],
+              "Insert Coin starts one audible looping phrase; the coin updates keep that same source")
         spoken, beeps = p2.evaluate("window.__spoken"), p2.evaluate("window.__beeps")
         check("Insert coin now" in spoken and "3 pesos" in spoken and spoken[-1] == "3 pesos" and beeps == 0, f"speech works: it speaks the phrases and plays no beeps: {spoken} / {beeps} beeps")
         p2.click("#ldone")
         p2.wait_for_selector("#v-final", state="visible", timeout=10000)
+        check(p2.evaluate("window.__music").count("stop") == 1, "Done stops the continuous loop")
         p2.wait_for_timeout(1300)
         check("You are online" in p2.evaluate("window.__spoken") and p2.evaluate("window.__beeps") == 0, "and it says 'You are online'")
         ctx2.close()
+
+        for state, trusted, label in ((six["idle"], False, "Insert Coin"), (paused, True, "Add more time")):
+            ctx2, p2 = speech_page("ok")
+            p2.route_web_socket("**/ws", lambda ws, frame=state: ws.on_message(
+                lambda m: ws.send(six["armed"] if '"start"' in m else frame)))
+            p2.goto(url)
+            button = p2.get_by_role("button", name=label, exact=True)
+            button.wait_for(state="visible")
+            p2.click('label[for="rh"]')
+            check(p2.evaluate("window.__music") == [], f"{label}: opening the portal and switching plans play no music")
+            if trusted:
+                button.click()
+            else:
+                button.evaluate("button => button.click()")
+            p2.wait_for_selector("#lcd", state="visible")
+            check(p2.evaluate("window.__music") == [], f"{label}: only a real Insert Coin tap enables the loop")
+            ctx2.close()
+
+        for outcome in ("closing", "empty", "disconnect"):
+            ctx2, p2 = speech_page("ok")
+            sockets = []
+
+            def slot(ws):
+                sockets.append(ws)
+                ws.on_message(lambda m: ws.send(six["starting"] if '"start"' in m else six["idle"]))
+
+            p2.route_web_socket("**/ws", slot)
+            p2.goto(url)
+            p2.click(".coin")
+            p2.wait_for_selector("#v-live", state="visible")
+            check(p2.evaluate("window.__music") == [], "no music while waiting for the slot to arm")
+            sockets[-1].send(six["armed"])
+            p2.wait_for_function("window.__music.length === 1")
+            # The server can extend the window after every coin. Repeat the state with a fresh timer.
+            sockets[-1].send(six["armed"].replace('"remaining":30', '"remaining":59'))
+            p2.wait_for_function("document.getElementById('lleft').textContent.includes('59')")
+            check(p2.evaluate("window.__music").count("stop") == 0
+                  and len(p2.evaluate("window.__music")) == 1, "an extended window leaves the loop running")
+            if outcome == "disconnect":
+                sockets[-1].close()
+            else:
+                sockets[-1].send(six["closing"] if outcome == "closing" else '{"t":"state","s":"empty"}')
+            p2.wait_for_function("window.__music.includes('stop')")
+            check(p2.evaluate("window.__music").count("stop") == 1, f"{outcome} stops the loop")
+            ctx2.close()
 
         ctx2, p2 = speech_page("none")
         pay_three(p2)
@@ -191,7 +251,9 @@ try:
 
         ctx2, p2 = speech_page("error")
         pay_three(p2)
-        check(p2.evaluate("window.__beeps") >= 6 and len(p2.evaluate("window.__spoken")) >= 3, f"speech that fails falls back to the beeps for that event: {p2.evaluate('window.__spoken')} / {p2.evaluate('window.__beeps')}")
+        p2.wait_for_function("window.__spoken.includes('3 pesos') && window.__beeps >= 6", timeout=4000)
+        check("Insert coin now" in p2.evaluate("window.__spoken"),
+              "failed speech falls back to beeps for the readiness and payment prompts")
         ctx2.close()
 
         ctx2, p2 = speech_page("silent")

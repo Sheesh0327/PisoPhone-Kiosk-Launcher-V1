@@ -255,14 +255,12 @@ pub(crate) fn wifi_qr_text(ssid: &str, password: &str, hidden: bool) -> String {
             }
             escaped.push(c);
         }
-        if !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-            format!("\"{escaped}\"")
-        } else {
-            escaped
-        }
+        escaped
     }
+    let name = if !ssid.is_empty() && ssid.bytes().all(|byte| byte.is_ascii_hexdigit()) { format!("\"{ssid}\"") } else { escape(ssid) };
     let hidden_field = if hidden { "H:true;" } else { "" };
-    format!("WIFI:T:WPA;S:{};P:{};{hidden_field};", escape(ssid), escape(password))
+    // Scanners can interpret surrounding quotes as part of a WPA passphrase.
+    format!("WIFI:T:WPA;S:{name};P:{};{hidden_field};", escape(password))
 }
 
 #[cfg(test)]
@@ -281,7 +279,11 @@ mod tests {
     #[test]
     fn wifi_escaping() {
         assert_eq!(wifi_qr_text("a;b", "c,d:e\\f\"g", true), "WIFI:T:WPA;S:a\\;b;P:c\\,d\\:e\\\\f\\\"g;H:true;;");
-        assert_eq!(wifi_qr_text("Cafe", "12345678", false), "WIFI:T:WPA;S:\"Cafe\";P:\"12345678\";;");
+        assert_eq!(wifi_qr_text("Cafe", "12345678", false), "WIFI:T:WPA;S:\"Cafe\";P:12345678;;");
+        assert_eq!(
+            wifi_qr_text("PisoAdmin-a1b2", "AB0123456789CD0123456789", true),
+            "WIFI:T:WPA;S:PisoAdmin-a1b2;P:AB0123456789CD0123456789;H:true;;"
+        );
     }
 
     #[test]

@@ -97,7 +97,7 @@ fn contact_hours(b: &Brand, sep: &str) -> (String, String) {
     (join(Lang::En), join(Lang::Fil))
 }
 
-fn style(t: &Theme) -> String {
+fn style(t: &Theme, picture: bool) -> String {
     let glow = if t.accent_text == 0 { "rgba(255,255,255,.78)" } else { "#fff" };
     let mut s = format!(
         ":root{{--bg:{};--band:{};--s1:{};--s2:{};--ln:{};--ln2:{};--brand:{};--bfg:{};--bt:{};--bglow:{}}}",
@@ -117,6 +117,12 @@ fn style(t: &Theme) -> String {
     }
     s.push_str(&format!(".btn:not(.alt){{color:{}}}.btn:active{{background:{}}}", hex(t.accent_text), hex(t.accent_down)));
     s.push_str(&squeeze(LAYOUT_CSS));
+    if picture {
+        s.push_str(concat!(
+            "body{isolation:isolate;--mut:#e2e8f7}",
+            r#"body::before{content:"";position:fixed;inset:0;z-index:-1;background:center/cover no-repeat url("/brand/picture");opacity:.32}"#,
+        ));
+    }
     s
 }
 
@@ -186,13 +192,7 @@ pub fn decorate(page: &str, b: &Brand, logo: bool, picture: bool) -> Result<Stri
 
     let (promo_en, promo_fil) = both(b, Field::Promo, &esc);
     let promo = slot("p", r#" class="promo""#, &promo_en, &promo_fil);
-    let pic = if picture {
-        r#"<img src="/brand/picture" alt="" onerror="this.remove()">"#
-    } else if own {
-        ""
-    } else {
-        r#"<img src="/mascot.png" alt="" width="72" height="74">"#
-    };
+    let mascot = if own || picture { "" } else { r#"<img src="/mascot.png" alt="" width="72" height="74">"# };
     let (wel_en, wel_fil) = both(b, Field::Welcome, &esc);
     let welcome = slot(
         "span",
@@ -200,7 +200,7 @@ pub fn decorate(page: &str, b: &Brand, logo: bool, picture: bool) -> Result<Stri
         if wel_en.is_empty() { STANDARD } else { &wel_en },
         if wel_fil.is_empty() { STANDARD } else { &wel_fil },
     );
-    put(WELCOME, &format!(r#"{}<div class="hd" id="hd">{}<p>Buy Wi-Fi time{}</p></div>"#, promo, pic, welcome));
+    put(WELCOME, &format!(r#"{}<div class="hd" id="hd">{}<p>Buy Wi-Fi time{}</p></div>"#, promo, mascot, welcome));
 
     let (rules_en, rules_fil) = both(b, Field::Rules, &lines);
     let (rtag, head) = if layout == "compact" { ("details", "summary") } else { ("div", "b") };
@@ -224,7 +224,7 @@ pub fn decorate(page: &str, b: &Brand, logo: bool, picture: bool) -> Result<Stri
     put(FOOT, &format!("{}{}", foot, CREDIT));
 
     let shop = if own { format!(r#" data-shop="{}""#, esc(&b.name)) } else { String::new() };
-    put(HEAD_BODY, &format!(r#"<style>{}</style></head><body class="l-{}"{}>"#, style(&t), layout, shop));
+    put(HEAD_BODY, &format!(r#"<style>{}</style></head><body class="l-{}"{}>"#, style(&t, picture), layout, shop));
     put(PAGE_END, &format!("</script><script>{}</script></body></html>", SWITCH_JS.trim()));
     Ok(p)
 }
@@ -337,8 +337,8 @@ mod tests {
         );
         assert!(!logo.contains("/brand.png") && !logo.contains("/mascot.png") && !logo.contains("/brand/picture"));
         let both = decorate(&base(), &full(), true, true).unwrap();
-        assert!(both.contains(r#"<img src="/brand/picture" alt="" onerror="this.remove()">"#), "the picture is the welcome picture");
-        assert!(!both.contains("/mascot.png"));
+        assert!(both.contains(r#"background:center/cover no-repeat url("/brand/picture")"#));
+        assert!(!both.contains(r#"src="/brand/picture""#) && !both.contains("/mascot.png"));
     }
 
     #[test]
@@ -418,8 +418,8 @@ mod tests {
             assert_eq!(count(&page, CREDIT), 1);
             assert_eq!(
                 count(&page, " onerror=\"this.remove()\""),
-                2 + count(&plain, " onerror="),
-                "only the two picture tags have an event attribute"
+                1 + count(&plain, " onerror="),
+                "only the logo tags have an event attribute"
             );
         }
         let mut b = named("x");
