@@ -1,8 +1,8 @@
 {
  "brand.png_sha256": "71ba8764292109665660e23b0e2d63423f60a8b1581878e0ed026eb3a161e6ab",
  "mascot.png_sha256": "1f2a8ca08df5bad785c799b0ca6c97fa8a88b1e773bf5c5bd33633cd6522e6b1",
- "page_bytes": 27418,
- "page_sha256": "f631e8422d5dc2e80c26074905afa8256a2c88293047832bb8fe754ed166be32",
+ "page_bytes": 27472,
+ "page_sha256": "a1afd4804460e97bbd14a83f175ab09154676c1cb163077a6bed601c72763e75",
  "states": {
   "armed_no_coin": {
    "controls": [
