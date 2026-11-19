@@ -2,7 +2,7 @@
   "version": "1.5.48",
   "sha256": "240d150900440beb163f03fbf8b91da5f3b8c4b3dbd6eef88ecce987cbd2be91",
   "size": 963321,
-  "rollout": 0,
-  "changelog": "Router software release 1.5.48",
-  "sig": "MEUCIGu67+vy3wBhSET1KaEt98vWsAkBNiIdO0kIBlcw786dAiEAnN94OiTyxLHj/+Hz3Bop1csKRilEWeHY1A3iygMBg0I="
+  "rollout": 100,
+  "changelog": "Shop backdrop, looping coin-insert music, and corrected Admin Wi-Fi QR codes.",
+  "sig": "MEUCIBGc6A96evZWsOlzU1AZuS9mNDyGTOuCBIJN8HvGkDicAiEA27AgB9rOMYNPSVOjocDRl4CThlXqUNoW0Gi5xnptlHc="
 }
