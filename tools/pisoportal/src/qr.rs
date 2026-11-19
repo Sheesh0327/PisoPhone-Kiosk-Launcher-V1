@@ -129,9 +129,11 @@ fn patterns(version: usize, size: usize) -> Grid {
             }
         }
     }
-    for i in 8..size - 8 {
-        grid[6][i].get_or_insert(i % 2 == 0);
-        grid[i][6].get_or_insert(i % 2 == 0);
+    for (i, cell) in grid[6].iter_mut().enumerate().take(size - 8).skip(8) {
+        cell.get_or_insert(i % 2 == 0);
+    }
+    for (i, row) in grid.iter_mut().enumerate().take(size - 8).skip(8) {
+        row[6].get_or_insert(i % 2 == 0);
     }
     grid[size - 8][8] = Some(true);
     if version >= 7 {
