@@ -10,7 +10,7 @@
 .pick{position:relative}
 .pick input{position:absolute;left:0;top:0;width:1px;height:1px;opacity:0}
 .seg{display:flex;border-bottom:1px solid var(--ln)}
-.seg label{flex:1;height:44px;line-height:44px;text-align:center;font-weight:600;color:var(--mut);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.seg label{flex:1;display:grid;place-items:center;min-height:44px;line-height:1.2;text-align:center;font-weight:600;color:var(--mut);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
 #rh:checked~.seg label[for=rh],#re:checked~.seg label[for=re],#mn:checked~.seg label[for=mn],#mv:checked~.seg label[for=mv]{color:var(--tx);border-color:var(--bfg)}
 .mh{display:none}
 #mv:checked~.mh{display:block}
@@ -23,7 +23,7 @@
 #re:checked~.tiers .th{display:none}
 .hd{display:flex;gap:12px;align-items:center;margin:0 0 14px}
 .hd img{width:72px;height:74px;flex:none}
-.hd p{margin:0;font-size:20px;line-height:28px;font-weight:700}
+.hd p{margin-top:4px}
 #lsub{font-size:17px;line-height:24px;font-weight:600;text-align:center;margin:8px 0 0}
 #lpes{color:var(--mut)}
 #lpes.p{color:var(--ok)}
@@ -42,9 +42,9 @@ details .btn{margin:8px 0 12px}
 </head><body>
 <header><img src="/brand.png" alt="" width="28" height="28"><b><i>TechNet</i></b><span>PisoWifi</span></header><i class="sl"></i>
 <div class="w">
-<div id="v-conn" class="v"><p class="mut c" id="conn" role="status">Getting your connection ready.</p><button class="btn alt" id="rl" type="button">Reload</button></div>
+<div id="v-conn" class="v"><p class="mut c" id="conn" role="status">Connecting…</p><button class="btn alt" id="rl" type="button">Reload</button></div>
 <div id="v-idle" class="v">
-<div class="hd" id="hd"><img src="/mascot.png" alt="" width="72" height="74"><p>Buy Wi-Fi time<span class="mut" style="display:block;font-weight:400">Pick a plan, insert a coin and you are online.</span></p></div>
+<div class="hd" id="hd"><img src="/mascot.png" alt="" width="72" height="74"><div><h1>Get online</h1><p class="mut">Choose a plan. Tap Insert Coin.</p></div></div>
 <div class="card" id="ion" style="margin:0 0 14px">
 <span class="chip ok" id="chip">Connected</span> <span class="mut" id="tplan"></span> <span class="mut" id="tused"></span>
 <p class="mut c" style="margin-top:12px" id="tin">&#10003; You are online &middot; time left</p>
@@ -71,7 +71,7 @@ details .btn{margin:8px 0 12px}
 </div>
 <div class="msg" id="ibusy"></div>
 <button class="btn coin" id="go" type="button">Insert Coin</button>
-<p class="sub" id="gos">Coins add up: every coin adds more time</p>
+<p class="sub" id="gos">Each coin adds time.</p>
 <div class="card" id="vlist" style="margin:14px 0 0"><b>Your voucher codes</b><div id="vls"></div><p class="mut" id="vlm" role="status"></p></div>
 <details id="vd"><summary>Have a voucher?</summary>
 <input id="vc" maxlength="11" autocapitalize="characters" autocomplete="off" spellcheck="false" placeholder="ABCDE-FGHJK" aria-label="Voucher code">
@@ -112,7 +112,7 @@ details .btn{margin:8px 0 12px}
 <div id="mtext"></div>
 <div id="mbtns"></div>
 </div>
-<p class="foot">TechNet Solutions &middot; Connect &middot; Play &middot; More Possibilities</p>
+<p class="foot">TechNet Solutions</p>
 </div>
 <script>
 (function(){
@@ -249,7 +249,7 @@ if(s==="idle"||s==="paused"){
   put("pzc",cap);if(cap&&j.pl<1||j.left<120||j.pw>0)el("pz").setAttribute("aria-disabled","true");
   if(ps){tstop();tl=j.left;put("t",clock(tl));put("fleft",clock(tl));el("tbar").style.width="100%";put("chip","Paused");el("chip").className="chip gold";put("tin","Paused, internet almost stopped · time left");el("tbar").style.background="var(--mut)";put("tby","Time is on hold. "+(j.by>0?at(j.by*1e3,"Resume by"):"Resume soon")+"; time not resumed by then is lost.")}else tstart(j.left)}
  else{tstop();tt=0}
- topUp=tm;put("go",tm?"Add more time":"Insert Coin");el("go").className="btn coin"+(ps?" alt":"");put("gos",tm?"":"Coins add up: every coin adds more time");
+ topUp=tm;put("go",tm?"Add more time":"Insert Coin");el("go").className="btn coin"+(ps?" alt":"");put("gos",tm?"":"Each coin adds time.");
  visible("ibusy",j.cooldown>0||j.busy>0);if(j.cooldown>0)put("ibusy","Too many empty tries. Wait about "+j.cooldown+" s.");else if(j.busy>0)put("ibusy","Another customer is paying. Try again in a few seconds.");
  return}
 if(s==="starting"){wait(j.plan);visible("lv",j.v);return}

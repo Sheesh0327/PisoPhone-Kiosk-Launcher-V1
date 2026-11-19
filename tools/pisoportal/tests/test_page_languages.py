@@ -106,7 +106,7 @@ try:
         fil = lines(pg)
         check(pg.inner_text(".lang") == "English" and pg.evaluate("document.documentElement.lang") == "fil", "tapping it: Filipino, and the button offers English")
         for want in ("Mabilis. Mura. Malinis.", "Maligayang pagdating sa aming tindahan!", "Happy hour: doble ang oras hanggang 5pm", "Bukas 8am hanggang 10pm", "Mga patakaran",
-                     "Bawal ang ilegal na download.", "Magpasok ng Barya", "Bumili ng Wi-Fi time", "Nagsasama-sama ang mga barya: bawat barya ay dagdag na oras", "May voucher ka ba?"):
+                     "Bawal ang ilegal na download.", "Magpasok ng Barya", "Mag-online", "Bawat barya ay dagdag na oras.", "May voucher ka ba?"):
             check(any(want in l for l in fil), f"in Filipino: {want}")
         check(not [l for l in fil if ENGLISH.search(l)], f"no English left on the idle page: {[l for l in fil if ENGLISH.search(l)]}")
         check(pg.evaluate("localStorage.getItem('pp-lang')") == "fil", "the choice is remembered")

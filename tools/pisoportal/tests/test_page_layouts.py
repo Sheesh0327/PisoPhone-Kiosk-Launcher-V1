@@ -46,7 +46,7 @@ CONTRAST = """() => {
     return [[0, 0, 0]];
   };
   const out = [];
-  for (const sel of ['header b', 'header span', 'header em', '.lang', '.promo', '.rules', '.rules summary', '.foot', '.credit', '.hd p', '.hd span', '.btn.coin', '#gos', '.tiers .mut']) {
+  for (const sel of ['header b', 'header span', 'header em', '.lang', '.promo', '.rules', '.rules summary', '.foot', '.credit', '.hd h1', '.hd p', '.btn.coin', '#gos', '.tiers .mut']) {
     const e = document.querySelector(sel);
     if (!e || !(e.offsetWidth || e.offsetHeight)) continue;
     const fg = rgb(getComputedStyle(e).color);
@@ -119,6 +119,27 @@ try:
             pg.goto(page_url)
             pg.wait_for_timeout(500)
             return pg, sent
+
+        pg, _ = open_page(G.CASES["idle_new_customer"])
+        motion = "() => ['header b i', '.hd h1'].map(sel => getComputedStyle(document.querySelector(sel)).animationName)"
+        headline = pg.get_by_role("heading", name="Get online", exact=True)
+        check(headline.is_visible() and headline.evaluate("(el) => getComputedStyle(el).textShadow") != "none",
+              "the welcome is a visible heading with a steady glow")
+        check(pg.evaluate(motion) == ["mq", "lift"], "the name scrolls and the heading has a short entrance")
+        pg.emulate_media(reduced_motion="reduce")
+        check(pg.evaluate(motion) == ["none", "none"] and headline.is_visible(), "reduced motion keeps both titles static and legible")
+        pg.close()
+
+        pg, _ = open_page(G.CASES["idle_with_voucher_choice"])
+        pg.set_viewport_size({"width": 320, "height": 740})
+        voucher = pg.locator('label[for="mv"]')
+        check(voucher.is_visible() and voucher.evaluate("""label => {
+          const box = label.getBoundingClientRect();
+          const text = document.createRange();
+          text.selectNodeContents(label);
+          return [...text.getClientRects()].every(line => line.top >= box.top && line.bottom <= box.bottom);
+        }"""), "the whole voucher label fits its tab at 320 px")
+        pg.close()
 
         n = 0
         for layout in LAYOUTS:

@@ -4,7 +4,7 @@ header{height:auto;min-height:48px;flex-wrap:wrap;gap:6px 8px;padding-top:6px;pa
 header img{order:1}
 header span{order:2;flex:1;min-width:0;overflow-wrap:anywhere}
 header b{order:4;flex:0 0 100%;width:100%;min-width:0}
-header em,.promo,.rules,.foot,.hd p{min-width:0;overflow-wrap:anywhere}
+header em,.promo,.rules,.foot,.hd div{min-width:0;overflow-wrap:anywhere}
 header img,.hd img{object-fit:contain}
 .lang{order:3;margin-left:auto;min-height:36px;padding:0 12px;border:1px solid var(--ln2);border-radius:8px;background:none;color:var(--tx);font:inherit;font-size:13px;font-weight:600;cursor:pointer}
 .lang:focus-visible{outline:2px solid var(--bfg);outline-offset:2px}
@@ -27,7 +27,7 @@ header img,.hd img{object-fit:contain}
 .l-compact .w{padding-top:8px}
 .l-compact .hd{margin-bottom:8px}
 .l-compact .hd img{width:40px;height:41px}
-.l-compact .hd p{font-size:16px;line-height:22px}
+.l-compact .hd h1{font-size:20px;line-height:24px}
 .l-compact .tiers{margin-top:8px;padding:4px 12px 0}
 .l-compact .btn{min-height:48px}
 .l-compact summary{min-height:44px;line-height:44px;font-weight:600;cursor:pointer}
@@ -36,9 +36,7 @@ header img,.hd img{object-fit:contain}
 .l-poster header{display:block;position:relative;padding:52px 16px 16px;background:var(--brand);color:var(--bt)}
 .l-poster header img{display:block;width:56px;height:56px;margin-bottom:8px;border-radius:12px}
 .l-poster header b{display:block;width:100%;font-size:30px;line-height:36px;letter-spacing:-.5px}
-.l-poster header b i{animation:mq 7.5s linear -2.6s infinite,pglow 1.8s ease-in-out infinite}
-@keyframes pglow{0%,100%{opacity:1;text-shadow:0 0 10px var(--bglow)}50%{opacity:.72;text-shadow:0 0 2px var(--bglow)}}
-@media(prefers-reduced-motion:reduce){.l-poster header b i{animation:none;padding-left:0}}
+.l-poster header b i{text-shadow:0 0 10px var(--bglow)}
 .l-poster header span,.l-poster header em{display:block;color:var(--bt);font-style:normal}
 .l-poster header span{margin-top:6px;font-size:15px;font-weight:600}
 .l-poster header em{margin-top:10px;font-size:13px}

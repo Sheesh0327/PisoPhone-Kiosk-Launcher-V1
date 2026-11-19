@@ -13,9 +13,9 @@ const TITLE: &str = "<title>TechNet PisoWifi</title>";
 const ICON: &str = r#"<link rel="icon" href="/brand.png">"#;
 const TOUCH: &str = r#"<link rel="apple-touch-icon" href="/brand.png">"#;
 const HEADER: &str = r#"<header><img src="/brand.png" alt="" width="28" height="28"><b><i>TechNet</i></b><span>PisoWifi</span></header>"#;
-const WELCOME: &str = r#"<div class="hd" id="hd"><img src="/mascot.png" alt="" width="72" height="74"><p>Buy Wi-Fi time<span class="mut" style="display:block;font-weight:400">Pick a plan, insert a coin and you are online.</span></p></div>"#;
-const GOS: &str = r#"<p class="sub" id="gos">Coins add up: every coin adds more time</p>"#;
-const FOOT: &str = r#"<p class="foot">TechNet Solutions &middot; Connect &middot; Play &middot; More Possibilities</p>"#;
+const WELCOME: &str = r#"<div class="hd" id="hd"><img src="/mascot.png" alt="" width="72" height="74"><div><h1>Get online</h1><p class="mut">Choose a plan. Tap Insert Coin.</p></div></div>"#;
+const GOS: &str = r#"<p class="sub" id="gos">Each coin adds time.</p>"#;
+const FOOT: &str = r#"<p class="foot">TechNet Solutions</p>"#;
 /// The line shown when the page cannot reach the router for 8 seconds: today it names TechNet's Wi-Fi, which is wrong on a shop's own page.
 const CONN_LINE: &str = "Still connecting. Check you are on the TechNet Wi-Fi.";
 const CONN_LINE_SHOP: &str = "Still connecting. Check you are on the shop's Wi-Fi.";
@@ -34,8 +34,8 @@ const PAGE_END: &str = "</script></body></html>";
 pub const ANCHORS: [&str; 15] =
     [TITLE, ICON, TOUCH, HEADER, WELCOME, GOS, FOOT, HEAD_BODY, PAGE_END, CONN_LINE, VF_FN, VF_TITLE, VF_NAME, VF_JOIN, VF_DOWNLOAD];
 
-/// The standard line under "Buy Wi-Fi time", kept when the owner wrote no welcome.
-const STANDARD: &str = "Pick a plan, insert a coin and you are online.";
+/// The lead below the guest headline, used when the shop has no welcome copy.
+const STANDARD: &str = "Choose a plan. Tap Insert Coin.";
 
 /// The credit every branded page carries, drawn here and not part of any owner text. It is small, but it is always there.
 const CREDIT: &str = r#"<p class="credit">by TechNet Solutions</p>"#;
@@ -195,12 +195,12 @@ pub fn decorate(page: &str, b: &Brand, logo: bool, picture: bool) -> Result<Stri
     let mascot = if own || picture { "" } else { r#"<img src="/mascot.png" alt="" width="72" height="74">"# };
     let (wel_en, wel_fil) = both(b, Field::Welcome, &esc);
     let welcome = slot(
-        "span",
-        r#" class="mut" style="display:block;font-weight:400""#,
+        "p",
+        r#" class="mut""#,
         if wel_en.is_empty() { STANDARD } else { &wel_en },
         if wel_fil.is_empty() { STANDARD } else { &wel_fil },
     );
-    put(WELCOME, &format!(r#"{}<div class="hd" id="hd">{}<p>Buy Wi-Fi time{}</p></div>"#, promo, mascot, welcome));
+    put(WELCOME, &format!(r#"{}<div class="hd" id="hd">{}<div><h1>Get online</h1>{}</div></div>"#, promo, mascot, welcome));
 
     let (rules_en, rules_fil) = both(b, Field::Rules, &lines);
     let (rtag, head) = if layout == "compact" { ("details", "summary") } else { ("div", "b") };
@@ -320,7 +320,7 @@ mod tests {
         assert!(page.contains("<b><i>Aling Nena&#39;s Net Cafe</i></b><span>Mabilis. Mura. Malinis.</span>"), "header");
         assert!(!page.contains("<b><i>TechNet</i></b>") && !page.contains("<title>TechNet PisoWifi</title>"));
         assert_eq!(count(&page, CREDIT), 1);
-        assert!(!page.contains("Connect &middot; Play"), "the TechNet slogan footer is replaced by the credit");
+        assert!(!page.contains(FOOT), "the default footer is replaced by the credit");
     }
 
     #[test]
@@ -348,7 +348,7 @@ mod tests {
         assert!(idle.contains(r#"<p class="promo">Happy hour: double time until 5pm</p>"#), "the promo is on the idle page");
         assert!(idle.find("class=\"promo\"").unwrap() < idle.find("id=\"hd\"").unwrap(), "above the welcome");
         assert!(
-            idle.contains("Welcome to our shop!") && !idle.contains("Pick a plan, insert a coin and you are online."),
+            idle.contains("Welcome to our shop!") && !idle.contains("Choose a plan. Tap Insert Coin."),
             "the welcome replaces the standard line"
         );
         assert!(
@@ -375,7 +375,7 @@ mod tests {
         for frame in ["class=\"promo\"", "class=\"rules\"", "class=\"foot\""] {
             assert!(!page.contains(frame), "{}", frame);
         }
-        assert!(page.contains("Pick a plan, insert a coin and you are online."), "no welcome set: the standard line stays");
+        assert!(page.contains("Choose a plan. Tap Insert Coin."), "no welcome set: the standard line stays");
         assert!(page.contains("<b><i>Nena</i></b>") && !page.contains("<b><i>Nena</i></b><span>"), "no tagline: just the name");
         let hours_only = {
             let mut b = named("Nena");
@@ -537,7 +537,7 @@ mod tests {
             "a Filipino-only block is hidden in English"
         );
         assert!(
-            page.contains(&format!(r#"data-e="{}" data-f="Maligayang pagdating">{}</span>"#, STANDARD, STANDARD)),
+            page.contains(&format!(r#"<p class="mut" data-e="{}" data-f="Maligayang pagdating">{}</p>"#, STANDARD, STANDARD)),
             "a Filipino-only welcome: the standard line in English"
         );
     }
@@ -655,7 +655,7 @@ mod tests {
         light.layout = "poster".into();
         let page_light = decorate(&base(), &light, false, false).unwrap();
         assert!(page_light.contains("--bglow:rgba(255,255,255,.78)"), "light accent gets dark-free soft white glow");
-        assert!(page_light.contains("pglow") && page_light.contains("var(--bglow)"));
+        assert!(page_light.contains(".l-poster header b i{text-shadow:0 0 10px var(--bglow)}"));
 
         let mut dark = named("Nena");
         dark.palette = "technet".into();
