@@ -12,7 +12,8 @@ use crate::http::squeeze;
 const TITLE: &str = "<title>TechNet PisoWifi</title>";
 const ICON: &str = r#"<link rel="icon" href="/brand.png">"#;
 const TOUCH: &str = r#"<link rel="apple-touch-icon" href="/brand.png">"#;
-const HEADER: &str = r#"<header><img src="/brand.png" alt="" width="28" height="28"><b><i>TechNet</i></b><span>PisoWifi</span></header>"#;
+const HEADER: &str =
+    r#"<header><img src="/brand.png" alt="" width="28" height="28"><b><i>TechNet</i></b><span>PisoWifi</span></header><i class="sl"></i>"#;
 const WELCOME: &str = r#"<div class="hd" id="hd"><img src="/mascot.png" alt="" width="72" height="74"><div><h1>Get online</h1><p class="mut">Choose a plan. Tap Insert Coin.</p></div></div>"#;
 const GOS: &str = r#"<p class="sub" id="gos">Each coin adds time.</p>"#;
 const FOOT: &str = r#"<p class="foot">TechNet Solutions</p>"#;
@@ -188,7 +189,10 @@ pub fn decorate(page: &str, b: &Brand, logo: bool, picture: bool) -> Result<Stri
         "poster" => r#" class="poster""#,
         _ => "",
     };
-    put(HEADER, &format!("<header{}>{}<b><i>{}</i></b>{}{}{}</header>", class, img, name, tagline, poster_line, LANG_BUTTON));
+    put(
+        HEADER,
+        &format!(r#"<header{}>{}<b><i>{}</i></b>{}{}</header><i class="sl"></i>{}"#, class, img, name, tagline, poster_line, LANG_BUTTON),
+    );
 
     let (promo_en, promo_fil) = both(b, Field::Promo, &esc);
     let promo = slot("p", r#" class="promo""#, &promo_en, &promo_fil);
