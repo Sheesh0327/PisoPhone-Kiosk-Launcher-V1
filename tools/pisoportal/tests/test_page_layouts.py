@@ -121,13 +121,17 @@ try:
             return pg, sent
 
         pg, _ = open_page(G.CASES["idle_new_customer"])
-        motion = "() => ['header b i', '.hd h1'].map(sel => getComputedStyle(document.querySelector(sel)).animationName)"
+        motion = "() => ['header b i', '.hd h1', '#go'].map(sel => getComputedStyle(document.querySelector(sel)).animationName)"
         headline = pg.get_by_role("heading", name="Get online", exact=True)
         check(headline.is_visible() and headline.evaluate("(el) => getComputedStyle(el).textShadow") != "none",
               "the welcome is a visible heading with a steady glow")
-        check(pg.evaluate(motion) == ["mq", "lift"], "the name scrolls and the heading has a short entrance")
+        check(pg.evaluate(motion) == ["mq", "lift", "pulse"], "the name scrolls, the heading rises, and Insert Coin pulses")
         pg.emulate_media(reduced_motion="reduce")
-        check(pg.evaluate(motion) == ["none", "none"] and headline.is_visible(), "reduced motion keeps both titles static and legible")
+        check(pg.evaluate(motion) == ["none"] * 3 and headline.is_visible()
+              and pg.locator("#go").evaluate("(e) => getComputedStyle(e).transitionDuration") == "0s",
+              "reduced motion keeps the headings and button still")
+        glows = pg.evaluate("() => ['.tiers', '#v-live', '#ion'].map(sel => getComputedStyle(document.querySelector(sel)).boxShadow)")
+        check(glows[0] != "none" and glows == [glows[0]] * 3, "the price and timer cards share a steady glow")
         pg.close()
 
         pg, _ = open_page(G.CASES["idle_with_voucher_choice"])
