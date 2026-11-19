@@ -704,7 +704,7 @@ if sync_playwright:
             page2.click("#btnNextStep")
             page2.wait_for_selector("#s2", state="visible")
             page2.click("#pwOwn summary")
-            check(page2.is_visible("#KIOSK_PASSWORD") == kiosk_visible and page2.is_visible("#ROOT_PASSWORD"),
+            check(page2.is_visible("#KIOSK_PASSWORD") == kiosk_visible and page2.is_visible("#ROOT_PASSWORD") and page2.is_visible("#ADMIN_PASSWORD") == (mode_value == "wifi"),
                   f"{mode_value}: the rental-phone password field is {'shown' if kiosk_visible else 'hidden'} in the page")
             page2.close()
             server2.shutdown()
@@ -717,10 +717,13 @@ for mode, product in (("full", "both"), ("wifi", "wifi")):
     a = session.install_answers()
     check(a["SHOP_PRODUCT"] == product, f"the {mode!r} choice sends SHOP_PRODUCT={product}: {a}")
     if mode == "wifi":
+        check(len(a["ADMIN_PASSWORD"]) == 12 and a["ADMIN_PASSWORD"] == session.values["ADMIN_PASSWORD"], "wifi: a fresh unit sends the admin password")
+        session.values["ADMIN_PASSWORD"] = "short"
+        check(bool(session.settings_problems().get("ADMIN_PASSWORD")), "wifi: a short admin password is invalid")
         session.values["KIOSK_PASSWORD"] = ""
         check(a["KIOSK_PASSWORD"] == "" and not session.settings_problems().get("KIOSK_PASSWORD"), "wifi: no rental-phone password is sent or required")
     else:
-        check(len(a["KIOSK_PASSWORD"]) == 12 and a["KIOSK_PASSWORD"] == session.values["KIOSK_PASSWORD"], "both: the rental-phone password is sent")
+        check(len(a["KIOSK_PASSWORD"]) == 12 and a["KIOSK_PASSWORD"] == session.values["KIOSK_PASSWORD"] and a["ADMIN_PASSWORD"] == "", "both: the rental-phone password is sent")
     session.router["state"] = "configured"
     k = session.install_answers()
     check(k["SHOP_PRODUCT"] == product and k["KIOSK_PASSWORD"] == "" and k["GUEST_SSID"] == "", f"a router set up before is sent the product ({product}) and nothing else")

@@ -66,6 +66,7 @@ ask_name() {
 choose_names() {
 	ask_name GUEST_NAME "public customer" "${GUEST_SSID:-PisoWiFi}" "$GUEST_SSID"; GUEST_NAME="$ASKED"
 	[ "$GUEST_NAME" != "$KIOSK_SSID" ] && [ "$GUEST_NAME" != "$KIOSK_BASE" ] || die "the public Wi-Fi name cannot be $KIOSK_SSID"
+	[ "$GUEST_NAME" != "$ADMIN_SSID" ] && [ "$GUEST_NAME" != "$ADMIN_BASE" ] || die "the public Wi-Fi name cannot be $ADMIN_SSID"
 	case "$GUEST_NAME" in *"$BOX_PAIR_SSID"*) die "the public Wi-Fi name may not contain $BOX_PAIR_SSID (the coin box's hidden network)" ;; esac
 	[ "$DRY" = 1 ] || remember_wifi_names
 }
@@ -94,7 +95,8 @@ ask_password() {
 # Every password the system needs is chosen here, once. Super admin has no password: the owner opens it with the admin QR code.
 choose_passwords() {
 	ask_password ROOT_PASS "router password (SSH and LuCI login)" 8 63 "$ROOT_PASSWORD"
-	wifi_only || ask_password KIOSK_PASS "PisoKiosk Wi-Fi password (typed once into each rental phone's setup page)" 8 63 "$KIOSK_PASSWORD"
+	if wifi_only; then ask_password ADMIN_PASS "Admin Wi-Fi password (for your phone/laptop to manage the hub)" 8 63 "$ADMIN_PASSWORD"
+	else ask_password KIOSK_PASS "PisoKiosk Wi-Fi password (typed once into each rental phone's setup page)" 8 63 "$KIOSK_PASSWORD"; fi
 	ask_password BOX_ADMIN_PASS_NEW "coin box admin password (the box's web page; also the phones' admin PIN)" 8 32 "$BOX_NEW_ADMIN_PASSWORD"
 }
 
@@ -105,11 +107,13 @@ review_choices() {
 	echo
 	echo "================ PLEASE REVIEW ================"
 	echo "  Public Wi-Fi (customers):  $GUEST_NAME  (open, behind the coin payment page)"
+	if wifi_only; then echo "  Admin Wi-Fi:               $ADMIN_SSID  (hidden, 2.4 + 5 GHz)"; fi
 	wifi_only || echo "  Rental-phone Wi-Fi:        $KIOSK_SSID  (hidden, 2.4 + 5 GHz)"
 	echo "  Coin box network:          $BOX_SSID  (hidden, only the box)"
 	echo "  Site name:                 $(conf_get SITE_NAME)"
 	echo "  Router address:            $LAN_IP   Country: ${COUNTRY:-PH}"
 	echo "  Router password:           $(_pw ROOT_PASS)"
+	if wifi_only; then echo "  Admin Wi-Fi password:      $(_pw ADMIN_PASS)"; fi
 	wifi_only || echo "  Kiosk Wi-Fi password:      $(_pw KIOSK_PASS)"
 	echo "  Coin box admin password:   $(_pw BOX_ADMIN_PASS_NEW)"
 	echo "  The Wi-Fi networks of this router are replaced; the coin box is paired and set up; SSH stays open."
@@ -135,15 +139,16 @@ confirm_product() {
 	fi
 }
 
-# apply_product: after apply_batch has written the router's Wi-Fi: keep the product, and on a PisoWiFi-only router forget the rental
-# phones' password (their Wi-Fi is gone). The environment's SHOP_PRODUCT decides until then.
+# Persist the product and remove the retired Wi-Fi password after the UCI batch commits.
 apply_product() {
 	store_product
-	if wifi_only; then conf_del KIOSK_PASS; fi
+	if wifi_only; then conf_del KIOSK_PASS; else conf_del ADMIN_PASS; fi
 }
 
 # kiosk_pass: the rental phones' Wi-Fi password (made once); a PisoWiFi-only router has none
 kiosk_pass() { wifi_only && return 0; secret KIOSK_PASS 12; }
+
+admin_pass() { wifi_only || return 0; secret ADMIN_PASS 12; }
 
 stage1() {
 	check_product
@@ -161,16 +166,17 @@ stage1() {
 	review_choices
 	ask_telegram
 	KIOSK_PASS=$(kiosk_pass)
+	ADMIN_PASS=$(admin_pass)
 	secret ROOT_PASS 14 > /dev/null; secret GW_KEY 64 hex > /dev/null; secret BOX_ADMIN_PASS_NEW 16 > /dev/null
 	BOX_MAC=$(conf_get BOX_MAC)
-	if [ "$DRY" = 1 ]; then uci_batch "<kiosk password>" "$GUEST_NAME" "$BOX_MAC"; return 0; fi
+	if [ "$DRY" = 1 ]; then uci_batch "<kiosk password>" "$GUEST_NAME" "$BOX_MAC" "<admin password>"; return 0; fi
 
 	: > "$LOG"
 	install_packages
 	extract_payload "$0"
 	step "Writing the router settings"
 	[ -n "$(conf_get CONSOLE_MODE)" ] || conf_set CONSOLE_MODE front   # (the console is the front page, http://admin.hub; LuCI is on 8080)
-	apply_batch "$KIOSK_PASS" "$GUEST_NAME" "$BOX_MAC"
+	apply_batch "$KIOSK_PASS" "$GUEST_NAME" "$BOX_MAC" "$ADMIN_PASS"
 	apply_product
 	stage2
 }

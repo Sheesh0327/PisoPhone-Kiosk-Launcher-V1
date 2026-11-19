@@ -9,8 +9,11 @@ Keep this file private (it is readable by root only).
 
 Router (SSH / LuCI):   root@$LAN_IP        password: $(if [ "$(conf_get ROOT_PASS_SET)" = 1 ]; then conf_get ROOT_PASS; else echo "NOT SET by this setup (the router keeps its previous one): run piso-setup set-password"; fi)
 EOT
-	# the rental phones' hidden Wi-Fi: not on a PisoWiFi-only router
-	if ! wifi_only; then
+	if wifi_only; then
+		cat >> "$SUMMARY" << EOT
+Admin Wi-Fi:           $ADMIN_SSID (HIDDEN)   password: $(conf_get ADMIN_PASS)    (your devices only: opens http://admin.hub and the coin box; blocked from guests)
+EOT
+	else
 		cat >> "$SUMMARY" << EOT
 Kiosk Wi-Fi:           $KIOSK_SSID (HIDDEN)   password: $(conf_get KIOSK_PASS)    (rental phones only; the coin box's "Set up a phone" link carries it, nobody types it)
 EOT

@@ -12,6 +12,7 @@
 #   PisoKiosk-xxxx    Wi-Fi, 2.4 + 5 GHz, WPA2, HIDDEN (not broadcast). For the rental phones only. Network 10.0.0.0/24 (the router's LAN).
 #                     xxxx comes from this router's own MAC address, so two shops (or two routers) never share a network name.
 #                     A router that was set up before keeps the name PisoKiosk.
+#   PisoAdmin-xxxx   hidden WPA2 Wi-Fi on PisoWiFi-only routers: Console, coin box and internet. Default network 10.0.20.0/24.
 #   PisoCoinBox-xxxx  hidden Wi-Fi, 2.4 GHz, for the ESP32 coin box only: after pairing, only the box's MAC address may join.
 #                     (only while pairing it is called PisoCoinBox, the name a new box knows; then the box is told its own name)
 #                The box gets the fixed address 10.0.0.10.
@@ -25,7 +26,7 @@
 #
 # Options:  --dry-run  print the router settings instead of applying them (needs nothing but the uci command)
 #           --yes      do not ask for confirmation
-# Settings can be overridden from the environment: COUNTRY (default PH) GUEST_SSID BOX_IP GUEST_IP ROOT_PASSWORD KIOSK_PASSWORD BOX_NEW_ADMIN_PASSWORD
+# Settings can be overridden from the environment: COUNTRY (default PH) GUEST_SSID BOX_IP GUEST_IP ROOT_PASSWORD KIOSK_PASSWORD BOX_NEW_ADMIN_PASSWORD ADMIN_IP ADMIN_PASSWORD
 
 VERSION="@VERSION@"
 # the release of this file (setup/RELEASE): routers install only a higher release that the owner signed
@@ -35,6 +36,8 @@ PISO_ARCH='@ARCH@'
 
 COUNTRY="${COUNTRY:-PH}"
 KIOSK_BASE="PisoKiosk"                       # the start of the rental phones' hidden network name (resolve_wifi_names adds the router's own ending)
+ADMIN_BASE="PisoAdmin"
+ADMIN_SSID="$ADMIN_BASE"
 BOX_PAIR_SSID="PisoCoinBox"                  # the box's hidden network while pairing: the ESP32 firmware has this name built in
 KIOSK_SSID="$KIOSK_BASE"; BOX_SSID="$BOX_PAIR_SSID"   # (replaced by resolve_wifi_names: each router has names of its own)
 BOX_DEFAULT_WIFI="PisoCoinBox@Setup"         # the ESP32 firmware has it built in; setup gives the paired box its own (rotate_box_wifi)
@@ -44,6 +47,8 @@ LAN_IP="${LAN_IP:-10.0.0.1}"
 BOX_IP="${BOX_IP:-${LAN_IP%.*}.10}"                                               # the box is always <LAN network>.10
 GUEST_IP="${GUEST_IP:-$(uci -q get network.guest.ipaddr 2> /dev/null)}"   # a re-run or update keeps what the router has
 GUEST_IP="${GUEST_IP:-10.0.30.1}"
+ADMIN_IP="${ADMIN_IP:-$(uci -q get network.admin.ipaddr 2> /dev/null)}"
+ADMIN_IP="${ADMIN_IP:-10.0.20.1}"
 PORTAL_PORT=2080                             # the portal (openNDS FAS): not 80, which openNDS keeps for captive-portal detection
 CONF="${PISO_CONF:-/etc/piso-setup.conf}"   # what this script chose (secrets inside): mode 600
 LOG="${PISO_LOG:-/root/piso-setup.log}"

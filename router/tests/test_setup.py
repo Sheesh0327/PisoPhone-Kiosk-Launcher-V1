@@ -624,8 +624,21 @@ conf_set GW_KEY """ + "9f" * 32 + r"""; conf_set BOX_MAC AA:BB:CC:DD:EE:FF; conf
 conf_set BOX_ADMIN_PASS NewPassw0rdXYZ; conf_set BOX_WIFI_ROTATED 1; conf_set BOX_WIFI_PASS_NEW boxwifi-own-key-123
 write_coinslot_conf """ + "9f" * 32 + r""" AA:BB:CC:DD:EE:FF
 printf 'kiosk-pass-1 NewPassw0rdXYZ\n' > "$SUMMARY"
+if wifi_only; then
+  conf_set KIOSK_SSID_NAME PisoKiosk-a1b2
+  conf_set BOX_SSID_NAME PisoCoinBox-a1b2
+  conf_set ADMIN_PASS admin-pass-1
+  conf_set ADMIN_SSID_NAME PisoAdmin-a1b2
+  resolve_wifi_names
+  printf 'admin-pass-1\n' >> "$SUMMARY"
+fi
 uci() { [ "$1" = -q ] && shift; case "$1 $2" in
-  "show wireless") printf 'wireless.kiosk_radio0=wifi-iface\nwireless.kiosk_radio1=wifi-iface\nwireless.guest_radio0=wifi-iface\nwireless.box_ap=wifi-iface\n' ;;
+  "show wireless") printf 'wireless.kiosk_radio0=wifi-iface\nwireless.kiosk_radio1=wifi-iface\nwireless.guest_radio0=wifi-iface\nwireless.box_ap=wifi-iface\n'
+    if wifi_only; then printf 'wireless.admin_radio0=wifi-iface\nwireless.admin_radio1=wifi-iface\n'; fi ;;
+  "get wireless.admin_radio0.key") echo admin-pass-1 ;;
+  "get wireless.admin_radio1.key") echo "${T_ADMIN_KEY:-admin-pass-1}" ;;
+  "get wireless.admin_radio0.ssid") echo PisoAdmin-a1b2 ;;
+  "get wireless.admin_radio1.ssid") echo "${T_ADMIN_SSID:-PisoAdmin-a1b2}" ;;
   "get wireless.kiosk_radio0.key" | "get wireless.kiosk_radio1.key") echo "$T_KIOSK" ;;
   "get wireless.guest_radio0.ssid" | "get opennds.@opennds[0].gatewayname") echo "$T_GUEST" ;;
   "get opennds.@opennds[0].fasport") echo "$PORTAL_PORT" ;;
@@ -634,7 +647,13 @@ uci() { [ "$1" = -q ] && shift; case "$1 $2" in
   "get wireless.kiosk_radio0.ssid" | "get wireless.kiosk_radio1.ssid") echo "$T_KIOSKSSID" ;;
   "get wireless.box_ap.ssid") echo "$T_BOXSSID" ;;
   *) return 1 ;; esac; }
-ip() { echo "    inet 10.0.30.1/24 brd 10.0.30.255 scope global br-guest"; }
+ip() {
+  if [ "$*" = '-4 addr show br-admin' ]; then
+    [ -z "$T_ADMIN_DOWN" ] && echo "    inet $ADMIN_IP/24"
+  else
+    echo "    inet 10.0.30.1/24 brd 10.0.30.255 scope global br-guest"
+  fi
+}
 """
 fake_portal = f"{bindir}/fakeportal"
 open(fake_portal, "w").write("#!/bin/sh\necho 'box 10.0.0.10 answers'\n"); os.chmod(fake_portal, 0o755)
@@ -1240,7 +1259,8 @@ exit 0
 for f in ("uci.log", "uci.batch"):
     open(f"{tmp}/{f}", "w").close()
 open(conf_up, "a").write("GUEST_NAME='Shop WiFi'\nBOX_MAC='AA:BB:CC:DD:EE:09'\n")
-r = run("update", env={"PISO_TEST_NONROOT": "1", "PISO_ROOT": root, "PISO_CONF": conf_up, "PISO_SELF_PATH": f"{tmp}/installed/piso-setup"})
+r = run("update", env={"PISO_TEST_NONROOT": "1", "PISO_ROOT": root, "PISO_CONF": conf_up,
+                       "PISO_SELF_PATH": f"{tmp}/installed/piso-setup", "BOX_IP": "127.0.0.1:9"})
 ub, ul = open(f"{tmp}/uci.batch").read(), open(f"{tmp}/uci.log").read()
 check("set opennds.@opennds[0].fasport='2080'" in ub and "set opennds.@opennds[0].login_option_enabled='0'" in ub and "delete opennds.@opennds[0].themespec_path" in ub
       and "set firewall.guest_stream.dest_port='2080'" in ub and "set firewall.guest_lan_redirect.src_dip='10.0.0.1'" in ub
@@ -1615,6 +1635,23 @@ check("wireless.kiosk_radio0" in both_batch and "wireless.kiosk_radio1" in both_
 check(run("--dry-run", env={"SHOP_PRODUCT": "both"}).stdout == both_batch, "SHOP_PRODUCT=both gives exactly the batch of a missing SHOP_PRODUCT")
 check("kiosk_" not in wifi_batch and "wireless.guest_radio0" in wifi_batch and "wireless.box_ap" in wifi_batch,
       "SHOP_PRODUCT=wifi: no wireless.kiosk_* section; guest Wi-Fi and the coin box Wi-Fi are still there")
+for radio in ("radio0", "radio1"):
+    for option, value in (("network", "admin"), ("hidden", "1"), ("encryption", "psk2"), ("isolate", "0"), ("key", "<admin password>")):
+        check(f"set wireless.admin_{radio}.{option}='{value}'" in wifi_batch, f"wifi: admin {radio} uses {option}={value}")
+for setting in ("network.admin_dev.name='br-admin'", "network.admin.ipaddr='10.0.20.1'", "dhcp.admin.interface='admin'",
+                "firewall.admin.input='REJECT'", "firewall.admin.forward='REJECT'", "firewall.admin_wan.dest='wan'",
+                "firewall.admin_dhcp.dest_port='53 67'", "firewall.admin_dns_tcp.dest_port='53'",
+                "firewall.admin_console.dest_port='8081 8082'", "firewall.admin_box.dest_ip='10.0.0.10'"):
+    check(f"set {setting}" in wifi_batch, f"wifi: {setting} is in the batch")
+for section in ("network.admin_dev", "network.admin", "dhcp.admin", "firewall.admin", "firewall.admin_wan",
+                "firewall.admin_dhcp", "firewall.admin_dns_tcp", "firewall.admin_console", "firewall.admin_box"):
+    check(f"delete {section}" in both_batch.splitlines(), f"both: clears {section}")
+r = lib('SHOP_PRODUCT=wifi; wan_ip() { echo 10.0.20.50; }; wan_prefix() { echo 24; }; wan_clash')
+check(r.stdout.strip() == "10.0.20.1", "wifi: WAN overlap on br-admin is detected")
+r = lib('rm -f "$CONF"; SHOP_PRODUCT=wifi; ADMIN_PASSWORD=CustomAdmin123; choose_passwords; remember_wifi_names; admin_pass; echo; grep ADMIN_SSID_NAME "$CONF"')
+check("CustomAdmin123" in r.stdout and "ADMIN_SSID_NAME='PisoAdmin-" in r.stdout, "wifi: the chosen admin password and SSID are stored")
+r = lib('rm -f "$CONF"; conf_set ADMIN_PASS oldAdminPass1; SHOP_PRODUCT=both; apply_product; cat "$CONF"')
+check("ADMIN_PASS" not in r.stdout and "SHOP_PRODUCT='both'" in r.stdout, "both: switching removes the admin password")
 r = run("--dry-run", env={"SHOP_PRODUCT": "phone"})
 check(r.returncode != 0 and "SHOP_PRODUCT must be wifi or both" in r.stdout + r.stderr, "any other SHOP_PRODUCT stops the setup: " + r.stdout + r.stderr)
 r = lib("shop_product; echo ---; conf_set SHOP_PRODUCT wifi; shop_product; echo ---; SHOP_PRODUCT=both shop_product")
@@ -1633,14 +1670,19 @@ check("CURL" not in r.stdout and r.stdout.count("rc=0") == 3 and "PisoKiosk" not
 # the agreement checks skip the kiosk Wi-Fi
 r = agree(env={"SHOP_PRODUCT": "wifi", "T_KIOSK": "an-old-password"})
 check("rc=0" in r.stdout and "kiosk" not in r.stdout.lower().replace("fails=", ""), "wifi: the agreement skips the kiosk Wi-Fi and the PisoKiosk link, and reports no problem: " + r.stdout[-400:] + r.stderr)
-r = agree(env={"SHOP_PRODUCT": "wifi"}, extra="conf_set KIOSK_PASS ''; echo old > \"$SUMMARY\"; echo \"$(conf_get BOX_ADMIN_PASS)\" > \"$SUMMARY\"")
-check("rc=0" in r.stdout, "wifi: the summary check needs only the coin box password: " + r.stdout[-300:])
+r = agree(env={"SHOP_PRODUCT": "wifi"}, extra="conf_set KIOSK_PASS ''; printf '%s\\n' \"$(conf_get BOX_ADMIN_PASS)\" \"$(conf_get ADMIN_PASS)\" > \"$SUMMARY\"")
+check("rc=0" in r.stdout, "wifi: the summary checks the admin and coin box passwords: " + r.stdout[-300:])
+for key, value in (("T_ADMIN_KEY", "wrong"), ("T_ADMIN_SSID", "PisoAdmin-ffff"), ("T_ADMIN_DOWN", "1")):
+    r = agree(env={"SHOP_PRODUCT": "wifi", key: value})
+    check("rc=1" in r.stdout and "FAIL  the admin network" in r.stdout, f"wifi: agreement detects {key}")
+r = agree(env={"SHOP_PRODUCT": "wifi"}, extra="conf_del ADMIN_PASS; echo NewPassw0rdXYZ > \"$SUMMARY\"", code="ag_is_summary")
+check("rc=0" in r.stdout, "wifi: the old summary is accepted when no admin password is stored yet")
 r = agree(env={"SHOP_PRODUCT": "both", "T_KIOSK": "an-old-password"})
 check("rc=1" in r.stdout and "kiosk network" in r.stdout, "both: the kiosk check is still there")
 check("wifi_only ||" in text.split("check_all() {")[1].split("\n}\n")[0] and "hidden Wi-Fi $KIOSK_SSID" in text.split("check_all() {")[1], "the stage-2 checks skip the kiosk Wi-Fi on a wifi router")
 # summary, handout, plan
 r = lib('rm -f $CONF; SHOP_PRODUCT=wifi; conf_set ROOT_PASS_SET 1; write_summary; cat "$SUMMARY"; HANDOUT=' + tmp + '/h-wifi.html write_handout > /dev/null; cat ' + tmp + '/h-wifi.html')
-check("Kiosk Wi-Fi" not in r.stdout and "Rental-phone Wi-Fi" not in r.stdout and "rental phone" not in r.stdout.lower() and "PisoKiosk" not in r.stdout.split("<html")[1] and "Customer Wi-Fi" in r.stdout and "Coin box" in r.stdout,
+check("Kiosk Wi-Fi" not in r.stdout and "Rental-phone Wi-Fi" not in r.stdout and "rental phone" not in r.stdout.lower() and "PisoKiosk" not in r.stdout.split("<html")[1] and "Customer Wi-Fi" in r.stdout and "Coin box" in r.stdout and "Admin Wi-Fi:" in r.stdout and "Admin Wi-Fi (hidden)" in r.stdout,
       "wifi: the summary and the handout have no rental-phone Wi-Fi lines: " + r.stdout[:600])
 r = lib('rm -f $CONF; conf_set ROOT_PASS_SET 1; write_summary; cat "$SUMMARY"; HANDOUT=' + tmp + '/h-both.html write_handout > /dev/null; cat ' + tmp + '/h-both.html')
 check("Kiosk Wi-Fi:" in r.stdout and "Rental-phone Wi-Fi (hidden)" in r.stdout and "Setting up a new rental phone" in r.stdout, "both: the summary and the handout keep their rental-phone lines")
@@ -1727,7 +1769,7 @@ def at_terminal(code, answer):
     """Run shell code with a real terminal on stdin (the question is only asked at a terminal) and type an answer."""
     open(f"{tmp}/swconf", "w").write(BOTHCONF)
     env = dict(os.environ, PATH=f"{bindir}:" + os.environ["PATH"], PISO_SETUP_SOURCE_ONLY="1", PISO_LOG=f"{tmp}/log2", PISO_STATE=f"{tmp}/state2",
-               PISO_ROUTER_ID="a1b2", SHOP_PRODUCT="wifi", **senv)
+               PISO_ROUTER_ID="a1b2", SHOP_PRODUCT="wifi", ADMIN_PASSWORD="OwnerAdmin123", **senv)
     pid, fd = pty.fork()
     if pid == 0:
         os.execvpe("sh", ["sh", "-c", f". {SCRIPT}; {code}"], env)
@@ -1773,7 +1815,7 @@ def stage1_at_terminal(answers, fail_install=False):
              + ('install_packages() { die "no internet"; }; ' if fail_install else "install_packages() { echo PACKAGES; }; ")
              + f'apply_batch() {{ echo APPLY-RAN; uci_batch "$@" > {tmp}/applied.uci; }}; ')
     env = dict(os.environ, PATH=f"{bindir}:" + os.environ["PATH"], PISO_SETUP_SOURCE_ONLY="1", PISO_LOG=f"{tmp}/log2", PISO_STATE=f"{tmp}/state2",
-               PISO_SUMMARY=f"{tmp}/sum2", PISO_ROUTER_ID="a1b2", SHOP_PRODUCT="wifi", **senv)
+               PISO_SUMMARY=f"{tmp}/sum2", PISO_ROUTER_ID="a1b2", SHOP_PRODUCT="wifi", ADMIN_PASSWORD="OwnerAdmin123", **senv)
     if os.path.exists(f"{tmp}/applied.uci"):
         os.remove(f"{tmp}/applied.uci")
     pid, fd = pty.fork()
@@ -1814,7 +1856,9 @@ check("KIOSK_PASS='oldKioskPw1'" in conf_now and "SHOP_PRODUCT='wifi'" not in co
 out = stage1_at_terminal(["y", "y"])
 conf_now = open(f"{tmp}/swconf").read()
 applied = open(f"{tmp}/applied.uci").read() if os.path.exists(f"{tmp}/applied.uci") else ""
-parts = ("STAGE2-RAN" in out, "KIOSK_PASS" not in conf_now, "SHOP_PRODUCT='wifi'" in conf_now, bool(applied), "wireless.kiosk_" not in applied, "wireless.guest_radio0" in applied)
+parts = ("STAGE2-RAN" in out, "KIOSK_PASS" not in conf_now, "SHOP_PRODUCT='wifi'" in conf_now, bool(applied), "wireless.kiosk_" not in applied, "wireless.guest_radio0" in applied,
+         "wireless.admin_radio0.key='OwnerAdmin123'" in applied, "ADMIN_SSID_NAME='PisoAdmin-a1b2'" in conf_now,
+         "firewall.admin_console.dest_port='80 81'" in applied)
 check(all(parts),
       "wifi switch completed: KIOSK_PASS deleted, product wifi stored, no kiosk Wi-Fi written: " + out[-300:] + conf_now + " parts=" + str(parts))
 

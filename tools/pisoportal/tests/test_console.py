@@ -75,8 +75,8 @@ env.extra.update(CONSOLE_PORT=CP, CONSOLE_BIND="127.0.0.1", UBUS=f"{tmp}/ubus", 
                  PISO_MONITOR_SERVICE=f"{tmp}/piso_monitor.svc", MON_STATE=f"{tmp}/mon-state")
 
 
-def call(path, body=None, cookie=None, headers=None):
-    req = urllib.request.Request(f"http://127.0.0.1:{CP}{path}", data=None if body is None else json.dumps(body).encode(), method="GET" if body is None else "POST")
+def call(path, body=None, cookie=None, headers=None, method=None):
+    req = urllib.request.Request(f"http://127.0.0.1:{CP}{path}", data=None if body is None else json.dumps(body).encode(), method=method or ("GET" if body is None else "POST"))
     if body is not None:
         req.add_header("X-Piso", "1")
         req.add_header("Content-Type", "application/json")
@@ -99,6 +99,11 @@ try:
     check(b"TechNet PisoHub" in body and "default-src 'none'" in h.get("Content-Security-Policy", ""), "the page is the TechNet console, with a strict content security policy")
     check(len(body) < 31000, f"the page is small ({len(body)} bytes)")  # (20000 until Branding, feature 049; 24000 until sidebar, feature 053; 30000 until direct logo/picture upload)
     check(call("/api/overview")[0] == 401 and call("/api/clients")[0] == 401 and call("/api/phones")[0] == 401, "no session, no data")
+    check(call("/api/admin-wifi")[0] == 401, "Admin Wi-Fi data requires a session")
+    for method in ("GET", "HEAD"):
+        code, card, headers = call("/admin-wifi/card", method=method)
+        check(code == 401 and (method != "HEAD" or not card) and headers["Cache-Control"] == "no-store",
+              f"the Admin Wi-Fi card requires a session ({method})")
     check(call("/brand.png")[0] == 200 and call("/mascot.png")[0] == 200, "the logo and the mascot are served")
     check(call("/api/login", {"password": "router-pass"}, headers={"X-Piso": "0"})[0] == 403, "a login without the page's header is refused")
     check(call("/api/login", {"password": "router-pass"}, headers={"Origin": "http://evil.example"})[0] == 403, "a login from another site is refused")
@@ -107,6 +112,8 @@ try:
     code, body, h = call("/api/login", {"password": "router-pass"})
     cookie = (h.get("Set-Cookie") or "").split(";")[0]
     check(code == 200 and cookie.startswith("piso_console=") and "HttpOnly" in h.get("Set-Cookie", "") and "SameSite=Strict" in h.get("Set-Cookie", ""), "the router's password signs in (HttpOnly, SameSite=Strict cookie)")
+    check(json.loads(call("/api/admin-wifi", cookie=cookie)[1]) == {"enabled": False}, "Admin Wi-Fi API is disabled with both products")
+    check(call("/admin-wifi/card", cookie=cookie)[0] == 404, "there is no Admin Wi-Fi card with both products")
     # lock-out after five wrong passwords
     for _ in range(5):
         call("/api/login", {"password": "nope"})

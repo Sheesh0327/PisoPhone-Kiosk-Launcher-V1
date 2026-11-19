@@ -22,7 +22,7 @@ cmd_wifi_name() {
 	_n="$1"
 	[ -n "$_n" ] || { echo "usage: piso-setup wifi-name \"New Name\"" >&2; exit 1; }
 	[ "${#_n}" -le 32 ] || { echo "the name can be at most 32 characters" >&2; exit 1; }
-	case "$_n" in "$KIOSK_SSID" | "$KIOSK_BASE" | "$BOX_SSID" | "$BOX_PAIR_SSID") echo "that name is reserved" >&2; exit 1 ;; esac
+	case "$_n" in "$KIOSK_SSID" | "$KIOSK_BASE" | "$BOX_SSID" | "$BOX_PAIR_SSID" | "$ADMIN_SSID" | "$ADMIN_BASE") echo "that name is reserved" >&2; exit 1 ;; esac
 	case "$_n" in *\'* | *\"* | *\\* | *\$* | *\`*) echo "please avoid quotes, backslashes, \$ and backticks in the name" >&2; exit 1 ;; esac
 	for s in $(uci -q show wireless | sed -n 's/^\(wireless\.guest_[^.=]*\)=wifi-iface$/\1/p'); do uci set "$s.ssid=$_n"; done
 	uci set opennds.@opennds[0].gatewayname="$_n"
@@ -257,7 +257,7 @@ cmd_update() {
 	[ -x /etc/init.d/pisoportal ] && { /etc/init.d/pisoportal enable; /etc/init.d/pisoportal start; }
 	PORTAL_RESTORE=0
 	# openNDS and the firewall as this version needs them (a router set up with the earlier ThemeSpec portal is moved over)
-	(umask 077; { portal_uci "$(conf_get GUEST_NAME)"; router_access_uci; } > /tmp/piso-setup.uci)
+	(umask 077; { portal_uci "$(conf_get GUEST_NAME)"; router_access_uci; if wifi_only; then admin_firewall_uci; fi; } > /tmp/piso-setup.uci)
 	uci_apply /tmp/piso-setup.uci
 	rm -f /tmp/piso-setup.uci
 	if [ -n "$(uci changes firewall 2> /dev/null)$(uci changes opennds 2> /dev/null)" ]; then

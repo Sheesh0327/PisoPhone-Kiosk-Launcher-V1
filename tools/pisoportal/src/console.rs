@@ -4,10 +4,12 @@
 //!
 //! Routes: `/` the page; `/api/login`, `/api/logout`; `/api/overview`, `/api/clients`, `/api/phones` (needs a session); `/api/kick` (POST).
 use crate::boxlink::{with_port, BoxLink};
+use crate::config::Config;
 use crate::core::Core;
 use crate::http::{bind_retry, read_request, respond, respond_bytes, Incoming, Request, BRAND_LOGO, BRAND_MASCOT};
 use crate::nds::ClientInfo;
 use crate::pricing::{parse_tier_list, Plan, Pricing, MAX_KBPS, MAX_PRORATA_MIN};
+use crate::qr::{qr_svg, wifi_qr_text};
 use crate::util::{b64_encode, jget, json_esc, now_secs, random_hex, valid_mac};
 use std::collections::{HashMap, VecDeque};
 use std::io::Read;
@@ -281,6 +283,88 @@ pub(crate) fn conf_value(path: &str, key: &str) -> String {
         .find_map(|l| l.strip_prefix(&format!("{}=", key)).map(|v| v.trim().trim_matches('\'').trim_matches('"').to_string()))
         .unwrap_or_default()
 }
+
+fn html_esc(value: &str) -> String {
+    value.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\'', "&#39;")
+}
+
+struct AdminWifi {
+    ssid: String,
+    password: String,
+    url: String,
+    wifi_svg: String,
+    console_svg: String,
+}
+
+fn admin_ssid(stored: String, previous: &[String]) -> String {
+    if !stored.is_empty() {
+        return stored;
+    }
+    previous
+        .iter()
+        .filter_map(|name| name.rsplit_once('-').map(|(_, suffix)| suffix))
+        .find(|suffix| suffix.len() == 4 && suffix.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        .map_or_else(|| "PisoAdmin".to_string(), |suffix| format!("PisoAdmin-{suffix}"))
+}
+
+fn admin_wifi_info(cfg: &Config) -> Option<AdminWifi> {
+    if cfg.shop_product != "wifi" {
+        return None;
+    }
+    let get = |key| conf_value(&cfg.setup_conf, key);
+    let password = get("ADMIN_PASS");
+    if password.is_empty() {
+        return None;
+    }
+    let ssid = admin_ssid(get("ADMIN_SSID_NAME"), &[get("KIOSK_SSID_NAME"), get("BOX_SSID_NAME")]);
+    let url = match cfg.console_port {
+        0 | 80 => "http://admin.hub/".to_string(),
+        port => format!("http://admin.hub:{port}/"),
+    };
+    let wifi_svg = qr_svg(&wifi_qr_text(&ssid, &password, true), 4, 4)?;
+    let console_svg = qr_svg(&url, 4, 4)?;
+    Some(AdminWifi { ssid, password, url, wifi_svg, console_svg })
+}
+
+impl AdminWifi {
+    fn json(&self) -> String {
+        format!(
+            r#"{{"enabled":true,"ssid":"{}","password":"{}","hidden":true,"console_url":"{}","wifi_svg":"{}","console_svg":"{}"}}"#,
+            json_esc(&self.ssid),
+            json_esc(&self.password),
+            json_esc(&self.url),
+            json_esc(&self.wifi_svg),
+            json_esc(&self.console_svg),
+        )
+    }
+
+    fn card(&self) -> String {
+        format!(
+            r#"<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Admin Wi-Fi QR card</title>
+<style>
+*{{box-sizing:border-box}}body{{font:16px/1.5 system-ui,sans-serif;background:#f2f5fa;color:#142036;margin:0;padding:24px}}
+main{{max-width:740px;margin:auto}}h1{{margin:0}}h2{{font-size:1.15rem;margin:0}}p{{margin:.5rem 0}}
+.cards{{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,270px),1fr));gap:16px;margin:1.2rem 0}}
+section{{padding:20px;background:#fff;border:1px solid #b9c4d6;border-radius:12px;break-inside:avoid}}
+.qr{{background:#fff;padding:8px;border-radius:8px;display:inline-block}}svg{{display:block;max-width:100%;height:auto}}
+code{{overflow-wrap:anywhere}}@media print{{body{{background:#fff;padding:0}}}}
+</style></head><body><main><h1>Admin Wi-Fi</h1><p>Keep this card private. It contains your Wi-Fi password.</p>
+<div class="cards"><section><h2>Join the hidden network</h2><div class="qr">{}</div>
+<p>Network <code>{}</code><br>Password <code>{}</code><br>Security WPA2-Personal</p></section>
+<section><h2>Open the Console</h2><div class="qr">{}</div>
+<p>Once connected, scan this code or open <code>{}</code>.</p></section></div></main></body></html>"#,
+            self.wifi_svg,
+            html_esc(&self.ssid),
+            html_esc(&self.password),
+            self.console_svg,
+            html_esc(&self.url),
+        )
+    }
+}
+
+const ADMIN_CARD_HEADERS: &str = "Cache-Control: no-store\r\n\
+Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'\r\n";
 
 /// One plain HTTP GET with Basic auth (the coin box's dashboard API).
 fn http_get_auth(addr: &str, path: &str, user: &str, pass: &str) -> Result<String, String> {
@@ -1103,6 +1187,16 @@ fn handle(c: &Arc<Console>, req: Request, mut conn: Incoming) {
                 None => respond(&mut conn.s, "404 Not Found", "text/plain", "No picture", "Cache-Control: no-store\r\n"),
             }
         }
+        ("GET" | "HEAD", "/admin-wifi/card") => {
+            let (status, mime, page) = if !c.session_ok(&req) {
+                ("401 Unauthorized", "text/plain", "Sign in to the console first.".into())
+            } else if let Some(info) = admin_wifi_info(&c.core.cfg) {
+                ("200 OK", "text/html; charset=utf-8", info.card())
+            } else {
+                ("404 Not Found", "text/plain", "Admin Wi-Fi is unavailable.".into())
+            };
+            respond_bytes(&mut conn.s, status, mime, page.as_bytes(), ADMIN_CARD_HEADERS, !head_only);
+        }
         ("POST", "/api/login") => {
             if req.header("x-piso") != Some("1") || !same_origin(&req) {
                 return json(&mut conn, "403 Forbidden", "{\"error\":\"FORBIDDEN\"}", "");
@@ -1184,6 +1278,10 @@ fn handle(c: &Arc<Console>, req: Request, mut conn: Incoming) {
                     )
                 }
                 ("GET", "/api/vouchers") => json(&mut conn, "200 OK", &c.core.vouchers_json(), ""),
+                ("GET", "/api/admin-wifi") => {
+                    let info = admin_wifi_info(&c.core.cfg).map_or_else(|| "{\"enabled\":false}".into(), |wifi| wifi.json());
+                    json(&mut conn, "200 OK", &info, "");
+                }
                 ("GET", "/api/settings") => json(&mut conn, "200 OK", &settings_json(&c.core), ""),
                 ("POST", "/api/settings") => {
                     // (only the settings named in the body change)
@@ -1388,6 +1486,14 @@ pub fn start(core: Arc<Core>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn admin_wifi_name_uses_the_stored_name_or_a_router_suffix() {
+        assert_eq!(admin_ssid("PisoAdmin-test".into(), &["PisoKiosk-abcd".into()]), "PisoAdmin-test");
+        assert_eq!(admin_ssid(String::new(), &["PisoKiosk-abcd".into(), "PisoCoinBox-9876".into()]), "PisoAdmin-abcd");
+        assert_eq!(admin_ssid(String::new(), &["PisoKiosk".into(), "PisoCoinBox-9876".into()]), "PisoAdmin-9876");
+        assert_eq!(admin_ssid(String::new(), &["PisoKiosk-zzzz".into()]), "PisoAdmin");
+    }
 
     #[test]
     fn the_coin_box_tab_is_named_for_the_product() {

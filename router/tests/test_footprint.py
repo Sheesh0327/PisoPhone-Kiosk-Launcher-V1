@@ -17,7 +17,7 @@ BUDGET_KB = {
     "tools/pisoportal/src/brand_fil.js": 14,          # a branded page: the Filipino wording and the language button (feature 049; page.html itself did not grow)
     "tools/pisoportal/src/brand_page.css": 6,         # a branded page: the four layouts
     "tools/pisoportal/src/console.html": 30,          # the owner's console page: sidebar, icons, phone rows (feature 053; 21 KB before it)
-    "tools/pisoportal/src/console-ui.js": 34,         # the console's script, version 16 (30 KB before direct logo/picture upload + resize)
+    "tools/pisoportal/src/console-ui.js": 34,         # the console's script, version 17 (30 KB before direct logo/picture upload + resize)
 }
 bad = 0
 for path, limit in BUDGET_KB.items():

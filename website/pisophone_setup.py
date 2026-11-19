@@ -86,6 +86,7 @@ TARGET_IP = "10.0.0.1"          # where the PisoPhone setup puts it
 BOX_IP = "10.0.0.10"            # the coin box, always <LAN network>.10
 KIOSK_SSID = "PisoKiosk"        # fixed names (setup/piso-setup.sh.in)
 BOX_SSID = "PisoCoinBox"
+ADMIN_SSID = "PisoAdmin"
 MOVE_WAIT = 240                 # seconds to wait for the router at 10.0.0.1 after the move
 FORBIDDEN = "'\"\\$`"           # characters the router's shell quoting cannot take
 # (a generated password avoids characters that are easily misread: 0/O, 1/l/I)
@@ -94,6 +95,7 @@ PASSWORDS = [  # (environment name read by the setup, what it is, min, max, gene
     ("ROOT_PASSWORD", "router password (SSH and LuCI login)", 8, 63, 14),
     ("KIOSK_PASSWORD", f"{KIOSK_SSID} Wi-Fi password (for the rental phones' setup)", 8, 63, 12),
     ("BOX_NEW_ADMIN_PASSWORD", "coin box admin password (the box's page; also the phones' admin PIN)", 8, 32, 16),
+    ("ADMIN_PASSWORD", "Admin Wi-Fi password (for your phone/laptop to manage the hub)", 8, 63, 12),
 ]
 ANSWER_ORDER = [env for env, *_ in PASSWORDS] + ["GUEST_SSID", "SITE_NAME", "COUNTRY", "SHOP_PRODUCT", "BOX_EXPECT_MAC"]   # (BOX_EXPECT_MAC: the MAC of the board just written, or empty: the router then pairs any box)
 PRODUCTS = [("wifi", "PisoWiFi", "customer Wi-Fi sold by the coin (an OpenWrt router and the coin box; no rental phones)"),
@@ -147,6 +149,8 @@ def name_problem(value, what):
         return "no quotes, backslashes, $ or backticks"
     if what == "wifi" and value == KIOSK_SSID:
         return f"{KIOSK_SSID} is the rental phones' network"
+    if what == "wifi" and re.fullmatch(r"PisoAdmin(?:-[0-9a-fA-F]{4})?", value):
+        return f"{ADMIN_SSID} is the hidden admin network"
     if what == "wifi" and BOX_SSID in value:
         return f"it may not contain {BOX_SSID} (the coin box's network)"
     return None
@@ -188,12 +192,20 @@ def ask_password(label, lo, hi, length, read=getpass.getpass):
         return value
 
 
+def password_applies(env, wifi_only):
+    if env == "KIOSK_PASSWORD":
+        return not wifi_only
+    if env == "ADMIN_PASSWORD":
+        return wifi_only
+    return True
+
+
 def check_answers(answers):
     """Raises SetupError when an answer would be refused by the router setup."""
     for env, label, lo, hi, _length in PASSWORDS:
-        if env == "KIOSK_PASSWORD" and answers.get("SHOP_PRODUCT") == "wifi":
-            continue   # (a PisoWiFi-only router has no rental-phone Wi-Fi)
-        problem = password_problem(answers[env], lo, hi)
+        if not password_applies(env, answers.get("SHOP_PRODUCT") == "wifi"):
+            continue
+        problem = password_problem(answers.get(env, ""), lo, hi)
         if problem:
             raise SetupError(f"the {label}: {problem}")
     for key, what in (("GUEST_SSID", "wifi"), ("SITE_NAME", "site")):
@@ -237,7 +249,7 @@ def collect_answers(args, read=input, read_secret=getpass.getpass):
         answers["GUEST_SSID"] = args.guest_ssid or "PisoWiFi"
         answers["SITE_NAME"] = args.site_name or answers["GUEST_SSID"]
         for env, _label, _lo, _hi, length in PASSWORDS:
-            answers[env] = "" if wifi_only and env == "KIOSK_PASSWORD" else generate(length)
+            answers[env] = generate(length) if password_applies(env, wifi_only) else ""
     else:
         say()
         say("A few questions first. Nothing on the router is changed until you have reviewed your answers.")
@@ -246,7 +258,7 @@ def collect_answers(args, read=input, read_secret=getpass.getpass):
         answers["SITE_NAME"] = ask_text("Name of the shop / site (on the setup sheet and in alerts)",
                                         args.site_name or answers["GUEST_SSID"], "site", read)
         for env, label, lo, hi, length in PASSWORDS:
-            answers[env] = "" if wifi_only and env == "KIOSK_PASSWORD" else ask_password(label, lo, hi, length, read_secret)
+            answers[env] = ask_password(label, lo, hi, length, read_secret) if password_applies(env, wifi_only) else ""
     check_answers(answers)
     return answers
 
@@ -264,12 +276,16 @@ def review(answers):
     say()
     say("================ PLEASE REVIEW (write the passwords down now) ================")
     say(f"  Public Wi-Fi (customers):  {answers['GUEST_SSID']}  (open, behind the coin payment page)")
-    if answers.get("SHOP_PRODUCT") != "wifi":
+    if answers.get("SHOP_PRODUCT") == "wifi":
+        say(f"  Admin Wi-Fi:               {ADMIN_SSID}-xxxx  (hidden; the exact name is shown at the end)")
+    else:
         say(f"  Rental-phone Wi-Fi:        {KIOSK_SSID}-xxxx  (hidden; xxxx is this router's own ending, shown at the end)")
     say(f"  Site name:                 {answers['SITE_NAME']}")
     say(f"  Router address:            {TARGET_IP}   Country: {answers.get('COUNTRY', 'PH')}")
     say(f"  Router password:           {answers['ROOT_PASSWORD']}")
-    if answers.get("SHOP_PRODUCT") != "wifi":
+    if answers.get("SHOP_PRODUCT") == "wifi":
+        say(f"  Admin Wi-Fi password:      {answers['ADMIN_PASSWORD']}")
+    else:
         say(f"  {KIOSK_SSID} Wi-Fi password:  {answers['KIOSK_PASSWORD']}")
     say(f"  Coin box admin password:   {answers['BOX_NEW_ADMIN_PASSWORD']}")
     say("  The router's Wi-Fi networks are replaced and the coin box is paired and set up.")
@@ -282,11 +298,13 @@ def parse_summary(text):
     found = {}
     for key, pattern in (("ROOT_PASSWORD", r"^Router \(SSH / LuCI\):.*?password: (\S+)"),
                          ("KIOSK_PASSWORD", r"^Kiosk Wi-Fi:.*?password: (\S+)"),
+                         ("ADMIN_PASSWORD", r"^Admin Wi-Fi:.*?password: (\S+)"),
+                         ("ADMIN_SSID_NAME", r"^Admin Wi-Fi:[ \t]+(\S+)[ \t]+\(HIDDEN\)"),
                          ("KIOSK_SSID_NAME", r"^Kiosk Wi-Fi:\s+(\S+)\s+\(HIDDEN\)"),   # this router's own name (PisoKiosk-a1b2; PisoKiosk on an older router)
                          ("GUEST_SSID", r"^PisoWiFi \(customers\):\s+(.+?)\s{2,}\(open"),
                          ("BOX_NEW_ADMIN_PASSWORD", r"^Coin box:.*?admin password: (\S+)")):
         m = re.search(pattern, text or "", re.M)
-        if m and not m.group(1).startswith("NOT"):
+        if m and (key != "ROOT_PASSWORD" or m.group(1) != "NOT"):
             found[key] = m.group(1)
     return found
 
@@ -1668,6 +1686,25 @@ def html_escape(text):
     return (str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;").replace("'", "&#39;"))
 
 
+def admin_card_html(site, ssid, password, console_url="http://admin.hub/"):
+    """A private, printable card to join Admin Wi-Fi and open the Console."""
+    return f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin Wi-Fi QR card</title><style>
+*{{box-sizing:border-box}}body{{font:16px/1.5 system-ui,sans-serif;background:#f2f5fa;color:#142036;margin:0;padding:24px}}
+main{{max-width:740px;margin:auto}}h1,h2{{margin:0}}h2{{font-size:1.15rem}}p{{margin:.5rem 0}}
+.cards{{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,270px),1fr));gap:16px;margin:1.2rem 0}}
+section{{background:#fff;border:1px solid #b9c4d6;border-radius:12px;padding:20px;break-inside:avoid}}
+.qr{{background:#fff;border-radius:8px;display:inline-block;padding:8px}}svg{{display:block;max-width:100%;height:auto}}
+code{{overflow-wrap:anywhere}}@media print{{body{{background:#fff;padding:0}}}}
+</style></head><body><main><h1>Admin Wi-Fi</h1>
+<p>{html_escape(site)} &middot; Keep this card private. It contains your Wi-Fi password.</p>
+<div class="cards"><section><h2>Join the hidden network</h2><div class="qr">{qr_svg(wifi_qr_text(ssid, password), 4)}</div>
+<p>Network <code>{html_escape(ssid)}</code><br>Password <code>{html_escape(password)}</code><br>Security WPA2-Personal</p></section>
+<section><h2>Open the Console</h2><div class="qr">{qr_svg(console_url, 4)}</div>
+<p>Once connected, scan this code or open <code>{html_escape(console_url)}</code>.</p></section></div></main></body></html>"""
+
+
 def wifi_card_html(site, kiosk_ssid, kiosk_password, box_url=f"http://{BOX_IP}/", stamp=""):
     """A print-ready page (one A4 or Letter sheet) for the owner's manual: scan to join the hidden rental-phone Wi-Fi, scan to open
     the coin box's page, and the same steps by hand. It holds the Wi-Fi password: keep the printout private."""
@@ -2433,6 +2470,11 @@ def install(ssh, host, answers, branch, out_dir, emit, wait_move, stage=lambda n
         save_private(path, "\n".join(result["handout"]) + "\n")
         saved.append(("Printable setup sheet", os.path.abspath(path)))
     found = parse_summary("\n".join(result["summary"]))
+    if found.get("ADMIN_PASSWORD") and answers.get("SHOP_PRODUCT") != "both":
+        site = answers.get("SITE_NAME") or found.get("GUEST_SSID") or ADMIN_SSID
+        path = os.path.join(out_dir, f"pisophone-admin-card-{stamp}.html")
+        save_private(path, admin_card_html(site, found.get("ADMIN_SSID_NAME") or ADMIN_SSID, found["ADMIN_PASSWORD"]))
+        saved.append(("Admin Wi-Fi QR card", os.path.abspath(path)))
     if found.get("KIOSK_PASSWORD"):   # the card for the owner's manual: scan to join the hidden network, scan to open the box
         site = answers.get("SITE_NAME") or found.get("GUEST_SSID") or KIOSK_SSID
         path = os.path.join(out_dir, f"pisophone-wifi-card-{stamp}.html")
@@ -4932,7 +4974,7 @@ class Session:
         problems = {"GUEST_SSID": name_problem(v["GUEST_SSID"], "wifi"), "SITE_NAME": name_problem(v["SITE_NAME"], "site"),
                     "COUNTRY": country_problem(self.country)}
         for env, _label, lo, hi, _length in PASSWORDS:
-            if not (env == "KIOSK_PASSWORD" and self.mode == "wifi"):
+            if password_applies(env, self.mode == "wifi"):
                 problems[env] = password_problem(v[env], lo, hi)
         return problems
 
@@ -4943,8 +4985,9 @@ class Session:
         a = {k: v.strip() if k in ("GUEST_SSID", "SITE_NAME") else v for k, v in self.values.items()}
         a["COUNTRY"] = self.country
         a["SHOP_PRODUCT"] = self.product()
-        if self.mode == "wifi":
-            a["KIOSK_PASSWORD"] = ""   # (a PisoWiFi-only router has no rental-phone Wi-Fi)
+        for env, *_ in PASSWORDS:
+            if not password_applies(env, self.mode == "wifi"):
+                a[env] = ""
         return a
 
     def install_answers(self):
@@ -5956,6 +5999,7 @@ a{color:var(--acc)}.hide{display:none!important}
   <p class="mut small" style="margin-top:0">They are saved on this computer and printed on the setup sheet at the end. Nothing to type here.</p>
   <details id="pwOwn"><summary class="mut small">Advanced: type my own passwords</summary>
   <label for="ROOT_PASSWORD">Router password <span class="hint">SSH and the router's web page</span></label><input id="ROOT_PASSWORD" data-k="1" autocomplete="off"><div class="err" data-e="ROOT_PASSWORD"></div>
+  <div id="adminPw" class="hide"><label for="ADMIN_PASSWORD">Admin Wi-Fi password <span class="hint">for your phone or laptop to manage the hub</span></label><input id="ADMIN_PASSWORD" data-k="1" autocomplete="off"><div class="err" data-e="ADMIN_PASSWORD"></div></div>
   <div id="kioskPw"><label for="KIOSK_PASSWORD">PisoKiosk Wi-Fi password <span class="hint">the hidden network of the rental phones</span></label><input id="KIOSK_PASSWORD" data-k="1" autocomplete="off"><div class="err" data-e="KIOSK_PASSWORD"></div></div>
   <label for="BOX_NEW_ADMIN_PASSWORD">Coin box admin password <span class="hint">the box's admin page; also the phones' admin PIN</span></label><input id="BOX_NEW_ADMIN_PASSWORD" data-k="1" autocomplete="off"><div class="err" data-e="BOX_NEW_ADMIN_PASSWORD"></div>
   </details></div>
@@ -6093,7 +6137,7 @@ function fillSettingsOnce(){
 }
 function paint2(){
  const st=S.settings,kept=st.kept;
- $('#kioskPw').classList.toggle('hide',S.mode==='wifi');$('#namesCard').classList.toggle('hide',kept);$('#pwCard').classList.toggle('hide',kept);
+ $('#kioskPw').classList.toggle('hide',S.mode==='wifi');$('#adminPw').classList.toggle('hide',S.mode!=='wifi');$('#namesCard').classList.toggle('hide',kept);$('#pwCard').classList.toggle('hide',kept);
  $('#setTitle').textContent=kept?'This router keeps its settings':'This customer\'s names and passwords';
  $('#setSub').textContent=kept?'It was set up before, so its Wi-Fi names and passwords stay as they are (they are in the summary the earlier setup saved). The installation finishes or repairs it.':'Type the shop name and public Wi-Fi name for this customer (asked every time). The passwords were made for you, new ones for every unit. They are saved on this computer at the end and printed on the setup sheet.';
  $$('.err[data-e]').forEach(e=>{const k=e.dataset.e,p=st.problems[k];const input=document.getElementById(k);const typed=input&&(input.value||k==='COUNTRY');e.textContent=p&&typed?p[0].toUpperCase()+p.slice(1):'';if(input)input.classList.toggle('bad',!!(p&&typed));if(p&&typed&&input&&input.closest('#pwOwn'))$('#pwOwn').open=true});
@@ -6114,7 +6158,7 @@ function paint3(){
  const st=$('#stages');clear(st);S.stages.forEach((n,k)=>{const done=i.ok||k<i.stage,on=k===i.stage&&i.running;st.append(h('div',{style:'margin:4px 0'},h('span',{class:'dot '+(done?'ok':on?'on':'')}),h('span',{style:on?'font-weight:600':''},n)))});
  $('#activity').textContent=i.activity;
  const bn=$('#instBanner');clear(bn);
- if(i.ok)bn.append(note('ok','Installation complete: all checks passed. Your passwords and the setup sheet are saved. Tap Next for the phones.'));
+ if(i.ok)bn.append(note('ok','Installation complete: all checks passed. Your passwords and the setup sheet are saved. '+(S.mode==='wifi'?'Tap Next to test payments.':'Tap Next for the phones.')));
  else if(i.error)bn.append(note('bad',i.error[0].toUpperCase()+i.error.slice(1)));
  else if(i.banner)bn.append(note(i.banner[0],i.banner[1]));
  const sb=$('#btnStart');sb.classList.toggle('hide',i.ok);sb.disabled=i.running;sb.textContent=i.running?'Installing...':(i.error||S.install.total)?'Try again':'Start the installation';

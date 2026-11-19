@@ -6,6 +6,7 @@ The router is built the way the brand test builds it (cargo feature test-owner-k
 
 CHROME=/path/to/chromium python3 test_console_layout.py"""
 import glob
+import io
 import os
 import pathlib
 import re
@@ -371,6 +372,76 @@ try:
             check(pg.locator("#tiles .card").count() >= 5 and pg.inner_text("#hm") != "", f"{name}: the Overview shows its tiles and the money")
             check(not errors, f"{name}: no script error: {errors}")
             ctx.close()
+        # The PisoWiFi-only console uses the same session for its card and credentials.
+        env.stop()
+        ssid = "PisoAdmin-a1b2"
+        password = "Demo;Pass<&12"
+        setup_conf = pathlib.Path(f"{env.tmp}/setup.conf")
+        setup_conf.write_text(f"ADMIN_SSID_NAME='{ssid}'\nADMIN_PASS='{password}'\n")
+        env.extra["SHOP_PRODUCT"] = "wifi"
+        check(env.start(), "the PisoWiFi-only portal starts")
+        snapshots = os.environ.get("PISO_SCREENSHOT_DIR")
+        if snapshots:
+            pathlib.Path(snapshots).mkdir(parents=True, exist_ok=True)
+
+        from PIL import Image
+        import zxingcpp
+
+        def codes(page, selector):
+            return [
+                zxingcpp.read_barcode(Image.open(io.BytesIO(svg.screenshot())))
+                for svg in page.locator(selector).all()
+            ]
+
+        def check_codes(page, selector, url):
+            decoded = codes(page, selector)
+            expected = [r"WIFI:T:WPA;S:PisoAdmin-a1b2;P:Demo\;Pass<&12;H:true;;", url]
+            check([code.text if code else None for code in decoded] == expected, "the Wi-Fi and Console QR codes decode")
+
+        console_url = f"http://admin.hub:{CP}/"
+        for width, scheme in ((1280, "light"), (1280, "dark"), (390, "light")):
+            ctx, pg = sign_in(br, width, 844, scheme)
+            open_screen(pg, width, "set")
+            panel = pg.locator("#admw")
+            panel.wait_for(state="visible")
+            check(sideways(pg) <= 0 and panel.locator(".qr svg").count() == 2, f"{width} px {scheme}: Admin Wi-Fi fits with both codes")
+            check(password not in panel.inner_text(), "the Wi-Fi password starts masked")
+            check_codes(pg, "#admw .qr svg", console_url)
+            if snapshots:
+                pixels = pg.screenshot(path=f"{snapshots}/console-settings-{width}-{scheme}.png")
+                decoded = {code.text for code in zxingcpp.read_barcodes(Image.open(io.BytesIO(pixels)))}
+                check(decoded == {r"WIFI:T:WPA;S:PisoAdmin-a1b2;P:Demo\;Pass<&12;H:true;;", console_url},
+                      f"{width} px {scheme}: both QR codes decode in the viewport screenshot")
+            if width == 1280 and scheme == "light":
+                panel.get_by_role("button", name="Show").click()
+                with pg.expect_response(lambda response: response.url.endswith("/api/admin-wifi")):
+                    pass
+                check(password in panel.inner_text() and panel.get_by_role("button", name="Hide").is_visible(), "polling preserves Show state")
+                panel.get_by_role("button", name="Hide").click()
+                check(password not in panel.inner_text(), "Hide masks the password again")
+                with pg.expect_popup() as popup:
+                    panel.get_by_role("link", name="Open QR card").click()
+                card = popup.value
+                card.wait_for_load_state()
+                check_codes(card, ".qr svg", console_url)
+                if snapshots:
+                    card.screenshot(path=f"{snapshots}/console-admin-wifi-card.png")
+                headers = card.request.head(card.url).headers
+                check(headers.get("x-frame-options") == "DENY" and headers.get("x-content-type-options") == "nosniff"
+                      and headers.get("cache-control") == "no-store"
+                      and headers.get("content-security-policy") == "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+                      "the card disables scripts, framing and caching")
+                check(card.locator("code").nth(1).text_content() == password, "the card displays escaped credentials")
+            ctx.close()
+
+        # The offline wizard card is independently encoded with the Python QR implementation.
+        sys.path.insert(0, os.path.join(ROOT, "setup"))
+        import pisophone_setup as wizard
+        page = br.new_page(viewport={"width": 1000, "height": 700})
+        page.set_content(wizard.admin_card_html("Demo shop", ssid, password))
+        check_codes(page, ".qr svg", "http://admin.hub/")
+        if snapshots:
+            page.screenshot(path=f"{snapshots}/pisophone-admin-card.png")
         br.close()
 finally:
     env.close()

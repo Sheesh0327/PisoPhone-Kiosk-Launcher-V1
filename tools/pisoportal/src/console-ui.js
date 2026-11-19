@@ -1,5 +1,5 @@
 // TechNet PisoHub console: the page's behaviour. PISO_UI_VERSION rises with every change that is published (scripts/sign_console_ui.py).
-window.PISO_UI_VERSION = 16;
+window.PISO_UI_VERSION = 17;
 (function(){
 var $=function(i){return document.getElementById(i)},tab='over',timer=null,last={},sales=null,TABS=['over','cli','ph','sales','vch','set'];
 if($('t-brand'))TABS.push('brand');
@@ -13,7 +13,7 @@ function mins(m){m=+m||0;return m<60?m+' min':m%60?Math.floor(m/60)+' h '+m%60+'
 function peso(n){return '₱'+(+n||0).toLocaleString()}
 function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim()||'#1d63d6'}
 function dt(s){return s?new Date(s*1e3).toLocaleDateString([],{day:'numeric',month:'short',year:'numeric'}):'never'}
-function showLogin(){clearInterval(timer);$('app').className='hide';$('login').className='';$('pw').focus()}
+function showLogin(){clearInterval(timer);if($('admw'))adminWifi({});$('app').className='hide';$('login').className='';$('pw').focus()}
 function showApp(){$('login').className='hide';$('app').className='';$('adv').href='http://'+location.hostname+(location.port==='8081'?'/':':8080/');refresh();clearInterval(timer);timer=setInterval(refresh,4000)}
 $('gobtn').onclick=function(){api('/api/login',{password:$('pw').value}).then(function(j){if(j.ok){$('pw').value='';$('err').textContent='';showApp()}else $('err').textContent=j.error==='LOCKED'?'Too many tries. Wait '+j.retry+' s.':'Wrong password.'}).catch(function(){$('err').textContent='The router did not answer.'})};
 $('pw').onkeydown=function(e){if(e.key==='Enter')$('gobtn').onclick()};
@@ -190,6 +190,19 @@ function bupload(slot,inp){var f=inp.files[0];if(!f)return;var m=$('bpkm');m.sty
  r.readAsArrayBuffer(f)}
 if($('blogo'))$('blogo').onchange=function(){bupload('logo',this)};
 if($('bpic'))$('bpic').onchange=function(){bupload('picture',this)};
-function refresh(){if(tab==='brand'){brand();return}if(tab==='ph'){ph();return}var p={over:'/api/overview',cli:'/api/clients',sales:'/api/sales?days='+($('rng').value||30),vch:'/api/vouchers',set:'/api/settings'}[tab],f={over:over,cli:cli,sales:sale,vch:vch,set:sets}[tab];api(p).then(f).catch(function(){});if(tab==='set'){api('/api/pricing').then(prices).catch(function(){});if($('pairb'))api('/api/pair').then(pairShow).catch(function(){});if($('tgs'))api('/api/telegram').then(tgShow).catch(function(){})}}
+function adminWifi(j){
+ var el=$('admw'),sig=j.enabled?JSON.stringify([j.ssid,j.password,j.console_url]):'';
+ if(el.dataset.sig===sig)return;
+ el.dataset.sig=sig;
+ el.className=sig?'card':'hide';
+ el.innerHTML=sig?'<h2>Admin Wi-Fi</h2><p class="s">Hidden · WPA2-Personal</p><p>Network <code>'+esc(j.ssid)+'</code> <button class="b" aria-label="Copy network name">Copy</button></p><p>Password <code>••••••••</code> <button class="b" aria-expanded="false">Show</button> <button class="b" aria-label="Copy password">Copy</button></p><div class="aq"><div>Join Wi-Fi<br><div class="qr">'+j.wifi_svg+'</div></div><div>Open Console<br><div class="qr">'+j.console_svg+'</div></div></div><p><a href="'+esc(j.console_url)+'">'+esc(j.console_url)+'</a></p><a href="/admin-wifi/card" target="_blank" rel="noopener">Open QR card</a>':'';
+ if(!sig)return;
+ var buttons=el.querySelectorAll('button'),pw=el.querySelectorAll('code')[1];
+ function copy(t){var a=document.createElement('textarea');a.value=t;el.append(a);a.select();try{document.execCommand('copy')}finally{a.remove()}}
+ buttons[0].onclick=function(){copy(j.ssid)};
+ buttons[1].onclick=function(){var show=this.textContent==='Show';pw.textContent=show?j.password:'••••••••';this.textContent=show?'Hide':'Show';this.setAttribute('aria-expanded',show)};
+ buttons[2].onclick=function(){copy(j.password)};
+}
+function refresh(){if(tab==='brand'){brand();return}if(tab==='ph'){ph();return}var p={over:'/api/overview',cli:'/api/clients',sales:'/api/sales?days='+($('rng').value||30),vch:'/api/vouchers',set:'/api/settings'}[tab],f={over:over,cli:cli,sales:sale,vch:vch,set:sets}[tab];api(p).then(f).catch(function(){});if(tab==='set'){if($('admw'))api('/api/admin-wifi').then(adminWifi).catch(function(){});api('/api/pricing').then(prices).catch(function(){});if($('pairb'))api('/api/pair').then(pairShow).catch(function(){});if($('tgs'))api('/api/telegram').then(tgShow).catch(function(){})}}
 api('/api/overview').then(function(j){if(j.version)showApp();else showLogin()}).catch(showLogin);
 })();

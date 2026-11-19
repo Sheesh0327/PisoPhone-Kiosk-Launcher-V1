@@ -277,6 +277,9 @@ case "$(cat {tmp_p}/result 2>/dev/null)" in
   *) echo "DONE all checks passed" > $R/tmp/piso-setup.state ;;
 esac
 printf 'Router password: %s\\nPisoKiosk Wi-Fi password: %s\\n' "$ROOT_PASSWORD" "$KIOSK_PASSWORD" > $R/root/piso-setup-summary.txt
+if [ "$SHOP_PRODUCT" = wifi ]; then
+  printf 'Admin Wi-Fi: PisoAdmin-a1b2 (HIDDEN) password: %s    (owner devices)\\n' "$ADMIN_PASSWORD" >> $R/root/piso-setup-summary.txt
+fi
 echo "<html><body>sheet for $SITE_NAME</body></html>" > $R/root/piso-handout.html
 echo "SETUP COMPLETE."
 exit 0
@@ -403,7 +406,7 @@ check("set network.lan.ipaddr=10.0.0.1" in r.uci and open(f"{tmp}/lan").read().s
 check("SETUP-RAN args=[--yes] root=[routerpass1] kiosk=[kioskpass1] box=[boxadmin99] guest=[Tindahan WiFi] site=[Aling Nena]" in r.out,
       "the setup got every answer, unattended: " + r.out[-600:])
 check("routerpass1" not in r.ssh and "kioskpass1" not in r.ssh and "boxadmin99" not in r.ssh, "no password on any command line")
-check(r.input == "routerpass1\nkioskpass1\nboxadmin99\nTindahan WiFi\nAling Nena\nPH\nboth\n\n", "the answers went over the connection's input: " + repr(r.input))
+check(r.input == "routerpass1\nkioskpass1\nboxadmin99\n\nTindahan WiFi\nAling Nena\nPH\nboth\n\n", "the answers went over the connection's input: " + repr(r.input))
 check(r.ssh.count("root@192.168.1.1") == 3 and r.ssh.count("root@10.0.0.1") == 3,
       "probe, package check and move at 192.168.1.1; ping, tar upload and staged setup at 10.0.0.1: " + r.ssh)
 check("HostKeyAlias=pisophone-router" in r.ssh and "StrictHostKeyChecking=accept-new" in r.ssh, "one pinned host key for both addresses")
@@ -510,7 +513,7 @@ check(r.err and "not been set up yet" in r.err, "--update on a router that was n
 r = e2e(lan="10.0.0.1", yes=True, country="SG", no_browser=True)
 check(r.rc == 0 and r.input.endswith("\nSG\nboth\n\n"), "--country SG is sent (BOX_EXPECT_MAC is the last, empty line): " + repr(r.input))
 r = e2e(answers=("y", "n"), lan="10.0.0.1", probe="configured", country="JP")
-check(r.input == "\n\n\n\n\nJP\n\n\n", "a configured router: only the country is sent (no product was chosen): " + repr(r.input))
+check(r.input == "\n\n\n\n\n\nJP\n\n\n", "a configured router: only the country is sent (no product was chosen): " + repr(r.input))
 
 # Telegram: the router waits for a message to the bot, the owner confirms the chat
 script("piso-setup", f"""[ "$1" = telegram ] || exit 9
@@ -546,6 +549,13 @@ check(found == {"ROOT_PASSWORD": "Rpass2345678", "KIOSK_PASSWORD": "Kpass234567"
 check(ps.parse_summary(SUMMARY.replace("PisoKiosk-a1b2", "PisoKiosk"))["KIOSK_SSID_NAME"] == "PisoKiosk", "a router with the old shared name")
 check("ROOT_PASSWORD" not in ps.parse_summary(SUMMARY.replace("password: Rpass2345678", "password: NOT SET by this setup")),
       "a router password the setup did not set is not shown as one")
+
+admin_summary = "Admin Wi-Fi:           PisoAdmin-a1b2 (HIDDEN)   password: Demo;Pass<&12    (your devices only)\n"
+found_admin = ps.parse_summary(admin_summary)
+check(found_admin == {"ADMIN_PASSWORD": "Demo;Pass<&12", "ADMIN_SSID_NAME": "PisoAdmin-a1b2"}, "the admin name and password are read from the summary")
+check("ADMIN_PASSWORD" not in ps.parse_summary(admin_summary.replace("Demo;Pass<&12", "")), "a summary without a password does not produce a card")
+check(ps.name_problem("PisoAdmin", "wifi") and ps.name_problem("PisoAdmin-a1b2", "wifi"), "admin names are reserved for the hidden network")
+check("Demo;Pass&lt;&amp;12" in ps.admin_card_html("Shop <1>", "PisoAdmin-a1b2", "Demo;Pass<&12"), "the card escapes credentials")
 
 # the password helper of the window mode: ssh runs it and reads the password from it
 s2 = ps.Ssh(tmp)
@@ -705,23 +715,23 @@ for word, want in (("1", "wifi"), ("wifi", "wifi"), ("2", "phone"), ("phone", "p
         sys.stdout = sys.__stdout__
 # answers: the rental-phone Wi-Fi password only for both
 a = ps.collect_answers(types.SimpleNamespace(yes=True, guest_ssid="Cafe", site_name=None, product="wifi"))
-check(a["SHOP_PRODUCT"] == "wifi" and a["KIOSK_PASSWORD"] == "" and len(a["ROOT_PASSWORD"]) == 14, "--yes, wifi: no rental-phone password is made; SHOP_PRODUCT=wifi")
+check(a["SHOP_PRODUCT"] == "wifi" and a["KIOSK_PASSWORD"] == "" and len(a["ADMIN_PASSWORD"]) == 12 and len(a["ROOT_PASSWORD"]) == 14, "--yes, wifi: no rental-phone password is made; SHOP_PRODUCT=wifi")
 ps.check_answers(a)
 a = ps.collect_answers(types.SimpleNamespace(yes=True, guest_ssid="Cafe", site_name=None, product="both"))
-check(a["SHOP_PRODUCT"] == "both" and len(a["KIOSK_PASSWORD"]) == 12, "--yes, both: the password is made")
+check(a["SHOP_PRODUCT"] == "both" and len(a["KIOSK_PASSWORD"]) == 12 and a["ADMIN_PASSWORD"] == "", "--yes, both: the password is made")
 sys.stdout = io.StringIO()
 try:
     a = ps.collect_answers(types.SimpleNamespace(yes=False, guest_ssid=None, site_name=None, product="wifi"), reader("", ""),
-                           reader("routerpass1", "routerpass1", "boxadmin99", "boxadmin99"))
+                           reader("routerpass1", "routerpass1", "boxadmin99", "boxadmin99", "adminWifi12", "adminWifi12"))
 finally:
     sys.stdout = sys.__stdout__
-check(a["KIOSK_PASSWORD"] == "" and a["ROOT_PASSWORD"] == "routerpass1" and a["BOX_NEW_ADMIN_PASSWORD"] == "boxadmin99", "terminal, wifi: the rental-phone password is not asked")
+check(a["KIOSK_PASSWORD"] == "" and a["ROOT_PASSWORD"] == "routerpass1" and a["BOX_NEW_ADMIN_PASSWORD"] == "boxadmin99" and a["ADMIN_PASSWORD"] == "adminWifi12", "terminal, wifi: the rental-phone password is not asked")
 sys.stdout = io.StringIO()
 try:
     ps.review(a)
 finally:
     shown, sys.stdout = sys.stdout.getvalue(), sys.__stdout__
-check("Rental-phone" not in shown and "PisoKiosk" not in shown and "Public Wi-Fi" in shown, "the review of a wifi setup has no rental-phone lines: " + shown)
+check("Rental-phone" not in shown and "PisoKiosk" not in shown and "Public Wi-Fi" in shown and "Admin Wi-Fi password:" in shown, "the review of a wifi setup has no rental-phone lines: " + shown)
 k = ps.kept_answers("PH", "wifi")
 check(k["SHOP_PRODUCT"] == "wifi" and ps.kept_answers("PH")["SHOP_PRODUCT"] == "", "a router that is set up already is sent the product only when one was chosen")
 # main: --product phone runs the PisoPhone-only path; --yes without a product changes nothing
@@ -742,12 +752,19 @@ check(rc_yes == 1 and "choose the product: --product wifi, phone or both" in out
 # the router setup carries the product
 for prod, kiosk_secrets in (("wifi", ()), ("both", ("kioskpass1", "kioskpass1"))):
     secrets_ = ("routerpass1", "routerpass1") + kiosk_secrets + ("boxadmin99", "boxadmin99")
+    if prod == "wifi":
+        secrets_ += ("adminWifi12", "adminWifi12")
     r = e2e(answers=("Tindahan WiFi", "Aling Nena", "y", "n"), secrets_=secrets_, product=prod)
     check(r.rc == 0 and f"product=[{prod}]" in r.out, f"{prod}: the router setup gets SHOP_PRODUCT={prod}: " + r.out[-400:])
     if prod == "wifi":
         check("kiosk=[]" in r.out and "Rental-phone" not in r.out, "wifi: the router gets no rental-phone password")
+        check("adminWifi12" in r.input and "adminWifi12" not in r.ssh, "wifi: the admin password is sent over stdin")
+        cards = [os.path.join(r.outdir, name) for name in r.saved if name.startswith("pisophone-admin-card-")]
+        check(len(cards) == 1 and os.stat(cards[0]).st_mode & 0o777 == 0o600 and "PisoAdmin-a1b2" in open(cards[0]).read(),
+              "wifi: the wizard saves a private Admin Wi-Fi QR card")
     else:
         check("kiosk=[kioskpass1]" in r.out, "both: the router gets the rental-phone password")
+        check(not any(name.startswith("pisophone-admin-card-") for name in r.saved), "both: there is no Admin Wi-Fi QR card")
 
 # ---- QR codes and the Wi-Fi join card -------------------------------------------------------------------------------------------
 check(ps.wifi_qr_text("PisoKiosk", "3hC4RATnpQMJ") == "WIFI:T:WPA;S:PisoKiosk;P:3hC4RATnpQMJ;H:true;;", "the Wi-Fi QR text: " + ps.wifi_qr_text("PisoKiosk", "3hC4RATnpQMJ"))

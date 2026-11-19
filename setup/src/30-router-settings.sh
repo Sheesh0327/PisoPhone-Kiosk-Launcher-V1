@@ -2,7 +2,7 @@
 # Router settings (one uci batch, printed by --dry-run)
 # ---------------------------------------------------------------------------------------------------------------------
 uci_batch() {
-	KIOSK_PASS="$1"; GUEST_NAME="$2"; BOX_MAC="$3"
+	KIOSK_PASS="$1"; GUEST_NAME="$2"; BOX_MAC="$3"; ADMIN_PASS="$4"
 	cat << EOT
 # --- LAN = the kiosk network (phones by Wi-Fi, the router's wired ports for administration). Its address is left as it is. ---
 set dhcp.lan.start='50'
@@ -30,6 +30,31 @@ set dhcp.guest.ndp='disabled'
 
 # --- Wi-Fi: replace the router's default networks with ours ----------------------------------------------------------
 EOT
+	if wifi_only; then
+		cat << EOT
+set network.admin_dev=device
+set network.admin_dev.type='bridge'
+set network.admin_dev.name='br-admin'
+set network.admin=interface
+set network.admin.proto='static'
+set network.admin.device='br-admin'
+set network.admin.ipaddr='$ADMIN_IP'
+set network.admin.netmask='255.255.255.0'
+set dhcp.admin=dhcp
+set dhcp.admin.interface='admin'
+set dhcp.admin.start='50'
+set dhcp.admin.limit='100'
+set dhcp.admin.leasetime='12h'
+EOT
+		admin_firewall_uci
+	else
+		echo 'delete network.admin'
+		echo 'delete network.admin_dev'
+		echo 'delete dhcp.admin'
+		for _section in admin admin_wan admin_dhcp admin_dns_tcp admin_console admin_box; do
+			echo "delete firewall.$_section"
+		done
+	fi
 	# delete every existing Wi-Fi network (highest index first, so the numbering stays valid)
 	_n=$(uci -q show wireless | grep -c '=wifi-iface$')
 	while [ "$_n" -gt 0 ]; do _n=$((_n - 1)); echo "delete wireless.@wifi-iface[$_n]"; done
@@ -38,8 +63,19 @@ EOT
 		echo "set wireless.$r.disabled='0'"
 		echo "set wireless.$r.country='$COUNTRY'"
 		[ "$_band" = 2g ] && echo "set wireless.$r.htmode='HT20'"
-		# the rental phones' hidden Wi-Fi: not on a PisoWiFi-only router
-		if ! wifi_only; then
+		if wifi_only; then
+			cat << EOT
+set wireless.admin_$r=wifi-iface
+set wireless.admin_$r.device='$r'
+set wireless.admin_$r.mode='ap'
+set wireless.admin_$r.network='admin'
+set wireless.admin_$r.ssid='$ADMIN_SSID'
+set wireless.admin_$r.hidden='1'
+set wireless.admin_$r.encryption='psk2'
+set wireless.admin_$r.key='$ADMIN_PASS'
+set wireless.admin_$r.isolate='0'
+EOT
+		else
 			cat << EOT
 set wireless.kiosk_$r=wifi-iface
 set wireless.kiosk_$r.device='$r'
@@ -63,8 +99,7 @@ set wireless.guest_$r.isolate='1'
 EOT
 	done
 	cat << EOT
-# The coin box network: hidden, 2.4 GHz only, on the kiosk LAN. Until the box is paired anyone with the (published)
-# password could join, so pairing is short; afterwards only the box's MAC address is admitted.
+# The hidden 2.4 GHz coin box network admits only the paired box's MAC after pairing.
 set wireless.box_ap=wifi-iface
 set wireless.box_ap.device='$R24'
 set wireless.box_ap.mode='ap'
@@ -119,8 +154,50 @@ EOT
 	router_access_uci
 }
 
-# admin_name_uci: the router answers the name admin.hub with its kiosk LAN address (its own DNS, no mDNS): the owner's one admin page. The
-# owner's other dnsmasq address entries stay; an old address of the name (the router's address was changed) is replaced.
+# The admin network can reach the internet, the Console and BoxView, and the coin box.
+# Router logins and access to guests or other LAN devices are denied by the zone defaults.
+admin_firewall_uci() {
+	_console_port=$(console_port)
+	cat << EOT
+set firewall.admin=zone
+set firewall.admin.name='admin'
+set firewall.admin.network='admin'
+set firewall.admin.input='REJECT'
+set firewall.admin.output='ACCEPT'
+set firewall.admin.forward='REJECT'
+set firewall.admin_wan=forwarding
+set firewall.admin_wan.src='admin'
+set firewall.admin_wan.dest='wan'
+set firewall.admin_dhcp=rule
+set firewall.admin_dhcp.name='Admin-DHCP-DNS'
+set firewall.admin_dhcp.src='admin'
+set firewall.admin_dhcp.proto='udp'
+set firewall.admin_dhcp.dest_port='53 67'
+set firewall.admin_dhcp.target='ACCEPT'
+set firewall.admin_dns_tcp=rule
+set firewall.admin_dns_tcp.name='Admin-DNS-TCP'
+set firewall.admin_dns_tcp.src='admin'
+set firewall.admin_dns_tcp.proto='tcp'
+set firewall.admin_dns_tcp.dest_port='53'
+set firewall.admin_dns_tcp.target='ACCEPT'
+set firewall.admin_console=rule
+set firewall.admin_console.name='Admin-Console-BoxView'
+set firewall.admin_console.src='admin'
+set firewall.admin_console.dest_ip='$LAN_IP'
+set firewall.admin_console.proto='tcp'
+set firewall.admin_console.dest_port='$_console_port $((_console_port + 1))'
+set firewall.admin_console.target='ACCEPT'
+set firewall.admin_box=rule
+set firewall.admin_box.name='Admin-Coin-Box'
+set firewall.admin_box.src='admin'
+set firewall.admin_box.dest='lan'
+set firewall.admin_box.dest_ip='$BOX_IP'
+set firewall.admin_box.proto='tcp'
+set firewall.admin_box.target='ACCEPT'
+EOT
+}
+
+# Point admin.hub at the LAN address, preserving unrelated dnsmasq records.
 admin_name_uci() {
 	_have=$(uci -q get dhcp.@dnsmasq[0].address 2> /dev/null)
 	for _a in $_have; do
@@ -289,8 +366,8 @@ uci_apply() {
 	}
 }
 
-apply_batch() {  # apply_batch <kiosk pass> <guest name> <box mac or empty>
-	(umask 077; uci_batch "$1" "$2" "$3" > /tmp/piso-setup.uci) || die "could not build the settings"
+apply_batch() {  # apply_batch <kiosk pass> <guest name> <box mac or empty> <admin pass>
+	(umask 077; uci_batch "$1" "$2" "$3" "$4" > /tmp/piso-setup.uci) || die "could not build the settings"
 	uci_apply /tmp/piso-setup.uci
 	rm -f /tmp/piso-setup.uci   # (it holds the Wi-Fi password)
 	uci commit || die "uci commit failed"

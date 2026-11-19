@@ -301,6 +301,10 @@ try:
         pg.set_input_files("#bpic", pic_png)
         pg.wait_for_function("document.getElementById('bpkm').textContent.indexOf('Welcome picture saved') === 0", timeout=5000)
         check(pg.locator("#bpics img").count() == 2, "both logo and welcome picture show")
+        snapshots = os.environ.get("PISO_SCREENSHOT_DIR")
+        if snapshots:
+            pathlib.Path(snapshots).mkdir(parents=True, exist_ok=True)
+            pg.screenshot(path=f"{snapshots}/console_branding_tab.png", full_page=True)
 
         pg.click('#bpics button[data-rm="picture"]')
         pg.wait_for_function("document.getElementById('bpkm').textContent.indexOf('Welcome picture removed') === 0", timeout=5000)

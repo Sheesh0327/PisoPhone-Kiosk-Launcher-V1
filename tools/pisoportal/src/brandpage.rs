@@ -665,4 +665,3 @@ mod tests {
         assert!(page_dark.contains("--bglow:#fff"), "dark accent gets white glow");
     }
 }
-

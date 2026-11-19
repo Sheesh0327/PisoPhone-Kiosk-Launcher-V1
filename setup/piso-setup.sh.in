@@ -12,6 +12,7 @@
 #   PisoKiosk-xxxx    Wi-Fi, 2.4 + 5 GHz, WPA2, HIDDEN (not broadcast). For the rental phones only. Network 10.0.0.0/24 (the router's LAN).
 #                     xxxx comes from this router's own MAC address, so two shops (or two routers) never share a network name.
 #                     A router that was set up before keeps the name PisoKiosk.
+#   PisoAdmin-xxxx   hidden WPA2 Wi-Fi on PisoWiFi-only routers: Console, coin box and internet. Default network 10.0.20.0/24.
 #   PisoCoinBox-xxxx  hidden Wi-Fi, 2.4 GHz, for the ESP32 coin box only: after pairing, only the box's MAC address may join.
 #                     (only while pairing it is called PisoCoinBox, the name a new box knows; then the box is told its own name)
 #                The box gets the fixed address 10.0.0.10.
@@ -25,7 +26,7 @@
 #
 # Options:  --dry-run  print the router settings instead of applying them (needs nothing but the uci command)
 #           --yes      do not ask for confirmation
-# Settings can be overridden from the environment: COUNTRY (default PH) GUEST_SSID BOX_IP GUEST_IP ROOT_PASSWORD KIOSK_PASSWORD BOX_NEW_ADMIN_PASSWORD
+# Settings can be overridden from the environment: COUNTRY (default PH) GUEST_SSID BOX_IP GUEST_IP ROOT_PASSWORD KIOSK_PASSWORD BOX_NEW_ADMIN_PASSWORD ADMIN_IP ADMIN_PASSWORD
 
 VERSION="@VERSION@"
 # the release of this file (setup/RELEASE): routers install only a higher release that the owner signed
@@ -35,6 +36,8 @@ PISO_ARCH='@ARCH@'
 
 COUNTRY="${COUNTRY:-PH}"
 KIOSK_BASE="PisoKiosk"                       # the start of the rental phones' hidden network name (resolve_wifi_names adds the router's own ending)
+ADMIN_BASE="PisoAdmin"
+ADMIN_SSID="$ADMIN_BASE"
 BOX_PAIR_SSID="PisoCoinBox"                  # the box's hidden network while pairing: the ESP32 firmware has this name built in
 KIOSK_SSID="$KIOSK_BASE"; BOX_SSID="$BOX_PAIR_SSID"   # (replaced by resolve_wifi_names: each router has names of its own)
 BOX_DEFAULT_WIFI="PisoCoinBox@Setup"         # the ESP32 firmware has it built in; setup gives the paired box its own (rotate_box_wifi)
@@ -44,6 +47,8 @@ LAN_IP="${LAN_IP:-10.0.0.1}"
 BOX_IP="${BOX_IP:-${LAN_IP%.*}.10}"                                               # the box is always <LAN network>.10
 GUEST_IP="${GUEST_IP:-$(uci -q get network.guest.ipaddr 2> /dev/null)}"   # a re-run or update keeps what the router has
 GUEST_IP="${GUEST_IP:-10.0.30.1}"
+ADMIN_IP="${ADMIN_IP:-$(uci -q get network.admin.ipaddr 2> /dev/null)}"
+ADMIN_IP="${ADMIN_IP:-10.0.20.1}"
 PORTAL_PORT=2080                             # the portal (openNDS FAS): not 80, which openNDS keeps for captive-portal detection
 CONF="${PISO_CONF:-/etc/piso-setup.conf}"   # what this script chose (secrets inside): mode 600
 LOG="${PISO_LOG:-/root/piso-setup.log}"
@@ -159,9 +164,7 @@ store_product() { [ "$DRY" = 1 ] || conf_set SHOP_PRODUCT "$(shop_product)"; }
 # ---------------------------------------------------------------------------------------------------------------------
 # This router's own Wi-Fi names
 # ---------------------------------------------------------------------------------------------------------------------
-# Every router used to broadcast the same hidden names (PisoKiosk, PisoCoinBox) with its own passwords. Two routers in range of each
-# other (two shops, or a second router being set up next to a working one) then competed for the same phones and the same coin box,
-# which joined the wrong one and failed. A router set up now gets names with its own ending, built from its MAC address.
+# A suffix from the router's MAC keeps nearby installations from sharing an SSID.
 
 # router_id: the last two bytes of this router's MAC address as four lower-case hex digits (PISO_ROUTER_ID overrides it for tests)
 router_id() {
@@ -173,20 +176,35 @@ router_id() {
 	rand 4 hex   # (no MAC address found: a random ending; resolve_wifi_names only stores it when a setup runs)
 }
 
-# resolve_wifi_names: KIOSK_SSID and BOX_SSID for this router. What a setup chose stays (KIOSK_SSID_NAME, BOX_SSID_NAME in the
-# settings file); a router that was set up before this existed (it has a stored kiosk password) keeps the old shared names, so
-# nothing changes for its phones and coin box; a router that is new gets names with its own ending.
+# Resolve names in memory. Old routers with a kiosk password retain their original shared names.
 resolve_wifi_names() {
-	_kn=$(conf_get KIOSK_SSID_NAME); _bn=$(conf_get BOX_SSID_NAME)
-	if [ -n "$_kn" ] && [ -n "$_bn" ]; then KIOSK_SSID="$_kn"; BOX_SSID="$_bn"; return 0; fi
-	# (a box name stored alone is the one piso-setup box-wifi-name gave an older router: only the box network is renamed, never the phones')
-	if [ -n "$(conf_get KIOSK_PASS)" ]; then KIOSK_SSID="$KIOSK_BASE"; BOX_SSID="${_bn:-$BOX_PAIR_SSID}"; return 0; fi
-	_id=$(router_id)
-	KIOSK_SSID="$KIOSK_BASE-$_id"; BOX_SSID="$BOX_PAIR_SSID-$_id"
+	_kn=$(conf_get KIOSK_SSID_NAME); _bn=$(conf_get BOX_SSID_NAME); _id=""
+	ADMIN_SSID=$(conf_get ADMIN_SSID_NAME)
+	if [ -z "$ADMIN_SSID" ]; then
+		for _name in "$_kn" "$_bn"; do
+			case "$_name" in
+				*-[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]) ADMIN_SSID="$ADMIN_BASE-${_name##*-}"; break ;;
+			esac
+		done
+	fi
+	if [ -n "$_kn" ] && [ -n "$_bn" ]; then KIOSK_SSID="$_kn"; BOX_SSID="$_bn"
+	elif [ -n "$(conf_get KIOSK_PASS)" ]; then KIOSK_SSID="$KIOSK_BASE"; BOX_SSID="${_bn:-$BOX_PAIR_SSID}"
+	else
+		_id=$(router_id)
+		KIOSK_SSID="$KIOSK_BASE-$_id"; BOX_SSID="$BOX_PAIR_SSID-$_id"
+	fi
+	if [ -z "$ADMIN_SSID" ]; then
+		[ -n "$_id" ] || _id=$(router_id)
+		ADMIN_SSID="$ADMIN_BASE-$_id"
+	fi
 }
 
 # remember_wifi_names: store the resolved names (a setup run does this before it writes any Wi-Fi setting)
-remember_wifi_names() { conf_set KIOSK_SSID_NAME "$KIOSK_SSID"; conf_set BOX_SSID_NAME "$BOX_SSID"; }
+remember_wifi_names() {
+	conf_set KIOSK_SSID_NAME "$KIOSK_SSID"
+	conf_set BOX_SSID_NAME "$BOX_SSID"
+	if wifi_only; then conf_set ADMIN_SSID_NAME "$ADMIN_SSID"; fi
+}
 
 # box_net_ssid: the name the box's hidden network has right now. A box that is not paired yet only knows the built-in name; once
 # it has its own Wi-Fi password (rotate_box_wifi) it is also told this router's name and the network takes it.
@@ -276,11 +294,12 @@ wan_prefix() { _p=$(ifstatus wan 2> /dev/null | jsonfilter -e '@["ipv4-address"]
 # net_of <ip> <prefix>: the network number of an address, to compare ranges by their netmask
 # shellcheck disable=SC2086 # the dotted address is split into its four numbers on purpose
 net_of() { _o=$(echo "$1" | tr . ' '); set -- $_o "$2"; echo $(((($1 << 24) | ($2 << 16) | ($3 << 8) | $4) >> (32 - $5))); }
-# wan_clash: prints the router address (the LAN's or the guest network's) whose /24 the modem's network (WAN address and netmask) overlaps; fails when none
+# wan_clash: prints the router address (LAN, guest, or admin) whose /24 the modem's network (WAN address and netmask) overlaps; fails when none
 wan_clash() {
 	_w=$(wan_ip); [ -n "$_w" ] || return 1
 	_m=$(wan_prefix); [ "$_m" -le 24 ] 2> /dev/null || _m=24   # (the router's own networks are /24: the wider of the two decides)
-	for _r in "$LAN_IP" "$GUEST_IP"; do
+	if wifi_only; then set -- "$LAN_IP" "$GUEST_IP" "$ADMIN_IP"; else set -- "$LAN_IP" "$GUEST_IP"; fi
+	for _r do
 		[ "$(net_of "$_w" "$_m")" = "$(net_of "$_r" "$_m")" ] && { echo "$_r"; return 0; }
 	done
 	return 1
@@ -306,15 +325,20 @@ preflight() {
 	preflight_network
 }
 
-# preflight_network: the router's WAN address and internet, and that its LAN and WAN ranges do not clash. The router needs internet for
-# the first setup: it downloads its packages itself (opkg, against its own signed feeds).
+# The router needs WAN connectivity and distinct subnets before it can download packages.
 preflight_network() {
 	WAN=$(wan_ip)
 	[ -n "$WAN" ] || die "the router has no WAN address, and it needs internet for the first setup: plug the modem into the WAN port and wait a minute, then run this again"
 	[ "$LAN_IP" = 10.0.0.1 ] || die "the router's LAN address is $LAN_IP, but this setup expects 10.0.0.1. Run the installer, which moves it for you: wget -qO- https://pisophone.pages.dev/install.sh | sh   (or by hand: uci set network.lan.ipaddr=10.0.0.1 && uci commit network && reboot), then log in again at 10.0.0.1 and re-run. See setup/README.md."
+	if wifi_only; then
+		_admin_net=$(net_of "$ADMIN_IP" 24)
+		[ "$_admin_net" != "$(net_of "$LAN_IP" 24)" ] && [ "$_admin_net" != "$(net_of "$GUEST_IP" 24)" ] ||
+			die "ADMIN_IP must be on a different /24 from the LAN and guest networks"
+	fi
 	case "$(wan_clash)" in
 		"") ;;
 		"$LAN_IP") die "the modem's network ($WAN/$(wan_prefix)) overlaps (the same range as) the router's LAN ($LAN_IP). Change the modem's own LAN address (for example to 192.168.100.1) and run this again" ;;
+		"$ADMIN_IP") die "the modem's network ($WAN/$(wan_prefix)) overlaps the admin network ($ADMIN_IP). Run with ADMIN_IP on a free /24 range" ;;
 		*) die "the modem's network ($WAN/$(wan_prefix)) overlaps the guest network: it uses ${GUEST_IP%.*}.x, the same as the guest network. Run with GUEST_IP=10.0.31.1 (or another free range)" ;;
 	esac
 	log "WAN address: $WAN"
@@ -351,7 +375,7 @@ install_packages() {
 # Router settings (one uci batch, printed by --dry-run)
 # ---------------------------------------------------------------------------------------------------------------------
 uci_batch() {
-	KIOSK_PASS="$1"; GUEST_NAME="$2"; BOX_MAC="$3"
+	KIOSK_PASS="$1"; GUEST_NAME="$2"; BOX_MAC="$3"; ADMIN_PASS="$4"
 	cat << EOT
 # --- LAN = the kiosk network (phones by Wi-Fi, the router's wired ports for administration). Its address is left as it is. ---
 set dhcp.lan.start='50'
@@ -379,6 +403,31 @@ set dhcp.guest.ndp='disabled'
 
 # --- Wi-Fi: replace the router's default networks with ours ----------------------------------------------------------
 EOT
+	if wifi_only; then
+		cat << EOT
+set network.admin_dev=device
+set network.admin_dev.type='bridge'
+set network.admin_dev.name='br-admin'
+set network.admin=interface
+set network.admin.proto='static'
+set network.admin.device='br-admin'
+set network.admin.ipaddr='$ADMIN_IP'
+set network.admin.netmask='255.255.255.0'
+set dhcp.admin=dhcp
+set dhcp.admin.interface='admin'
+set dhcp.admin.start='50'
+set dhcp.admin.limit='100'
+set dhcp.admin.leasetime='12h'
+EOT
+		admin_firewall_uci
+	else
+		echo 'delete network.admin'
+		echo 'delete network.admin_dev'
+		echo 'delete dhcp.admin'
+		for _section in admin admin_wan admin_dhcp admin_dns_tcp admin_console admin_box; do
+			echo "delete firewall.$_section"
+		done
+	fi
 	# delete every existing Wi-Fi network (highest index first, so the numbering stays valid)
 	_n=$(uci -q show wireless | grep -c '=wifi-iface$')
 	while [ "$_n" -gt 0 ]; do _n=$((_n - 1)); echo "delete wireless.@wifi-iface[$_n]"; done
@@ -387,8 +436,19 @@ EOT
 		echo "set wireless.$r.disabled='0'"
 		echo "set wireless.$r.country='$COUNTRY'"
 		[ "$_band" = 2g ] && echo "set wireless.$r.htmode='HT20'"
-		# the rental phones' hidden Wi-Fi: not on a PisoWiFi-only router
-		if ! wifi_only; then
+		if wifi_only; then
+			cat << EOT
+set wireless.admin_$r=wifi-iface
+set wireless.admin_$r.device='$r'
+set wireless.admin_$r.mode='ap'
+set wireless.admin_$r.network='admin'
+set wireless.admin_$r.ssid='$ADMIN_SSID'
+set wireless.admin_$r.hidden='1'
+set wireless.admin_$r.encryption='psk2'
+set wireless.admin_$r.key='$ADMIN_PASS'
+set wireless.admin_$r.isolate='0'
+EOT
+		else
 			cat << EOT
 set wireless.kiosk_$r=wifi-iface
 set wireless.kiosk_$r.device='$r'
@@ -412,8 +472,7 @@ set wireless.guest_$r.isolate='1'
 EOT
 	done
 	cat << EOT
-# The coin box network: hidden, 2.4 GHz only, on the kiosk LAN. Until the box is paired anyone with the (published)
-# password could join, so pairing is short; afterwards only the box's MAC address is admitted.
+# The hidden 2.4 GHz coin box network admits only the paired box's MAC after pairing.
 set wireless.box_ap=wifi-iface
 set wireless.box_ap.device='$R24'
 set wireless.box_ap.mode='ap'
@@ -468,8 +527,50 @@ EOT
 	router_access_uci
 }
 
-# admin_name_uci: the router answers the name admin.hub with its kiosk LAN address (its own DNS, no mDNS): the owner's one admin page. The
-# owner's other dnsmasq address entries stay; an old address of the name (the router's address was changed) is replaced.
+# The admin network can reach the internet, the Console and BoxView, and the coin box.
+# Router logins and access to guests or other LAN devices are denied by the zone defaults.
+admin_firewall_uci() {
+	_console_port=$(console_port)
+	cat << EOT
+set firewall.admin=zone
+set firewall.admin.name='admin'
+set firewall.admin.network='admin'
+set firewall.admin.input='REJECT'
+set firewall.admin.output='ACCEPT'
+set firewall.admin.forward='REJECT'
+set firewall.admin_wan=forwarding
+set firewall.admin_wan.src='admin'
+set firewall.admin_wan.dest='wan'
+set firewall.admin_dhcp=rule
+set firewall.admin_dhcp.name='Admin-DHCP-DNS'
+set firewall.admin_dhcp.src='admin'
+set firewall.admin_dhcp.proto='udp'
+set firewall.admin_dhcp.dest_port='53 67'
+set firewall.admin_dhcp.target='ACCEPT'
+set firewall.admin_dns_tcp=rule
+set firewall.admin_dns_tcp.name='Admin-DNS-TCP'
+set firewall.admin_dns_tcp.src='admin'
+set firewall.admin_dns_tcp.proto='tcp'
+set firewall.admin_dns_tcp.dest_port='53'
+set firewall.admin_dns_tcp.target='ACCEPT'
+set firewall.admin_console=rule
+set firewall.admin_console.name='Admin-Console-BoxView'
+set firewall.admin_console.src='admin'
+set firewall.admin_console.dest_ip='$LAN_IP'
+set firewall.admin_console.proto='tcp'
+set firewall.admin_console.dest_port='$_console_port $((_console_port + 1))'
+set firewall.admin_console.target='ACCEPT'
+set firewall.admin_box=rule
+set firewall.admin_box.name='Admin-Coin-Box'
+set firewall.admin_box.src='admin'
+set firewall.admin_box.dest='lan'
+set firewall.admin_box.dest_ip='$BOX_IP'
+set firewall.admin_box.proto='tcp'
+set firewall.admin_box.target='ACCEPT'
+EOT
+}
+
+# Point admin.hub at the LAN address, preserving unrelated dnsmasq records.
 admin_name_uci() {
 	_have=$(uci -q get dhcp.@dnsmasq[0].address 2> /dev/null)
 	for _a in $_have; do
@@ -638,8 +739,8 @@ uci_apply() {
 	}
 }
 
-apply_batch() {  # apply_batch <kiosk pass> <guest name> <box mac or empty>
-	(umask 077; uci_batch "$1" "$2" "$3" > /tmp/piso-setup.uci) || die "could not build the settings"
+apply_batch() {  # apply_batch <kiosk pass> <guest name> <box mac or empty> <admin pass>
+	(umask 077; uci_batch "$1" "$2" "$3" "$4" > /tmp/piso-setup.uci) || die "could not build the settings"
 	uci_apply /tmp/piso-setup.uci
 	rm -f /tmp/piso-setup.uci   # (it holds the Wi-Fi password)
 	uci commit || die "uci commit failed"
@@ -1107,8 +1208,11 @@ Keep this file private (it is readable by root only).
 
 Router (SSH / LuCI):   root@$LAN_IP        password: $(if [ "$(conf_get ROOT_PASS_SET)" = 1 ]; then conf_get ROOT_PASS; else echo "NOT SET by this setup (the router keeps its previous one): run piso-setup set-password"; fi)
 EOT
-	# the rental phones' hidden Wi-Fi: not on a PisoWiFi-only router
-	if ! wifi_only; then
+	if wifi_only; then
+		cat >> "$SUMMARY" << EOT
+Admin Wi-Fi:           $ADMIN_SSID (HIDDEN)   password: $(conf_get ADMIN_PASS)    (your devices only: opens http://admin.hub and the coin box; blocked from guests)
+EOT
+	else
 		cat >> "$SUMMARY" << EOT
 Kiosk Wi-Fi:           $KIOSK_SSID (HIDDEN)   password: $(conf_get KIOSK_PASS)    (rental phones only; the coin box's "Set up a phone" link carries it, nobody types it)
 EOT
@@ -1159,10 +1263,22 @@ ag_summary_has() { [ -n "$1" ] && [ -r "$SUMMARY" ] && grep -qF "$1" "$SUMMARY";
 ag_is_key() { [ -n "$(conf_get GW_KEY)" ] && [ "$(cs_get GW_KEY)" = "$(conf_get GW_KEY)" ]; }
 ag_is_mac() { [ -n "$(conf_get BOX_MAC)" ] && [ "$(cs_get GW_BOX_MAC)" = "$(conf_get BOX_MAC)" ] && ag_mac_allowed "$(conf_get BOX_MAC)"; }
 ag_is_kiosk() { ag_every_iface kiosk_ key "$(conf_get KIOSK_PASS)" && ag_every_iface kiosk_ ssid "$KIOSK_SSID"; }
+ag_is_admin() {
+	ag_every_iface admin_ key "$(conf_get ADMIN_PASS)" && ag_every_iface admin_ ssid "$ADMIN_SSID" &&
+		ip -4 addr show br-admin | grep -qF "inet $ADMIN_IP/"
+}
 ag_is_name() { ag_every_iface guest_ ssid "$(conf_get GUEST_NAME)" && [ "$(uci -q get 'opennds.@opennds[0].gatewayname')" = "$(conf_get GUEST_NAME)" ] && [ "$(cs_get GATEWAY_NAME)" = "$(conf_get GUEST_NAME)" ]; }
 ag_is_bind() { [ -n "$(cs_get PORTAL_BIND)" ] && ip -4 addr show br-guest | grep -q "inet $(cs_get PORTAL_BIND)/" && [ "$(cs_get PORTAL_PORT)" = "$(uci -q get 'opennds.@opennds[0].fasport')" ]; }
 ag_is_boxwifi() { [ "$(conf_get BOX_WIFI_ROTATED)" != 1 ] || { [ -n "$(conf_get BOX_WIFI_PASS_NEW)" ] && [ "$(uci -q get wireless.box_ap.key)" = "$(conf_get BOX_WIFI_PASS_NEW)" ] && [ "$(uci -q get wireless.box_ap.ssid)" = "$BOX_SSID" ]; }; }
-ag_is_summary() { { wifi_only || ag_summary_has "$(conf_get KIOSK_PASS)"; } && ag_summary_has "$(conf_get BOX_ADMIN_PASS)"; }
+ag_is_summary() {
+	ag_summary_has "$(conf_get BOX_ADMIN_PASS)" || return 1
+	if wifi_only; then
+		_admin_pass=$(conf_get ADMIN_PASS)
+		[ -z "$_admin_pass" ] || ag_summary_has "$_admin_pass"
+	else
+		ag_summary_has "$(conf_get KIOSK_PASS)"
+	fi
+}
 ag_is_gwkey_box() { "$PORTAL_BIN" box | grep -qi answers; }
 
 AGREE_FAILS=""
@@ -1171,11 +1287,12 @@ agree_all() {  # prints PASS/FAIL lines, returns the number of disagreements; th
 	_abad=0; AGREE_FAILS=""
 	ag_run "the gateway key in the settings is the one in the portal's file" ag_is_key
 	ag_run "the coin box's address is the same in the settings, the portal's file and the box network's allow list" ag_is_mac
-	wifi_only || ag_run "the kiosk network's name and password in the settings are on every kiosk radio" ag_is_kiosk
+	if wifi_only; then ag_run "the admin network has the configured address, name and password" ag_is_admin
+	else ag_run "the kiosk network's name and password in the settings are on every kiosk radio" ag_is_kiosk; fi
 	ag_run "the customer Wi-Fi name is the same in the settings, on every radio, in openNDS and in the portal's file" ag_is_name
 	ag_run "the portal listens on the guest network's address and on the port openNDS sends guests to" ag_is_bind
 	ag_run "the coin box network's name and password are the ones the router gave the box" ag_is_boxwifi
-	if wifi_only; then ag_run "the setup summary shows the current coin box password" ag_is_summary
+	if wifi_only; then ag_run "the setup summary shows the current admin Wi-Fi and coin box passwords" ag_is_summary
 	else ag_run "the setup summary shows the current PisoKiosk and coin box passwords" ag_is_summary; fi
 	if box_up; then
 		ag_run "the box accepts the router's gateway key (signed request)" ag_is_gwkey_box
@@ -1214,6 +1331,10 @@ check_all() {  # prints PASS/FAIL lines, returns the number of failures
 	_ck() { if eval "$2" > /dev/null 2>&1; then log "PASS  $1"; else log "FAIL  $1"; _bad=$((_bad + 1)); fi; }
 	_ck "LAN address is $LAN_IP" "ip -4 addr show br-lan | grep -q 'inet $LAN_IP/'"
 	_ck "guest network is up" "ip -4 addr show br-guest | grep -q 'inet $GUEST_IP/'"
+	if wifi_only; then
+		_ck "admin network is up" "ip -4 addr show br-admin | grep -qF 'inet $ADMIN_IP/'"
+		_ck "hidden Wi-Fi $ADMIN_SSID is on" "iwinfo | grep -qF 'ESSID: \"$ADMIN_SSID\"' || wifi status 2> /dev/null | grep -qF '\"ssid\": \"$ADMIN_SSID\"'"
+	fi
 	wifi_only || _ck "hidden Wi-Fi $KIOSK_SSID is on" "iwinfo | grep -q 'ESSID: \"$KIOSK_SSID\"' || wifi status 2> /dev/null | grep -q '\"ssid\": \"$KIOSK_SSID\"'"
 	_ck "Wi-Fi $(conf_get GUEST_NAME) is broadcasting" "iwinfo | grep -q 'ESSID: \"$(conf_get GUEST_NAME)\"'"
 	_ck "the coin box has its own Wi-Fi password (not the published default)" "[ \"\$(uci -q get wireless.box_ap.key)\" != '$BOX_DEFAULT_WIFI' ]"
@@ -1336,7 +1457,7 @@ cmd_wifi_name() {
 	_n="$1"
 	[ -n "$_n" ] || { echo "usage: piso-setup wifi-name \"New Name\"" >&2; exit 1; }
 	[ "${#_n}" -le 32 ] || { echo "the name can be at most 32 characters" >&2; exit 1; }
-	case "$_n" in "$KIOSK_SSID" | "$KIOSK_BASE" | "$BOX_SSID" | "$BOX_PAIR_SSID") echo "that name is reserved" >&2; exit 1 ;; esac
+	case "$_n" in "$KIOSK_SSID" | "$KIOSK_BASE" | "$BOX_SSID" | "$BOX_PAIR_SSID" | "$ADMIN_SSID" | "$ADMIN_BASE") echo "that name is reserved" >&2; exit 1 ;; esac
 	case "$_n" in *\'* | *\"* | *\\* | *\$* | *\`*) echo "please avoid quotes, backslashes, \$ and backticks in the name" >&2; exit 1 ;; esac
 	for s in $(uci -q show wireless | sed -n 's/^\(wireless\.guest_[^.=]*\)=wifi-iface$/\1/p'); do uci set "$s.ssid=$_n"; done
 	uci set opennds.@opennds[0].gatewayname="$_n"
@@ -1571,7 +1692,7 @@ cmd_update() {
 	[ -x /etc/init.d/pisoportal ] && { /etc/init.d/pisoportal enable; /etc/init.d/pisoportal start; }
 	PORTAL_RESTORE=0
 	# openNDS and the firewall as this version needs them (a router set up with the earlier ThemeSpec portal is moved over)
-	(umask 077; { portal_uci "$(conf_get GUEST_NAME)"; router_access_uci; } > /tmp/piso-setup.uci)
+	(umask 077; { portal_uci "$(conf_get GUEST_NAME)"; router_access_uci; if wifi_only; then admin_firewall_uci; fi; } > /tmp/piso-setup.uci)
 	uci_apply /tmp/piso-setup.uci
 	rm -f /tmp/piso-setup.uci
 	if [ -n "$(uci changes firewall 2> /dev/null)$(uci changes opennds 2> /dev/null)" ]; then
@@ -2050,8 +2171,8 @@ write_handout() {
 	_f="${HANDOUT:-/root/piso-handout.html}"
 	_site=$(html_esc "$(conf_get SITE_NAME)"); _guest=$(html_esc "$(conf_get GUEST_NAME)"); _kp=$(html_esc "$(conf_get KIOSK_PASS)")
 	_bp=$(html_esc "$(conf_get BOX_ADMIN_PASS)"); _rp=$(html_esc "$(if [ "$(conf_get ROOT_PASS_SET)" = 1 ]; then conf_get ROOT_PASS; else echo "(not set by the setup: run piso-setup set-password)"; fi)")
-	# where the owner reaches the coin box and the router: the rental phones' Wi-Fi exists only when there are rental phones
-	if wifi_only; then _where_box="on the router's LAN"; _where_router="on a LAN cable"; _pin_note=""
+	# SSH and LuCI require a LAN cable in PisoWiFi mode.
+	if wifi_only; then _where_box="on the hidden Admin Wi-Fi or a LAN cable"; _where_router="on a LAN cable"; _pin_note=""
 	else _where_box="on the PisoKiosk network"; _where_router="on the PisoKiosk network or a LAN cable"; _pin_note="<br>This password is also the admin PIN of the rental phones."; fi
 	umask 077
 	cat > "$_f" << EOT
@@ -2064,7 +2185,11 @@ code{font:1.05em monospace}.warn{border:2px solid #b00;padding:.6rem 1rem;margin
 <table>
 <tr><th>Customer Wi-Fi (public)</th><td><code>${_guest}</code> &middot; open, customers pay by coin</td></tr>
 EOT
-	if ! wifi_only; then
+	if wifi_only; then
+		cat >> "$_f" << EOT
+<tr><th>Admin Wi-Fi (hidden)</th><td>name <code>$(html_esc "$ADMIN_SSID")</code><br>password <code>$(html_esc "$(conf_get ADMIN_PASS)")</code><br>Open <code>http://admin.hub:$(console_port)/</code> for the Console.</td></tr>
+EOT
+	else
 		cat >> "$_f" << EOT
 <tr><th>Rental-phone Wi-Fi (hidden)</th><td>name <code>${KIOSK_SSID}</code><br>password <code>${_kp}</code><br>Not shown in any Wi-Fi list. Only used when setting up a phone.</td></tr>
 EOT
@@ -2280,8 +2405,7 @@ cmd_import() {
 #   front page http://admin.hub        (the normal state since 1.5.12: the router answers that name itself; http://10.0.0.1 works too;
 #                                       LuCI moves to 8080 / 8443, still there as "Advanced")
 #   behind LuCI http://10.0.0.1:8081   (piso-setup console off: LuCI stays on its own ports 80 / 443)
-# CONSOLE_MODE: front, back (the owner chose piso-setup console off: an update keeps it) or empty (never chosen: new setups and the first
-# update to 1.5.12 make the console the front page).
+# CONSOLE_MODE: front, back (console off), or unset (defaults to front on setup or update).
 # ---------------------------------------------------------------------------------------------------------------------
 console_front() { [ "$(conf_get CONSOLE_MODE)" = front ]; }
 console_port() { if console_front; then echo 80; else echo 8081; fi; }
@@ -2298,9 +2422,10 @@ console_answers() { curl -s -m 4 "http://$LAN_IP:$1/" 2> /dev/null | grep -q "Pi
 # console_apply: the settings of the current mode on the portal program and on LuCI (uhttpd)
 console_apply() {
 	write_coinslot_conf "$(conf_get GW_KEY)" "$(conf_get BOX_MAC)"
-	(umask 077; router_access_uci > /tmp/piso-console.uci)
+	(umask 077; { router_access_uci; if wifi_only; then admin_firewall_uci; fi; } > /tmp/piso-console.uci)
 	uci_apply /tmp/piso-console.uci; rm -f /tmp/piso-console.uci
 	uci commit uhttpd 2> /dev/null
+	if wifi_only; then uci commit firewall 2> /dev/null && /etc/init.d/firewall reload > /dev/null 2>&1; fi
 	[ -x /etc/init.d/uhttpd ] && /etc/init.d/uhttpd restart > /dev/null 2>&1
 	[ -x /etc/init.d/pisoportal ] && /etc/init.d/pisoportal restart > /dev/null 2>&1
 }
@@ -2411,6 +2536,7 @@ ask_name() {
 choose_names() {
 	ask_name GUEST_NAME "public customer" "${GUEST_SSID:-PisoWiFi}" "$GUEST_SSID"; GUEST_NAME="$ASKED"
 	[ "$GUEST_NAME" != "$KIOSK_SSID" ] && [ "$GUEST_NAME" != "$KIOSK_BASE" ] || die "the public Wi-Fi name cannot be $KIOSK_SSID"
+	[ "$GUEST_NAME" != "$ADMIN_SSID" ] && [ "$GUEST_NAME" != "$ADMIN_BASE" ] || die "the public Wi-Fi name cannot be $ADMIN_SSID"
 	case "$GUEST_NAME" in *"$BOX_PAIR_SSID"*) die "the public Wi-Fi name may not contain $BOX_PAIR_SSID (the coin box's hidden network)" ;; esac
 	[ "$DRY" = 1 ] || remember_wifi_names
 }
@@ -2439,7 +2565,8 @@ ask_password() {
 # Every password the system needs is chosen here, once. Super admin has no password: the owner opens it with the admin QR code.
 choose_passwords() {
 	ask_password ROOT_PASS "router password (SSH and LuCI login)" 8 63 "$ROOT_PASSWORD"
-	wifi_only || ask_password KIOSK_PASS "PisoKiosk Wi-Fi password (typed once into each rental phone's setup page)" 8 63 "$KIOSK_PASSWORD"
+	if wifi_only; then ask_password ADMIN_PASS "Admin Wi-Fi password (for your phone/laptop to manage the hub)" 8 63 "$ADMIN_PASSWORD"
+	else ask_password KIOSK_PASS "PisoKiosk Wi-Fi password (typed once into each rental phone's setup page)" 8 63 "$KIOSK_PASSWORD"; fi
 	ask_password BOX_ADMIN_PASS_NEW "coin box admin password (the box's web page; also the phones' admin PIN)" 8 32 "$BOX_NEW_ADMIN_PASSWORD"
 }
 
@@ -2450,11 +2577,13 @@ review_choices() {
 	echo
 	echo "================ PLEASE REVIEW ================"
 	echo "  Public Wi-Fi (customers):  $GUEST_NAME  (open, behind the coin payment page)"
+	if wifi_only; then echo "  Admin Wi-Fi:               $ADMIN_SSID  (hidden, 2.4 + 5 GHz)"; fi
 	wifi_only || echo "  Rental-phone Wi-Fi:        $KIOSK_SSID  (hidden, 2.4 + 5 GHz)"
 	echo "  Coin box network:          $BOX_SSID  (hidden, only the box)"
 	echo "  Site name:                 $(conf_get SITE_NAME)"
 	echo "  Router address:            $LAN_IP   Country: ${COUNTRY:-PH}"
 	echo "  Router password:           $(_pw ROOT_PASS)"
+	if wifi_only; then echo "  Admin Wi-Fi password:      $(_pw ADMIN_PASS)"; fi
 	wifi_only || echo "  Kiosk Wi-Fi password:      $(_pw KIOSK_PASS)"
 	echo "  Coin box admin password:   $(_pw BOX_ADMIN_PASS_NEW)"
 	echo "  The Wi-Fi networks of this router are replaced; the coin box is paired and set up; SSH stays open."
@@ -2480,15 +2609,16 @@ confirm_product() {
 	fi
 }
 
-# apply_product: after apply_batch has written the router's Wi-Fi: keep the product, and on a PisoWiFi-only router forget the rental
-# phones' password (their Wi-Fi is gone). The environment's SHOP_PRODUCT decides until then.
+# Persist the product and remove the retired Wi-Fi password after the UCI batch commits.
 apply_product() {
 	store_product
-	if wifi_only; then conf_del KIOSK_PASS; fi
+	if wifi_only; then conf_del KIOSK_PASS; else conf_del ADMIN_PASS; fi
 }
 
 # kiosk_pass: the rental phones' Wi-Fi password (made once); a PisoWiFi-only router has none
 kiosk_pass() { wifi_only && return 0; secret KIOSK_PASS 12; }
+
+admin_pass() { wifi_only || return 0; secret ADMIN_PASS 12; }
 
 stage1() {
 	check_product
@@ -2506,16 +2636,17 @@ stage1() {
 	review_choices
 	ask_telegram
 	KIOSK_PASS=$(kiosk_pass)
+	ADMIN_PASS=$(admin_pass)
 	secret ROOT_PASS 14 > /dev/null; secret GW_KEY 64 hex > /dev/null; secret BOX_ADMIN_PASS_NEW 16 > /dev/null
 	BOX_MAC=$(conf_get BOX_MAC)
-	if [ "$DRY" = 1 ]; then uci_batch "<kiosk password>" "$GUEST_NAME" "$BOX_MAC"; return 0; fi
+	if [ "$DRY" = 1 ]; then uci_batch "<kiosk password>" "$GUEST_NAME" "$BOX_MAC" "<admin password>"; return 0; fi
 
 	: > "$LOG"
 	install_packages
 	extract_payload "$0"
 	step "Writing the router settings"
 	[ -n "$(conf_get CONSOLE_MODE)" ] || conf_set CONSOLE_MODE front   # (the console is the front page, http://admin.hub; LuCI is on 8080)
-	apply_batch "$KIOSK_PASS" "$GUEST_NAME" "$BOX_MAC"
+	apply_batch "$KIOSK_PASS" "$GUEST_NAME" "$BOX_MAC" "$ADMIN_PASS"
 	apply_product
 	stage2
 }
