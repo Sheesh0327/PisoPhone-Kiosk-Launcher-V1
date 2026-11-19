@@ -1,0 +1,15 @@
+.account-page [hidden] { display: none; }
+
+.account-page input {
+    min-height: 44px;
+    padding: 10px 12px;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--r);
+    background: var(--surface);
+    color: var(--ink);
+    font: inherit;
+}
+
+.account-page dt { color: var(--muted); }
+.account-page dd { overflow-wrap: anywhere; }
+.account-page dd + dt { margin-top: 12px; }

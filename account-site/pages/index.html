@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>TechNet account</title>
+    <link rel="icon" type="image/png" href="/img/technet-logo-64.png">
+    <link rel="stylesheet" href="/css/site.css">
+    <link rel="stylesheet" href="/account/account.css">
+    <script defer src="/account/supabase.js"></script>
+    <script type="module" src="/account/account.js"></script>
+</head>
+<body>
+    <main class="page account-page">
+        <div class="brand">
+            <span class="brand-mark"><img src="/img/technet-logo-64.png" alt="" width="38" height="38"></span>
+            <span class="brand-name">TechNet PisoHub</span>
+        </div>
+
+        <section class="card" aria-labelledby="account-heading">
+            <h1 id="account-heading">Your TechNet account</h1>
+            <p id="status" class="muted" role="status">Checking your session…</p>
+            <noscript>Enable JavaScript to sign in.</noscript>
+
+            <div id="signed-out" class="stack" hidden>
+                <button id="google" class="btn primary" type="button">Continue with Google</button>
+                <form id="request-code" class="stack">
+                    <div class="field">
+                        <label for="email">Email address</label>
+                        <input id="email" type="email" autocomplete="email" required>
+                    </div>
+                    <button class="btn" type="submit">Email me a sign-in code</button>
+                </form>
+                <form id="verify-code" class="stack" hidden>
+                    <div class="field">
+                        <label for="code">Sign-in code</label>
+                        <input id="code" type="text" inputmode="numeric" autocomplete="one-time-code"
+                            pattern="[0-9]+" required>
+                    </div>
+                    <button class="btn primary" type="submit">Verify code</button>
+                    <button id="change-email" class="btn" type="button">Use a different email</button>
+                </form>
+            </div>
+
+            <div id="signed-in" class="stack" hidden>
+                <div id="identity" hidden>
+                    <dl>
+                        <dt>Email address</dt>
+                        <dd id="verified-email"></dd>
+                        <dt>Account ID</dt>
+                        <dd id="verified-id"></dd>
+                    </dl>
+                </div>
+                <button id="retry" class="btn" type="button" hidden>Retry account check</button>
+                <button id="sign-out" class="btn" type="button">Sign out</button>
+            </div>
+        </section>
+    </main>
+</body>
+</html>

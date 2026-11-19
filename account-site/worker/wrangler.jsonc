@@ -1,0 +1,10 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "pisophone-account-api-test",
+  "main": "index.js",
+  "compatibility_date": "2026-01-01",
+  "no_bundle": true,
+  "find_additional_modules": false,
+  "workers_dev": true,
+  "preview_urls": false
+}
