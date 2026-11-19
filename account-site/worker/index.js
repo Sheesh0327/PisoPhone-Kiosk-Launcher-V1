@@ -1,5 +1,3 @@
-import { createClient } from "@supabase/supabase-js";
-
 export default {
     async fetch(request, env) {
         const { pathname } = new URL(request.url);
