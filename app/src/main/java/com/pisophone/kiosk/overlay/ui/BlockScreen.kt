@@ -76,7 +76,7 @@ private val MARQUEE_ROW_HEIGHT = MarqueeText.BAND_MIN_HEIGHT_DP.dp
 private fun sentenceCase(text: String): String = text.lowercase().replaceFirstChar { it.uppercase() }
 
 /**
- * The lock screen (docs/design/GUI_SPEC_PISOPHONE_KIDS.md, screens A and B): one opaque panel with the mascot on his halo, what the
+ * The lock screen (docs/UI_DESIGN.md): one opaque panel with the mascot on his halo, what the
  * coins are worth, and one big button. While coins are going in, the rate card becomes a running total with the seconds left.
  * What it shows and when comes from the same state as before; only the presentation changed.
  */

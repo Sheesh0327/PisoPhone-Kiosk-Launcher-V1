@@ -106,7 +106,7 @@ pub struct Look {
     pub base: Option<Base>,
 }
 
-/// What the panel says (rows 1 to 8 of `specs/features/036-site-status-panel/spec.md`).
+/// Payment reconciliation states shown by the panel.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum State {
     Agrees,
@@ -165,6 +165,11 @@ pub fn cached(slot: &Slot, now: Instant, ttl: Duration, f: impl FnOnce() -> Mone
 }
 
 static SLOT: Slot = Mutex::new(None);
+
+/// Clear the cached balance so the next console overview queries a newly paired coin box at once.
+pub fn clear_cache() {
+    *SLOT.lock().unwrap_or_else(|e| e.into_inner()) = None;
+}
 
 /// The console panel's money state: at most one `status` call to the box a minute, and nothing written (the hourly check stays
 /// the only one that saves the base).

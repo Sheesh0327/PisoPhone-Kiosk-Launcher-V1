@@ -1,7 +1,7 @@
 <resources>
     <string name="app_name">PisoPhone Launcher</string>
 
-    <!-- Lock screen (docs/design/GUI_SPEC_PISOPHONE_KIDS.md). -->
+    <!-- Lock screen (docs/UI_DESIGN.md). -->
     <string name="lock_phone_chip">Phone %1$d</string>
     <string name="lock_title_idle">Insert a coin!</string>
     <string name="lock_body_idle">Insert a coin to unlock this phone.</string>

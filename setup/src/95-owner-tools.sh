@@ -7,8 +7,9 @@ cmd_reconcile() { /usr/bin/pisoportal reconcile "$@"; }
 telegram_connect() {
 	_tok="$1"; _site="$2"
 	[ -x /usr/bin/piso-monitor.sh ] || die "the monitor is not installed: run the setup first"
+	[ -x /etc/init.d/piso_monitor ] && /etc/init.d/piso_monitor stop > /dev/null 2>&1
 	echo "TG_TOKEN='$_tok'" > /etc/piso-monitor.conf; chmod 600 /etc/piso-monitor.conf
-	rm -rf /tmp/piso-monitor
+	mkdir -p /tmp/piso-monitor; rm -f /tmp/piso-monitor/paired.chat
 	PISO_MONITOR_CONF=/etc/piso-monitor.conf /usr/bin/piso-monitor.sh pair || return 1
 	_chat=$(cat /tmp/piso-monitor/paired.chat 2> /dev/null)
 	[ -n "$_chat" ] || return 1
@@ -31,7 +32,10 @@ cmd_telegram() {
 	echo "1. In Telegram, talk to @BotFather: /newbot, choose a name, copy the token it gives you."
 	printf '2. Paste the token here: '; read -r _tok
 	[ -n "$_tok" ] || { echo "No token."; return 1; }
-	_def=$(conf_get SITE_NAME); _def="${_def:-PisoPhone}"
+	_def=$(conf_get SITE_NAME)
+	if [ -z "$_def" ]; then
+		if wifi_only; then _def="PisoWiFi"; else _def="PisoPhone"; fi
+	fi
 	printf '3. Name of this site (shown in every message) [%s]: ' "$_def"; read -r _site; _site="${_site:-$_def}"
 	valid_plain "$_site$_tok" || { echo "Please avoid quotes, backslashes, \$ and backticks."; return 1; }
 	telegram_connect "$_tok" "$_site"
@@ -63,8 +67,8 @@ write_handout() {
 	_f="${HANDOUT:-/root/piso-handout.html}"
 	_site=$(html_esc "$(conf_get SITE_NAME)"); _guest=$(html_esc "$(conf_get GUEST_NAME)"); _kp=$(html_esc "$(conf_get KIOSK_PASS)")
 	_bp=$(html_esc "$(conf_get BOX_ADMIN_PASS)"); _rp=$(html_esc "$(if [ "$(conf_get ROOT_PASS_SET)" = 1 ]; then conf_get ROOT_PASS; else echo "(not set by the setup: run piso-setup set-password)"; fi)")
-	# where the owner reaches the coin box and the router: the rental phones' Wi-Fi exists only when there are rental phones
-	if wifi_only; then _where_box="on the router's LAN"; _where_router="on a LAN cable"; _pin_note=""
+	# SSH and LuCI require a LAN cable in PisoWiFi mode.
+	if wifi_only; then _where_box="on the hidden Admin Wi-Fi or a LAN cable"; _where_router="on a LAN cable"; _pin_note=""
 	else _where_box="on the PisoKiosk network"; _where_router="on the PisoKiosk network or a LAN cable"; _pin_note="<br>This password is also the admin PIN of the rental phones."; fi
 	umask 077
 	cat > "$_f" << EOT
@@ -77,7 +81,11 @@ code{font:1.05em monospace}.warn{border:2px solid #b00;padding:.6rem 1rem;margin
 <table>
 <tr><th>Customer Wi-Fi (public)</th><td><code>${_guest}</code> &middot; open, customers pay by coin</td></tr>
 EOT
-	if ! wifi_only; then
+	if wifi_only; then
+		cat >> "$_f" << EOT
+<tr><th>Admin Wi-Fi (hidden)</th><td>name <code>$(html_esc "$ADMIN_SSID")</code><br>password <code>$(html_esc "$(conf_get ADMIN_PASS)")</code><br>Open <code>http://admin.hub:$(console_port)/</code> for the Console.</td></tr>
+EOT
+	else
 		cat >> "$_f" << EOT
 <tr><th>Rental-phone Wi-Fi (hidden)</th><td>name <code>${KIOSK_SSID}</code><br>password <code>${_kp}</code><br>Not shown in any Wi-Fi list. Only used when setting up a phone.</td></tr>
 EOT

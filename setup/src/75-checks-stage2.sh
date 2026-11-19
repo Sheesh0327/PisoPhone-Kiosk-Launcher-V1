@@ -3,16 +3,25 @@ check_all() {  # prints PASS/FAIL lines, returns the number of failures
 	_ck() { if eval "$2" > /dev/null 2>&1; then log "PASS  $1"; else log "FAIL  $1"; _bad=$((_bad + 1)); fi; }
 	_ck "LAN address is $LAN_IP" "ip -4 addr show br-lan | grep -q 'inet $LAN_IP/'"
 	_ck "guest network is up" "ip -4 addr show br-guest | grep -q 'inet $GUEST_IP/'"
+	if wifi_only; then
+		_ck "admin network is up" "ip -4 addr show br-admin | grep -qF 'inet $ADMIN_IP/'"
+		_ck "hidden Wi-Fi $ADMIN_SSID is on" "iwinfo | grep -qF 'ESSID: \"$ADMIN_SSID\"' || wifi status 2> /dev/null | grep -qF '\"ssid\": \"$ADMIN_SSID\"'"
+	fi
 	wifi_only || _ck "hidden Wi-Fi $KIOSK_SSID is on" "iwinfo | grep -q 'ESSID: \"$KIOSK_SSID\"' || wifi status 2> /dev/null | grep -q '\"ssid\": \"$KIOSK_SSID\"'"
 	_ck "Wi-Fi $(conf_get GUEST_NAME) is broadcasting" "iwinfo | grep -q 'ESSID: \"$(conf_get GUEST_NAME)\"'"
 	_ck "the coin box has its own Wi-Fi password (not the published default)" "[ \"\$(uci -q get wireless.box_ap.key)\" != '$BOX_DEFAULT_WIFI' ]"
 	_ck "hidden Wi-Fi $BOX_SSID is on and locked to the box" "[ \"\$(uci -q get wireless.box_ap.macfilter)\" = allow ] && [ -n \"\$(uci -q get wireless.box_ap.maclist)\" ]"
 	_ck "coin box answers at $BOX_IP" box_up
+	if wifi_only && box_up && curl -s -m 4 "http://$BOX_IP/" 2> /dev/null | grep -q 'TechNet PisoHub admin'; then
+		log "FAIL  coin box runs full PisoHub firmware instead of PisoWiFi-only firmware: re-flash over USB with PisoWiFi only selected"
+		_bad=$((_bad + 1))
+	fi
 	_ck "the portal is running and answers guests on $GUEST_IP:$PORTAL_PORT" "curl -s -m 4 http://$GUEST_IP:$PORTAL_PORT/ping | grep -q ok"
 	_ck "the portal can talk to the box (signed request)" "/usr/bin/pisoportal box | grep -qi answers"
 	_gp=$(conf_get GUEST_PORT)
 	[ -z "$_gp" ] || _ck "router port $_gp is on the guest network (an access point plugged in there is gated)" "uci -q get \$(net_section br-guest).ports | grep -qw '$_gp'"
 	isolation_on || log "WARN  guests can still reach each other and rental phones can still reach each other and the router's login pages: this router cannot load the bridge rules (install kmod-nft-bridge, then run piso-setup update)"
+	[ "$(conf_get ANTI_TETHER)" = off ] || anti_tether_on || log "WARN  anti-tethering is NOT active: this router cannot load the inet firewall rule (install nftables, then run piso-setup update)"
 	_ck "openNDS is running" "wait_until 30 'ndsctl status'"   # (it needs a few seconds after it was started)
 	_ck "openNDS sends new guests to the portal (FAS)" "[ \"\$(uci -q get opennds.@opennds[0].fasport)\" = $PORTAL_PORT ]"
 	_ck "the router looks for signed updates every hour (scheduler running)" update_timer_ok
@@ -75,8 +84,8 @@ stage2() {
 	else log "WARNING: could not set the root password; the router still has its old one"; conf_set ROOT_PASS_SET 0; fi
 
 	step "Checking everything"
-	check_all; _f=$?
 	write_summary
+	check_all; _f=$?
 	_hp=$(write_handout)
 	echo; echo "================ SUMMARY (also saved in $SUMMARY) ================"; cat "$SUMMARY"; echo "=================================================================="
 	log "A printable sheet with the passwords is in $_hp (copy it off with: scp -O root@$LAN_IP:$_hp .)"

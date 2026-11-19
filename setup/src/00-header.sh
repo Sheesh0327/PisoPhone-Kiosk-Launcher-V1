@@ -12,6 +12,7 @@
 #   PisoKiosk-xxxx    Wi-Fi, 2.4 + 5 GHz, WPA2, HIDDEN (not broadcast). For the rental phones only. Network 10.0.0.0/24 (the router's LAN).
 #                     xxxx comes from this router's own MAC address, so two shops (or two routers) never share a network name.
 #                     A router that was set up before keeps the name PisoKiosk.
+#   PisoAdmin-xxxx   hidden WPA2 Wi-Fi on PisoWiFi-only routers: Console, coin box and internet. Default network 10.0.20.0/24.
 #   PisoCoinBox-xxxx  hidden Wi-Fi, 2.4 GHz, for the ESP32 coin box only: after pairing, only the box's MAC address may join.
 #                     (only while pairing it is called PisoCoinBox, the name a new box knows; then the box is told its own name)
 #                The box gets the fixed address 10.0.0.10.
@@ -21,11 +22,11 @@
 # Everything is generated here (Wi-Fi password, box admin password, gateway key) and printed once at the end and saved in
 # /root/piso-setup-summary.txt. Running the file again is safe: it keeps what it already made.
 #
-# Other commands (after setup): piso-setup status | wifi-name "<name>" | guest-port [lanN|off] | voucher-choice [on|off] | brand-pack <file> | pair | summary | test-coin | diag | box-diag | set-password | box-wifi-name | reconcile [rebase] | telegram | rotate-box-wifi | export [file] | import <file> | space | forget-summary | kiosk-wifi | verify | handout | lock-admin | unlock-admin | wifi-admin [on|off] | update [check] (installs the newest release from the website; same as self-update) | self-update [check] | box-update [check] (installs the coin box's newest firmware) | auto-update on|off
+# Other commands (after setup): piso-setup status | wifi-name "<name>" | guest-port [lanN|off] | voucher-choice [on|off] | anti-tether [on|off|status] | brand-pack <file> | pair | summary | test-coin | diag | box-diag | set-password | box-wifi-name | reconcile [rebase] | telegram | rotate-box-wifi | export [file] | import <file> | space | forget-summary | kiosk-wifi | verify | handout | lock-admin | unlock-admin | wifi-admin [on|off] | update [check] (installs the newest release from the website; same as self-update) | self-update [check] | box-update [check] (installs the coin box's newest firmware) | auto-update on|off
 #
 # Options:  --dry-run  print the router settings instead of applying them (needs nothing but the uci command)
 #           --yes      do not ask for confirmation
-# Settings can be overridden from the environment: COUNTRY (default PH) GUEST_SSID BOX_IP GUEST_IP ROOT_PASSWORD KIOSK_PASSWORD BOX_NEW_ADMIN_PASSWORD
+# Settings can be overridden from the environment: COUNTRY (default PH) GUEST_SSID BOX_IP GUEST_IP ROOT_PASSWORD KIOSK_PASSWORD BOX_NEW_ADMIN_PASSWORD ADMIN_IP ADMIN_PASSWORD
 
 VERSION="@VERSION@"
 # the release of this file (setup/RELEASE): routers install only a higher release that the owner signed
@@ -35,6 +36,8 @@ PISO_ARCH='@ARCH@'
 
 COUNTRY="${COUNTRY:-PH}"
 KIOSK_BASE="PisoKiosk"                       # the start of the rental phones' hidden network name (resolve_wifi_names adds the router's own ending)
+ADMIN_BASE="PisoAdmin"
+ADMIN_SSID="$ADMIN_BASE"
 BOX_PAIR_SSID="PisoCoinBox"                  # the box's hidden network while pairing: the ESP32 firmware has this name built in
 KIOSK_SSID="$KIOSK_BASE"; BOX_SSID="$BOX_PAIR_SSID"   # (replaced by resolve_wifi_names: each router has names of its own)
 BOX_DEFAULT_WIFI="PisoCoinBox@Setup"         # the ESP32 firmware has it built in; setup gives the paired box its own (rotate_box_wifi)
@@ -44,6 +47,8 @@ LAN_IP="${LAN_IP:-10.0.0.1}"
 BOX_IP="${BOX_IP:-${LAN_IP%.*}.10}"                                               # the box is always <LAN network>.10
 GUEST_IP="${GUEST_IP:-$(uci -q get network.guest.ipaddr 2> /dev/null)}"   # a re-run or update keeps what the router has
 GUEST_IP="${GUEST_IP:-10.0.30.1}"
+ADMIN_IP="${ADMIN_IP:-$(uci -q get network.admin.ipaddr 2> /dev/null)}"
+ADMIN_IP="${ADMIN_IP:-10.0.20.1}"
 PORTAL_PORT=2080                             # the portal (openNDS FAS): not 80, which openNDS keeps for captive-portal detection
 CONF="${PISO_CONF:-/etc/piso-setup.conf}"   # what this script chose (secrets inside): mode 600
 LOG="${PISO_LOG:-/root/piso-setup.log}"
@@ -59,13 +64,14 @@ log() { printf '%s\n' "$*"; [ "$DRY" = 1 ] || printf '%s %s\n' "$(date '+%F %T')
 die() {
 	log "ERROR: $*"; [ "$DRY" = 1 ] || echo "FAILED $*" > "$STATE"
 	if [ -n "$UNDO" ]; then _u="$UNDO"; UNDO=""; eval "$_u"; fi
+	if [ -n "$PAIR_LOCK" ]; then rm -rf "$PAIR_LOCK"; PAIR_LOCK=""; fi
 	if [ "$PORTAL_RESTORE" = 1 ]; then log "starting the portal program again"; /etc/init.d/pisoportal start > /dev/null 2>&1; fi
 	if [ "$NDS_RESTORE" = 1 ]; then log "starting the customer portal (openNDS) again, as it was before this run"; /etc/init.d/opennds start > /dev/null 2>&1; fi
 	exit 1
 }
 # Stopped from outside (Ctrl-C, the SSH session or the setup computer lost, a kill): the same clean-up as an error, so openNDS is
 # never left stopped (guests would be online without paying) and a half-done pairing is put back.
-UNDO=""; PORTAL_RESTORE=0
+UNDO=""; PORTAL_RESTORE=0; PAIR_LOCK=""
 trap 'die "stopped before the end (interrupted)"' HUP INT TERM
 # wait_until SECONDS 'COMMAND': runs the command every 2 seconds until it succeeds or the time is up (returns 1). A service that was just
 # started (openNDS) needs a few seconds before it answers, so a check right after the install waits for it instead of failing.

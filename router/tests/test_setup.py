@@ -1,7 +1,7 @@
 """Tests of setup/piso-setup.sh (the one-file router setup) without a router: a fake uci with canned radios, the generated
 settings, the payload, the helpers, and the coin box provisioning against a fake box.
 Run with:  python3 router/tests/test_setup.py"""
-import urllib.parse, http.server, os, re, shutil, subprocess, sys, tempfile, threading, base64
+import urllib.parse, http.server, os, re, shutil, subprocess, sys, tempfile, threading, base64, hashlib
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SCRIPT = f"{ROOT}/setup/piso-setup.sh"
@@ -143,19 +143,28 @@ check("set wireless.radio0.htmode='HT20'" in out and "set wireless.radio1.htmode
 check(out.count("delete wireless.@wifi-iface[") == 3 and "delete wireless.@wifi-iface[2]" in out and out.index("[2]") < out.index("[0]"), "router's own default networks removed (highest first)")
 check("macfilter" not in out and "dhcp.pisocoinbox" not in out, "box network is open for pairing until the box's MAC is known")
 check("set firewall.guest.forward='REJECT'" in out and "set firewall.guest_wan.dest='wan'" in out and "set firewall.guest_stream.dest_port='2080'" in out, "guests reach the internet only (and the portal port)")
+check("set firewall.guest_lan_redirect=redirect" in out and "set firewall.guest_lan_redirect.src='guest'" in out
+      and "set firewall.guest_lan_redirect.src_dip='10.0.0.1'" in out and "set firewall.guest_lan_redirect.src_dport='80'" in out
+      and "set firewall.guest_lan_redirect.dest_port='2080'" in out and "set firewall.guest_lan_redirect.target='DNAT'" in out
+      and "set firewall.guest_http_redirect=redirect" in out and "set firewall.guest_http_redirect.src_dip='10.0.30.1'" in out
+      and "set firewall.guest_http_redirect.dest_port='2080'" in out,
+      "guests accessing 10.0.0.1 or 10.0.30.1 on port 80 are redirected to the portal port without affecting LAN")
 check("set firewall.guest_nomodem.src='guest'" in out and "set firewall.guest_nomodem.dest='wan'" in out and "set firewall.guest_nomodem.target='REJECT'" in out
       and "add_list firewall.guest_nomodem.dest_ip='192.168.1.1'" in out and out.index("set firewall.guest_nomodem=rule") < out.index("set opennds.@opennds[0].enabled"),
       "guests are refused the modem's address (192.168.1.1) in the router's firewall")
 check("set firewall.guest_noprivate.src='guest'" in out and "set firewall.guest_noprivate.dest='wan'" in out and "set firewall.guest_noprivate.target='REJECT'" in out
-      and all(f"add_list firewall.guest_noprivate.dest_ip='{n}'" in out for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "100.64.0.0/10"))
+      and all(f"add_list firewall.guest_noprivate.dest_ip='{n}'" in out for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16"))
+      and "100.64.0.0/10" not in out
       and out.index("set firewall.guest_noprivate=rule") < out.index("set opennds.@opennds[0].enabled"),
       "guests are refused the private address ranges beyond the modem (the internet stays open)")
 
 check("set firewall.phone_noprivate.src='lan'" in out and "set firewall.phone_noprivate.dest='wan'" in out and "set firewall.phone_noprivate.target='REJECT'" in out
       and "set firewall.phone_noprivate.mark='0x00200000/0x00200000'" in out
-      and all(f"add_list firewall.phone_noprivate.dest_ip='{n}'" in out for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "100.64.0.0/10")),
+      and all(f"add_list firewall.phone_noprivate.dest_ip='{n}'" in out for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16")),
       "phones that come in by Wi-Fi (marked by the bridge rules) are refused the modem's network")
 check("0x00200000" in open(f"{ROOT}/router/piso_isolation.sh").read(), "and the bridge rules mark them with the same mark")
+check("set firewall.piso_isolation=include" in out and "set firewall.piso_isolation.path='/etc/hotplug.d/firewall/50-piso-isolation'" in out and "set firewall.piso_isolation.fw4_compatible='1'" in out,
+      "fw4 include registers 50-piso-isolation so isolation and anti-tethering persist across firewall reloads")
 
 # the bridge rules (router/piso_isolation.sh): guests apart, rental phones reach the router and the coin box only. A fake nft keeps what it is given.
 iso = f"{tmp}/iso"; shutil.rmtree(iso, ignore_errors=True)
@@ -175,20 +184,44 @@ r, nl, ll = run_iso()
 check(r.returncode == 0 and nl.count("delete table bridge piso_guest") == 1 and 'meta ibrname "br-guest" counter drop' in nl and ll == "",
       "the guest bridge rule drops what would pass from one guest port to another: " + nl[:400])
 check("delete table bridge piso_kiosk" in nl and "ether saddr aa:bb:cc:dd:ee:09 accept" in nl and "ether daddr aa:bb:cc:dd:ee:09 accept" in nl and "arp daddr ip 10.0.0.10 accept" in nl
-      and 'iifname "phy*" counter drop' in nl and 'oifname "phy*" counter drop' in nl and 'iifname "wlan*" counter drop' in nl,
-      "rental phones: only the coin box (by its address) is let through, everything else on a Wi-Fi port is dropped")
-check('iifname "phy*" ip daddr 10.0.0.1 tcp dport { 22, 80, 443, 8080, 8443, 8081, 8082 } counter drop' in nl and "dport 2050" not in nl,
-      "the router's login pages and the console (and the coin box page one port up) are not offered on Wi-Fi, and only on the router's own kiosk address (a guest's web request to any website is not touched): " + nl[-900:])
-check('iifname "phy*" ether saddr != aa:bb:cc:dd:ee:09 meta mark set meta mark | 0x00200000' in nl, "what comes in by Wi-Fi (except the coin box) is marked for the firewall rule")
-# a router that cannot match the bridge name: the guest ports are named instead; and the rule is the same each time it runs
+      and 'meta ibrname "br-lan" iifname "phy*" counter drop' in nl and 'meta ibrname "br-lan" oifname "phy*" counter drop' in nl and 'meta ibrname "br-lan" iifname "wlan*" counter drop' in nl,
+      "rental phones: only the coin box (by its address) is let through, everything else on a br-lan Wi-Fi port is dropped")
+check('meta ibrname "br-lan" iifname "phy*" ip daddr 10.0.0.1 tcp dport { 22, 80, 443, 8080, 8443, 8081, 8082 } counter drop' in nl and "dport 2050" not in nl,
+      "the router's login pages and the console (and the coin box page one port up) are not offered on br-lan Wi-Fi, leaving br-guest port-80 redirect intact: " + nl[-900:])
+check('meta ibrname "br-lan" iifname "phy*" ether saddr != aa:bb:cc:dd:ee:09 meta mark set meta mark | 0x00200000' in nl, "what comes in by br-lan Wi-Fi (except the coin box) is marked for the firewall rule")
+tether_nl = nl.split("table inet piso_anti_tether {", 1)[1].split("\n}\n", 1)[0] if "table inet piso_anti_tether {" in nl else ""
+check("hook prerouting priority -150" in tether_nl and "hook postrouting priority 300" in tether_nl and "hook forward" not in tether_nl
+      and 'oifname "br-guest" meta nfproto ipv4 counter ip ttl set 1' in tether_nl
+      and 'iifname "br-guest" meta nfproto ipv4 ip ttl { 61, 62, 63, 125, 126, 127 } counter drop' in tether_nl,
+      "anti-tethering: drops incoming tethered IPv4 packets at prerouting (TTL 61-63 and 125-127) and clamps outgoing TTL to 1 at postrouting: " + nl[:900])
+# anti-tethering can be turned off
+open(f"{iso}/piso.conf", "w").write("ANTI_TETHER='off'\n")
+r, nl, ll = run_iso()
+check('ip ttl set 1' not in nl and "ARGS delete table inet piso_anti_tether" in nl, "when anti-tethering is off its table is deleted: " + nl[:400])
+os.rename(f"{iso}/sys/br-guest", f"{iso}/sys/br-guest.off")
+open(f"{iso}/piso.conf", "w").write("")
+r, nl, ll = run_iso()
+check('ip ttl set 1' not in nl and "ARGS delete table inet piso_anti_tether" in nl and ll == "", "when br-guest is absent anti-tether table is deleted without warnings: " + nl[:400])
+os.rename(f"{iso}/sys/br-guest.off", f"{iso}/sys/br-guest")
+# a router that cannot match the bridge name: the guest ports are named instead; piso_kiosk scopes ONLY to br-lan Wi-Fi ports, never br-guest ports (preserving 10.0.0.1 redirect)
 open(f"{iso}/nft-noname", "w").close()
 r, nl, ll = run_iso()
 check(r.returncode == 0 and 'iifname { "phy0-ap1","phy1-ap1" } oifname { "phy0-ap1","phy1-ap1" } counter drop' in nl and ll == "", "without bridge-name matching the guest ports are listed instead: " + nl[:300])
+pk_empty = nl.rsplit("table bridge piso_kiosk {", 1)[1]
+check('iifname "phy*"' not in pk_empty and "tcp dport" not in pk_empty,
+      "without bridge-name matching and empty br-lan Wi-Fi, piso_kiosk loads cleanly without blocking br-guest phy* ports: " + nl[-400:])
+os.makedirs(f"{iso}/sys/br-lan/brif/phy0-ap2", exist_ok=True)
+os.makedirs(f"{iso}/sys/br-lan/brif/lan1", exist_ok=True)
+r, nl, ll = run_iso()
+pk = nl.rsplit("table bridge piso_kiosk {", 1)[1]
+check(r.returncode == 0 and 'iifname { "phy0-ap2" }' in pk and "phy0-ap1" not in pk and "lan1" not in pk and 'iifname "phy*"' not in pk and ll == "",
+      "without bridge-name matching, piso_kiosk matches only br-lan Wi-Fi ports (never br-guest or Ethernet): " + pk)
+shutil.rmtree(f"{iso}/sys/br-lan/brif/phy0-ap2"); shutil.rmtree(f"{iso}/sys/br-lan/brif/lan1")
 os.remove(f"{iso}/nft-noname")
 # the admin switch, and a router before the box is paired
 open(f"{iso}/piso.conf", "w").write("WIFI_ADMIN='on'\n"); open(f"{iso}/coin.conf", "w").write("GW_BOX='10.0.0.10'\nGW_BOX_MAC=''\nCONSOLE_BIND='10.0.0.1'\n")
 r, nl, ll = run_iso()
-check("tcp dport" not in nl and "ether saddr aa:bb" not in nl and 'iifname "phy*" counter drop' in nl and 'iifname "phy*" meta mark set meta mark | 0x00200000' in nl,
+check("tcp dport" not in nl and "ether saddr aa:bb" not in nl and 'meta ibrname "br-lan" iifname "phy*" counter drop' in nl and 'meta ibrname "br-lan" iifname "phy*" meta mark set meta mark | 0x00200000' in nl,
       "wifi-admin on leaves the login pages open on Wi-Fi; before the box is paired phones are isolated and no address is named: " + nl[-500:])
 # the console as the front page (port 80): its ports are listed once each
 open(f"{iso}/coin.conf", "w").write("GW_BOX='10.0.0.10'\nGW_BOX_MAC='AA:BB:CC:DD:EE:09'\nCONSOLE_BIND='10.0.0.1'\nCONSOLE_PORT='80'\n"); open(f"{iso}/piso.conf", "w").write("")
@@ -199,10 +232,10 @@ r, nl, ll = run_iso()
 # a router that cannot load the rules logs it and carries on
 open(f"{iso}/nft-fail", "w").close()
 r, nl, ll = run_iso()
-check(r.returncode == 0 and ll.count("NOT active") == 2 and "guest isolation is NOT active" in ll and "phone isolation is NOT active" in ll, "a router that cannot load the bridge rules logs it and carries on (exit 0): " + ll)
+check(r.returncode == 0 and ll.count("NOT active") == 3 and "guest isolation is NOT active" in ll and "phone isolation is NOT active" in ll and "anti-tethering is NOT active" in ll, "a router that cannot load the bridge and firewall rules logs it and carries on (exit 0): " + ll)
 # RT-10: the old table is deleted in the same nft transaction that loads the new one, never on its own (a failed load leaves the old rules in place)
 check("ARGS delete table" not in nl, "RT-10: no separate `nft delete table` call: " + nl[:300])
-check(all(t in nl for t in ("table bridge piso_guest\ndelete table bridge piso_guest\ntable bridge piso_guest {", "table bridge piso_kiosk\ndelete table bridge piso_kiosk\ntable bridge piso_kiosk {")),
+check(all(t in nl for t in ("table bridge piso_guest\ndelete table bridge piso_guest\ntable bridge piso_guest {", "table inet piso_anti_tether\ndelete table inet piso_anti_tether\ntable inet piso_anti_tether {", "table bridge piso_kiosk\ndelete table bridge piso_kiosk\ntable bridge piso_kiosk {")),
       "RT-10: each rule file declares, deletes and re-creates its table in one file: " + nl[:500])
 os.remove(f"{iso}/nft-fail")
 # RT-18: a console bound to every address (CONSOLE_BIND 0.0.0.0 or empty) must still be closed on Wi-Fi
@@ -211,13 +244,13 @@ open(f"{iso}/bin/ip", "w").write('#!/bin/sh\n[ -e ' + iso + '/ip-fail ] && exit 
 for bind in ("0.0.0.0", ""):
     open(f"{iso}/coin.conf", "w").write(f"GW_BOX='10.0.0.10'\nGW_BOX_MAC='AA:BB:CC:DD:EE:09'\nCONSOLE_BIND='{bind}'\n")
     r, nl, ll = run_iso()
-    check('iifname "phy*" ip daddr 10.0.0.1 tcp dport { 22, 80, 443, 8080, 8443, 8081, 8082 } counter drop' in nl,
+    check('meta ibrname "br-lan" iifname "phy*" ip daddr 10.0.0.1 tcp dport { 22, 80, 443, 8080, 8443, 8081, 8082 } counter drop' in nl,
           f"RT-18: CONSOLE_BIND '{bind}': the router's own address is read from br-lan: " + nl[-600:])
 open(f"{iso}/ip-fail", "w").close()
 for bind in ("0.0.0.0", ""):
     open(f"{iso}/coin.conf", "w").write(f"GW_BOX='10.0.0.10'\nGW_BOX_MAC='AA:BB:CC:DD:EE:09'\nCONSOLE_BIND='{bind}'\n")
     r, nl, ll = run_iso()
-    check('iifname "phy*" tcp dport { 8081, 8082 } counter drop' in nl and "ip daddr 0.0.0.0" not in nl and "dport { 22, 80" not in nl,
+    check('meta ibrname "br-lan" iifname "phy*" tcp dport { 8081, 8082 } counter drop' in nl and "ip daddr 0.0.0.0" not in nl and "dport { 22, 80" not in nl,
           f"RT-18: CONSOLE_BIND '{bind}', router address unknown: the console ports are closed for any address, ports 80 and 443 are left alone: " + nl[-600:])
 os.remove(f"{iso}/ip-fail"); os.remove(f"{iso}/bin/ip")
 
@@ -254,7 +287,8 @@ check("set wireless.box_ap.macfilter='allow'" in r.stdout and "add_list wireless
       and "set dhcp.pisocoinbox.ip='10.0.0.10'" in r.stdout, "paired box: MAC allow-list and fixed address")
 check("set wireless.guest_radio0.ssid='Juan Net'" in r.stdout, "a renamed customer Wi-Fi keeps its name on re-run")
 r = run("--dry-run", env={"GUEST_IP": "192.168.31.1", "COUNTRY": "US"})
-check("country='US'" in r.stdout and "ipaddr='192.168.31.1'" in r.stdout, "guest address and country can be overridden")
+check("country='US'" in r.stdout and "ipaddr='192.168.31.1'" in r.stdout and "set firewall.guest_http_redirect.src_dip='192.168.31.1'" in r.stdout,
+      "guest address and country can be overridden")
 r = lib('echo "$LAN_IP $BOX_IP"')
 check(r.stdout.strip() == "10.0.0.1 10.0.0.10", "default LAN 10.0.0.1, box 10.0.0.10: " + r.stdout)
 fake_uci({"radio0": "2g"}, lan="10.0.0.1/24")
@@ -307,7 +341,7 @@ bb = subprocess.run(["sh", "-c", "command -v busybox"], capture_output=True, tex
 if bb:
     bbdir = f"{tmp}/bb"
     os.makedirs(bbdir)
-    for a in "sh awk sed grep tr rm mv chmod mkdir dirname cut sha256sum printf cat date head tail ln".split():
+    for a in "sh awk sed grep tr rm cp mv chmod mkdir dirname cut sha256sum printf cat date head tail ln mktemp gzip".split():
         os.symlink(bb, f"{bbdir}/{a}")
     # (functions stand in for the missing tools: a BusyBox built with "standalone shell" would find its own applets)
     r = subprocess.run([f"{bbdir}/sh", "-c", f". {SCRIPT}; base64() {{ return 127; }}; openssl() {{ return 127; }}; DRY=1; extract_payload {SCRIPT}"], env={"PATH": bbdir, "PISO_ROOT": f"{tmp}/bbroot", "PISO_SETUP_SOURCE_ONLY": "1",
@@ -316,6 +350,14 @@ if bb:
     check(os.path.exists(got) and open(got, "rb").read() == open(f"{ROOT}/tools/pisoportal/bin/pisoportal-mipsel", "rb").read() and "decoding with awk" in r.stdout,
           "BusyBox only (no base64, no openssl): the portal program is decoded by awk, byte for byte: " + r.stdout[-300:] + r.stderr[-300:])
     check(os.access(f"{tmp}/bbroot/etc/init.d/pisoportal", os.X_OK), "and the init scripts are executable (marker parsing without GNU sed extensions)")
+    if os.path.exists(f"{iso}/nft.log"): os.remove(f"{iso}/nft.log")
+    open(f"{iso}/coin.conf", "w").write("GW_BOX='10.0.0.10'\nGW_BOX_MAC='AA:BB:CC:DD:EE:09'\nCONSOLE_BIND='10.0.0.1'\n")
+    r_iso_bb = subprocess.run([f"{bbdir}/sh", f"{ROOT}/router/piso_isolation.sh"], capture_output=True, text=True,
+                              env={"PATH": bbdir, "PISO_NFT": f"{iso}/nft", "PISO_SYS": f"{iso}/sys", "PISO_CONF": f"{iso}/piso.conf", "PISO_COINSLOT_CONF": f"{iso}/coin.conf"})
+    nl_bb = open(f"{iso}/nft.log").read() if os.path.exists(f"{iso}/nft.log") else ""
+    check(r_iso_bb.returncode == 0 and "not found" not in (r_iso_bb.stdout + r_iso_bb.stderr)
+          and "tcp dport { 22, 80, 443, 8080, 8443, 8081, 8082 } counter drop" in nl_bb,
+          "BusyBox only (no paste): piso_isolation formats ports with awk and loads cleanly: " + r_iso_bb.stderr + nl_bb[-300:])
 else:
     print("note: busybox not installed; the BusyBox-only decoding test was skipped")
 # a damaged setup file is refused instead of installing a broken program
@@ -329,6 +371,46 @@ open(f"{tmp}/badroot/usr/bin/pisoportal", "w").write("the working program")
 r = lib(f'PISO_ROOT={tmp}/badroot; DRY=1; extract_payload {bad}; echo rc=$?')
 check("rc=" not in r.stdout and "could not decode" in (r.stdout + r.stderr), "a damaged payload (checksum mismatch) stops the setup: " + r.stdout[-200:])
 check(open(f"{tmp}/badroot/usr/bin/pisoportal").read() == "the working program", "and the program already on the router is left as it was")
+# pre-decoded binaries (#@@BIN): installed cleanly without base64, openssl or awk b64d, verified by sha256, and pre/ is removed
+pre_stage = f"{tmp}/prestage"
+os.makedirs(f"{pre_stage}/pre/usr/bin")
+real_bin = open(f"{ROOT}/tools/pisoportal/bin/pisoportal-mipsel", "rb").read()
+shutil.copy(f"{ROOT}/tools/pisoportal/bin/pisoportal-mipsel", f"{pre_stage}/pre/usr/bin/pisoportal")
+pre_sum = hashlib.sha256(real_bin).hexdigest()
+pre_sh = f"{pre_stage}/piso-setup.sh"
+open(pre_sh, "w", newline="\n").write(t[:t.index("\n#@@B64 ")] + f"\n#@@BIN /usr/bin/pisoportal 755 {pre_sum} pre/usr/bin/pisoportal\n")
+if bb:
+    r = subprocess.run(
+        [f"{bbdir}/sh", "-c", f". {pre_sh}; base64() {{ return 127; }}; openssl() {{ return 127; }}; b64d() {{ return 127; }}; DRY=1; extract_payload {pre_sh}"],
+        env={"PATH": bbdir, "PISO_ROOT": f"{tmp}/bbpre", "PISO_SETUP_SOURCE_ONLY": "1",
+             "PISO_SELF_PATH": f"{tmp}/bbpre/piso-setup", "PISO_LOG": f"{tmp}/bbprelog"},
+        capture_output=True, text=True, timeout=60,
+    )
+    got_pre = f"{tmp}/bbpre/usr/bin/pisoportal"
+    check(r.returncode == 0 and os.path.exists(got_pre) and open(got_pre, "rb").read() == real_bin
+          and "(pre-decoded binary)" in r.stdout and "decoding with awk" not in r.stdout
+          and not os.path.exists(f"{pre_stage}/pre"),
+          "BusyBox #@@BIN (no base64/openssl/awk b64d): installs binary, verifies sha256, cleans pre/: " + r.stdout[-300:] + r.stderr[-300:])
+bad_pre = f"{tmp}/badpre"
+os.makedirs(f"{bad_pre}/pre/usr/bin")
+open(f"{bad_pre}/pre/usr/bin/pisoportal", "wb").write(b"corrupt elf")
+open(f"{bad_pre}/piso-setup.sh", "w", newline="\n").write(open(pre_sh).read())
+os.makedirs(f"{tmp}/badpreroot/usr/bin")
+open(f"{tmp}/badpreroot/usr/bin/pisoportal", "w").write("the working program")
+r = lib(f'PISO_ROOT={tmp}/badpreroot; DRY=1; extract_payload {bad_pre}/piso-setup.sh; echo rc=$?')
+check("rc=" not in r.stdout and "failed checksum" in (r.stdout + r.stderr) and not os.path.exists(f"{bad_pre}/pre"),
+      "a corrupted pre-decoded binary stops the setup and cleans pre/: " + r.stdout[-200:] + r.stderr[-200:])
+check(open(f"{tmp}/badpreroot/usr/bin/pisoportal").read() == "the working program", "and the old binary on the router is left untouched")
+trav_pre = f"{tmp}/travpre"
+os.makedirs(trav_pre)
+open(f"{trav_pre}/piso-setup.sh", "w", newline="\n").write(t[:t.index("\n#@@B64 ")] + f"\n#@@BIN /usr/bin/pisoportal 755 {pre_sum} ../evil\n")
+r = lib(f'PISO_ROOT={tmp}/travroot; DRY=1; extract_payload {trav_pre}/piso-setup.sh; echo rc=$?')
+check("rc=" not in r.stdout and "invalid pre-decoded path" in (r.stdout + r.stderr), "unsafe #@@BIN relpath is refused: " + r.stdout[-200:])
+drop_stage = f"{tmp}/droproot/tmp/piso-stage"
+os.makedirs(drop_stage)
+open(f"{drop_stage}/piso-setup.sh", "w").write("#!/bin/sh\n")
+lib(f'PISO_ROOT={tmp}/droproot; SELF_COPY={drop_stage}/piso-setup.sh; drop_installer_copy')
+check(not os.path.exists(drop_stage), "drop_installer_copy removes the staged installer directory")
 
 # ---- stored settings -------------------------------------------------------------------------------------------------------
 r = lib('conf_set A "x y"; conf_set A "second"; conf_set B 2; echo "$(conf_get A)|$(conf_get B)"; K=$(secret K 12); echo "$K|$(secret K 12)"; secret G 64 hex')
@@ -542,8 +624,21 @@ conf_set GW_KEY """ + "9f" * 32 + r"""; conf_set BOX_MAC AA:BB:CC:DD:EE:FF; conf
 conf_set BOX_ADMIN_PASS NewPassw0rdXYZ; conf_set BOX_WIFI_ROTATED 1; conf_set BOX_WIFI_PASS_NEW boxwifi-own-key-123
 write_coinslot_conf """ + "9f" * 32 + r""" AA:BB:CC:DD:EE:FF
 printf 'kiosk-pass-1 NewPassw0rdXYZ\n' > "$SUMMARY"
+if wifi_only; then
+  conf_set KIOSK_SSID_NAME PisoKiosk-a1b2
+  conf_set BOX_SSID_NAME PisoCoinBox-a1b2
+  conf_set ADMIN_PASS admin-pass-1
+  conf_set ADMIN_SSID_NAME PisoAdmin-a1b2
+  resolve_wifi_names
+  printf 'admin-pass-1\n' >> "$SUMMARY"
+fi
 uci() { [ "$1" = -q ] && shift; case "$1 $2" in
-  "show wireless") printf 'wireless.kiosk_radio0=wifi-iface\nwireless.kiosk_radio1=wifi-iface\nwireless.guest_radio0=wifi-iface\nwireless.box_ap=wifi-iface\n' ;;
+  "show wireless") printf 'wireless.kiosk_radio0=wifi-iface\nwireless.kiosk_radio1=wifi-iface\nwireless.guest_radio0=wifi-iface\nwireless.box_ap=wifi-iface\n'
+    if wifi_only; then printf 'wireless.admin_radio0=wifi-iface\nwireless.admin_radio1=wifi-iface\n'; fi ;;
+  "get wireless.admin_radio0.key") echo admin-pass-1 ;;
+  "get wireless.admin_radio1.key") echo "${T_ADMIN_KEY:-admin-pass-1}" ;;
+  "get wireless.admin_radio0.ssid") echo PisoAdmin-a1b2 ;;
+  "get wireless.admin_radio1.ssid") echo "${T_ADMIN_SSID:-PisoAdmin-a1b2}" ;;
   "get wireless.kiosk_radio0.key" | "get wireless.kiosk_radio1.key") echo "$T_KIOSK" ;;
   "get wireless.guest_radio0.ssid" | "get opennds.@opennds[0].gatewayname") echo "$T_GUEST" ;;
   "get opennds.@opennds[0].fasport") echo "$PORTAL_PORT" ;;
@@ -552,7 +647,13 @@ uci() { [ "$1" = -q ] && shift; case "$1 $2" in
   "get wireless.kiosk_radio0.ssid" | "get wireless.kiosk_radio1.ssid") echo "$T_KIOSKSSID" ;;
   "get wireless.box_ap.ssid") echo "$T_BOXSSID" ;;
   *) return 1 ;; esac; }
-ip() { echo "    inet 10.0.30.1/24 brd 10.0.30.255 scope global br-guest"; }
+ip() {
+  if [ "$*" = '-4 addr show br-admin' ]; then
+    [ -z "$T_ADMIN_DOWN" ] && echo "    inet $ADMIN_IP/24"
+  else
+    echo "    inet 10.0.30.1/24 brd 10.0.30.255 scope global br-guest"
+  fi
+}
 """
 fake_portal = f"{bindir}/fakeportal"
 open(fake_portal, "w").write("#!/bin/sh\necho 'box 10.0.0.10 answers'\n"); os.chmod(fake_portal, 0o755)
@@ -739,6 +840,72 @@ check("rc=0" not in r.stdout and "Power-cycle" in out and "piso-setup status" in
 check(Box.wifi and "ROT=1 NEW=" + Box.wifi in r.stdout and f"set wireless.box_ap.key={Box.wifi}" in ul and "set wireless.box_ap.ssid=PisoCoinBox-a1b2" in ul,
       "and the router keeps the new name and key (the box has them): " + out)
 
+# ---- replacement ESP32 pairing: default password fallback, stale DHCP lease cleanup, MAC restore, cmd_pair preservation ----
+# (a) replacement box starts on Coinslot@Setup while the router still stores the broken box's BOX_ADMIN_PASS
+Box.admin = "Coinslot@Setup"; Box.key = None
+cf_rep = f"{tmp}/conf_replace"
+open(cf_rep, "w").write("BOX_ADMIN_PASS='OldBoxPass12'\n")
+r = lib('provision_box OldBoxPass12 ' + "55" * 32 + '; echo "rc=$? PASS=$(conf_get BOX_ADMIN_PASS)"',
+        env={"BOX_IP": addr, "PISO_CONF": cf_rep})
+check("rc=0 PASS=OldBoxPass12" in r.stdout and Box.admin == "OldBoxPass12" and Box.key == "55" * 32,
+      "replacement box with factory password accepts stored BOX_ADMIN_PASS and key: " + r.stdout + r.stderr)
+
+# (b) clear_box_lease drops stale 10.0.0.10 and target MAC leases while keeping unrelated clients
+lf = f"{tmp}/dhcp.leases"
+open(lf, "w").write("1791858393 44:bd:8d:24:ce:b0 10.0.0.10 pisocoinbox 01:44\n"
+                    "1791858400 aa:bb:cc:00:00:09 10.0.0.99 OldTempBox 01:aa\n"
+                    "1791858999 11:22:33:44:55:66 10.0.30.50 CustomerPhone 01:11\n")
+lib('DRY=1; clear_box_lease AA:BB:CC:00:00:09', env={"DHCP_LEASES": lf, "BOX_IP": "10.0.0.10"})
+kept = open(lf).read()
+check("10.0.0.10" not in kept and "aa:bb:cc:00:00:09" not in kept and "CustomerPhone" in kept,
+      "clear_box_lease removes stale box leases and keeps other leases: " + repr(kept))
+
+# (c) failed/timed-out pair_box restores MAC allowlist to previously paired BOX_MAC
+open(f"{tmp}/uci.log", "w").close()
+cf_to = f"{tmp}/conf_pair_timeout"
+open(cf_to, "w").write("BOX_MAC='44:BD:8D:24:CE:B0'\nBOX_WIFI_ROTATED='1'\nBOX_WIFI_PASS_NEW='OldWifiKey1234567890'\n")
+r = lib('sleep() { :; }; box_station() { :; }; box_ifname() { echo wlan0-3; }; cmd_box_diag() { :; }; (pair_box); echo "rc=$?"',
+        env={"PAIR_WAIT": "10", "PISO_CONF": cf_to, "BOX_IP": "10.0.0.10"})
+ul_to = open(f"{tmp}/uci.log").read()
+check("add_list wireless.box_ap.maclist=44:BD:8D:24:CE:B0" in ul_to,
+      "timed-out pair_box restores MAC lock to the existing BOX_MAC: " + ul_to)
+
+# (d) cmd_pair adopts custom UCI box SSID/key, preserves BOX_ADMIN_PASS, updates BOX_MAC, rebases reconcile, and skips portal restart for console
+Box.admin = "Coinslot@Setup"; Box.wifi = None; Box.wifi_ssid = None; Box.key = None; Box.refuse_wifi = False
+open(f"{tmp}/uci.log", "w").close()
+cf_cp = f"{tmp}/conf_cmd_pair"
+open(cf_cp, "w").write(
+    f"GW_KEY='{'ab' * 32}'\nBOX_ADMIN_PASS='OldBoxPass12'\nBOX_MAC='44:BD:8D:24:CE:B0'\nBOX_IP='10.0.0.10'\nKIOSK_PASS='KioskPw12345'\n"
+)
+fake_bin_cp = f"{tmp}/bin_cp"
+cp_root = f"{tmp}/cp_root"
+os.makedirs(fake_bin_cp, exist_ok=True)
+os.makedirs(f"{cp_root}/etc", exist_ok=True)
+open(f"{fake_bin_cp}/pisoportal", "w").write(f"#!/bin/sh\necho \"$*\" >> {tmp}/cp_portal.log\n")
+os.chmod(f"{fake_bin_cp}/pisoportal", 0o755)
+open(f"{tmp}/cp_portal.log", "w").close()
+stubs_cp = (
+    'id() { echo 0; }; sleep() { :; }; box_up() { return 0; }; apply_isolation() { :; }; write_summary() { :; }; '
+    'PORTAL_BIN="' + fake_bin_cp + '/pisoportal"; '
+    'uci() { echo "$*" >> ' + tmp + '/uci.log; '
+    '[ "$1" = -q ] && shift; '
+    'if [ "$1" = get ] && [ "$2" = "wireless.box_ap.ssid" ]; then echo "PisoCoinBox-d5ff"; return 0; fi; '
+    'if [ "$1" = get ] && [ "$2" = "wireless.box_ap.key" ]; then echo "KeepRouterBoxKey1234"; return 0; fi; '
+    'return 0; }; '
+    'box_station() { echo "AA:BB:CC:DD:EE:99"; }; '
+    'cmd_pair; echo "rc=$? NEWMAC=$(conf_get BOX_MAC) ADMIN=$(conf_get BOX_ADMIN_PASS) WKEY=$(conf_get BOX_WIFI_PASS_NEW) BSSID=$(conf_get BOX_SSID_NAME)"'
+)
+r = lib(stubs_cp, env={"BOX_IP": addr, "PISO_CONF": cf_cp, "PISO_ROOT": cp_root, "PISO_STATE": f"{tmp}/cp_state", "ROTATE_SETTLE": "0", "PISO_FROM_CONSOLE": "1"})
+check("rc=0 NEWMAC=AA:BB:CC:DD:EE:99 ADMIN=OldBoxPass12 WKEY=KeepRouterBoxKey1234 BSSID=PisoCoinBox-d5ff" in r.stdout,
+      "cmd_pair preserves admin pass + custom UCI box Wi-Fi SSID/key and switches to new MAC: " + r.stdout + r.stderr)
+check(open(f"{tmp}/cp_state").read().strip() == "DONE paired with AA:BB:CC:DD:EE:99",
+      "cmd_pair marks setup state DONE instead of leaving RUNNING in status")
+check(Box.wifi == "KeepRouterBoxKey1234" and Box.wifi_ssid == "PisoCoinBox-d5ff" and Box.admin == "OldBoxPass12" and Box.key == "ab" * 32,
+      f"replacement ESP32 received preserved credentials: wifi={Box.wifi!r} ssid={Box.wifi_ssid!r} admin={Box.admin!r}")
+check("reconcile rebase" in open(f"{tmp}/cp_portal.log").read(), "cmd_pair rebases reconciliation baseline for the replacement box")
+check("PISO_FROM_CONSOLE:-0" in text.split("cmd_pair() {")[1].split("\n}\n")[0], "cmd_pair respects PISO_FROM_CONSOLE=1 so console sessions stay open")
+
+
 # ---- feature 011 part B: piso-setup box-wifi-name gives the box network the router's own name ----------------------------------
 def _bwn_conf(name, **kv):
     path = f"{tmp}/conf_{name}"
@@ -914,6 +1081,7 @@ check(r.stdout.startswith("the modem's network (10.1.2.3/8)") and "rc=1" in r.st
 r = lib('wan_ip() { echo 192.168.1.50; }; wan_prefix() { echo 24; }; cmd_wan_clash; echo "rc=$?"')
 check(r.stdout.strip() == "rc=0", "and prints nothing when the ranges are apart: " + r.stdout + r.stderr)
 check("wan_clash" in open(SCRIPT).read().split("check_all() {")[1].split("\n}\n")[0], "the status checks include the modem's range")
+check("anti_tether_on" in open(SCRIPT).read().split("check_all() {")[1].split("\n}\n")[0], "the status checks include anti-tethering")
 # feature 046 (SU-11): with BOX_EXPECT_MAC only the board the setup program just wrote is paired; without it the first station, as before
 ASSOC = 'iwinfo() { [ "$2" = assoclist ] && for m in $STATIONS; do echo "$m  -50 dBm / -95 dBm"; done; }; box_ifname() { echo wlan0-3; }; '
 for stations, expect, want_first, want_other in (("aa:bb:cc:dd:ee:99 aa:bb:cc:dd:ee:01", "AA:BB:CC:DD:EE:01", "AA:BB:CC:DD:EE:01", "AA:BB:CC:DD:EE:99"),
@@ -1091,12 +1259,15 @@ exit 0
 for f in ("uci.log", "uci.batch"):
     open(f"{tmp}/{f}", "w").close()
 open(conf_up, "a").write("GUEST_NAME='Shop WiFi'\nBOX_MAC='AA:BB:CC:DD:EE:09'\n")
-r = run("update", env={"PISO_TEST_NONROOT": "1", "PISO_ROOT": root, "PISO_CONF": conf_up, "PISO_SELF_PATH": f"{tmp}/installed/piso-setup"})
+r = run("update", env={"PISO_TEST_NONROOT": "1", "PISO_ROOT": root, "PISO_CONF": conf_up,
+                       "PISO_SELF_PATH": f"{tmp}/installed/piso-setup", "BOX_IP": "127.0.0.1:9"})
 ub, ul = open(f"{tmp}/uci.batch").read(), open(f"{tmp}/uci.log").read()
 check("set opennds.@opennds[0].fasport='2080'" in ub and "set opennds.@opennds[0].login_option_enabled='0'" in ub and "delete opennds.@opennds[0].themespec_path" in ub
-      and "set firewall.guest_stream.dest_port='2080'" in ub and "set opennds.@opennds[0].gatewayname='Shop WiFi'" in ub, "update moves openNDS to the FAS portal: " + ub[:300])
+      and "set firewall.guest_stream.dest_port='2080'" in ub and "set firewall.guest_lan_redirect.src_dip='10.0.0.1'" in ub
+      and "set firewall.guest_http_redirect.src_dip='10.0.30.1'" in ub and "set opennds.@opennds[0].gatewayname='Shop WiFi'" in ub,
+      "update moves openNDS to the FAS portal: " + ub[:300])
 check("set dropbear.@dropbear[0].Interface='lan'" in ub, "and keeps SSH off the guest network")
-check(all(l.startswith(("set firewall.guest_stream", "set firewall.guest_nomodem", "delete firewall.guest_nomodem", "add_list firewall.guest_nomodem", "set firewall.guest_noprivate", "delete firewall.guest_noprivate", "add_list firewall.guest_noprivate", "set firewall.phone_noprivate", "delete firewall.phone_noprivate", "add_list firewall.phone_noprivate", "add_list dhcp.@dnsmasq", "del_list dhcp.@dnsmasq", "set opennds.", "delete opennds.", "add_list opennds.", "set dropbear.", "delete uhttpd.", "add_list uhttpd.", "#"))
+check(all(l.startswith(("set firewall.guest_stream", "set firewall.guest_lan_redirect", "set firewall.guest_http_redirect", "set firewall.guest_nomodem", "delete firewall.guest_nomodem", "add_list firewall.guest_nomodem", "set firewall.guest_noprivate", "delete firewall.guest_noprivate", "add_list firewall.guest_noprivate", "set firewall.phone_noprivate", "delete firewall.phone_noprivate", "add_list firewall.phone_noprivate", "set firewall.piso_isolation", "add_list dhcp.@dnsmasq", "del_list dhcp.@dnsmasq", "set opennds.", "delete opennds.", "add_list opennds.", "set dropbear.", "delete uhttpd.", "add_list uhttpd.", "#"))
           for l in ub.splitlines() if l.strip()), "and touches nothing else (no Wi-Fi, network or passwords): " + ub)
 check("commit opennds" in ul and "commit firewall" in ul, "the change is committed")
 cc = open(f"{root}/etc/coinslot.conf").read()
@@ -1312,6 +1483,45 @@ check("OTHER=1" in r.stdout.split("SETTINGS")[1].split("STATUS")[0] and "VOUCHER
 check("voucher choice is off" in r.stdout and "VOUCHER_CHOICE='on'" in r.stdout and "usage: piso-setup voucher-choice" in r.stderr and "rc=1" in r.stdout,
       "voucher-choice shows its state, turns on again, and refuses anything else: " + r.stdout + r.stderr)
 
+# ---- anti-tether: TTL-based prevention of hotspot / USB tethering on guest network ------------------------------------
+r = lib("rm -f $CONF; apply_isolation() { echo APPLY-CALLED; }; "
+        "cmd_anti_tether; "
+        "cmd_anti_tether status; "
+        "cmd_anti_tether off; conf_get ANTI_TETHER; "
+        "cmd_anti_tether; "
+        "cmd_anti_tether on; conf_get ANTI_TETHER; "
+        "cmd_anti_tether status; "
+        "cmd_anti_tether invalid; echo rc=$?",
+        env={"PISO_ROOT": root, "PISO_TEST_NONROOT": "1"})
+check(r.stdout.count("Anti-tethering is ON") == 3 and "Anti-tethering is now OFF" in r.stdout
+      and "Anti-tethering is OFF" in r.stdout and "Anti-tethering is now ON" in r.stdout
+      and r.stdout.count("APPLY-CALLED") == 2 and "usage: piso-setup anti-tether [on|off|status]" in r.stderr and "rc=1" in r.stdout,
+      "anti-tether command: defaults to ON, handles status, toggles off/on, calls apply_isolation, and refuses invalid args: " + r.stdout + r.stderr)
+if os.geteuid() != 0:
+    r = lib("rm -f $CONF; cmd_anti_tether on", env={"PISO_ROOT": root})
+    check(r.returncode != 0 and "run as root" in (r.stdout + r.stderr), "anti-tether refuses non-root changes: " + r.stdout + r.stderr)
+at_fail_root = f"{tmp}/at_fail_root"; os.makedirs(f"{at_fail_root}/etc/hotplug.d/firewall", exist_ok=True)
+open(f"{at_fail_root}/etc/hotplug.d/firewall/50-piso-isolation", "w").write("#!/bin/sh\nexit 0\n")
+os.chmod(f"{at_fail_root}/etc/hotplug.d/firewall/50-piso-isolation", 0o755)
+r = lib("rm -f $CONF; apply_isolation() { :; }; anti_tether_on() { return 1; }; cmd_anti_tether on; echo rc=$?",
+        env={"PISO_ROOT": at_fail_root, "PISO_TEST_NONROOT": "1"})
+check("WARNING: could not load anti-tethering" in r.stderr and "Anti-tethering is now ON" not in r.stdout and "rc=1" in r.stdout,
+      "anti-tether on warns and returns non-zero when the table fails to load: " + r.stdout + r.stderr)
+at_ck = ('wifi_only() { return 0; }; isolation_on() { return 0; }; agree_all() { return 0; }; wait_until() { return 0; }; '
+         'update_timer_ok() { return 0; }; update_check_recent() { return 0; }; wan_clash() { return 1; }; '
+         'ip() { echo "inet $LAN_IP/ inet $GUEST_IP/"; }; iwinfo() { :; }; uci() { :; }; box_up() { return 0; }; curl() { :; }; '
+         'ping() { return 0; }; anti_tether_on() { return 1; }; ')
+r = lib("rm -f $CONF; " + at_ck + "DRY=1 check_all; echo SPLIT; conf_set ANTI_TETHER off; DRY=1 check_all", env={"PISO_ROOT": root})
+p1, p2 = r.stdout.split("SPLIT")
+check("WARN  anti-tethering is NOT active" in p1 and "WARN  anti-tethering is NOT active" not in p2,
+      "check_all warns when anti-tethering fails to load while enabled, and skips when OFF: " + r.stdout)
+r = lib("rm -f $CONF; cmd_status() { :; }; curl() { :; }; pidof() { return 1; }; cmd_reconcile() { :; }; cmd_box_diag() { :; }; "
+        "uci() { :; }; ndsctl() { :; }; logread() { :; }; nft() { echo \"NFT:$*\"; }; cmd_diag",
+        env={"PISO_ROOT": root})
+check("NFT:list table inet piso_anti_tether" in r.stdout and "anti-tethering (on:" in r.stdout,
+      "cmd_diag inspects inet piso_anti_tether table: " + r.stdout)
+check("anti-tether [on|off|status]" in subprocess.run(["sh", SCRIPT, "--help"], capture_output=True, text=True).stdout, "--help lists anti-tether [on|off|status]")
+
 # ---- brand-pack: a logo pack the owner signed, installed by the portal program (feature 049, group 7) --------------------------------
 fbp = f"{tmp}/fake_portal_brand"
 open(fbp, "w").write('#!/bin/sh\necho "$@" > "$FAKE_LOG"\nif [ -n "$FAKE_FAIL" ]; then echo "REFUSED the signature is not the owner\'s"; exit 1; fi\necho "INSTALLED logo 120 bytes, no picture"\n')
@@ -1425,6 +1635,23 @@ check("wireless.kiosk_radio0" in both_batch and "wireless.kiosk_radio1" in both_
 check(run("--dry-run", env={"SHOP_PRODUCT": "both"}).stdout == both_batch, "SHOP_PRODUCT=both gives exactly the batch of a missing SHOP_PRODUCT")
 check("kiosk_" not in wifi_batch and "wireless.guest_radio0" in wifi_batch and "wireless.box_ap" in wifi_batch,
       "SHOP_PRODUCT=wifi: no wireless.kiosk_* section; guest Wi-Fi and the coin box Wi-Fi are still there")
+for radio in ("radio0", "radio1"):
+    for option, value in (("network", "admin"), ("hidden", "1"), ("encryption", "psk2"), ("isolate", "0"), ("key", "<admin password>")):
+        check(f"set wireless.admin_{radio}.{option}='{value}'" in wifi_batch, f"wifi: admin {radio} uses {option}={value}")
+for setting in ("network.admin_dev.name='br-admin'", "network.admin.ipaddr='10.0.20.1'", "dhcp.admin.interface='admin'",
+                "firewall.admin.input='REJECT'", "firewall.admin.forward='REJECT'", "firewall.admin_wan.dest='wan'",
+                "firewall.admin_dhcp.dest_port='53 67'", "firewall.admin_dns_tcp.dest_port='53'",
+                "firewall.admin_console.dest_port='8081 8082'", "firewall.admin_box.dest_ip='10.0.0.10'"):
+    check(f"set {setting}" in wifi_batch, f"wifi: {setting} is in the batch")
+for section in ("network.admin_dev", "network.admin", "dhcp.admin", "firewall.admin", "firewall.admin_wan",
+                "firewall.admin_dhcp", "firewall.admin_dns_tcp", "firewall.admin_console", "firewall.admin_box"):
+    check(f"delete {section}" in both_batch.splitlines(), f"both: clears {section}")
+r = lib('SHOP_PRODUCT=wifi; wan_ip() { echo 10.0.20.50; }; wan_prefix() { echo 24; }; wan_clash')
+check(r.stdout.strip() == "10.0.20.1", "wifi: WAN overlap on br-admin is detected")
+r = lib('rm -f "$CONF"; SHOP_PRODUCT=wifi; ADMIN_PASSWORD=CustomAdmin123; choose_passwords; remember_wifi_names; admin_pass; echo; grep ADMIN_SSID_NAME "$CONF"')
+check("CustomAdmin123" in r.stdout and "ADMIN_SSID_NAME='PisoAdmin-" in r.stdout, "wifi: the chosen admin password and SSID are stored")
+r = lib('rm -f "$CONF"; conf_set ADMIN_PASS oldAdminPass1; SHOP_PRODUCT=both; apply_product; cat "$CONF"')
+check("ADMIN_PASS" not in r.stdout and "SHOP_PRODUCT='both'" in r.stdout, "both: switching removes the admin password")
 r = run("--dry-run", env={"SHOP_PRODUCT": "phone"})
 check(r.returncode != 0 and "SHOP_PRODUCT must be wifi or both" in r.stdout + r.stderr, "any other SHOP_PRODUCT stops the setup: " + r.stdout + r.stderr)
 r = lib("shop_product; echo ---; conf_set SHOP_PRODUCT wifi; shop_product; echo ---; SHOP_PRODUCT=both shop_product")
@@ -1443,14 +1670,19 @@ check("CURL" not in r.stdout and r.stdout.count("rc=0") == 3 and "PisoKiosk" not
 # the agreement checks skip the kiosk Wi-Fi
 r = agree(env={"SHOP_PRODUCT": "wifi", "T_KIOSK": "an-old-password"})
 check("rc=0" in r.stdout and "kiosk" not in r.stdout.lower().replace("fails=", ""), "wifi: the agreement skips the kiosk Wi-Fi and the PisoKiosk link, and reports no problem: " + r.stdout[-400:] + r.stderr)
-r = agree(env={"SHOP_PRODUCT": "wifi"}, extra="conf_set KIOSK_PASS ''; echo old > \"$SUMMARY\"; echo \"$(conf_get BOX_ADMIN_PASS)\" > \"$SUMMARY\"")
-check("rc=0" in r.stdout, "wifi: the summary check needs only the coin box password: " + r.stdout[-300:])
+r = agree(env={"SHOP_PRODUCT": "wifi"}, extra="conf_set KIOSK_PASS ''; printf '%s\\n' \"$(conf_get BOX_ADMIN_PASS)\" \"$(conf_get ADMIN_PASS)\" > \"$SUMMARY\"")
+check("rc=0" in r.stdout, "wifi: the summary checks the admin and coin box passwords: " + r.stdout[-300:])
+for key, value in (("T_ADMIN_KEY", "wrong"), ("T_ADMIN_SSID", "PisoAdmin-ffff"), ("T_ADMIN_DOWN", "1")):
+    r = agree(env={"SHOP_PRODUCT": "wifi", key: value})
+    check("rc=1" in r.stdout and "FAIL  the admin network" in r.stdout, f"wifi: agreement detects {key}")
+r = agree(env={"SHOP_PRODUCT": "wifi"}, extra="conf_del ADMIN_PASS; echo NewPassw0rdXYZ > \"$SUMMARY\"", code="ag_is_summary")
+check("rc=0" in r.stdout, "wifi: the old summary is accepted when no admin password is stored yet")
 r = agree(env={"SHOP_PRODUCT": "both", "T_KIOSK": "an-old-password"})
 check("rc=1" in r.stdout and "kiosk network" in r.stdout, "both: the kiosk check is still there")
 check("wifi_only ||" in text.split("check_all() {")[1].split("\n}\n")[0] and "hidden Wi-Fi $KIOSK_SSID" in text.split("check_all() {")[1], "the stage-2 checks skip the kiosk Wi-Fi on a wifi router")
 # summary, handout, plan
 r = lib('rm -f $CONF; SHOP_PRODUCT=wifi; conf_set ROOT_PASS_SET 1; write_summary; cat "$SUMMARY"; HANDOUT=' + tmp + '/h-wifi.html write_handout > /dev/null; cat ' + tmp + '/h-wifi.html')
-check("Kiosk Wi-Fi" not in r.stdout and "Rental-phone Wi-Fi" not in r.stdout and "rental phone" not in r.stdout.lower() and "PisoKiosk" not in r.stdout.split("<html")[1] and "Customer Wi-Fi" in r.stdout and "Coin box" in r.stdout,
+check("Kiosk Wi-Fi" not in r.stdout and "Rental-phone Wi-Fi" not in r.stdout and "rental phone" not in r.stdout.lower() and "PisoKiosk" not in r.stdout.split("<html")[1] and "Customer Wi-Fi" in r.stdout and "Coin box" in r.stdout and "Admin Wi-Fi:" in r.stdout and "Admin Wi-Fi (hidden)" in r.stdout,
       "wifi: the summary and the handout have no rental-phone Wi-Fi lines: " + r.stdout[:600])
 r = lib('rm -f $CONF; conf_set ROOT_PASS_SET 1; write_summary; cat "$SUMMARY"; HANDOUT=' + tmp + '/h-both.html write_handout > /dev/null; cat ' + tmp + '/h-both.html')
 check("Kiosk Wi-Fi:" in r.stdout and "Rental-phone Wi-Fi (hidden)" in r.stdout and "Setting up a new rental phone" in r.stdout, "both: the summary and the handout keep their rental-phone lines")
@@ -1537,7 +1769,7 @@ def at_terminal(code, answer):
     """Run shell code with a real terminal on stdin (the question is only asked at a terminal) and type an answer."""
     open(f"{tmp}/swconf", "w").write(BOTHCONF)
     env = dict(os.environ, PATH=f"{bindir}:" + os.environ["PATH"], PISO_SETUP_SOURCE_ONLY="1", PISO_LOG=f"{tmp}/log2", PISO_STATE=f"{tmp}/state2",
-               PISO_ROUTER_ID="a1b2", SHOP_PRODUCT="wifi", **senv)
+               PISO_ROUTER_ID="a1b2", SHOP_PRODUCT="wifi", ADMIN_PASSWORD="OwnerAdmin123", **senv)
     pid, fd = pty.fork()
     if pid == 0:
         os.execvpe("sh", ["sh", "-c", f". {SCRIPT}; {code}"], env)
@@ -1583,7 +1815,7 @@ def stage1_at_terminal(answers, fail_install=False):
              + ('install_packages() { die "no internet"; }; ' if fail_install else "install_packages() { echo PACKAGES; }; ")
              + f'apply_batch() {{ echo APPLY-RAN; uci_batch "$@" > {tmp}/applied.uci; }}; ')
     env = dict(os.environ, PATH=f"{bindir}:" + os.environ["PATH"], PISO_SETUP_SOURCE_ONLY="1", PISO_LOG=f"{tmp}/log2", PISO_STATE=f"{tmp}/state2",
-               PISO_SUMMARY=f"{tmp}/sum2", PISO_ROUTER_ID="a1b2", SHOP_PRODUCT="wifi", **senv)
+               PISO_SUMMARY=f"{tmp}/sum2", PISO_ROUTER_ID="a1b2", SHOP_PRODUCT="wifi", ADMIN_PASSWORD="OwnerAdmin123", **senv)
     if os.path.exists(f"{tmp}/applied.uci"):
         os.remove(f"{tmp}/applied.uci")
     pid, fd = pty.fork()
@@ -1624,8 +1856,23 @@ check("KIOSK_PASS='oldKioskPw1'" in conf_now and "SHOP_PRODUCT='wifi'" not in co
 out = stage1_at_terminal(["y", "y"])
 conf_now = open(f"{tmp}/swconf").read()
 applied = open(f"{tmp}/applied.uci").read() if os.path.exists(f"{tmp}/applied.uci") else ""
-parts = ("STAGE2-RAN" in out, "KIOSK_PASS" not in conf_now, "SHOP_PRODUCT='wifi'" in conf_now, bool(applied), "wireless.kiosk_" not in applied, "wireless.guest_radio0" in applied)
+parts = ("STAGE2-RAN" in out, "KIOSK_PASS" not in conf_now, "SHOP_PRODUCT='wifi'" in conf_now, bool(applied), "wireless.kiosk_" not in applied, "wireless.guest_radio0" in applied,
+         "wireless.admin_radio0.key='OwnerAdmin123'" in applied, "ADMIN_SSID_NAME='PisoAdmin-a1b2'" in conf_now,
+         "firewall.admin_console.dest_port='80 81'" in applied)
 check(all(parts),
       "wifi switch completed: KIOSK_PASS deleted, product wifi stored, no kiosk Wi-Fi written: " + out[-300:] + conf_now + " parts=" + str(parts))
+
+w_ck = ('wifi_only() { return 0; }; isolation_on() { return 0; }; agree_all() { return 0; }; wait_until() { return 0; }; '
+        'update_timer_ok() { return 0; }; update_check_recent() { return 0; }; wan_clash() { return 1; }; '
+        'ip() { echo "inet $LAN_IP/ inet $GUEST_IP/"; }; iwinfo() { :; }; uci() { :; }; box_up() { return 0; }; '
+        'ping() { return 0; }; anti_tether_on() { return 0; }; ')
+r = lib('rm -f $CONF; ' + w_ck + 'curl() { echo "<title>TechNet PisoHub admin</title>"; }; DRY=1 check_all; echo "RC1=$?"; '
+        'curl() { echo "<title>TechNet PisoWiFi</title>"; }; DRY=1 check_all; echo "RC2=$?"',
+        env={"PISO_ROOT": root})
+check("FAIL  coin box runs full PisoHub firmware instead of PisoWiFi-only firmware" in r.stdout.split("RC1=")[0]
+      and "runs full PisoHub firmware" not in r.stdout.split("RC1=")[1].split("RC2=")[0]
+      and int(r.stdout.split("RC1=")[1].splitlines()[0]) == int(r.stdout.split("RC2=")[1].splitlines()[0]) + 1,
+      "wifi_only check_all fails (+1 error) when coin box serves full PisoHub dashboard, passes on PisoWiFi: " + r.stdout)
+
 print(f"{checks} checks, {failures} failures")
 sys.exit(1 if failures else 0)

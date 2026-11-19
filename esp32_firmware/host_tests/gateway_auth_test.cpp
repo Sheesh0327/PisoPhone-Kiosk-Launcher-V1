@@ -1,5 +1,7 @@
 // Host test for GatewayAuth.h: signature format, one-time nonces, expiry, tampering.
 #include "../include/GatewayAuth.h"
+#include "../include/GatewayEvent.h"
+#include "protocol_fixture.h"
 #include <cstdio>
 
 using namespace gatewayauth;
@@ -108,6 +110,18 @@ int main() {
     CHECK(signResponse("another-key-0123456789", "status", "abc123", TNONCE, "armed:0:3:1003:true:0:6") != base);
     // and it is not the signature of a request
     CHECK(signResponse(TKEY, "status", "abc123", TNONCE, "") != signRequest(TKEY, "status", "abc123", TNONCE));
+
+    // Shared protocol/fixtures/gateway_v1.json vectors
+    for (const GwReqVec& v : GW_REQ_VECTORS) {
+        CHECK(signRequest(v.key, v.action, v.session, v.nonce) == v.sig);
+    }
+    for (const GwRespVec& v : GW_RESP_VECTORS) {
+        CHECK(signResponse(v.key, v.action, v.session, v.nonce, v.facts) == v.rsig);
+    }
+    for (const GwEventVec& v : GW_EVENT_VECTORS) {
+        CHECK(gatewayevent::body(v.session, v.wid, (uint32_t)v.seq, v.type, v.pulses) == v.body);
+        CHECK(gatewayevent::line(v.key, v.session, v.wid, (uint32_t)v.seq, v.type, v.pulses) == v.line);
+    }
 
     printf("gateway_auth_test: %d checks, %d failures\n", checks, failures);
     return failures ? 1 : 0;

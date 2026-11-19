@@ -1,8 +1,8 @@
 {
-  "version": "1.5.33",
-  "sha256": "b8f1acad48073315e2e50c8fb14c6c3cfcdd22bb166f4df5a0f04f99475a8699",
-  "size": 1686330,
+  "version": "1.5.48",
+  "sha256": "240d150900440beb163f03fbf8b91da5f3b8c4b3dbd6eef88ecce987cbd2be91",
+  "size": 963321,
   "rollout": 100,
-  "changelog": "Admin console layout update. ",
-  "sig": "MEYCIQC7a8AceVXjR08i4d8htwwwHxLq9V1tTtyAL3g9M8dAggIhALIYJaD5l6EX5+Q/EU7c1QC9s5Rx/AkfzaCCPNL5GzF6"
+  "changelog": "Shop backdrop, looping coin-insert music, and corrected Admin Wi-Fi QR codes.",
+  "sig": "MEUCIBGc6A96evZWsOlzU1AZuS9mNDyGTOuCBIJN8HvGkDicAiEA27AgB9rOMYNPSVOjocDRl4CThlXqUNoW0Gi5xnptlHc="
 }

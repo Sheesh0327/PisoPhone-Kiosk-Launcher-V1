@@ -5,10 +5,10 @@ cd "$(dirname "$0")/.." || exit 1
 fail=0
 bad() { echo "RULE VIOLATION: $1"; fail=1; }
 
-CODE_DIRS="app esp32_firmware website scripts router setup tools/pisoportal/src tools/pisoportal/tests protocol .github"
+CODE_DIRS="app esp32_firmware esp32_wifi_firmware website scripts router setup tools/pisoportal/src tools/pisoportal/tests protocol .github"
 # website/js/yume-chan-bundle.js is a vendored third-party bundle; it is never scanned. ($EXCLUDE is split into words on
 # purpose wherever it is used.)
-EXCLUDE='--exclude-dir=.git --exclude-dir=build --exclude-dir=target --exclude-dir=node_modules --exclude-dir=__pycache__ --exclude=yume-chan-bundle.js --exclude=check_security_rules.sh'
+EXCLUDE='--exclude-dir=.git --exclude-dir=.pio --exclude-dir=build --exclude-dir=target --exclude-dir=node_modules --exclude-dir=__pycache__ --exclude=yume-chan-bundle.js --exclude=check_security_rules.sh'
 
 # 1. No private keys anywhere in the repository (the signing keys live offline). Binary files are skipped (-I): a firmware image
 # contains the mbedTLS parser's own text "-----BEGIN EC PRIVATE KEY-----", which is not a key.
@@ -65,7 +65,7 @@ fi
 # 8. Source folders hold source. A pile of Python packages once got committed into app/src (135 MB, never in the APK); nothing
 #    but code and resources may sit next to the Kotlin and C++ files, and no file over 5 MB may be tracked outside the folders
 #    CI publishes builds into (website/ and tools/pisoportal/bin/).
-bad_files=$(git ls-files app/src/main/java app/src/test/java app/src/androidTest/java esp32_firmware/src esp32_firmware/include 2>/dev/null | grep -vE '\.(kt|java|cpp|h|hpp|c|ino)$')
+bad_files=$(git ls-files app/src/main/java app/src/test/java app/src/androidTest/java esp32_firmware/src esp32_firmware/include esp32_wifi_firmware/src esp32_wifi_firmware/include 2>/dev/null | grep -vE '\.(kt|java|cpp|h|hpp|c|ino)$')
 if [ -n "$bad_files" ]; then
     echo "$bad_files"
     bad "files that are not source sit in a source folder (listed above)"

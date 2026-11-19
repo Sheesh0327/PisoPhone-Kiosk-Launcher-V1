@@ -48,9 +48,7 @@ store_product() { [ "$DRY" = 1 ] || conf_set SHOP_PRODUCT "$(shop_product)"; }
 # ---------------------------------------------------------------------------------------------------------------------
 # This router's own Wi-Fi names
 # ---------------------------------------------------------------------------------------------------------------------
-# Every router used to broadcast the same hidden names (PisoKiosk, PisoCoinBox) with its own passwords. Two routers in range of each
-# other (two shops, or a second router being set up next to a working one) then competed for the same phones and the same coin box,
-# which joined the wrong one and failed. A router set up now gets names with its own ending, built from its MAC address.
+# A suffix from the router's MAC keeps nearby installations from sharing an SSID.
 
 # router_id: the last two bytes of this router's MAC address as four lower-case hex digits (PISO_ROUTER_ID overrides it for tests)
 router_id() {
@@ -62,20 +60,35 @@ router_id() {
 	rand 4 hex   # (no MAC address found: a random ending; resolve_wifi_names only stores it when a setup runs)
 }
 
-# resolve_wifi_names: KIOSK_SSID and BOX_SSID for this router. What a setup chose stays (KIOSK_SSID_NAME, BOX_SSID_NAME in the
-# settings file); a router that was set up before this existed (it has a stored kiosk password) keeps the old shared names, so
-# nothing changes for its phones and coin box; a router that is new gets names with its own ending.
+# Resolve names in memory. Old routers with a kiosk password retain their original shared names.
 resolve_wifi_names() {
-	_kn=$(conf_get KIOSK_SSID_NAME); _bn=$(conf_get BOX_SSID_NAME)
-	if [ -n "$_kn" ] && [ -n "$_bn" ]; then KIOSK_SSID="$_kn"; BOX_SSID="$_bn"; return 0; fi
-	# (a box name stored alone is the one piso-setup box-wifi-name gave an older router: only the box network is renamed, never the phones')
-	if [ -n "$(conf_get KIOSK_PASS)" ]; then KIOSK_SSID="$KIOSK_BASE"; BOX_SSID="${_bn:-$BOX_PAIR_SSID}"; return 0; fi
-	_id=$(router_id)
-	KIOSK_SSID="$KIOSK_BASE-$_id"; BOX_SSID="$BOX_PAIR_SSID-$_id"
+	_kn=$(conf_get KIOSK_SSID_NAME); _bn=$(conf_get BOX_SSID_NAME); _id=""
+	ADMIN_SSID=$(conf_get ADMIN_SSID_NAME)
+	if [ -z "$ADMIN_SSID" ]; then
+		for _name in "$_kn" "$_bn"; do
+			case "$_name" in
+				*-[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]) ADMIN_SSID="$ADMIN_BASE-${_name##*-}"; break ;;
+			esac
+		done
+	fi
+	if [ -n "$_kn" ] && [ -n "$_bn" ]; then KIOSK_SSID="$_kn"; BOX_SSID="$_bn"
+	elif [ -n "$(conf_get KIOSK_PASS)" ]; then KIOSK_SSID="$KIOSK_BASE"; BOX_SSID="${_bn:-$BOX_PAIR_SSID}"
+	else
+		_id=$(router_id)
+		KIOSK_SSID="$KIOSK_BASE-$_id"; BOX_SSID="$BOX_PAIR_SSID-$_id"
+	fi
+	if [ -z "$ADMIN_SSID" ]; then
+		[ -n "$_id" ] || _id=$(router_id)
+		ADMIN_SSID="$ADMIN_BASE-$_id"
+	fi
 }
 
 # remember_wifi_names: store the resolved names (a setup run does this before it writes any Wi-Fi setting)
-remember_wifi_names() { conf_set KIOSK_SSID_NAME "$KIOSK_SSID"; conf_set BOX_SSID_NAME "$BOX_SSID"; }
+remember_wifi_names() {
+	conf_set KIOSK_SSID_NAME "$KIOSK_SSID"
+	conf_set BOX_SSID_NAME "$BOX_SSID"
+	if wifi_only; then conf_set ADMIN_SSID_NAME "$ADMIN_SSID"; fi
+}
 
 # box_net_ssid: the name the box's hidden network has right now. A box that is not paired yet only knows the built-in name; once
 # it has its own Wi-Fi password (rotate_box_wifi) it is also told this router's name and the network takes it.

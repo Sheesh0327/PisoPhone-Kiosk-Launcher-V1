@@ -107,7 +107,7 @@ For the next phone, choose the next slot and make the link again.
 | "... installs packages with apk" | The router runs OpenWrt 25.x (or a snapshot), which this setup does not support yet. Use OpenWrt 23.05 or 24.10 (`docs/ROUTERS.md`). Nothing was changed on the router. |
 | The Phones step says to plug the modem into the WAN port | A rental phone gets the app through the router, so the router needs internet. Plug the modem into the router's WAN port, wait a minute, tap *Check again*. |
 | "The router has no internet, and the first setup needs it" / "The router could not download..." | The router needs internet for the first setup. Plug the modem into the router's WAN port, wait a minute until the modem is online, then tap *Try again*: nothing was changed on the router. |
-| The coin box takes long to join, or never, while another PisoHub router is on | Another router nearby may answer the name a new box knows (`PisoCoinBox`). Switch it off for a few minutes while this one pairs, or run `piso-setup box-wifi-name` on it (see "Prefer to do it by hand?" in `MANUAL.md`). After pairing, this router gives its box a name of its own. |
+| The coin box takes long to join, or never, while another PisoHub router is on | Another router nearby may answer the name a new box knows (`PisoCoinBox`). Switch it off for a few minutes while this one pairs, or run `piso-setup box-wifi-name` on it (see [Prefer to do it by hand?](#prefer-to-do-it-by-hand) below). After pairing, this router gives its box a name of its own. |
 | "The coin box did not join" | Is the box powered (the USB cable does it), near the router, and written by this program (it erases the board first)? Tap *Try again*: the installation continues where it stopped. |
 | esptool or ssh "Missing" on the first page | Tap *Install what is missing*. Without root rights it shows the exact `sudo apt install ...` command to run. |
 | The phone does not ask "Allow USB debugging?" | Unlock the phone, use a data cable, unplug and replug. Or use the on-phone setting. |
@@ -127,7 +127,7 @@ In the terminal the same choice is `--product wifi|phone|both` (asked when missi
 ## Advanced: setting up by hand
 
 > **Most people should not need this page.** The setup program does every step below for you, in a web page that guides you (open it on your phone)
-> from the bare boards to working phones: see [`README.md`](README.md). Use this manual when you prefer to do it yourself, to
+> from the bare boards to working phones: see [the Start page](https://pisophone.pages.dev/start/) or the top of [this guide](#start-it). Use this manual when you prefer to do it yourself, to
 > understand what the program does, or to repair one part of an installed system.
 
 One file, `piso-setup.sh`, turns a factory-reset OpenWrt router into the whole PisoWiFi system. This manual follows the same
@@ -202,7 +202,7 @@ expected. Unplug and replug the computer's cable (or wait a minute), then contin
 ssh root@10.0.0.1
 sh /tmp/piso-setup.sh
 ```
-(The installer prints the exact path. If the router restarts before you log in again, the copy in `/tmp` is gone: run the one-line installer again. After a good install the setup deletes its copy, so the 1.6 MB never stays on flash; after a failed one the copy stays, so you can run it again. A router that is already at 10.0.0.1 goes straight on to the setup.) If the modem itself uses `10.0.0.x`, the installer stops and
+(The installer prints the exact path. If the router restarts before you log in again, the copy in `/tmp` is gone: run the one-line installer again. After a good install the setup deletes its copy, so the compressed installer file (~861 KB) never stays on flash; after a failed one the copy stays, so you can run it again. A router that is already at 10.0.0.1 goes straight on to the setup.) If the modem itself uses `10.0.0.x`, the installer stops and
 tells you to change the modem's address first.
 
 Other uses of the same line: `... | sh -s update` installs new software on a router that is set up already, and
@@ -296,11 +296,17 @@ sets a root password, and ends with a health check. The router's wired LAN ports
 ### Day to day
 | command | what it does |
 |---|---|
-| `piso-setup status` | checks every part |
+| `piso-setup status` | checks every part and reports overall health |
 | `piso-setup wifi-name "Name"` | renames the customer Wi-Fi (also the login page title) |
 | `piso-setup pair` | replaces the coin box: re-opens pairing for a few minutes, then locks to the new box |
-| `piso-setup summary` | shows the saved passwords again |
+| `piso-setup summary` | shows the saved passwords and network names again |
 | `piso-setup voucher-choice [on\|off]` | the coin page offers "Use now" or "Get a voucher code" before Insert Coin (**default on**). Off: the page is exactly as it was before vouchers. Same switch as the console's **Settings** page; whichever was changed last wins (see below). |
+| `piso-setup anti-tether [on\|off\|status]` | controls anti-tethering on the customer Wi-Fi (**default on**): clamps outgoing packets to TTL=1 and drops tethered packets (TTL 61-63, 125-127) at prerouting to defeat mobile hotspot and USB tethering. |
+| `piso-setup brand-pack <file>` | installs a signed shop brand pack (custom logo and assets) for the guest Wi-Fi portal. |
+| `piso-setup export [file]` / `import <file>` | exports or restores router configuration, vouchers, sales ledger, and branding. |
+| `piso-setup space` | displays flash storage hardware details, chip type (NOR/NAND), and free space on `/overlay`. |
+| `piso-setup box-diag` | diagnoses coin box connection, Wi-Fi pairing state, IP address, and signal strength. |
+| `piso-setup set-password` | updates the router root password (SSH and LuCI) and saves it to configuration. |
 
 ### Voucher codes (customers buy them with coins)
 There is no batch to make and nothing to print. On the coin page a customer picks **Use now** (the default: coins add time at once) or **Get a voucher code**.
@@ -344,7 +350,7 @@ The setup asks you to choose the router password (or shows a generated one and a
 | `piso-setup rotate-box-wifi` | gives the coin box a new random Wi-Fi password for the hidden box network (done automatically by the setup). |
 | `piso-setup box-wifi-name` | for a router whose box network is still called `PisoCoinBox` (set up before 1.5.0, or its box password change failed; `piso-setup status` says so): gives it the router's own name `PisoCoinBox-<id>` and a new password, so a second router set up nearby cannot take the box's place. The box is off its network for up to four minutes; its coins are kept in the box and credited once afterwards. It asks first (`--yes` skips the question). The rental phones' network is not changed. An update never runs it. |
 | `piso-setup lock-admin [MAC...]` | opt-in: only the named computers (default: the one you are on) may reach the router's SSH and web pages (ports 22, 80, 443, 8080, 8443 and the console's 8081); the rental phones can no longer try them. It **undoes itself after 2 minutes unless you open a new SSH session to check, then type CONFIRM** (or run `piso-setup lock-admin-confirm`), so it cannot lock you out. `piso-setup unlock-admin` removes it. |
-| `piso-setup wifi-admin [on\|off]` | whether the router's own login pages (SSH, LuCI) answer on Wi-Fi. Off is the normal state (since 1.5.10): rental phones cannot even see them; a computer on a LAN cable always can. The owner's console page is not affected |
+| `piso-setup wifi-admin [on\|off]` | whether the router's own login pages (SSH, LuCI) answer on Wi-Fi. Off is the normal state (since 1.5.10): rental phones cannot even see them; a computer on a LAN cable always can. The owner's console page is not affected. |
 | `piso-setup diag` | prints one block (status, manager, box, firewall, recent logs; no passwords) to paste when asking for help. |
 
 ### If something fails

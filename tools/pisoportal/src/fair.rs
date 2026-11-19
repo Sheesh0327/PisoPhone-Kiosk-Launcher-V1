@@ -11,6 +11,7 @@ pub fn tick(core: &Arc<Core>) {
     core.check_clock();
     let cfg = &core.cfg;
     let now = now_secs();
+    let mut authed = std::collections::HashSet::new();
     for (mac, state, kb) in core.nds.clients() {
         if state == "Preauthenticated" {
             core.heal(&mac);
@@ -19,10 +20,18 @@ pub fn tick(core: &Arc<Core>) {
         if state != "Authenticated" {
             continue;
         }
-        let Some(s) = ({
+        authed.insert(mac.clone());
+        let (s, expired) = {
             let _g = core.files.lock().unwrap();
-            roll::session_active(&cfg.roll_path(), now, &mac)
-        }) else {
+            match roll::session_active(&cfg.roll_path(), now, &mac) {
+                Some(s) => (Some(s), false),
+                None => (None, roll::is_expired(&cfg.roll_path(), now, &mac)),
+            }
+        };
+        let Some(s) = s else {
+            if expired && core.nds.deauth_if_authenticated(&mac) {
+                log!("expired session {} deauthenticated", mac);
+            }
             continue;
         };
         if s.plan != Plan::Hyper {
@@ -54,6 +63,18 @@ pub fn tick(core: &Arc<Core>) {
         }
         core.st.lock().unwrap().fair.insert(mac, next);
     }
+    // Also heal active non-paused clients that openNDS removed on expiry so they are not stranded in state ""
+    let missing: Vec<String> = {
+        let _g = core.files.lock().unwrap();
+        roll::load(&cfg.roll_path())
+            .into_iter()
+            .filter(|e| !e.paused() && e.left(now) > 0 && !authed.contains(&e.mac))
+            .map(|e| e.mac)
+            .collect()
+    };
+    for mac in missing {
+        core.heal(&mac);
+    }
 }
 
 pub fn run(core: Arc<Core>) {
@@ -69,5 +90,47 @@ pub fn run(core: Arc<Core>) {
                 log!("reconcile: {}", note);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::Config;
+    use crate::util::now_secs;
+
+    #[cfg(unix)]
+    #[test]
+    fn fair_tick_heals_active_roll_client_missing_from_opennds() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = std::env::temp_dir().join(format!("pisoportal-fair-missing-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let state_file = d.join("state");
+        let log_file = d.join("calls.log");
+        std::fs::write(&state_file, "").unwrap(); // evicted / deleted from openNDS client list
+        let script = d.join("nds.sh");
+        let sh = format!(
+            "#!/bin/sh\necho \"$*\" >> \"{log}\"\nSF=\"{sf}\"\ncase \"$1\" in\n  json)\n    if [ -n \"$2\" ]; then printf '{{\"state\":\"%s\"}}\\n' \"$(cat \"$SF\")\"; else printf '{{\"clients\":{{}}}}\\n'; fi\n    ;;\n  auth) printf 'Authenticated' > \"$SF\"; echo \"ok\" ;;\nesac\n",
+            log = log_file.display(),
+            sf = state_file.display()
+        );
+        std::fs::write(&script, sh).unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let mut cfg = Config::from_map(std::collections::HashMap::new());
+        cfg.data_dir = d.to_string_lossy().into_owned();
+        cfg.ndsctl = script.to_string_lossy().into_owned();
+        let core = Core::new(cfg);
+        let mac = "aa:bb:cc:00:00:99";
+        let now = now_secs();
+        let e = roll::Entry::parse(&format!("c1,0,0,0,0,60,{},{},0,0,0,hyper,w1,10,60,0,1", now, mac)).unwrap();
+        roll::save(&core.cfg.roll_path(), &[e]).unwrap();
+
+        tick(&core);
+
+        let calls = std::fs::read_to_string(&log_file).unwrap();
+        assert!(calls.contains(&format!("auth {} ", mac)), "fair::tick must heal paid client deleted from openNDS: {}", calls);
+        let _ = std::fs::remove_dir_all(&d);
     }
 }

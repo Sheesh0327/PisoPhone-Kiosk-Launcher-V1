@@ -22,7 +22,7 @@ cmd_wifi_name() {
 	_n="$1"
 	[ -n "$_n" ] || { echo "usage: piso-setup wifi-name \"New Name\"" >&2; exit 1; }
 	[ "${#_n}" -le 32 ] || { echo "the name can be at most 32 characters" >&2; exit 1; }
-	case "$_n" in "$KIOSK_SSID" | "$KIOSK_BASE" | "$BOX_SSID" | "$BOX_PAIR_SSID") echo "that name is reserved" >&2; exit 1 ;; esac
+	case "$_n" in "$KIOSK_SSID" | "$KIOSK_BASE" | "$BOX_SSID" | "$BOX_PAIR_SSID" | "$ADMIN_SSID" | "$ADMIN_BASE") echo "that name is reserved" >&2; exit 1 ;; esac
 	case "$_n" in *\'* | *\"* | *\\* | *\$* | *\`*) echo "please avoid quotes, backslashes, \$ and backticks in the name" >&2; exit 1 ;; esac
 	for s in $(uci -q show wireless | sed -n 's/^\(wireless\.guest_[^.=]*\)=wifi-iface$/\1/p'); do uci set "$s.ssid=$_n"; done
 	uci set opennds.@opennds[0].gatewayname="$_n"
@@ -54,6 +54,30 @@ cmd_voucher_choice() {
 			else echo "The choice is off: coins always buy time at once, as before."; fi ;;
 		"") echo "The voucher choice is $([ "$(conf_get VOUCHER_CHOICE)" = off ] && echo off || echo on) (a change made in the console after this may differ: see its Settings page). Change with: piso-setup voucher-choice on|off" ;;
 		*) echo "usage: piso-setup voucher-choice [on|off]" >&2; return 1 ;;
+	esac
+}
+
+# piso-setup anti-tether [on|off|status]: stops customers sharing paid Wi-Fi via hotspot/USB tethering (default on).
+cmd_anti_tether() {
+	case "${1:-status}" in
+		status)
+			if [ "$(conf_get ANTI_TETHER)" = off ]; then
+				echo "Anti-tethering is OFF. Turn it on: piso-setup anti-tether on"
+			else
+				echo "Anti-tethering is ON (TTL=1 out, TTL 61-63/125-127 dropped in). Turn it off: piso-setup anti-tether off"
+			fi ;;
+		on)
+			[ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"
+			conf_set ANTI_TETHER on; apply_isolation
+			if [ -x "$PISO_ROOT/etc/hotplug.d/firewall/50-piso-isolation" ] && ! anti_tether_on; then
+				echo "WARNING: could not load anti-tethering firewall rule (check: piso-setup diag)." >&2; return 1
+			fi
+			echo "Anti-tethering is now ON (TTL=1 out, TTL 61-63/125-127 dropped in)." ;;
+		off)
+			[ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"
+			conf_set ANTI_TETHER off; apply_isolation
+			echo "Anti-tethering is now OFF." ;;
+		*) echo "usage: piso-setup anti-tether [on|off|status]" >&2; return 1 ;;
 	esac
 }
 
@@ -201,6 +225,7 @@ cmd_diag() {
 	echo "--- coin box link"; cmd_box_diag 2>&1
 	echo "--- firewall tables"; nft list tables 2> /dev/null
 	echo "--- guests apart; phones reach the router and the coin box only (both tables must be listed; if not, this router lacks kmod-nft-bridge)"; nft list table bridge piso_guest 2>&1 | head -12; nft list table bridge piso_kiosk 2>&1 | head -40
+	echo "--- anti-tethering ($([ "$(conf_get ANTI_TETHER)" = off ] && echo off || echo on): TTL=1 out, TTL 61-63/125-127 dropped in)"; nft list table inet piso_anti_tether 2>&1 | head -20
 	echo "--- openNDS"; uci -q get opennds.@opennds[0].gatewayinterface; ndsctl status 2>&1 | head -12
 	echo "--- guests as openNDS sees them (a paying phone must be Authenticated)"; ndsctl json 2> /dev/null | grep -E '"(mac|ip|state|session_end|download_this_session)"' | head -40
 	echo "--- rules openNDS built for guests (an Authenticated phone's traffic must reach an accept rule)"
@@ -227,12 +252,12 @@ cmd_update() {
 	[ -x /etc/init.d/pisoportal ] && /etc/init.d/pisoportal stop > /dev/null 2>&1 && PORTAL_RESTORE=1   # (no program is replaced while it runs; started again on an error)
 	remove_old_portal
 	extract_payload "$0"
-	write_coinslot_conf "$(conf_get GW_KEY)" "$(conf_get BOX_MAC)"
+	PISO_SKIP_ISOLATION=1 write_coinslot_conf "$(conf_get GW_KEY)" "$(conf_get BOX_MAC)"
 	sync_kiosk_wifi
 	[ -x /etc/init.d/pisoportal ] && { /etc/init.d/pisoportal enable; /etc/init.d/pisoportal start; }
 	PORTAL_RESTORE=0
 	# openNDS and the firewall as this version needs them (a router set up with the earlier ThemeSpec portal is moved over)
-	(umask 077; { portal_uci "$(conf_get GUEST_NAME)"; router_access_uci; } > /tmp/piso-setup.uci)
+	(umask 077; { portal_uci "$(conf_get GUEST_NAME)"; router_access_uci; if wifi_only; then admin_firewall_uci; fi; } > /tmp/piso-setup.uci)
 	uci_apply /tmp/piso-setup.uci
 	rm -f /tmp/piso-setup.uci
 	if [ -n "$(uci changes firewall 2> /dev/null)$(uci changes opennds 2> /dev/null)" ]; then

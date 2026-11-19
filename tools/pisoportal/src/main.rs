@@ -26,6 +26,7 @@ mod http;
 mod ledger;
 mod nds;
 mod pricing;
+mod qr;
 mod reconcile;
 mod roll;
 mod send;

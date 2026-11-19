@@ -28,7 +28,7 @@ sys.path.insert(0, HERE)
 import test_page_golden_cases as G
 
 TINY_PNG = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC")
-REPLACED = {"TechNet", "PisoWifi", "TechNet Solutions · Connect · Play · More Possibilities", "Pick a plan, insert a coin and you are online."}
+REPLACED = {"TechNet", "PisoWifi", "TechNet Solutions", "Choose a plan. Tap Insert Coin."}
 SHOP = "Aling Nena's Net Cafe"
 BRAND = (f"name={SHOP}\npalette=dagat\naccent=#ff7a1a\ntagline_en=Mabilis. Mura. Malinis.\nwelcome_en=Welcome to our shop!\n"
          "contact_en=0917 123 4567\nhours_en=Open 8am to 10pm\npromo_en=Happy hour: double time until 5pm\nrules_en=No illegal downloads.\\nBe kind.\n")
@@ -73,6 +73,22 @@ try:
         chrome = os.environ.get("CHROME") or next((c for c in [shutil.which(x) for x in ("google-chrome", "chromium", "chromium-browser")] + glob.glob("/opt/pw-browsers/chromium-*/chrome-linux*/chrome") if c), None)
         br = pw.chromium.launch(executable_path=chrome, args=["--no-sandbox"]) if chrome else pw.chromium.launch()
         ctx = G.at_fixed_time(br.new_context(viewport={"width": 360, "height": 740}, locale="en-US", timezone_id="UTC"))
+        snapshots = os.environ.get("PISO_SCREENSHOT_DIR")
+        if snapshots:
+            pathlib.Path(snapshots).mkdir(parents=True, exist_ok=True)
+            for layout in ("default_technet", "branded_classic", "branded_banner", "branded_poster"):
+                published = pathlib.Path(brand_dir, "published.txt")
+                if layout == "default_technet":
+                    published.unlink()
+                else:
+                    published.write_text(BRAND + f"layout={layout.removeprefix('branded_')}\n")
+                shot = ctx.new_page()
+                shot.route_web_socket("**/ws", G.answering(json.dumps(G.CASES["idle_new_customer"])))
+                shot.goto(page_url)
+                shot.wait_for_timeout(700)
+                shot.screenshot(path=f"{snapshots}/portal_{layout}.png", full_page=True)
+                shot.close()
+            published.write_text(BRAND)
         for name, state in G.CASES.items():
             print("  state", name, flush=True)
             pg = ctx.new_page()

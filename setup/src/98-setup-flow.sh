@@ -1,13 +1,47 @@
 cmd_pair() {
-	DRY=0; [ "$(id -u)" = 0 ] || die "run as root"
-	conf_set BOX_MAC ""
+	DRY=0; [ "$(id -u)" = 0 ] || [ -n "$PISO_TEST_NONROOT" ] || die "run as root"
+	[ -n "$(conf_get GW_KEY)" ] || die "this router is not set up yet: run piso-setup first"
+	_lock="${TMPDIR:-/tmp}/piso-pair.lock"
+	if ! mkdir "$_lock" 2> /dev/null; then
+		_pid=$(cat "$_lock/pid" 2> /dev/null)
+		if [ -n "$_pid" ] && kill -0 "$_pid" 2> /dev/null; then
+			die "another pairing run is already active (pid $_pid)"
+		fi
+		rm -rf "$_lock"; mkdir "$_lock" || die "could not create $_lock"
+	fi
+	echo $$ > "$_lock/pid"; PAIR_LOCK="$_lock"
+
+	# Adopt any custom box Wi-Fi SSID/password already in UCI before pair_box opens the default setup AP
+	if [ -z "$(conf_get BOX_SSID_NAME)" ]; then
+		_us=$(uci -q get wireless.box_ap.ssid 2> /dev/null)
+		if [ -n "$_us" ] && [ "$_us" != "$BOX_PAIR_SSID" ]; then
+			conf_set BOX_SSID_NAME "$_us"
+			BOX_SSID="$_us"
+		fi
+	fi
+	if [ -z "$(conf_get BOX_WIFI_PASS_NEW)" ]; then
+		_uk=$(uci -q get wireless.box_ap.key 2> /dev/null)
+		if [ -n "$_uk" ] && [ "$_uk" != "$BOX_DEFAULT_WIFI" ]; then
+			conf_set BOX_WIFI_PASS_NEW "$_uk"
+			conf_set BOX_WIFI_ROTATED 1
+		fi
+	fi
+
 	pair_box
 	write_coinslot_conf "$(conf_get GW_KEY)" "$BOX_MAC"
-	provision_box "$(conf_get BOX_ADMIN_PASS_NEW)" "$(conf_get GW_KEY)"
+	_apw="$(conf_get BOX_ADMIN_PASS)"
+	[ -n "$_apw" ] || _apw="$(conf_get BOX_ADMIN_PASS_NEW)"
+	[ -n "$_apw" ] || _apw="$(secret BOX_ADMIN_PASS_NEW 16)"
+	provision_box "$_apw" "$(conf_get GW_KEY)"
 	rotate_box_wifi
-	/etc/init.d/pisoportal restart
+	[ -x "$PORTAL_BIN" ] && "$PORTAL_BIN" reconcile rebase > /dev/null 2>&1 || true
+	if [ "${PISO_FROM_CONSOLE:-0}" != 1 ] && [ -x /etc/init.d/pisoportal ]; then
+		/etc/init.d/pisoportal restart > /dev/null 2>&1
+	fi
 	write_summary
-	log "The new coin box is paired. Check with: piso-setup status"
+	rm -rf "$PAIR_LOCK"; PAIR_LOCK=""
+	[ "$DRY" = 1 ] || echo "DONE paired with $BOX_MAC" > "$STATE"
+	log "The new coin box is paired ($BOX_MAC). Check with: piso-setup status"
 }
 
 # The router password protects SSH and LuCI, which the kiosk phones' network can reach. Ask for one, or generate one that is
@@ -32,6 +66,7 @@ ask_name() {
 choose_names() {
 	ask_name GUEST_NAME "public customer" "${GUEST_SSID:-PisoWiFi}" "$GUEST_SSID"; GUEST_NAME="$ASKED"
 	[ "$GUEST_NAME" != "$KIOSK_SSID" ] && [ "$GUEST_NAME" != "$KIOSK_BASE" ] || die "the public Wi-Fi name cannot be $KIOSK_SSID"
+	[ "$GUEST_NAME" != "$ADMIN_SSID" ] && [ "$GUEST_NAME" != "$ADMIN_BASE" ] || die "the public Wi-Fi name cannot be $ADMIN_SSID"
 	case "$GUEST_NAME" in *"$BOX_PAIR_SSID"*) die "the public Wi-Fi name may not contain $BOX_PAIR_SSID (the coin box's hidden network)" ;; esac
 	[ "$DRY" = 1 ] || remember_wifi_names
 }
@@ -60,7 +95,8 @@ ask_password() {
 # Every password the system needs is chosen here, once. Super admin has no password: the owner opens it with the admin QR code.
 choose_passwords() {
 	ask_password ROOT_PASS "router password (SSH and LuCI login)" 8 63 "$ROOT_PASSWORD"
-	wifi_only || ask_password KIOSK_PASS "PisoKiosk Wi-Fi password (typed once into each rental phone's setup page)" 8 63 "$KIOSK_PASSWORD"
+	if wifi_only; then ask_password ADMIN_PASS "Admin Wi-Fi password (for your phone/laptop to manage the hub)" 8 63 "$ADMIN_PASSWORD"
+	else ask_password KIOSK_PASS "PisoKiosk Wi-Fi password (typed once into each rental phone's setup page)" 8 63 "$KIOSK_PASSWORD"; fi
 	ask_password BOX_ADMIN_PASS_NEW "coin box admin password (the box's web page; also the phones' admin PIN)" 8 32 "$BOX_NEW_ADMIN_PASSWORD"
 }
 
@@ -71,11 +107,13 @@ review_choices() {
 	echo
 	echo "================ PLEASE REVIEW ================"
 	echo "  Public Wi-Fi (customers):  $GUEST_NAME  (open, behind the coin payment page)"
+	if wifi_only; then echo "  Admin Wi-Fi:               $ADMIN_SSID  (hidden, 2.4 + 5 GHz)"; fi
 	wifi_only || echo "  Rental-phone Wi-Fi:        $KIOSK_SSID  (hidden, 2.4 + 5 GHz)"
 	echo "  Coin box network:          $BOX_SSID  (hidden, only the box)"
 	echo "  Site name:                 $(conf_get SITE_NAME)"
 	echo "  Router address:            $LAN_IP   Country: ${COUNTRY:-PH}"
 	echo "  Router password:           $(_pw ROOT_PASS)"
+	if wifi_only; then echo "  Admin Wi-Fi password:      $(_pw ADMIN_PASS)"; fi
 	wifi_only || echo "  Kiosk Wi-Fi password:      $(_pw KIOSK_PASS)"
 	echo "  Coin box admin password:   $(_pw BOX_ADMIN_PASS_NEW)"
 	echo "  The Wi-Fi networks of this router are replaced; the coin box is paired and set up; SSH stays open."
@@ -101,15 +139,16 @@ confirm_product() {
 	fi
 }
 
-# apply_product: after apply_batch has written the router's Wi-Fi: keep the product, and on a PisoWiFi-only router forget the rental
-# phones' password (their Wi-Fi is gone). The environment's SHOP_PRODUCT decides until then.
+# Persist the product and remove the retired Wi-Fi password after the UCI batch commits.
 apply_product() {
 	store_product
-	if wifi_only; then conf_del KIOSK_PASS; fi
+	if wifi_only; then conf_del KIOSK_PASS; else conf_del ADMIN_PASS; fi
 }
 
 # kiosk_pass: the rental phones' Wi-Fi password (made once); a PisoWiFi-only router has none
 kiosk_pass() { wifi_only && return 0; secret KIOSK_PASS 12; }
+
+admin_pass() { wifi_only || return 0; secret ADMIN_PASS 12; }
 
 stage1() {
 	check_product
@@ -127,16 +166,17 @@ stage1() {
 	review_choices
 	ask_telegram
 	KIOSK_PASS=$(kiosk_pass)
+	ADMIN_PASS=$(admin_pass)
 	secret ROOT_PASS 14 > /dev/null; secret GW_KEY 64 hex > /dev/null; secret BOX_ADMIN_PASS_NEW 16 > /dev/null
 	BOX_MAC=$(conf_get BOX_MAC)
-	if [ "$DRY" = 1 ]; then uci_batch "<kiosk password>" "$GUEST_NAME" "$BOX_MAC"; return 0; fi
+	if [ "$DRY" = 1 ]; then uci_batch "<kiosk password>" "$GUEST_NAME" "$BOX_MAC" "<admin password>"; return 0; fi
 
 	: > "$LOG"
 	install_packages
 	extract_payload "$0"
 	step "Writing the router settings"
 	[ -n "$(conf_get CONSOLE_MODE)" ] || conf_set CONSOLE_MODE front   # (the console is the front page, http://admin.hub; LuCI is on 8080)
-	apply_batch "$KIOSK_PASS" "$GUEST_NAME" "$BOX_MAC"
+	apply_batch "$KIOSK_PASS" "$GUEST_NAME" "$BOX_MAC" "$ADMIN_PASS"
 	apply_product
 	stage2
 }
@@ -148,7 +188,7 @@ main() {
 		case "$1" in
 			--dry-run) DRY=1 ;;
 			--yes | -y) ASSUME_YES=1 ;;
-			status | wan-clash | pair | summary | wifi-name | guest-port | kiosk-wifi | verify | uninstall-info | test-coin | diag | box-diag | set-password | reconcile | telegram | rotate-box-wifi | box-wifi-name | handout | console | export | import | space | forget-summary | lock-admin | lock-admin-confirm | unlock-admin | wifi-admin | update | self-update | box-update | auto-update | voucher-choice | brand-pack) CMD="$1"; shift; ARG="$1"; ARGS="$*"; break ;;
+			status | wan-clash | pair | summary | wifi-name | guest-port | kiosk-wifi | verify | uninstall-info | test-coin | diag | box-diag | set-password | reconcile | telegram | rotate-box-wifi | box-wifi-name | handout | console | export | import | space | forget-summary | lock-admin | lock-admin-confirm | unlock-admin | wifi-admin | update | self-update | box-update | auto-update | voucher-choice | brand-pack | anti-tether) CMD="$1"; shift; ARG="$1"; ARGS="$*"; break ;;
 			-h | --help) sed -n '2,/^# Options:/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 			*) echo "unknown option: $1 (try --help)" >&2; exit 1 ;;
 		esac
@@ -180,6 +220,7 @@ main() {
 		auto-update) cmd_auto_update "$ARG" ;;
 		voucher-choice) cmd_voucher_choice "$ARG" ;;
 		brand-pack) cmd_brand_pack "$ARG" ;;
+		anti-tether) cmd_anti_tether "$ARG" ;;
 		lock-admin)
 			# shellcheck disable=SC2086 # one argument per MAC address
 			cmd_lock_admin $ARGS ;;

@@ -22,9 +22,9 @@ The setup page's steps, in order:
   1. Start        checks this computer (ssh, the website, esptool) and installs what is missing
   2. Router       finds the factory-reset router by itself (192.168.1.1 or 10.0.0.1)
   3. Settings     the shop's name and public Wi-Fi name (asked every time), the country and the passwords (new ones every time)
-  4. Install      writes the PisoPhone software to the coin box over USB (esptool, checked against the website's checksums), runs
-                  the one-line installer on the router unattended (it checks the setup file's sha256), waits for the router to
-                  move to 10.0.0.1, runs the setup, pairs the coin box, saves the summary and the setup sheet
+  4. Install      writes the PisoPhone software to the coin box over USB (esptool, checked against the website's checksums),
+                  moves the router to 10.0.0.1 before anything else to avoid modem IP conflicts, runs the one-line installer
+                  on the router unattended (it checks the setup file's sha256), pairs the coin box, saves summary & sheet
   5. Phones       the link to the phone setup page (Set up a phone), already filled in: open it on a phone or laptop with
                   internet and scan its QR code with the rental phone
   6. Finish       tests a real coin, checks the customer Wi-Fi, offers Telegram alerts; "Set up the next unit" starts over
@@ -44,11 +44,13 @@ Build a standalone program with Nuitka (no Python needed on the computer that ru
     python -m nuitka --onefile --include-package=esptool --include-package=serial setup/pisophone_setup.py"""
 import argparse
 import base64
+import binascii
 import contextlib
 import csv
 import datetime
 import getpass
 import glob
+import gzip
 import hashlib
 import http.client
 import http.server
@@ -65,6 +67,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import tarfile
 import tempfile
 import threading
 import time
@@ -72,6 +75,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import webbrowser
+import zlib
 
 APP_NAME = "TechNet PisoHub Setup"
 USER_AGENT = "TechNetPisoHubSetup/1.0 (+https://pisophone.pages.dev)"   # a name a website can recognise (Python's own is often refused)
@@ -82,6 +86,7 @@ TARGET_IP = "10.0.0.1"          # where the PisoPhone setup puts it
 BOX_IP = "10.0.0.10"            # the coin box, always <LAN network>.10
 KIOSK_SSID = "PisoKiosk"        # fixed names (setup/piso-setup.sh.in)
 BOX_SSID = "PisoCoinBox"
+ADMIN_SSID = "PisoAdmin"
 MOVE_WAIT = 240                 # seconds to wait for the router at 10.0.0.1 after the move
 FORBIDDEN = "'\"\\$`"           # characters the router's shell quoting cannot take
 # (a generated password avoids characters that are easily misread: 0/O, 1/l/I)
@@ -90,6 +95,7 @@ PASSWORDS = [  # (environment name read by the setup, what it is, min, max, gene
     ("ROOT_PASSWORD", "router password (SSH and LuCI login)", 8, 63, 14),
     ("KIOSK_PASSWORD", f"{KIOSK_SSID} Wi-Fi password (for the rental phones' setup)", 8, 63, 12),
     ("BOX_NEW_ADMIN_PASSWORD", "coin box admin password (the box's page; also the phones' admin PIN)", 8, 32, 16),
+    ("ADMIN_PASSWORD", "Admin Wi-Fi password (for your phone/laptop to manage the hub)", 8, 63, 12),
 ]
 ANSWER_ORDER = [env for env, *_ in PASSWORDS] + ["GUEST_SSID", "SITE_NAME", "COUNTRY", "SHOP_PRODUCT", "BOX_EXPECT_MAC"]   # (BOX_EXPECT_MAC: the MAC of the board just written, or empty: the router then pairs any box)
 PRODUCTS = [("wifi", "PisoWiFi", "customer Wi-Fi sold by the coin (an OpenWrt router and the coin box; no rental phones)"),
@@ -143,6 +149,8 @@ def name_problem(value, what):
         return "no quotes, backslashes, $ or backticks"
     if what == "wifi" and value == KIOSK_SSID:
         return f"{KIOSK_SSID} is the rental phones' network"
+    if what == "wifi" and re.fullmatch(r"PisoAdmin(?:-[0-9a-fA-F]{4})?", value):
+        return f"{ADMIN_SSID} is the hidden admin network"
     if what == "wifi" and BOX_SSID in value:
         return f"it may not contain {BOX_SSID} (the coin box's network)"
     return None
@@ -184,12 +192,20 @@ def ask_password(label, lo, hi, length, read=getpass.getpass):
         return value
 
 
+def password_applies(env, wifi_only):
+    if env == "KIOSK_PASSWORD":
+        return not wifi_only
+    if env == "ADMIN_PASSWORD":
+        return wifi_only
+    return True
+
+
 def check_answers(answers):
     """Raises SetupError when an answer would be refused by the router setup."""
     for env, label, lo, hi, _length in PASSWORDS:
-        if env == "KIOSK_PASSWORD" and answers.get("SHOP_PRODUCT") == "wifi":
-            continue   # (a PisoWiFi-only router has no rental-phone Wi-Fi)
-        problem = password_problem(answers[env], lo, hi)
+        if not password_applies(env, answers.get("SHOP_PRODUCT") == "wifi"):
+            continue
+        problem = password_problem(answers.get(env, ""), lo, hi)
         if problem:
             raise SetupError(f"the {label}: {problem}")
     for key, what in (("GUEST_SSID", "wifi"), ("SITE_NAME", "site")):
@@ -233,7 +249,7 @@ def collect_answers(args, read=input, read_secret=getpass.getpass):
         answers["GUEST_SSID"] = args.guest_ssid or "PisoWiFi"
         answers["SITE_NAME"] = args.site_name or answers["GUEST_SSID"]
         for env, _label, _lo, _hi, length in PASSWORDS:
-            answers[env] = "" if wifi_only and env == "KIOSK_PASSWORD" else generate(length)
+            answers[env] = generate(length) if password_applies(env, wifi_only) else ""
     else:
         say()
         say("A few questions first. Nothing on the router is changed until you have reviewed your answers.")
@@ -242,7 +258,7 @@ def collect_answers(args, read=input, read_secret=getpass.getpass):
         answers["SITE_NAME"] = ask_text("Name of the shop / site (on the setup sheet and in alerts)",
                                         args.site_name or answers["GUEST_SSID"], "site", read)
         for env, label, lo, hi, length in PASSWORDS:
-            answers[env] = "" if wifi_only and env == "KIOSK_PASSWORD" else ask_password(label, lo, hi, length, read_secret)
+            answers[env] = ask_password(label, lo, hi, length, read_secret) if password_applies(env, wifi_only) else ""
     check_answers(answers)
     return answers
 
@@ -260,12 +276,16 @@ def review(answers):
     say()
     say("================ PLEASE REVIEW (write the passwords down now) ================")
     say(f"  Public Wi-Fi (customers):  {answers['GUEST_SSID']}  (open, behind the coin payment page)")
-    if answers.get("SHOP_PRODUCT") != "wifi":
+    if answers.get("SHOP_PRODUCT") == "wifi":
+        say(f"  Admin Wi-Fi:               {ADMIN_SSID}-xxxx  (hidden; the exact name is shown at the end)")
+    else:
         say(f"  Rental-phone Wi-Fi:        {KIOSK_SSID}-xxxx  (hidden; xxxx is this router's own ending, shown at the end)")
     say(f"  Site name:                 {answers['SITE_NAME']}")
     say(f"  Router address:            {TARGET_IP}   Country: {answers.get('COUNTRY', 'PH')}")
     say(f"  Router password:           {answers['ROOT_PASSWORD']}")
-    if answers.get("SHOP_PRODUCT") != "wifi":
+    if answers.get("SHOP_PRODUCT") == "wifi":
+        say(f"  Admin Wi-Fi password:      {answers['ADMIN_PASSWORD']}")
+    else:
         say(f"  {KIOSK_SSID} Wi-Fi password:  {answers['KIOSK_PASSWORD']}")
     say(f"  Coin box admin password:   {answers['BOX_NEW_ADMIN_PASSWORD']}")
     say("  The router's Wi-Fi networks are replaced and the coin box is paired and set up.")
@@ -278,11 +298,13 @@ def parse_summary(text):
     found = {}
     for key, pattern in (("ROOT_PASSWORD", r"^Router \(SSH / LuCI\):.*?password: (\S+)"),
                          ("KIOSK_PASSWORD", r"^Kiosk Wi-Fi:.*?password: (\S+)"),
+                         ("ADMIN_PASSWORD", r"^Admin Wi-Fi:.*?password: (\S+)"),
+                         ("ADMIN_SSID_NAME", r"^Admin Wi-Fi:[ \t]+(\S+)[ \t]+\(HIDDEN\)"),
                          ("KIOSK_SSID_NAME", r"^Kiosk Wi-Fi:\s+(\S+)\s+\(HIDDEN\)"),   # this router's own name (PisoKiosk-a1b2; PisoKiosk on an older router)
                          ("GUEST_SSID", r"^PisoWiFi \(customers\):\s+(.+?)\s{2,}\(open"),
                          ("BOX_NEW_ADMIN_PASSWORD", r"^Coin box:.*?admin password: (\S+)")):
         m = re.search(pattern, text or "", re.M)
-        if m and not m.group(1).startswith("NOT"):
+        if m and (key != "ROOT_PASSWORD" or m.group(1) != "NOT"):
             found[key] = m.group(1)
     return found
 
@@ -487,12 +509,12 @@ def qr_svg(text, module=8, quiet=4):
 
 
 def wifi_qr_text(ssid, password, hidden=True):
-    """The text phones read as "join this Wi-Fi": WIFI:T:WPA;S:<name>;P:<password>;H:true;; (backslash, semicolon, comma, colon and double quote are escaped;
-    a name or password made only of hex digits is quoted so the phone does not take it for hex)."""
+    """Build a Wi-Fi join payload, escaping backslash, semicolon, comma, colon and double quote."""
     def esc(value):
-        value = re.sub(r'([\\;,:"])', r"\\\1", value)
-        return f'"{value}"' if re.fullmatch(r"[0-9A-Fa-f]+", value) else value
-    return f"WIFI:T:WPA;S:{esc(ssid)};P:{esc(password)};{'H:true;' if hidden else ''};"
+        return re.sub(r'([\\;,:"])', r"\\\1", value)
+
+    name = f'"{ssid}"' if re.fullmatch(r"[0-9A-Fa-f]+", ssid) else esc(ssid)
+    return f"WIFI:T:WPA;S:{name};P:{esc(password)};{'H:true;' if hidden else ''};"
 
 
 # ---- TechNet brand pictures (small PNGs, embedded so the page and the printouts are one file) ---------------------------------
@@ -1664,6 +1686,25 @@ def html_escape(text):
     return (str(text).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;").replace("'", "&#39;"))
 
 
+def admin_card_html(site, ssid, password, console_url="http://admin.hub/"):
+    """A private, printable card to join Admin Wi-Fi and open the Console."""
+    return f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin Wi-Fi QR card</title><style>
+*{{box-sizing:border-box}}body{{font:16px/1.5 system-ui,sans-serif;background:#f2f5fa;color:#142036;margin:0;padding:24px}}
+main{{max-width:740px;margin:auto}}h1,h2{{margin:0}}h2{{font-size:1.15rem}}p{{margin:.5rem 0}}
+.cards{{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,270px),1fr));gap:16px;margin:1.2rem 0}}
+section{{background:#fff;border:1px solid #b9c4d6;border-radius:12px;padding:20px;break-inside:avoid}}
+.qr{{background:#fff;border-radius:8px;display:inline-block;padding:8px}}svg{{display:block;max-width:100%;height:auto}}
+code{{overflow-wrap:anywhere}}@media print{{body{{background:#fff;padding:0}}}}
+</style></head><body><main><h1>Admin Wi-Fi</h1>
+<p>{html_escape(site)} &middot; Keep this card private. It contains your Wi-Fi password.</p>
+<div class="cards"><section><h2>Join the hidden network</h2><div class="qr">{qr_svg(wifi_qr_text(ssid, password), 4)}</div>
+<p>Network <code>{html_escape(ssid)}</code><br>Password <code>{html_escape(password)}</code><br>Security WPA2-Personal</p></section>
+<section><h2>Open the Console</h2><div class="qr">{qr_svg(console_url, 4)}</div>
+<p>Once connected, scan this code or open <code>{html_escape(console_url)}</code>.</p></section></div></main></body></html>"""
+
+
 def wifi_card_html(site, kiosk_ssid, kiosk_password, box_url=f"http://{BOX_IP}/", stamp=""):
     """A print-ready page (one A4 or Letter sheet) for the owner's manual: scan to join the hidden rental-phone Wi-Fi, scan to open
     the coin box's page, and the same steps by hand. It holds the Wi-Fi password: keep the printout private."""
@@ -1961,6 +2002,16 @@ def use_saved_password(ssh, host, folders, notify=say):
     return None
 
 
+def move_command(target_ip=TARGET_IP):
+    """The remote command: move the router's LAN address to target_ip before anything else (avoids modem IP conflict)."""
+    return (
+        f"uci set network.lan.ipaddr='{target_ip}' && uci commit network && "
+        f"(trap '' HUP; sleep 2; ${{PISO_NETWORK_INIT:-/etc/init.d/network}} restart; sleep 5; "
+        f"for d in ${{PISO_NET_DIR:-/sys/class/net}}/lan[0-9]*; do case \"${{d##*/}}\" in *.*) continue ;; esac; [ -e \"$d\" ] && ip link set \"${{d##*/}}\" down; done; "
+        f"sleep 3; for d in ${{PISO_NET_DIR:-/sys/class/net}}/lan[0-9]*; do case \"${{d##*/}}\" in *.*) continue ;; esac; [ -e \"$d\" ] && ip link set \"${{d##*/}}\" up; done) >/dev/null 2>&1 &"
+    )
+
+
 def installer_command(branch, *args):
     """The remote command: download the one-line installer of this branch and run it. Downloaded to a file first, so a
     failed download is reported (a pipe into sh would run nothing and report success)."""
@@ -1971,15 +2022,34 @@ def installer_command(branch, *args):
             f"exit 3; fi; sh /tmp/piso-install.sh {run}")
 
 
+def _setup_wrapper(inner_cmd, cleanup=""):
+    """Wraps a setup invocation so answers arrive on stdin (never on a command line) and structured markers follow."""
+    reads = "; ".join(f"IFS= read -r {n}" for n in ANSWER_ORDER)
+    tail = f"{cleanup}; " if cleanup else ""
+    return (f"{reads}; export {' '.join(ANSWER_ORDER)}; {inner_cmd}; rc=$?; {tail}echo; echo \"@@PISO-RC $rc\"; "
+            f"echo \"@@PISO-STATE $(cat /tmp/piso-setup.state 2>/dev/null)\"; "
+            f"if [ -r /root/piso-setup-summary.txt ]; then echo @@PISO-SUMMARY; cat /root/piso-setup-summary.txt; fi; "
+            f"if [ -r /root/piso-handout.html ]; then echo @@PISO-HANDOUT; cat /root/piso-handout.html; fi; echo @@PISO-END")
+
+
 def setup_command(branch):
     """The remote command for the setup itself: the answers are read from the connection's input (never on a command line,
     where any process on the router could read them), then the installer runs the setup, then the results are sent back
     between markers."""
-    reads = "; ".join(f"IFS= read -r {n}" for n in ANSWER_ORDER)
-    return (f"{reads}; export {' '.join(ANSWER_ORDER)}; {installer_command(branch)}; rc=$?; echo; echo \"@@PISO-RC $rc\"; "
-            f"echo \"@@PISO-STATE $(cat /tmp/piso-setup.state 2>/dev/null)\"; "
-            f"if [ -r /root/piso-setup-summary.txt ]; then echo @@PISO-SUMMARY; cat /root/piso-setup-summary.txt; fi; "
-            f"if [ -r /root/piso-handout.html ]; then echo @@PISO-HANDOUT; cat /root/piso-handout.html; fi; echo @@PISO-END")
+    return _setup_wrapper(installer_command(branch))
+
+
+def staged_installer_command(remote_dir, *args):
+    """Remote command that runs a pre-staged, pre-decoded piso-setup.sh without downloading or decoding on the router."""
+    run = " ".join(shlex.quote(a) for a in ("--yes", *args))
+    qdir = shlex.quote(remote_dir)
+    return f"sh {qdir}/piso-setup.sh {run}; rc=$?; rm -rf {qdir}; exit $rc"
+
+
+def staged_setup_command(remote_dir):
+    """Remote command for first setup using the pre-decoded bundle already uploaded to remote_dir."""
+    qdir = shlex.quote(remote_dir)
+    return _setup_wrapper(f"sh {qdir}/piso-setup.sh --yes", cleanup=f"rm -rf {qdir}")
 
 
 # ---- the first setup needs the router's internet ----------------------------------------------------------------------------------
@@ -2002,9 +2072,43 @@ READ_PACKAGER_COMMAND = ("echo @@RELEASE; cat /etc/openwrt_release 2>/dev/null; 
                          "echo @@APK; if command -v apk >/dev/null 2>&1; then echo yes; else echo no; fi; "
                          "echo @@OPKG; if command -v opkg >/dev/null 2>&1; then echo yes; else echo no; fi")
 
+ARMV7_ARCHS = frozenset({
+    "arm_cortex-a7_neon-vfpv4",
+    "arm_cortex-a15_neon-vfpv4",
+    "arm_cortex-a9_neon",
+    "arm_cortex-a9_vfpv3-d16",
+})
+
+
+def arch_from_release(release_lines):
+    """Maps /etc/openwrt_release DISTRIB_ARCH to the setup bundle CPU family (matches setup/install.sh)."""
+    lines = release_lines.splitlines() if isinstance(release_lines, str) else release_lines
+    raw = ""
+    for line in lines:
+        m = re.match(r"\s*DISTRIB_ARCH=['\"]?([^'\"]*)['\"]?\s*$", line)
+        if m:
+            raw = m.group(1).strip()
+            break
+    if not raw or raw.startswith("mipsel_"):
+        return "mipsel"
+    if raw.startswith("mips_"):
+        return "mips"
+    if raw.startswith("aarch64_"):
+        return "aarch64"
+    if raw in ARMV7_ARCHS:
+        return "armv7"
+    if raw == "x86_64":
+        return "x86_64"
+    raise SetupError(f'this router\'s CPU ("{raw}") has no PisoPhone portal program built yet. Nothing was changed. Tell the owner which router this is.')
+
+
+def bundle_filename(arch):
+    """Setup filename for a CPU family (matches setup/install.sh and tools/build_piso_setup.py)."""
+    return "piso-setup.sh" if not arch or arch == "mipsel" else f"piso-setup-{arch}.sh"
+
 
 def check_router_packager(ssh, host):
-    """Raises ApkRouter when the router installs packages with apk (or has no opkg): decided before the router is changed."""
+    """Raises ApkRouter when the router installs packages with apk (or has no opkg), else returns its bundle CPU arch."""
     lines = []
     if run_remote(ssh, host, READ_PACKAGER_COMMAND, lines.append)["exit"] == 255 and login_refused(ssh, host):
         raise SetupError(login_refused_message(ssh))
@@ -2023,6 +2127,15 @@ def check_router_packager(ssh, host):
     word = lambda name: (parts.get(name) or [""])[0].strip()
     if word("APK") == "yes" or word("OPKG") == "no":
         raise ApkRouter(release)
+    return arch_from_release(parts.get("RELEASE", []))
+
+
+def read_router_arch(ssh, host):
+    """Reads /etc/openwrt_release to determine the router CPU family when check_router_packager did not run earlier."""
+    lines = []
+    if run_remote(ssh, host, "cat /etc/openwrt_release 2>/dev/null", lines.append)["exit"] == 255 and login_refused(ssh, host):
+        raise SetupError(login_refused_message(ssh))
+    return arch_from_release(lines)
 
 
 def router_has_internet(ssh, host):
@@ -2121,21 +2234,207 @@ def renew_address():
             pass
 
 
-def install(ssh, host, answers, branch, out_dir, emit, wait_move, stage=lambda n: None):
-    """The installation: on a factory router the installer first moves it to 10.0.0.1 (wait_move() waits for that), then
-    the setup runs with the answers. Returns the result (ok, state, saved files, summary); raises SetupError when it could
-    not run to its end.
+def _fetch_bytes(url, opener, what, timeout=60):
+    """Downloads a URL with USER_AGENT, wrapping network errors in SetupError."""
+    try:
+        with opener(urllib.request.Request(url, headers={"User-Agent": USER_AGENT}), timeout=timeout) as r:
+            return r.read()
+    except (urllib.error.URLError, OSError, http.client.HTTPException) as e:
+        raise SetupError(f"could not download {what} ({e})")
 
-    The router needs internet for the first setup: it downloads the installer and its packages itself. Before the setup runs
-    the router's internet is tested, and without it the setup stops with a message that names the requirement."""
+
+def _validate_setup_script(raw_bytes, name):
+    if not raw_bytes.startswith(b"#!/bin/sh") or (b"\n# ---- payload: the portal files" not in raw_bytes
+                                                and not raw_bytes.startswith(b"# ---- payload: the portal files")):
+        raise SetupError(f"{name} is not a valid PisoPhone setup file")
+
+
+def fetch_cached_router_setup(branch, arch, cache_dir, opener=urllib.request.urlopen, emit=say):
+    """Fetches and SHA-256 verifies piso-setup[-<arch>].sh, reusing router-cache/ when the checksum matches."""
+    name = bundle_filename(arch)
+    base = f"{site_url(branch)}/setup"
+    sha_text = _fetch_bytes(f"{base}/{name}.sha256", opener, f"{name}.sha256", timeout=30).decode("ascii", "replace").strip()
+    want = sha_text[:64].lower()
+    if not re.fullmatch(r"[0-9a-f]{64}", want):
+        raise SetupError(f"the website's checksum for {name} is not valid")
+    path = os.path.join(cache_dir, f"{want[:16]}-{name}")
+    try:
+        with open(path, "rb") as f:
+            cached = f.read()
+        if hashlib.sha256(cached).hexdigest() == want:
+            _validate_setup_script(cached, name)
+            emit(f"Using cached {name} on this computer...")
+            return cached
+    except OSError:
+        pass
+    emit(f"Downloading {name} ({branch}) on this computer...")
+    raw = _fetch_bytes(f"{base}/{name}", opener, name, timeout=60)
+    if hashlib.sha256(raw).hexdigest() != want:
+        raise SetupError(f"the downloaded {name} does not match its checksum")
+    _validate_setup_script(raw, name)
+    try:
+        os.makedirs(cache_dir, exist_ok=True)
+        with open(path + ".part", "wb") as f:
+            f.write(raw)
+        os.replace(path + ".part", path)
+    except OSError:
+        pass
+    return raw
+
+
+def rewrite_b64_to_bin(raw_bytes, name):
+    """Decodes #@@B64 sections (base64 + optional gz, SHA-256 checked) into raw ELF bytes and replaces them with #@@BIN."""
+    out_lines = []
+    binaries = {}
+    in_payload = False
+    cur = None
+
+    def flush():
+        if cur is None:
+            return
+        clean = b"".join(cur["b64"]).replace(b"\r", b"").replace(b"\n", b"").replace(b" ", b"").replace(b"\t", b"")
+        try:
+            data = base64.b64decode(clean, validate=True)
+        except (binascii.Error, ValueError) as e:
+            raise SetupError(f"could not base64-decode {cur['dest']} in {name}: {e}")
+        if cur["enc"] == "gz":
+            try:
+                data = gzip.decompress(data)
+            except (OSError, EOFError, zlib.error) as e:
+                raise SetupError(f"could not decompress {cur['dest']} in {name}: {e}")
+        elif cur["enc"]:
+            raise SetupError(f"unsupported payload encoding {cur['enc']!r} in {name}")
+        if not data:
+            raise SetupError(f"empty binary payload for {cur['dest']} in {name}")
+        actual = hashlib.sha256(data).hexdigest()
+        if cur["sum"] and actual != cur["sum"]:
+            raise SetupError(f"checksum mismatch decoding {cur['dest']} in {name}")
+        rel = "pre" + cur["dest"]
+        binaries[rel] = (data, int(cur["mode"], 8))
+        out_lines.append(f"#@@BIN {cur['dest']} {cur['mode']} {actual} {rel}\n".encode("ascii"))
+
+    for line in raw_bytes.splitlines(keepends=True):
+        if not in_payload:
+            out_lines.append(line)
+            if line.startswith(b"# ---- payload: the portal files"):
+                in_payload = True
+            continue
+        if line.startswith(b"#@@B64 "):
+            flush()
+            try:
+                parts = line[len(b"#@@B64 "):].decode("ascii", "strict").strip().split()
+            except UnicodeDecodeError as e:
+                raise SetupError(f"invalid #@@B64 header in {name}: {e}")
+            if len(parts) < 2:
+                raise SetupError(f"incomplete #@@B64 header in {name}")
+            dest, mode = parts[0], parts[1]
+            sum_hex = parts[2].lower() if len(parts) > 2 else ""
+            enc = parts[3] if len(parts) > 3 else ""
+            if (not dest.startswith("/") or ".." in dest.split("/") or len("pre" + dest) > 100
+                    or not re.fullmatch(r"[0-7]{3,4}", mode)
+                    or (sum_hex and not re.fullmatch(r"[0-9a-f]{64}", sum_hex))):
+                raise SetupError(f"invalid #@@B64 header for {dest} in {name}")
+            cur = {"dest": dest, "mode": mode, "sum": sum_hex, "enc": enc, "b64": []}
+        elif line.startswith(b"#@@"):
+            flush()
+            cur = None
+            out_lines.append(line)
+        elif cur is not None:
+            cur["b64"].append(line)
+        else:
+            out_lines.append(line)
+    flush()
+    if not in_payload:
+        raise SetupError(f"{name} has no portal payload marker")
+    return b"".join(out_lines), binaries
+
+
+def build_router_tar(script_bytes, binaries):
+    """Packs piso-setup.sh and pre-decoded raw binaries into a POSIX USTAR tar archive (BusyBox tar compatible)."""
+    def info_for(arcname, mode, size=0, kind=tarfile.REGTYPE):
+        ti = tarfile.TarInfo(arcname)
+        ti.type = kind
+        ti.mode = mode
+        ti.size = size
+        ti.mtime = 0
+        ti.uname = "root"
+        ti.gname = "root"
+        return ti
+
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w", format=tarfile.USTAR_FORMAT) as tf:
+        dirs = set()
+        for rel in sorted(binaries):
+            cur = ""
+            for part in rel.split("/")[:-1]:
+                cur = f"{cur}/{part}" if cur else part
+                if cur not in dirs:
+                    dirs.add(cur)
+                    tf.addfile(info_for(cur, 0o755, kind=tarfile.DIRTYPE))
+        tf.addfile(info_for("piso-setup.sh", 0o755, len(script_bytes)), io.BytesIO(script_bytes))
+        for rel in sorted(binaries):
+            data, mode_int = binaries[rel]
+            tf.addfile(info_for(rel, mode_int, len(data)), io.BytesIO(data))
+    return buf.getvalue()
+
+
+def prepare_router_bundle(branch, arch, cache_dir, opener=urllib.request.urlopen, emit=say):
+    """Downloads/caches the router setup script, decodes binary payloads on the PC, and returns USTAR tar bytes."""
+    name = bundle_filename(arch)
+    raw = fetch_cached_router_setup(branch, arch, cache_dir, opener=opener, emit=emit)
+    script_bytes, binaries = rewrite_b64_to_bin(raw, name)
+    tar_bytes = build_router_tar(script_bytes, binaries)
+    emit(f"Pre-decoded {name} on this computer ({len(tar_bytes) / 1048576:.2f} MB ready to upload).")
+    return tar_bytes
+
+
+def upload_router_bundle(ssh, host, tar_bytes, emit):
+    """Streams the pre-decoded tar bundle to /root (if RAM < 24 MB) or /tmp on the router and returns the remote staging dir."""
+    cmd = (
+        "M=$(sed -n 's/^MemAvailable: *\\([0-9]*\\) kB.*/\\1/p' /proc/meminfo 2>/dev/null | head -n 1); "
+        "if [ \"${M:-0}\" -gt 0 ] 2>/dev/null && [ \"${M:-0}\" -lt 24000 ]; then L=root; DIR=/root/piso-stage; "
+        "else L=tmp; DIR=/tmp/piso-stage; fi; "
+        "rm -rf \"$DIR\" && mkdir -p \"$DIR\" && tar -xf - -C \"$DIR\" && [ -s \"$DIR/piso-setup.sh\" ] && echo \"@@PISO-DIR /$L/piso-stage\""
+    )
+    lines = []
+    r = run_remote(ssh, host, cmd, lines.append, data=tar_bytes)
+    if r["exit"] == 255 and login_refused(ssh, host):
+        raise SetupError(login_refused_message(ssh))
+    remote_dir = next((line[len("@@PISO-DIR "):].strip() for line in lines if line.startswith("@@PISO-DIR ")), "")
+    if r["exit"] != 0 or not remote_dir:
+        for line in lines:
+            emit(line)
+        raise SetupError("could not copy the setup software to the router (see the messages above).")
+    return remote_dir
+
+
+def stage_router_bundle(ssh, host, branch, arch, emit, opener):
+    """Prepares and uploads a pre-decoded setup bundle, returning None to fall back to router wget if PC fetch fails."""
+    try:
+        tar_bytes = prepare_router_bundle(branch, arch, router_cache_dir(), opener=opener, emit=emit)
+    except SetupError as e:
+        emit(f"Could not prepare the setup software on this computer ({e}); letting the router download it itself...")
+        return None
+    emit("Copying the pre-decoded setup software to the router...")
+    return upload_router_bundle(ssh, host, tar_bytes, emit)
+
+
+def install(ssh, host, answers, branch, out_dir, emit, wait_move, stage=lambda n: None, opener=urllib.request.urlopen):
+    """The installation: on a factory router the router is first moved to 10.0.0.1 (wait_move() waits for that)
+    before anything else to avoid IP conflicts with modems on 192.168.1.1, then the setup runs with the answers.
+    Returns the result (ok, state, saved files, summary); raises SetupError when it could not run to its end.
+
+    The router needs internet for the first setup: opkg downloads packages on the router, and this computer pre-decodes
+    the setup binary before uploading (falling back to router-side wget if this computer cannot reach the website)."""
+    arch = None
     moved = False
-    if host != TARGET_IP:   # (the factory address, or the one this router started at: the installer moves it)
-        check_router_packager(ssh, host)
+    if host != TARGET_IP:   # (the factory address, or the one this router started at: moved to 10.0.0.1 first)
+        arch = check_router_packager(ssh, host)
         stage(0)
-        emit(f"Downloading the setup to the router and moving it to {TARGET_IP}...")
-        r = run_remote(ssh, host, installer_command(branch), emit)
+        emit(f"Moving router from {host} to {TARGET_IP} before anything else (moving it to {TARGET_IP} avoids modem IP conflict)...")
+        r = run_remote(ssh, host, move_command(), emit)
         if r["exit"] != 0:
-            raise SetupError("the router could not be prepared (see the messages above). Nothing else was changed; try again.")
+            raise SetupError(f"could not change the router address to {TARGET_IP}. Nothing else was changed; try again.")
         stage(1)
         if not wait_move():
             raise SetupError(
@@ -2153,7 +2452,11 @@ def install(ssh, host, answers, branch, out_dir, emit, wait_move, stage=lambda n
                          "router's WAN port, wait a minute until the modem is online, then try again.")
     values = "".join(answers.get(key, "") + "\n" for key in ANSWER_ORDER)
     save_router_password(out_dir, answers.get("ROOT_PASSWORD"), host)   # before the router changes it: a repeat can log in
-    result = run_remote(ssh, host, setup_command(branch), emit, data=values)
+    if arch is None:
+        arch = read_router_arch(ssh, host)
+    remote_dir = stage_router_bundle(ssh, host, branch, arch, emit, opener)
+    cmd = staged_setup_command(remote_dir) if remote_dir else setup_command(branch)
+    result = run_remote(ssh, host, cmd, emit, data=values)
 
     saved = []
     stamp = time.strftime("%Y%m%d-%H%M")
@@ -2167,12 +2470,19 @@ def install(ssh, host, answers, branch, out_dir, emit, wait_move, stage=lambda n
         save_private(path, "\n".join(result["handout"]) + "\n")
         saved.append(("Printable setup sheet", os.path.abspath(path)))
     found = parse_summary("\n".join(result["summary"]))
+    if found.get("ADMIN_PASSWORD") and answers.get("SHOP_PRODUCT") != "both":
+        site = answers.get("SITE_NAME") or found.get("GUEST_SSID") or ADMIN_SSID
+        path = os.path.join(out_dir, f"pisophone-admin-card-{stamp}.html")
+        save_private(path, admin_card_html(site, found.get("ADMIN_SSID_NAME") or ADMIN_SSID, found["ADMIN_PASSWORD"]))
+        saved.append(("Admin Wi-Fi QR card", os.path.abspath(path)))
     if found.get("KIOSK_PASSWORD"):   # the card for the owner's manual: scan to join the hidden network, scan to open the box
         site = answers.get("SITE_NAME") or found.get("GUEST_SSID") or KIOSK_SSID
         path = os.path.join(out_dir, f"pisophone-wifi-card-{stamp}.html")
         save_private(path, wifi_card_html(site, found.get("KIOSK_SSID_NAME") or KIOSK_SSID, found["KIOSK_PASSWORD"], stamp=time.strftime("%Y-%m-%d")))
         saved.append(("Wi-Fi join card (print it for your manual)", os.path.abspath(path)))
     if result["rc"] is None:
+        if result.get("exit") != 0:
+            raise SetupError("the router could not be prepared (see the messages above). Nothing else was changed; try again.")
         raise SetupError("the connection to the router was lost before the setup finished. Try again: it continues where it "
                          "stopped (the router keeps what is done).")
     stage(3)
@@ -2187,7 +2497,9 @@ def failure_message(result):
     if state.startswith("DONE"):
         return (f"the setup finished, but some checks failed ({state}). Read the messages above; after fixing the cause run "
                 "it again (it continues where it stopped).")
-    reason = state.replace("FAILED ", "", 1) if state else "see the messages above"
+    if not state:
+        return "the router could not be prepared (see the messages above). Nothing else was changed; try again."
+    reason = state.replace("FAILED ", "", 1)
     more = ""
     if "box" in reason.lower():
         more = (" The report above (ending in a line that starts with \"verdict:\") says where the link to the coin box breaks; "
@@ -2195,8 +2507,14 @@ def failure_message(result):
     return f"the setup stopped: {reason}.{more} Fix that and run it again: it continues where it stopped."
 
 
-def update_router(ssh, host, branch, emit):
-    r = run_remote(ssh, host, installer_command(branch, "update"), emit)
+def update_router(ssh, host, branch, emit, opener=urllib.request.urlopen):
+    """Updates an already-installed router: main keeps signed OTA self-update; test branches pre-decode on this computer."""
+    cmd = None
+    if branch != "main":
+        remote_dir = stage_router_bundle(ssh, host, branch, read_router_arch(ssh, host), emit, opener)
+        if remote_dir:
+            cmd = staged_installer_command(remote_dir, "update")
+    r = run_remote(ssh, host, cmd or installer_command(branch, "update"), emit)
     if r["exit"] != 0:
         raise SetupError("the update did not finish (see the messages above). It is safe to run it again.")
 
@@ -2573,12 +2891,40 @@ def flash_manifest(branch, cache_dir, opener=urllib.request.urlopen, emit=say):
     return manifest
 
 
+def box_product_for(choice):
+    """Maps a setup product/mode choice ("wifi", "phone", "both", "full") to the ESP32 firmware product."""
+    if choice == "wifi":
+        return "wifi"
+    if choice == "phone":
+        return "phone"
+    if choice in ("both", "full", "", None):
+        return "full"
+    raise SetupError(f"unsupported coin box product {choice!r}.")
+
+
 def choose_build(manifest, chip, product="full"):
     """The image of a product ("full", "phone" or "wifi") for a chip ("ESP32-C3", "ESP32"), or None. A list entry without a
     product is the full one; the image of another product is never taken instead."""
+    if product not in ("full", "phone", "wifi"):
+        raise SetupError(f"unsupported coin box product {product!r}.")
     name = (chip or "").upper()
     return next((b for b in manifest["builds"]
                  if str(b.get("chip", "")).upper() == name and (b.get("product") or "full") == product), None)
+
+
+def verify_product_image(image_path, product):
+    """Defense-in-depth check on real firmware binaries (>=100 KB) so a full image can never be flashed for wifi-only or vice versa."""
+    if product not in ("full", "phone", "wifi"):
+        raise SetupError(f"unsupported coin box product {product!r}.")
+    with open(image_path, "rb") as f:
+        data = f.read()
+    if len(data) < 100_000:
+        return
+    if product == "wifi":
+        if b"TechNet PisoWiFi" not in data or b"TechNet PisoHub admin" in data:
+            raise SetupError("refused to write non-PisoWiFi coin box firmware when PisoWiFi only was selected.")
+    elif b"TechNet PisoWiFi" in data:
+        raise SetupError("refused to write PisoWiFi-only firmware when a PisoPhone coin box build was selected.")
 
 
 def fetch_image(branch, build, cache_dir, opener=urllib.request.urlopen):
@@ -2612,6 +2958,8 @@ def fetch_image(branch, build, cache_dir, opener=urllib.request.urlopen):
 def flash_box(branch, port, emit, cache_dir, opener=urllib.request.urlopen, tool=None, image=None, product="full"):
     """Writes the PisoPhone software to the board on `port`: detects the chip, takes the image for it (checked), erases the
     whole flash (a used box then forgets its old Wi-Fi), writes and verifies it, restarts the board. Returns (chip, version)."""
+    if product not in ("full", "phone", "wifi"):
+        raise SetupError(f"unsupported coin box product {product!r}.")
     tool = tool or esptool_module()
     if tool is None:
         raise SetupError("the flashing tool is missing: run  pip install esptool  and start this again.")
@@ -2631,16 +2979,21 @@ def flash_box(branch, port, emit, cache_dir, opener=urllib.request.urlopen, tool
         raise SetupError("the board did not say which chip it has. " + board_advice("failed to connect"))
     chip = match.group(1).upper()
     if image:   # a merged image of your own build (terminal mode), written from the start of the flash
-        build, manifest = {"offset": 0}, {"version": "your own build"}
-        emit(f"{chip} found. Writing {image}.")
+        build, manifest = {"offset": 0, "file": os.path.basename(image)}, {"version": "your own build"}
+        fw_ver = "your own build"
+        emit(f"{chip} found. Writing {image} ({product}).")
     else:
         manifest = flash_manifest(branch, cache_dir, opener, emit)
         build = choose_build(manifest, chip, product)
         if not build:
             chips = list(dict.fromkeys(b["chip"] for b in manifest["builds"] if (b.get("product") or "full") == product))
+            if product == "wifi" and not chips:
+                raise SetupError(f"this board is an {chip}; no PisoWiFi-only coin box software matches it in the software list.")
             raise SetupError(f"this board is an {chip}; PisoPhone software exists for {' and '.join(chips) or 'no board'}.")
-        emit(f"{chip} found. Software version {manifest.get('version', '?')} ({build['size'] / 1048576:.2f} MB).")
+        fw_ver = build.get("version") or manifest.get("version", "?")
+        emit(f"{chip} found. Software version {fw_ver} ({build['size'] / 1048576:.2f} MB, {product}: {build['file']}).")
         image = fetch_image(branch, build, cache_dir, opener)
+    verify_product_image(image, product)
     emit("== Writing the coin box software (erasing the board first; about a minute)")
     last = [-10]
 
@@ -2659,7 +3012,7 @@ def flash_box(branch, port, emit, cache_dir, opener=urllib.request.urlopen, tool
     except SetupError as e:
         raise SetupError(with_advice(e, str(e)))
     emit("Written and verified. The board restarts by itself; keep it powered (the USB cable does that) while it is set up.")
-    return chip, manifest.get("version", "?")
+    return chip, fw_ver
 
 
 def preflight(branch, opener=urllib.request.urlopen, tool=esptool_module, which=shutil.which):
@@ -2713,10 +3066,11 @@ def flash_in_terminal(args, read, board_finder, flasher):
 
 
 def run_setup(args, ssh, read=input, read_secret=getpass.getpass, probe=port_open, wait=wait_for_move, open_page=open_url,
-              board_finder=usb_boards, flasher=None, mac_reader=None):
+              board_finder=usb_boards, flasher=None, mac_reader=None, opener=urllib.request.urlopen):
     if flasher is None:
         def flasher(port, emit):
-            return flash_box(args.branch, port, emit, flash_cache_dir(), product="wifi" if getattr(args, "product", None) == "wifi" else "full")
+            chosen = answers.get("SHOP_PRODUCT") or getattr(args, "product", None)
+            return flash_box(args.branch, port, emit, flash_cache_dir(), product=box_product_for(chosen))
     host = args.router or find_router(probe)
     if not host:
         raise SetupError(
@@ -2730,7 +3084,7 @@ def run_setup(args, ssh, read=input, read_secret=getpass.getpass, probe=port_ope
         if state == "factory":
             raise SetupError("this router has not been set up yet: run this script without --update")
         say("Installing the current PisoPhone software (you are asked for the router password)...")
-        update_router(ssh, host, args.branch, say)
+        update_router(ssh, host, args.branch, say, opener=opener)
         say()
         say("UPDATE DONE.")
         return 0
@@ -2762,7 +3116,7 @@ def run_setup(args, ssh, read=input, read_secret=getpass.getpass, probe=port_ope
                 pass
     say()
     if host != TARGET_IP:
-        say(f"Step 1 of 2: downloading the setup to the router and moving it to {TARGET_IP}...")
+        say(f"Step 1 of 2: moving it to {TARGET_IP} before anything else (avoids modem IP conflict)...")
     else:
         say("Step 1 of 2: the router is at its address already.")
 
@@ -2773,7 +3127,7 @@ def run_setup(args, ssh, read=input, read_secret=getpass.getpass, probe=port_ope
             say("box powered on). Do not close this window.")
             say()
 
-    result = install(ssh, host, answers, args.branch, args.out, say, lambda: wait(probe=probe, renew=renew_address), stage)
+    result = install(ssh, host, answers, args.branch, args.out, say, lambda: wait(probe=probe, renew=renew_address), stage, opener=opener)
     host = result["host"]
     say()
     for label, path in result["saved"]:
@@ -2991,6 +3345,11 @@ def serial_access_fix(port, system, emit, run=run_command):
 def flash_cache_dir():
     """Where the downloaded coin box software is kept, so the next unit does not download it again."""
     return os.path.join(default_out_dir(), "firmware-cache")
+
+
+def router_cache_dir():
+    """Where downloaded router setup scripts are kept by checksum so repeated installs avoid re-downloading."""
+    return os.path.join(default_out_dir(), "router-cache")
 
 
 def default_out_dir():
@@ -4184,9 +4543,9 @@ def serial_access_advice(port):
 
 STEPS = [("welcome", "Start"), ("router", "Router"), ("settings", "Settings"), ("install", "Install"), ("phones", "Phones"),
          ("finish", "Finish")]
-INSTALL_STAGES = ["Write the coin box software (USB)", "Prepare the router", f"Move it to {TARGET_IP}", "Install and set up",
+INSTALL_STAGES = ["Write the coin box software (USB)", f"Move router to {TARGET_IP}", f"Wait for {TARGET_IP}", "Install and set up",
                   "Check everything"]
-STAGE_ACTIVITY = ["Writing the coin box software", "Downloading the setup to the router", f"Waiting for the router at {TARGET_IP}",
+STAGE_ACTIVITY = ["Writing the coin box software", f"Moving router to {TARGET_IP}", f"Waiting for the router at {TARGET_IP}",
                   "Installing on the router", "Checking"]
 WIFI_STEPS = [step for step in STEPS if step[0] != "phones"]   # PisoWiFi only: the same router and coin box, no rental phones
 PHONE_STEPS = [("welcome", "Start"), ("p_settings", "Settings"), ("p_install", "Install"), ("p_phones", "Phones"), ("p_finish", "Finish")]
@@ -4200,8 +4559,9 @@ LOG_KEEP = 3000
 class Core:
     """What the setup does with the network, the router and the coin box; tests replace it with a fake."""
 
-    def __init__(self, branch, workdir):
+    def __init__(self, branch, workdir, opener=urllib.request.urlopen):
         self.branch = branch
+        self.opener = opener
         self.ssh = Ssh(workdir, hidden=True)
         self.ssh.set_password("")   # never wait for a password on a terminal there is not
 
@@ -4237,7 +4597,7 @@ class Core:
 
     def install(self, host, answers, out_dir, emit, stage, notify):
         return install(self.ssh, host, answers, self.branch, out_dir, emit,
-                       lambda: wait_for_move(renew=renew_address, notify=notify), stage)
+                       lambda: wait_for_move(renew=renew_address, notify=notify), stage, opener=self.opener)
 
     def run(self, host, password, command, emit):
         """A command on the router (the root password is known by now): its output line by line; returns its exit status."""
@@ -4614,7 +4974,7 @@ class Session:
         problems = {"GUEST_SSID": name_problem(v["GUEST_SSID"], "wifi"), "SITE_NAME": name_problem(v["SITE_NAME"], "site"),
                     "COUNTRY": country_problem(self.country)}
         for env, _label, lo, hi, _length in PASSWORDS:
-            if not (env == "KIOSK_PASSWORD" and self.mode == "wifi"):
+            if password_applies(env, self.mode == "wifi"):
                 problems[env] = password_problem(v[env], lo, hi)
         return problems
 
@@ -4625,8 +4985,9 @@ class Session:
         a = {k: v.strip() if k in ("GUEST_SSID", "SITE_NAME") else v for k, v in self.values.items()}
         a["COUNTRY"] = self.country
         a["SHOP_PRODUCT"] = self.product()
-        if self.mode == "wifi":
-            a["KIOSK_PASSWORD"] = ""   # (a PisoWiFi-only router has no rental-phone Wi-Fi)
+        for env, *_ in PASSWORDS:
+            if not password_applies(env, self.mode == "wifi"):
+                a[env] = ""
         return a
 
     def install_answers(self):
@@ -4785,6 +5146,11 @@ class Session:
             self.install.update(running=True, stage=0, activity="Starting...", error=None, banner=None, ok=False, lines=[])
             self.result = None
             answers = self.install_answers()
+            if self.mode not in ("full", "wifi"):
+                raise SetupError(f"cannot run router installation in {self.mode!r} mode.")
+            flash_product = box_product_for(answers.get("SHOP_PRODUCT"))
+            if (self.mode == "wifi") != (flash_product == "wifi"):
+                raise SetupError("PisoWiFi-only selection mismatch: refusing to flash non-PisoWiFi firmware.")
             write_box = not (self.skip_flash or self.flashed)
             host_hint = self.router["host"]
 
@@ -4820,7 +5186,8 @@ class Session:
                     if len(boards) > 1:
                         raise SetupError("several USB boards are connected: unplug all but the coin box.")
                     stage(0)
-                    self.core.flash_box(boards[0][0], self.log)
+                    self.log(f"== Firmware product for coin box: {flash_product}")
+                    self.core.flash_box(boards[0][0], self.log, product=flash_product)
                     try:
                         mac = self.core.board_mac(boards[0][0])
                     except Exception:
@@ -5632,6 +5999,7 @@ a{color:var(--acc)}.hide{display:none!important}
   <p class="mut small" style="margin-top:0">They are saved on this computer and printed on the setup sheet at the end. Nothing to type here.</p>
   <details id="pwOwn"><summary class="mut small">Advanced: type my own passwords</summary>
   <label for="ROOT_PASSWORD">Router password <span class="hint">SSH and the router's web page</span></label><input id="ROOT_PASSWORD" data-k="1" autocomplete="off"><div class="err" data-e="ROOT_PASSWORD"></div>
+  <div id="adminPw" class="hide"><label for="ADMIN_PASSWORD">Admin Wi-Fi password <span class="hint">for your phone or laptop to manage the hub</span></label><input id="ADMIN_PASSWORD" data-k="1" autocomplete="off"><div class="err" data-e="ADMIN_PASSWORD"></div></div>
   <div id="kioskPw"><label for="KIOSK_PASSWORD">PisoKiosk Wi-Fi password <span class="hint">the hidden network of the rental phones</span></label><input id="KIOSK_PASSWORD" data-k="1" autocomplete="off"><div class="err" data-e="KIOSK_PASSWORD"></div></div>
   <label for="BOX_NEW_ADMIN_PASSWORD">Coin box admin password <span class="hint">the box's admin page; also the phones' admin PIN</span></label><input id="BOX_NEW_ADMIN_PASSWORD" data-k="1" autocomplete="off"><div class="err" data-e="BOX_NEW_ADMIN_PASSWORD"></div>
   </details></div>
@@ -5660,7 +6028,7 @@ a{color:var(--acc)}.hide{display:none!important}
  <div class="hero"><img src="@@MASCOT@@" alt=""><h1>Check that it all works</h1></div>
  <div class="card"><h2>1. Test a coin</h2><p class="mut">Tap the button, then insert one coin when the box beeps (within 30 seconds).</p><button class="primary" id="btnCoin">Test a coin</button><div id="coinBox"></div></div>
  <div class="card"><h2>2. Try it as a customer</h2><p class="mut" id="custText"></p></div>
- <div class="card"><h2>Alerts on your phone (optional)</h2><p class="mut">Telegram messages when the coin box goes offline or the revenue does not add up, plus a daily report. You need a bot token from @BotFather.</p>
+ <div class="card"><h2>Remote monitoring &amp; control via Telegram (Recommended)</h2><p class="mut" id="tgLead">Telegram alerts, live phone/guest status, daily revenue reports, and remote commands (/status, /phones, /clients, /settings, /pricing). You need a bot token from @BotFather.</p>
   <input id="tgToken" placeholder="123456789:AAH..." autocomplete="off"><div class="err" id="tgErr"></div><button id="btnTg">Connect Telegram</button><div id="tgBox"></div></div>
  <div class="card"><h2>Saved on this computer</h2><div id="savedList"></div><p class="mut small" id="savedDir"></p></div>
  <div class="card"><h2>Time cards</h2><p class="mut">Print QR time cards for this unit's coin box now, or any day later (the same page, any number of batches).</p><button id="btnToCards">Open Owner tools</button></div>
@@ -5769,7 +6137,7 @@ function fillSettingsOnce(){
 }
 function paint2(){
  const st=S.settings,kept=st.kept;
- $('#kioskPw').classList.toggle('hide',S.mode==='wifi');$('#namesCard').classList.toggle('hide',kept);$('#pwCard').classList.toggle('hide',kept);
+ $('#kioskPw').classList.toggle('hide',S.mode==='wifi');$('#adminPw').classList.toggle('hide',S.mode!=='wifi');$('#namesCard').classList.toggle('hide',kept);$('#pwCard').classList.toggle('hide',kept);
  $('#setTitle').textContent=kept?'This router keeps its settings':'This customer\'s names and passwords';
  $('#setSub').textContent=kept?'It was set up before, so its Wi-Fi names and passwords stay as they are (they are in the summary the earlier setup saved). The installation finishes or repairs it.':'Type the shop name and public Wi-Fi name for this customer (asked every time). The passwords were made for you, new ones for every unit. They are saved on this computer at the end and printed on the setup sheet.';
  $$('.err[data-e]').forEach(e=>{const k=e.dataset.e,p=st.problems[k];const input=document.getElementById(k);const typed=input&&(input.value||k==='COUNTRY');e.textContent=p&&typed?p[0].toUpperCase()+p.slice(1):'';if(input)input.classList.toggle('bad',!!(p&&typed));if(p&&typed&&input&&input.closest('#pwOwn'))$('#pwOwn').open=true});
@@ -5790,7 +6158,7 @@ function paint3(){
  const st=$('#stages');clear(st);S.stages.forEach((n,k)=>{const done=i.ok||k<i.stage,on=k===i.stage&&i.running;st.append(h('div',{style:'margin:4px 0'},h('span',{class:'dot '+(done?'ok':on?'on':'')}),h('span',{style:on?'font-weight:600':''},n)))});
  $('#activity').textContent=i.activity;
  const bn=$('#instBanner');clear(bn);
- if(i.ok)bn.append(note('ok','Installation complete: all checks passed. Your passwords and the setup sheet are saved. Tap Next for the phones.'));
+ if(i.ok)bn.append(note('ok','Installation complete: all checks passed. Your passwords and the setup sheet are saved. '+(S.mode==='wifi'?'Tap Next to test payments.':'Tap Next for the phones.')));
  else if(i.error)bn.append(note('bad',i.error[0].toUpperCase()+i.error.slice(1)));
  else if(i.banner)bn.append(note(i.banner[0],i.banner[1]));
  const sb=$('#btnStart');sb.classList.toggle('hide',i.ok);sb.disabled=i.running;sb.textContent=i.running?'Installing...':(i.error||S.install.total)?'Try again':'Start the installation';
@@ -5814,6 +6182,7 @@ function paint5(){
  if(c.lines.length)cb.append(h('pre',{},c.lines.join('\n')));
  if(c.ok===true)cb.append(note('ok','The box counted the coin: the box and the portal work.'));else if(c.ok===false&&!c.running)cb.append(note('bad','The coin test did not pass. Read the lines above, then try again.'));
  $('#custText').textContent='With any phone join the Wi-Fi "'+(S.final.GUEST_SSID||S.review.public_wifi)+'". The payment page opens by itself. Pick a plan, tap Insert Coin, insert a coin: it shows at once. Tap Done: you are online.';
+ $('#tgLead').textContent=S.mode==='wifi'?'Telegram alerts, live Wi-Fi guest status, daily revenue reports, and remote commands (/status, /clients, /settings, /pricing). You need a bot token from @BotFather.':'Telegram alerts, live phone/guest status, daily revenue reports, and remote commands (/status, /phones, /clients, /settings, /pricing). You need a bot token from @BotFather.';
  const t=S.telegram,tb=$('#tgBox');clear(tb);$('#btnTg').disabled=t.running;$('#tgErr').textContent=t.error||'';
  if(t.ok)tb.append(note('ok','Telegram is connected.'));
  if(t.lines.length)tb.append(h('pre',{},t.lines.join('\n')));

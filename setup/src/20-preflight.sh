@@ -14,11 +14,12 @@ wan_prefix() { _p=$(ifstatus wan 2> /dev/null | jsonfilter -e '@["ipv4-address"]
 # net_of <ip> <prefix>: the network number of an address, to compare ranges by their netmask
 # shellcheck disable=SC2086 # the dotted address is split into its four numbers on purpose
 net_of() { _o=$(echo "$1" | tr . ' '); set -- $_o "$2"; echo $(((($1 << 24) | ($2 << 16) | ($3 << 8) | $4) >> (32 - $5))); }
-# wan_clash: prints the router address (the LAN's or the guest network's) whose /24 the modem's network (WAN address and netmask) overlaps; fails when none
+# wan_clash: prints the router address (LAN, guest, or admin) whose /24 the modem's network (WAN address and netmask) overlaps; fails when none
 wan_clash() {
 	_w=$(wan_ip); [ -n "$_w" ] || return 1
 	_m=$(wan_prefix); [ "$_m" -le 24 ] 2> /dev/null || _m=24   # (the router's own networks are /24: the wider of the two decides)
-	for _r in "$LAN_IP" "$GUEST_IP"; do
+	if wifi_only; then set -- "$LAN_IP" "$GUEST_IP" "$ADMIN_IP"; else set -- "$LAN_IP" "$GUEST_IP"; fi
+	for _r do
 		[ "$(net_of "$_w" "$_m")" = "$(net_of "$_r" "$_m")" ] && { echo "$_r"; return 0; }
 	done
 	return 1
@@ -44,15 +45,20 @@ preflight() {
 	preflight_network
 }
 
-# preflight_network: the router's WAN address and internet, and that its LAN and WAN ranges do not clash. The router needs internet for
-# the first setup: it downloads its packages itself (opkg, against its own signed feeds).
+# The router needs WAN connectivity and distinct subnets before it can download packages.
 preflight_network() {
 	WAN=$(wan_ip)
 	[ -n "$WAN" ] || die "the router has no WAN address, and it needs internet for the first setup: plug the modem into the WAN port and wait a minute, then run this again"
 	[ "$LAN_IP" = 10.0.0.1 ] || die "the router's LAN address is $LAN_IP, but this setup expects 10.0.0.1. Run the installer, which moves it for you: wget -qO- https://pisophone.pages.dev/install.sh | sh   (or by hand: uci set network.lan.ipaddr=10.0.0.1 && uci commit network && reboot), then log in again at 10.0.0.1 and re-run. See setup/README.md."
+	if wifi_only; then
+		_admin_net=$(net_of "$ADMIN_IP" 24)
+		[ "$_admin_net" != "$(net_of "$LAN_IP" 24)" ] && [ "$_admin_net" != "$(net_of "$GUEST_IP" 24)" ] ||
+			die "ADMIN_IP must be on a different /24 from the LAN and guest networks"
+	fi
 	case "$(wan_clash)" in
 		"") ;;
 		"$LAN_IP") die "the modem's network ($WAN/$(wan_prefix)) overlaps (the same range as) the router's LAN ($LAN_IP). Change the modem's own LAN address (for example to 192.168.100.1) and run this again" ;;
+		"$ADMIN_IP") die "the modem's network ($WAN/$(wan_prefix)) overlaps the admin network ($ADMIN_IP). Run with ADMIN_IP on a free /24 range" ;;
 		*) die "the modem's network ($WAN/$(wan_prefix)) overlaps the guest network: it uses ${GUEST_IP%.*}.x, the same as the guest network. Run with GUEST_IP=10.0.31.1 (or another free range)" ;;
 	esac
 	log "WAN address: $WAN"

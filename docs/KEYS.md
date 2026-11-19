@@ -25,7 +25,7 @@ A box with a public key built in only flashes images you signed.
 `firmware.json` to `website/update/` (`scripts/publish_firmware_ota.py`). Then, on the box's dashboard, **Update > Install update**.
 Without the secret the images are published unsigned, which boxes accept only while no owner key is built into their firmware; once
 the key is installed the workflow refuses to publish unsigned images. Edit `changelog` in `website/update/firmware.json` for the text
-the dashboard shows. The images are the dev builds (no flash encryption), the same ones the setup program writes over USB.
+the dashboard shows. The images are the normal builds, the same ones the setup program writes over USB.
 
 **By hand:**
 1. Bump `PISO_FW_VERSION`, build each chip with PlatformIO.
@@ -43,4 +43,4 @@ To migrate a site: update the app on every phone; flash the box; make sure each 
 **Switch to this box's own key** (irreversible; a factory reset makes a fresh key); re-provision each phone. Do it when the shop is quiet.
 Once every box is migrated, delete `LEGACY_CRYPTO_SECRET` and `DEFAULT_SHARED_SECRET` and empty the allow-list in `scripts/check_security_rules.sh`.
 
-For units you sell, see `docs/PROVISIONING_SOLD_UNIT.md`.
+Use the same signed firmware and per-box secrets for all units. Physical flash readout is outside the protection provided by this firmware.

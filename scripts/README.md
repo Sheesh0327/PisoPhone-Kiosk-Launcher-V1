@@ -24,7 +24,7 @@ Run everything from the repository root. **Find yours by who runs it and when**,
 | `embed_web.py` | Packs the dashboard files in `esp32_firmware/web/` into `include/WebAssets.h`. After editing anything in `web/`, run it and commit the header; `--check` fails when it is out of date. | `quality.yml` |
 | `publish_firmware_ota.py` | Copies the built box firmware into `website/update/`, signs it, and writes `firmware.json` (version, build, checksums, signatures). `--json-only` rewrites only `firmware.json` after you signed by hand. Warns when the firmware changed but `PISO_FW_VERSION` did not. | `firmware-images.yml` (on `main`) |
 | `sign_router.py` | Signs the router setup file so every router installs it: writes `router.json` and `router-setup.sh`. | `publish-router.yml` |
-| `make_brand_pack.py` | Makes a shop's brand pack: the shop's logo (and one optional picture) signed with your owner key, the only way a picture reaches that shop's guest Wi-Fi page. Refuses SVG, oversize pictures, a key kept in the repository and a key the routers do not hold. |
+| `make_brand_pack.py` | Makes an optional signed `.brand` pack (logo and optional welcome picture) for offline/CLI install (`piso-setup brand-pack`); shop owners can also upload PNG or JPEG images directly in Console &rarr; Branding. Refuses SVG, oversize pictures, a key kept in the repository and a key the routers do not hold. |
 | `check_published_apk.py` | Checks that the APK on the website is the one `app.json` describes (size, checksum, signing certificate). | `quality.yml`, `verify_release.py` |
 | `make_firmware_bundles.py` | Packs the coin box firmware into the two owner zips (development and release layouts, no keys inside). | `firmware-images.yml` (manual run with "bundle") |
 | `sign_console_ui.py` | Signs the router console's page script so routers can take a newer one from the website. | `publish-router.yml` |
@@ -51,12 +51,11 @@ Not run directly: `owner_key.py` (shared key loading for the signing tools) and 
 | `verify_release.py` | Before a release: same owner key in firmware and router; every firmware image, the router file and the app feed match their checksums and verify; and **a box installs firmware only if `PISO_FW_VERSION` is higher** (same for `setup/RELEASE` on routers). |
 | `check_security_rules.sh` | The repository's security rules: no private key or factory password committed, TLS certificate checks never switched off without a stated reason, the coin-slot API keeps requiring signed calls, a capped number of `runBlocking`, and the router setup keeps verifying what it downloads. CI runs it. |
 | `check_vendored.py` | Fails if a vendored third-party file changed without its record in `website/js/VENDORED.md`. |
-| `sold_unit_check.py` | For hardened boxes you sell: shows the security eFuses and tells whether a flash dump is encrypted (`docs/PROVISIONING_SOLD_UNIT.md`). |
 | `gateway_client.py` | Talks to a box's router API from a PC (`arm`, `status`, `release`, `ack`, `run`): for testing, and the model for the router side. |
 
 ## Tests
 Run all with the commands in `CONTRIBUTING.md`; CI runs them for the parts a change touches.
-- `scripts/tests/` is where tests of the scripts and the website live: `test_publish_firmware.py`, `test_check_published_apk.py`, `test_sold_unit_check.py`, `test_recovery_code.py`, `test_make_cards.py`, `test_site_page.py` (the provisioning page in a browser), `test_portal_orphans_ui.py` (the box dashboard's undelivered-payments dialog), `test_provisioning.js`.
+- `scripts/tests/` is where tests of the scripts and the website live: `test_publish_firmware.py`, `test_check_published_apk.py`, `test_recovery_code.py`, `test_make_cards.py`, `test_site_page.py` (the provisioning page in a browser), `test_portal_orphans_ui.py` (the box dashboard's undelivered-payments dialog), `test_provisioning.js`.
 - Box firmware: `sh esp32_firmware/host_tests/run.sh` (pure-logic tests on a PC, no board needed).
 - Router: `router/tests/`, the router program in `tools/pisoportal/tests/` and `cargo test`.
 - The real-world test page: `tools/checklist/test_page.py` and `test_apply.py`.

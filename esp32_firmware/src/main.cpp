@@ -177,6 +177,14 @@ static void processSystemHealthAndAutoMaintenance() {
     ESP.restart();
 }
 
+// Verify saved-data storage at boot: a failed Preferences.begin() must never go unnoticed.
+static bool nvsUsable() {
+    Preferences probe;
+    bool ok = probe.begin("nvs_probe", false);
+    if (ok) probe.end();
+    return ok;
+}
+
 void setup() {
     Serial.begin(115200);
     unsigned long start = millis();
@@ -196,6 +204,10 @@ void setup() {
     // Initialize Hardware Watchdog Early
     initHardwareWatchdog();
 
+    if (!nvsUsable()) {
+        diagLog(
+            "[NVS] FATAL: saved-data storage cannot be opened. Nothing (revenue, queue, secret, Wi-Fi) will be saved.\n");
+    }
     // Load NVS Configuration & Lifetime Vault Revenue safely
     loadAllConfig();
     orphansBegin(); // payments the box gave up on, kept until the operator deals with them

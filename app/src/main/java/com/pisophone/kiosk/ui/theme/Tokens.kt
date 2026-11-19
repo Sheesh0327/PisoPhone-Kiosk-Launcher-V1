@@ -3,7 +3,7 @@ package com.pisophone.kiosk.ui.theme
 import androidx.compose.ui.graphics.Color
 
 /**
- * The TechNet design tokens for the PisoPhone screens (docs/design/GUI_SPEC_PISOPHONE_KIDS.md section 2). New and redesigned
+ * The TechNet design tokens for the PisoPhone screens (docs/UI_DESIGN.md). New and redesigned
  * screens read these instead of writing colour literals; the values are the same hex values the website, the router console
  * and the box dashboard use, so the product looks like one product.
  *

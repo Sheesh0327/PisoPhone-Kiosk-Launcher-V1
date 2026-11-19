@@ -1,0 +1,97 @@
+#ifndef WIFI_LINK_H
+#define WIFI_LINK_H
+
+// Wi-Fi link policy and ESP-IDF wifi_err_reason_t helpers (no Arduino types).
+
+#include <cstdint>
+
+namespace wifilink {
+
+static const uint32_t BOOT_CONNECT_MS = 10000U;
+static const uint32_t RETRY_INTERVAL_MS = 15000U;
+static const uint32_t RAPID_BLINK_MS = 8000U;
+
+inline bool retryDue(uint32_t now, uint32_t lastAttempt) {
+    return (now - lastAttempt) > RETRY_INTERVAL_MS;
+}
+
+inline const char* reasonName(uint8_t reason) {
+    switch (reason) {
+    case 2:
+        return "AUTH_EXPIRE";
+    case 3:
+        return "AUTH_LEAVE";
+    case 4:
+        return "ASSOC_EXPIRE";
+    case 5:
+        return "ASSOC_TOOMANY";
+    case 6:
+        return "NOT_AUTHED";
+    case 7:
+        return "NOT_ASSOCED";
+    case 8:
+        return "ASSOC_LEAVE";
+    case 14:
+        return "MIC_FAILURE";
+    case 15:
+        return "4WAY_HANDSHAKE_TIMEOUT";
+    case 16:
+        return "GROUP_KEY_UPDATE_TIMEOUT";
+    case 23:
+        return "802_1X_AUTH_FAILED";
+    case 200:
+        return "BEACON_TIMEOUT";
+    case 201:
+        return "NO_AP_FOUND";
+    case 202:
+        return "AUTH_FAIL";
+    case 203:
+        return "ASSOC_FAIL";
+    case 204:
+        return "HANDSHAKE_TIMEOUT";
+    case 205:
+        return "CONNECTION_FAIL";
+    default:
+        return "OTHER";
+    }
+}
+
+inline const char* reasonHint(uint8_t reason) {
+    switch (reason) {
+    case 201:
+        return "network not found: router off, out of range, hidden network not answering, or on a channel the box cannot use";
+    case 15:
+    case 202:
+    case 204:
+    case 14:
+        return "wrong Wi-Fi password (router and box disagree)";
+    case 203:
+    case 5:
+        return "router refused the box (MAC filter or too many stations)";
+    case 200:
+        return "signal lost";
+    case 8:
+    case 3:
+        return "router disconnected the box (Wi-Fi reload or MAC filter change)";
+    default:
+        return "";
+    }
+}
+
+inline const char* whyCode(uint8_t reason) {
+    switch (reason) {
+    case 14:
+    case 15:
+    case 202:
+    case 204:
+        return "wrong-password";
+    case 201:
+        return "no-network";
+    default:
+        return "none";
+    }
+}
+
+} // namespace wifilink
+
+#endif // WIFI_LINK_H

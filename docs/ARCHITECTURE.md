@@ -121,6 +121,11 @@ sign-in window notices that the internet works.
 `router/piso_monitor.sh` is a separate small service: Telegram alerts (router restarted, box silent for 5 minutes, ledger and box disagree, a device keeps opening empty windows)
 and a few commands from the owner's chat (status, report, reconcile, diagnostics, and `/update` which installs the newest signed software, `/restart` which restarts the portal, and `/reboot` which reboots the router after a second confirming message). It cannot change prices, passwords or Wi-Fi settings.
 
+`router/piso_isolation.sh` provides hardware and network isolation via `nftables`:
+- **Bridge isolation (`table bridge piso_guest`, `table bridge piso_kiosk`):** prevents customer devices on `br-guest` from talking to each other, accessing rental phones on `br-kiosk`, or accessing the modem and router management ports (22, 80, 443, 8080, 8081).
+- **Anti-tethering (`table inet piso_anti_tether`):** clamps outgoing IPv4 packets on `br-guest` to TTL=1 at postrouting (preventing downstream tethering via hotspot or USB) and drops incoming tethered packets (TTL 61-63, 125-127) at prerouting before forwarding.
+- **Firewall persistence:** registered as a firewall include script (`/etc/hotplug.d/firewall/50-piso-isolation`, `fw4_compatible='1'`) so isolation and anti-tethering rules reliably survive `fw4 reload` and interface events. Toggleable via `piso-setup anti-tether [on|off|status]`.
+
 ## 6. Vouchers, the ledger and reconcile
 - **Prices are live:** the settings file (`HYPER_TIERS`, `HYPER_PRORATA_MIN`, `ENDURANCE_TIERS`, `ENDURANCE_DOWN_KBPS`, `ENDURANCE_UP_KBPS`) gives the starting `Pricing`; the console's Settings page (`/api/pricing`) can replace it, kept in `DATA_DIR/settings.txt` like the voucher choice, with validation (every plan keeps a 1-peso line, at most 8 lines, bounded pesos and minutes). Each coin window snapshots the `Pricing` it started with, so the amount on a customer's screen and the time it buys never change mid-payment; the customer page is rebuilt when the prices change.
 - **Pause is a perk of paying:** `roll::pause` refuses (`PauseError::Pesos`) until the session's cumulative `Entry.pesos` reaches `PAUSE_MIN_PESOS` (10), and allows `PAUSE_MAX` (1) pauses per session; the page learns the missing amount from `pn` in the idle view. Vouchers add their pesos to the session when redeemed.
@@ -143,7 +148,7 @@ The owner makes cards on their own computer with `scripts/make_cards.py` (the ca
 - **Keys:** one owner key signs firmware and router updates (`OWNER_SIGNING_KEY_B64`, held in the protected `production-signing` environment); the APK has its own keystore. The private admin QR and card keys never go into CI. See `docs/KEYS.md`.
 - **Phone app:** `build-apk.yml` runs the unit tests, builds, signs and publishes the APK with `app.json`. `versionCode` is the CI run number and alone decides what is newer; the visible name is that number cut into digits (build 437 is 4.3.7).
 - **Coin box:** `firmware-images.yml` builds and signs the images; the box installs only a newer `PISO_FW_VERSION`, checks the signature and the hash, and goes back to its old image if the new one does not confirm itself.
-- **Router:** `publish-router.yml` signs `router-setup.sh` with a rollout percentage; a router installs only a newer, correctly signed release in its turn of the rollout, and undoes it if it does not run (`piso-setup self-update`).
+- **Router:** `publish-router.yml` signs `router-setup.sh` with a rollout percentage; a router installs only a newer, correctly signed release in its turn of the rollout, and undoes it if it does not run (`piso-setup self-update`). The setup script embeds the compiled portal binary gzip-compressed with batched decoding for minimal footprint (~861 KB).
 - **Path:** a feature branch merged into `main` (a router change goes through `beta` first: CI builds the router programs only there); `scripts/verify_release.py` checks keys, checksums, signatures and version rules; merging into `main` publishes. Details: `docs/RELEASE.md`, `docs/DEPLOY.md`.
 - A coin box is limited by its slot licenses: 2 phones are free, each more needs a P500 license key signed for that box, 12 at most; a box that already had more phones when licensing arrived keeps them (`getDeviceCap`, `SlotLicense.h`, REFERENCE.md).
 
@@ -154,6 +159,7 @@ The owner makes cards on their own computer with `scripts/make_cards.py` (the ca
 | Coin slot state machine | `CoinSlotManager.cpp`, `HardwareManager.cpp` |
 | Payment queue | `PaymentQueueManager.cpp` |
 | OpenNDS Wi-Fi payments | `tools/pisoportal/` (portal program), `router/` (monitor, init scripts), `setup/` (installer) |
+| Bridge isolation & anti-tethering | `router/piso_isolation.sh` (nftables bridge & inet rules, `/etc/hotplug.d/firewall/50-piso-isolation` fw4 include) |
 | Network gateway (router payment check) | `GatewayCoinslot.cpp` (logic), `WebServerGateway.cpp` (HTTP), `include/GatewayAuth.h` (auth), docs in `docs/api/gateway-coinslot.md` |
 | Web API | `WebServerModule.cpp` (routes), `WebServerApi.cpp`, `WebServerCoinslot.cpp`, `WebServerTelemetry.cpp`, `WebServerConfig.cpp` |
 | Auth and crypto | `WebServerAuth.cpp`, `Security.cpp`, `SuperAdminSession.cpp`, `include/AdminQrAuth.h`, `include/CredCrypto.h` |
@@ -170,7 +176,7 @@ The owner makes cards on their own computer with `scripts/make_cards.py` (the ca
 ## 10. Quality checks
 - `.github/workflows/quality.yml` ("Code quality") runs on every push: ktlint for Kotlin, clang-format and the firmware host tests, the security-rule and vendored-file checks, the website and provisioning tests,
   the owner's admin QR login and signed console script tests, the generated web assets check, the dashboard's scripts in a browser, and the portal and router tests (flow, console, browser, installer, self-update, box update).
-- `quality.yml` also runs **detekt** (static analysis; `detekt.yml` is the rules, `detekt-baseline.xml` the findings that existed when it was added, and anything new fails).
+- `quality.yml` also runs **detekt** (static analysis; `config/detekt/detekt.yml` is the rules, `config/detekt/detekt-baseline.xml` the findings that existed when it was added, and anything new fails).
 - `emulator-tests.yml` runs the **emulator tests** (`scripts/ci_emulator_tests.sh`, in an Android emulator with `reactivecircus/android-emulator-runner`) on pushes to `main`, nightly, and by hand. `build-apk.yml` runs the Android unit tests (Robolectric, no device) with a per-package **coverage** check, **Android Lint** (`app/lint-baseline.xml`; anything new fails and lint must pass before the APK is built),
   then builds, signs and publishes the APK (per-branch channel).
 - `scripts/check_security_rules.sh` also fails if a file that is not source sits in a source folder, or a tracked file is over 5 MB (outside the folders CI publishes builds into).

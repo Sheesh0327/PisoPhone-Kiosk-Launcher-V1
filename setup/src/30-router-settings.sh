@@ -2,7 +2,7 @@
 # Router settings (one uci batch, printed by --dry-run)
 # ---------------------------------------------------------------------------------------------------------------------
 uci_batch() {
-	KIOSK_PASS="$1"; GUEST_NAME="$2"; BOX_MAC="$3"
+	KIOSK_PASS="$1"; GUEST_NAME="$2"; BOX_MAC="$3"; ADMIN_PASS="$4"
 	cat << EOT
 # --- LAN = the kiosk network (phones by Wi-Fi, the router's wired ports for administration). Its address is left as it is. ---
 set dhcp.lan.start='50'
@@ -30,6 +30,31 @@ set dhcp.guest.ndp='disabled'
 
 # --- Wi-Fi: replace the router's default networks with ours ----------------------------------------------------------
 EOT
+	if wifi_only; then
+		cat << EOT
+set network.admin_dev=device
+set network.admin_dev.type='bridge'
+set network.admin_dev.name='br-admin'
+set network.admin=interface
+set network.admin.proto='static'
+set network.admin.device='br-admin'
+set network.admin.ipaddr='$ADMIN_IP'
+set network.admin.netmask='255.255.255.0'
+set dhcp.admin=dhcp
+set dhcp.admin.interface='admin'
+set dhcp.admin.start='50'
+set dhcp.admin.limit='100'
+set dhcp.admin.leasetime='12h'
+EOT
+		admin_firewall_uci
+	else
+		echo 'delete network.admin'
+		echo 'delete network.admin_dev'
+		echo 'delete dhcp.admin'
+		for _section in admin admin_wan admin_dhcp admin_dns_tcp admin_console admin_box; do
+			echo "delete firewall.$_section"
+		done
+	fi
 	# delete every existing Wi-Fi network (highest index first, so the numbering stays valid)
 	_n=$(uci -q show wireless | grep -c '=wifi-iface$')
 	while [ "$_n" -gt 0 ]; do _n=$((_n - 1)); echo "delete wireless.@wifi-iface[$_n]"; done
@@ -38,8 +63,19 @@ EOT
 		echo "set wireless.$r.disabled='0'"
 		echo "set wireless.$r.country='$COUNTRY'"
 		[ "$_band" = 2g ] && echo "set wireless.$r.htmode='HT20'"
-		# the rental phones' hidden Wi-Fi: not on a PisoWiFi-only router
-		if ! wifi_only; then
+		if wifi_only; then
+			cat << EOT
+set wireless.admin_$r=wifi-iface
+set wireless.admin_$r.device='$r'
+set wireless.admin_$r.mode='ap'
+set wireless.admin_$r.network='admin'
+set wireless.admin_$r.ssid='$ADMIN_SSID'
+set wireless.admin_$r.hidden='1'
+set wireless.admin_$r.encryption='psk2'
+set wireless.admin_$r.key='$ADMIN_PASS'
+set wireless.admin_$r.isolate='0'
+EOT
+		else
 			cat << EOT
 set wireless.kiosk_$r=wifi-iface
 set wireless.kiosk_$r.device='$r'
@@ -63,8 +99,7 @@ set wireless.guest_$r.isolate='1'
 EOT
 	done
 	cat << EOT
-# The coin box network: hidden, 2.4 GHz only, on the kiosk LAN. Until the box is paired anyone with the (published)
-# password could join, so pairing is short; afterwards only the box's MAC address is admitted.
+# The hidden 2.4 GHz coin box network admits only the paired box's MAC after pairing.
 set wireless.box_ap=wifi-iface
 set wireless.box_ap.device='$R24'
 set wireless.box_ap.mode='ap'
@@ -119,8 +154,50 @@ EOT
 	router_access_uci
 }
 
-# admin_name_uci: the router answers the name admin.hub with its kiosk LAN address (its own DNS, no mDNS): the owner's one admin page. The
-# owner's other dnsmasq address entries stay; an old address of the name (the router's address was changed) is replaced.
+# The admin network can reach the internet, the Console and BoxView, and the coin box.
+# Router logins and access to guests or other LAN devices are denied by the zone defaults.
+admin_firewall_uci() {
+	_console_port=$(console_port)
+	cat << EOT
+set firewall.admin=zone
+set firewall.admin.name='admin'
+set firewall.admin.network='admin'
+set firewall.admin.input='REJECT'
+set firewall.admin.output='ACCEPT'
+set firewall.admin.forward='REJECT'
+set firewall.admin_wan=forwarding
+set firewall.admin_wan.src='admin'
+set firewall.admin_wan.dest='wan'
+set firewall.admin_dhcp=rule
+set firewall.admin_dhcp.name='Admin-DHCP-DNS'
+set firewall.admin_dhcp.src='admin'
+set firewall.admin_dhcp.proto='udp'
+set firewall.admin_dhcp.dest_port='53 67'
+set firewall.admin_dhcp.target='ACCEPT'
+set firewall.admin_dns_tcp=rule
+set firewall.admin_dns_tcp.name='Admin-DNS-TCP'
+set firewall.admin_dns_tcp.src='admin'
+set firewall.admin_dns_tcp.proto='tcp'
+set firewall.admin_dns_tcp.dest_port='53'
+set firewall.admin_dns_tcp.target='ACCEPT'
+set firewall.admin_console=rule
+set firewall.admin_console.name='Admin-Console-BoxView'
+set firewall.admin_console.src='admin'
+set firewall.admin_console.dest_ip='$LAN_IP'
+set firewall.admin_console.proto='tcp'
+set firewall.admin_console.dest_port='$_console_port $((_console_port + 1))'
+set firewall.admin_console.target='ACCEPT'
+set firewall.admin_box=rule
+set firewall.admin_box.name='Admin-Coin-Box'
+set firewall.admin_box.src='admin'
+set firewall.admin_box.dest='lan'
+set firewall.admin_box.dest_ip='$BOX_IP'
+set firewall.admin_box.proto='tcp'
+set firewall.admin_box.target='ACCEPT'
+EOT
+}
+
+# Point admin.hub at the LAN address, preserving unrelated dnsmasq records.
 admin_name_uci() {
 	_have=$(uci -q get dhcp.@dnsmasq[0].address 2> /dev/null)
 	for _a in $_have; do
@@ -178,6 +255,9 @@ apply_isolation() {
 # isolation_on: both bridge tables are loaded (they need the kernel's bridge firewall support)
 isolation_on() { nft list table bridge piso_guest > /dev/null 2>&1 && nft list table bridge piso_kiosk > /dev/null 2>&1; }
 
+# anti_tether_on: the anti-tethering inet table is loaded
+anti_tether_on() { nft list table inet piso_anti_tether > /dev/null 2>&1; }
+
 # portal_uci <guest name>: the guest-facing portal: openNDS sends new guests to pisoportal (FAS) and only the guest network
 # is gated; guests may reach the portal's port. The same lines are applied by the setup and by an update (which is how a
 # router set up with the earlier ThemeSpec portal is moved to this one).
@@ -189,6 +269,26 @@ set firewall.guest_stream.src='guest'
 set firewall.guest_stream.proto='tcp'
 set firewall.guest_stream.dest_port='$PORTAL_PORT'
 set firewall.guest_stream.target='ACCEPT'
+# guests typing http://$LAN_IP (or http://admin.hub, or http://$GUEST_IP without :$PORTAL_PORT) are sent to the portal instead of hitting REJECT;
+# scoped to src='guest' so admin access on the LAN bridge is untouched
+set firewall.guest_lan_redirect=redirect
+set firewall.guest_lan_redirect.name='Guest-LAN-To-Portal'
+set firewall.guest_lan_redirect.family='ipv4'
+set firewall.guest_lan_redirect.src='guest'
+set firewall.guest_lan_redirect.src_dip='$LAN_IP'
+set firewall.guest_lan_redirect.proto='tcp'
+set firewall.guest_lan_redirect.src_dport='80'
+set firewall.guest_lan_redirect.dest_port='$PORTAL_PORT'
+set firewall.guest_lan_redirect.target='DNAT'
+set firewall.guest_http_redirect=redirect
+set firewall.guest_http_redirect.name='Guest-HTTP-To-Portal'
+set firewall.guest_http_redirect.family='ipv4'
+set firewall.guest_http_redirect.src='guest'
+set firewall.guest_http_redirect.src_dip='$GUEST_IP'
+set firewall.guest_http_redirect.proto='tcp'
+set firewall.guest_http_redirect.src_dport='80'
+set firewall.guest_http_redirect.dest_port='$PORTAL_PORT'
+set firewall.guest_http_redirect.target='DNAT'
 # guests reach the internet, not the modem's own pages (its login page, its settings): traffic from the guest network to the modem's
 # addresses is refused. It is one narrow rule in the router's firewall; the withdrawn 1.5.5 attempt blocked whole private ranges in
 # openNDS's list.
@@ -213,7 +313,6 @@ add_list firewall.guest_noprivate.dest_ip='10.0.0.0/8'
 add_list firewall.guest_noprivate.dest_ip='172.16.0.0/12'
 add_list firewall.guest_noprivate.dest_ip='192.168.0.0/16'
 add_list firewall.guest_noprivate.dest_ip='169.254.0.0/16'
-add_list firewall.guest_noprivate.dest_ip='100.64.0.0/10'
 # the same for the rental phones on Wi-Fi (the bridge rules in router/piso_isolation.sh mark what comes from Wi-Fi; a computer on a LAN cable
 # is not marked and keeps its way to the modem's pages). The mark is outside the bits openNDS and the traffic shaping use.
 set firewall.phone_noprivate=rule
@@ -228,7 +327,11 @@ add_list firewall.phone_noprivate.dest_ip='10.0.0.0/8'
 add_list firewall.phone_noprivate.dest_ip='172.16.0.0/12'
 add_list firewall.phone_noprivate.dest_ip='192.168.0.0/16'
 add_list firewall.phone_noprivate.dest_ip='169.254.0.0/16'
-add_list firewall.phone_noprivate.dest_ip='100.64.0.0/10'
+# fw4 ignores /etc/hotplug.d/firewall/ on reloads unless registered as a fw4_compatible script include
+set firewall.piso_isolation=include
+set firewall.piso_isolation.type='script'
+set firewall.piso_isolation.path='/etc/hotplug.d/firewall/50-piso-isolation'
+set firewall.piso_isolation.fw4_compatible='1'
 
 # --- openNDS gates only the guest network -------------------------------------------------------------------------------
 set opennds.@opennds[0].enabled='1'
@@ -242,6 +345,9 @@ delete opennds.@opennds[0].fasremoteip
 delete opennds.@opennds[0].themespec_path
 set opennds.@opennds[0].statuspath='/usr/lib/opennds/pisoportal_status.sh'
 delete opennds.@opennds[0].users_to_router
+add_list opennds.@opennds[0].users_to_router='allow tcp port 53'
+add_list opennds.@opennds[0].users_to_router='allow udp port 53'
+add_list opennds.@opennds[0].users_to_router='allow udp port 67'
 add_list opennds.@opennds[0].users_to_router='allow tcp port $PORTAL_PORT'
 # paying guests get openNDS's own rules for authenticated users. Router 1.5.5 set its own list here (private networks blocked,
 # then everything allowed) and some routers' paying guests were let on with no internet; the delete takes that list away again.
@@ -260,8 +366,8 @@ uci_apply() {
 	}
 }
 
-apply_batch() {  # apply_batch <kiosk pass> <guest name> <box mac or empty>
-	(umask 077; uci_batch "$1" "$2" "$3" > /tmp/piso-setup.uci) || die "could not build the settings"
+apply_batch() {  # apply_batch <kiosk pass> <guest name> <box mac or empty> <admin pass>
+	(umask 077; uci_batch "$1" "$2" "$3" "$4" > /tmp/piso-setup.uci) || die "could not build the settings"
 	uci_apply /tmp/piso-setup.uci
 	rm -f /tmp/piso-setup.uci   # (it holds the Wi-Fi password)
 	uci commit || die "uci commit failed"

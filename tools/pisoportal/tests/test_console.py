@@ -17,7 +17,23 @@ os.chmod(f"{tmp}/ubus", 0o755)
 open(f"{tmp}/leases", "w").write("1791858999 aa:bb:cc:00:00:01 10.0.30.1 Rowels-iPhone 01:aa\n")
 open(f"{tmp}/route", "w").write("Iface\tDestination\tGateway\tFlags\neth9\t00000000\t0101A8C0\t0003\n")
 open(f"{tmp}/dev", "w").write(" face |bytes packets errs drop fifo frame compressed multicast|bytes packets errs drop fifo colls carrier compressed\n  eth9: 1000 1 0 0 0 0 0 0 500 1 0 0 0 0 0 0\n")
-open(f"{tmp}/setup.conf", "w").write("BOX_ADMIN_PASS='box-pass-123'\n")
+open(f"{tmp}/setup.conf", "w").write("BOX_ADMIN_PASS='box-pass-123'\nBOX_MAC='AA:BB:CC:DD:EE:01'\n")
+open(f"{tmp}/piso-setup", "w").write(f"""#!/bin/sh
+[ "$1" = pair ] || exit 1
+echo "== Pairing the coin box"
+if [ -f "{tmp}/pair.slow" ]; then
+    p=""
+    trap '[ -n "$p" ] && kill "$p" 2>/dev/null; echo "restored"; exit 1' TERM
+    sleep 10 >/dev/null 2>&1 &
+    p=$!
+    wait "$p"
+    exit 1
+fi
+echo "BOX_ADMIN_PASS='box-pass-123'" > "{tmp}/setup.conf"
+echo "BOX_MAC='11:22:33:44:55:66'" >> "{tmp}/setup.conf"
+echo "The new coin box is paired"
+""")
+os.chmod(f"{tmp}/piso-setup", 0o755)
 
 
 seen = {}   # what the coin box last received from the router
@@ -54,11 +70,13 @@ class Stub(http.server.BaseHTTPRequestHandler):   # the coin box: a nonce for th
 stub = http.server.ThreadingHTTPServer(("127.0.0.1", CP + 10), Stub)
 threading.Thread(target=stub.serve_forever, daemon=True).start()
 env.extra.update(CONSOLE_PORT=CP, CONSOLE_BIND="127.0.0.1", UBUS=f"{tmp}/ubus", DHCP_LEASES=f"{tmp}/leases", ROUTE_FILE=f"{tmp}/route", NETDEV_FILE=f"{tmp}/dev",
-                 PISO_SETUP_CONF=f"{tmp}/setup.conf", GW_BOX=f"127.0.0.1:{CP + 10}")
+                 PISO_SETUP_CONF=f"{tmp}/setup.conf", PISO_SETUP=f"{tmp}/piso-setup", GW_BOX=f"127.0.0.1:{CP + 10}",
+                 PISO_MONITOR_CONF=f"{tmp}/monitor.conf", PISO_MONITOR_BIN=f"{tmp}/piso-monitor",
+                 PISO_MONITOR_SERVICE=f"{tmp}/piso_monitor.svc", MON_STATE=f"{tmp}/mon-state")
 
 
-def call(path, body=None, cookie=None, headers=None):
-    req = urllib.request.Request(f"http://127.0.0.1:{CP}{path}", data=None if body is None else json.dumps(body).encode(), method="GET" if body is None else "POST")
+def call(path, body=None, cookie=None, headers=None, method=None):
+    req = urllib.request.Request(f"http://127.0.0.1:{CP}{path}", data=None if body is None else json.dumps(body).encode(), method=method or ("GET" if body is None else "POST"))
     if body is not None:
         req.add_header("X-Piso", "1")
         req.add_header("Content-Type", "application/json")
@@ -79,8 +97,13 @@ try:
     check(wait_until(lambda: call("/")[0] == 200, 5), "the console page is served")
     code, body, h = call("/")
     check(b"TechNet PisoHub" in body and "default-src 'none'" in h.get("Content-Security-Policy", ""), "the page is the TechNet console, with a strict content security policy")
-    check(len(body) < 30000, f"the page is small ({len(body)} bytes)")  # (20000 until the Branding screen, feature 049; 24000 until the sidebar and the icons, feature 053)
+    check(len(body) < 31000, f"the page is small ({len(body)} bytes)")  # (20000 until Branding, feature 049; 24000 until sidebar, feature 053; 30000 until direct logo/picture upload)
     check(call("/api/overview")[0] == 401 and call("/api/clients")[0] == 401 and call("/api/phones")[0] == 401, "no session, no data")
+    check(call("/api/admin-wifi")[0] == 401, "Admin Wi-Fi data requires a session")
+    for method in ("GET", "HEAD"):
+        code, card, headers = call("/admin-wifi/card", method=method)
+        check(code == 401 and (method != "HEAD" or not card) and headers["Cache-Control"] == "no-store",
+              f"the Admin Wi-Fi card requires a session ({method})")
     check(call("/brand.png")[0] == 200 and call("/mascot.png")[0] == 200, "the logo and the mascot are served")
     check(call("/api/login", {"password": "router-pass"}, headers={"X-Piso": "0"})[0] == 403, "a login without the page's header is refused")
     check(call("/api/login", {"password": "router-pass"}, headers={"Origin": "http://evil.example"})[0] == 403, "a login from another site is refused")
@@ -89,6 +112,8 @@ try:
     code, body, h = call("/api/login", {"password": "router-pass"})
     cookie = (h.get("Set-Cookie") or "").split(";")[0]
     check(code == 200 and cookie.startswith("piso_console=") and "HttpOnly" in h.get("Set-Cookie", "") and "SameSite=Strict" in h.get("Set-Cookie", ""), "the router's password signs in (HttpOnly, SameSite=Strict cookie)")
+    check(json.loads(call("/api/admin-wifi", cookie=cookie)[1]) == {"enabled": False}, "Admin Wi-Fi API is disabled with both products")
+    check(call("/admin-wifi/card", cookie=cookie)[0] == 404, "there is no Admin Wi-Fi card with both products")
     # lock-out after five wrong passwords
     for _ in range(5):
         call("/api/login", {"password": "nope"})
@@ -292,6 +317,76 @@ try:
     page = call("/")[1].decode()
     check("printBatch" not in ui and "vouchers/new" not in ui and "@media print" not in ui and "Print" not in page and "Make codes" not in page, "the console has no batch forms and no slip printing")
     check('data-t="set"' in page and "Voucher choice" in page and "Get a voucher code" in page, "the console has a Settings page with the voucher choice")
+    check('id="pairb"' in page and 'id="pairc"' in page and "Pair a replacement coin box" in page, "the console Settings page has the replacement coin box pairing card")
+
+    # ---- coin box replacement pairing (/api/pair) ---------------------------------------------------------------------------------
+    open(f"{tmp}/setup.conf", "w").write("BOX_ADMIN_PASS='box-pass-123'\nBOX_MAC='AA:BB:CC:DD:EE:01'\n")
+    check(call("/api/pair")[0] == 401 and call("/api/pair", {}, headers={"X-Piso": "0"}, cookie=cookie)[0] == 403, "pair: needs console session and header")
+    code, body, _h = call("/api/pair", cookie=cookie)
+    pj = json.loads(body)
+    check(code == 200 and pj["state"] == "idle" and pj["mac"] == "AA:BB:CC:DD:EE:01", f"pair: initial state shows paired MAC: {pj}")
+    code, body, _h = call("/api/pair", {}, cookie=cookie)
+    check(code == 200 and json.loads(body)["state"] in ("running", "done"), f"pair: start returns job state: {body}")
+    check(wait_until(lambda: json.loads(call("/api/pair", cookie=cookie)[1])["state"] == "done", 5), "pair: transitions to done")
+    done_pj = json.loads(call("/api/pair", cookie=cookie)[1])
+    check(done_pj["mac"] == "11:22:33:44:55:66" and "11:22:33:44:55:66" in done_pj["detail"], f"pair: reports newly paired MAC: {done_pj}")
+    open(f"{tmp}/pair.slow", "w").close()
+    code, body, _h = call("/api/pair", {}, cookie=cookie)
+    check(code == 200 and json.loads(body)["state"] == "running", f"pair: slow job starts running: {body}")
+    code, body, _h = call("/api/pair", {"cancel": "1"}, cookie=cookie)
+    check(code == 200 and json.loads(body)["state"] in ("cancelling", "idle"), f"pair: cancel stops running job: {body}")
+    check(wait_until(lambda: json.loads(call("/api/pair", cookie=cookie)[1])["state"] == "idle", 5), "pair: cancelled job returns cleanly to idle")
+    os.remove(f"{tmp}/pair.slow")
+    # ---- Telegram bot key management -------------------------------------------------------------------------------------------------------------
+    check(call("/api/telegram")[0] == 401 and call("/api/telegram", {"token": "x"})[0] == 401, "telegram: needs a session")
+    check(call("/api/telegram", {"token": "x"}, cookie=cookie, headers={"X-Piso": "0"})[0] == 403, "telegram: POST needs X-Piso")
+    j = json.loads(call("/api/telegram", cookie=cookie)[1])
+    check(j == {"ok": True, "set": False, "hint": "", "chat": ""}, f"telegram: initial unset state: {j}")
+    check(call("/api/telegram", {"token": "not-a-token"}, cookie=cookie)[0] == 400, "telegram: invalid token rejected")
+    check(call("/api/telegram", {"chat": "abc"}, cookie=cookie)[0] == 400, "telegram: invalid chat ID rejected")
+    os.makedirs(f"{tmp}/mon-state", exist_ok=True)
+    open(f"{tmp}/mon-state/offset", "w").write("42")
+    open(f"{tmp}/mon-state/commands.set", "w").write("1")
+    open(f"{tmp}/monitor.conf", "w").write("SITE_NAME='Shop'\nREPORT_HOUR='21'\n#HEALTHCHECK_URL='https://hc.example/1'\n")
+    open(f"{tmp}/piso_monitor.svc", "w").write(f"#!/bin/sh\necho \"svc:$1\" >> {tmp}/mon.log\n")
+    open(f"{tmp}/piso-monitor", "w").write(
+        f"#!/bin/sh\n"
+        f"echo \"bin:$*:$PISO_MONITOR_CONF:$MON_STATE\" >> {tmp}/mon.log\n"
+        f"[ \"$1\" = verify ] && {{ [ -e {tmp}/badtok ] && {{ echo BAD_TOKEN; exit 2; }}; echo \"OK testbot\"; exit 0; }}\n"
+        f"[ \"$1\" = detect ] && {{ echo \"CHAT 6184345139\"; exit 0; }}\n"
+        f"exit 0\n"
+    )
+    os.chmod(f"{tmp}/piso_monitor.svc", 0o755)
+    os.chmod(f"{tmp}/piso-monitor", 0o755)
+    tok1 = "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+    # Rejects putting bot's own ID in Chat ID
+    code, body, _h = call("/api/telegram", {"token": tok1, "chat": "123456"}, cookie=cookie)
+    check(code == 400 and json.loads(body).get("error") == "BOT_ID_AS_CHAT", f"telegram: rejects bot ID as chat: {code} {body}")
+    # Rejects token when verify exits 2 without writing monitor.conf
+    open(f"{tmp}/badtok", "w").close()
+    code, body, _h = call("/api/telegram", {"token": tok1, "chat": "777888"}, cookie=cookie)
+    os.remove(f"{tmp}/badtok")
+    check(code == 400 and json.loads(body).get("error") == "BAD_TOKEN", f"telegram: rejected invalid key: {code} {body}")
+    code, body, _h = call("/api/telegram", {"token": f"bot{tok1}", "chat": "777888"}, cookie=cookie)
+    j = json.loads(body)
+    check(code == 200 and j["set"] is True and j["hint"] == "123456...ew11" and j["chat"] == "777888" and j.get("bot") == "testbot" and tok1.encode() not in body, f"telegram: saved & masked: {j}")
+    mc = open(f"{tmp}/monitor.conf").read()
+    check("SITE_NAME='Shop'" in mc and "#HEALTHCHECK_URL='https://hc.example/1'" in mc and f"TG_TOKEN='{tok1}'" in mc and "TG_CHAT='777888'" in mc, f"telegram: conf preserved: {mc}")
+    check((os.stat(f"{tmp}/monitor.conf").st_mode & 0o777) == 0o600, "telegram: monitor.conf stays 0600")
+    check(not os.path.exists(f"{tmp}/mon-state/offset") and not os.path.exists(f"{tmp}/mon-state/commands.set"), "telegram: stale offset and commands.set cleared")
+    log = open(f"{tmp}/mon.log").read()
+    check("svc:enable\n" in log and "svc:restart\n" in log, f"telegram: monitor service enabled and restarted: {log}")
+    # Rotating key alone keeps existing chat ID
+    tok2 = "987654:XYZ-DEF1234ghIkl-zyx57W2v1u129999"
+    j = json.loads(call("/api/telegram", {"token": tok2}, cookie=cookie)[1])
+    check(j["hint"] == "987654...9999" and j["chat"] == "777888" and tok2 not in repr(j), f"telegram: rotated key preserves chat: {j}")
+    # Detect chat via action=pair stops service, detects chat ID, saves, restarts
+    code, body, _h = call("/api/telegram", {"action": "pair"}, cookie=cookie)
+    jp = json.loads(body)
+    check(code == 200 and jp["chat"] == "6184345139" and "TG_CHAT='6184345139'" in open(f"{tmp}/monitor.conf").read(), f"telegram: pair detected chat: {code} {jp}")
+    code, body, _h = call("/api/telegram", {"action": "test"}, cookie=cookie)
+    check(code == 200 and json.loads(body).get("sent") is True, f"telegram: test send ok: {code} {body}")
+    check(f"bin:send Test message from PisoHub Console.:{tmp}/monitor.conf:{tmp}/mon-state" in open(f"{tmp}/mon.log").read(), "telegram: test send ran monitor bin")
     # ---- AO-09: 200 idle sockets from one guest do not starve anyone else, and do not pile up threads ---------------------------------
     import http.client, socket
 

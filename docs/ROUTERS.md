@@ -36,8 +36,8 @@ What else the router needs:
 - **OpenWrt 23.05 or newer** with the `opennds` package (ImmortalWrt 23.05, an OpenWrt fork, is what the owner's 360T6M runs: `DISTRIB_DESCRIPTION` reads `ImmortalWrt 23.05.0`; other forks are not checked), a **2.4 GHz** Wi-Fi radio (the coin box is 2.4 GHz only) and a LAN you can run SSH on.
 - **Room (sizes from the builds; flash use is an estimate, not a reading from a router):** the portal program is 0.7 to 1.1 MB (about 0.57 MB on
   flash once compressed), the installed `piso-setup` command about 0.1 MB (about 0.05 MB), and an update keeps a backup of the old program (another
-  ~0.9 MB) until the new one proves itself; the update file itself (1.1 to 1.7 MB) is held in memory, or in flash on a router with little free
-  memory. The one-line installer keeps its 1.6 MB copy in memory (`/tmp`) and the setup deletes it after a good install, so it no longer sits on
+  ~0.9 MB) until the new one proves itself; the update file itself is held in memory, or in flash on a router with little free
+  memory (starting in 1.5.40, the embedded portal payload is gzip-compressed, shrinking the installer from ~1.69 MB to ~861 KB). The one-line installer keeps its ~861 KB copy in memory (`/tmp`) and the setup deletes it after a good install, so it no longer sits on
   flash. By that estimate our own files take about 0.6 MB of flash; the packages (`opennds`, `curl`, `ca-bundle`, `jsonfilter`,
   `libmicrohttpd-no-ssl`) were not measured. The setup prints the flash chip it found and the free space (`piso-setup space`, and the summary) and
   warns under 2 MB free. The full PisoWiFi is the same program on every router; there is no cut-down build. Routers with

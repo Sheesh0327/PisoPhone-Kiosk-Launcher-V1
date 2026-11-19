@@ -12,10 +12,11 @@ use crate::http::squeeze;
 const TITLE: &str = "<title>TechNet PisoWifi</title>";
 const ICON: &str = r#"<link rel="icon" href="/brand.png">"#;
 const TOUCH: &str = r#"<link rel="apple-touch-icon" href="/brand.png">"#;
-const HEADER: &str = r#"<header><img src="/brand.png" alt="" width="28" height="28"><b>TechNet</b><span>PisoWifi</span></header>"#;
-const WELCOME: &str = r#"<div class="hd" id="hd"><img src="/mascot.png" alt="" width="72" height="74"><p>Buy Wi-Fi time<span class="mut" style="display:block;font-weight:400">Pick a plan, insert a coin and you are online.</span></p></div>"#;
-const GOS: &str = r#"<p class="sub" id="gos">Coins add up: every coin adds more time</p>"#;
-const FOOT: &str = r#"<p class="foot">TechNet Solutions &middot; Connect &middot; Play &middot; More Possibilities</p>"#;
+const HEADER: &str =
+    r#"<header><img src="/brand.png" alt="" width="28" height="28"><b><i>TechNet</i></b><span>PisoWifi</span></header><i class="sl"></i>"#;
+const WELCOME: &str = r#"<div class="hd" id="hd"><img src="/mascot.png" alt="" width="72" height="74"><div><h1>Get online</h1><p class="mut">Choose a plan. Tap Insert Coin.</p></div></div>"#;
+const GOS: &str = r#"<p class="sub" id="gos">Each coin adds time.</p>"#;
+const FOOT: &str = r#"<p class="foot">TechNet Solutions</p>"#;
 /// The line shown when the page cannot reach the router for 8 seconds: today it names TechNet's Wi-Fi, which is wrong on a shop's own page.
 const CONN_LINE: &str = "Still connecting. Check you are on the TechNet Wi-Fi.";
 const CONN_LINE_SHOP: &str = "Still connecting. Check you are on the shop's Wi-Fi.";
@@ -34,8 +35,8 @@ const PAGE_END: &str = "</script></body></html>";
 pub const ANCHORS: [&str; 15] =
     [TITLE, ICON, TOUCH, HEADER, WELCOME, GOS, FOOT, HEAD_BODY, PAGE_END, CONN_LINE, VF_FN, VF_TITLE, VF_NAME, VF_JOIN, VF_DOWNLOAD];
 
-/// The standard line under "Buy Wi-Fi time", kept when the owner wrote no welcome.
-const STANDARD: &str = "Pick a plan, insert a coin and you are online.";
+/// The lead below the guest headline, used when the shop has no welcome copy.
+const STANDARD: &str = "Choose a plan. Tap Insert Coin.";
 
 /// The credit every branded page carries, drawn here and not part of any owner text. It is small, but it is always there.
 const CREDIT: &str = r#"<p class="credit">by TechNet Solutions</p>"#;
@@ -97,9 +98,10 @@ fn contact_hours(b: &Brand, sep: &str) -> (String, String) {
     (join(Lang::En), join(Lang::Fil))
 }
 
-fn style(t: &Theme) -> String {
+fn style(t: &Theme, picture: bool) -> String {
+    let glow = if t.accent_text == 0 { "rgba(255,255,255,.78)" } else { "#fff" };
     let mut s = format!(
-        ":root{{--bg:{};--band:{};--s1:{};--s2:{};--ln:{};--ln2:{};--brand:{};--bfg:{};--bt:{}}}",
+        ":root{{--bg:{};--band:{};--s1:{};--s2:{};--ln:{};--ln2:{};--brand:{};--bfg:{};--bt:{};--bglow:{}}}",
         hex(t.bg),
         hex(t.band),
         hex(t.s1),
@@ -108,13 +110,20 @@ fn style(t: &Theme) -> String {
         hex(t.ln2),
         hex(t.accent),
         hex(t.accent),
-        hex(t.accent_text)
+        hex(t.accent_text),
+        glow
     );
     if t.accent != 0x1d63d6 {
         s.push_str(&format!(".sl{{background:{}}}", hex(t.accent)));
     }
     s.push_str(&format!(".btn:not(.alt){{color:{}}}.btn:active{{background:{}}}", hex(t.accent_text), hex(t.accent_down)));
     s.push_str(&squeeze(LAYOUT_CSS));
+    if picture {
+        s.push_str(concat!(
+            "body{isolation:isolate;--mut:#e2e8f7}",
+            r#"body::before{content:"";position:fixed;inset:0;z-index:-1;background:center/cover no-repeat url("/brand/picture");opacity:.32}"#,
+        ));
+    }
     s
 }
 
@@ -180,25 +189,22 @@ pub fn decorate(page: &str, b: &Brand, logo: bool, picture: bool) -> Result<Stri
         "poster" => r#" class="poster""#,
         _ => "",
     };
-    put(HEADER, &format!("<header{}>{}<b>{}</b>{}{}{}</header>", class, img, name, tagline, poster_line, LANG_BUTTON));
+    put(
+        HEADER,
+        &format!(r#"<header{}>{}<b><i>{}</i></b>{}{}</header><i class="sl"></i>{}"#, class, img, name, tagline, poster_line, LANG_BUTTON),
+    );
 
     let (promo_en, promo_fil) = both(b, Field::Promo, &esc);
     let promo = slot("p", r#" class="promo""#, &promo_en, &promo_fil);
-    let pic = if picture {
-        r#"<img src="/brand/picture" alt="" onerror="this.remove()">"#
-    } else if own {
-        ""
-    } else {
-        r#"<img src="/mascot.png" alt="" width="72" height="74">"#
-    };
+    let mascot = if own || picture { "" } else { r#"<img src="/mascot.png" alt="" width="72" height="74">"# };
     let (wel_en, wel_fil) = both(b, Field::Welcome, &esc);
     let welcome = slot(
-        "span",
-        r#" class="mut" style="display:block;font-weight:400""#,
+        "p",
+        r#" class="mut""#,
         if wel_en.is_empty() { STANDARD } else { &wel_en },
         if wel_fil.is_empty() { STANDARD } else { &wel_fil },
     );
-    put(WELCOME, &format!(r#"{}<div class="hd" id="hd">{}<p>Buy Wi-Fi time{}</p></div>"#, promo, pic, welcome));
+    put(WELCOME, &format!(r#"{}<div class="hd" id="hd">{}<div><h1>Get online</h1>{}</div></div>"#, promo, mascot, welcome));
 
     let (rules_en, rules_fil) = both(b, Field::Rules, &lines);
     let (rtag, head) = if layout == "compact" { ("details", "summary") } else { ("div", "b") };
@@ -222,7 +228,7 @@ pub fn decorate(page: &str, b: &Brand, logo: bool, picture: bool) -> Result<Stri
     put(FOOT, &format!("{}{}", foot, CREDIT));
 
     let shop = if own { format!(r#" data-shop="{}""#, esc(&b.name)) } else { String::new() };
-    put(HEAD_BODY, &format!(r#"<style>{}</style></head><body class="l-{}"{}>"#, style(&t), layout, shop));
+    put(HEAD_BODY, &format!(r#"<style>{}</style></head><body class="l-{}"{}>"#, style(&t, picture), layout, shop));
     put(PAGE_END, &format!("</script><script>{}</script></body></html>", SWITCH_JS.trim()));
     Ok(p)
 }
@@ -315,10 +321,10 @@ mod tests {
     fn f049_the_shops_name_replaces_technet_in_the_title_and_header_and_the_credit_stays() {
         let page = decorate(&base(), &full(), false, false).unwrap();
         assert!(page.contains("<title>Aling Nena&#39;s Net Cafe</title>"), "title");
-        assert!(page.contains("<b>Aling Nena&#39;s Net Cafe</b><span>Mabilis. Mura. Malinis.</span>"), "header");
-        assert!(!page.contains("<b>TechNet</b>") && !page.contains("<title>TechNet PisoWifi</title>"));
+        assert!(page.contains("<b><i>Aling Nena&#39;s Net Cafe</i></b><span>Mabilis. Mura. Malinis.</span>"), "header");
+        assert!(!page.contains("<b><i>TechNet</i></b>") && !page.contains("<title>TechNet PisoWifi</title>"));
         assert_eq!(count(&page, CREDIT), 1);
-        assert!(!page.contains("Connect &middot; Play"), "the TechNet slogan footer is replaced by the credit");
+        assert!(!page.contains(FOOT), "the default footer is replaced by the credit");
     }
 
     #[test]
@@ -328,15 +334,15 @@ mod tests {
             assert!(!none.contains(gone), "a branded page with no pictures must not mention {}", gone);
         }
         let logo = decorate(&base(), &full(), true, false).unwrap();
-        assert!(logo.contains(r#"<header><img src="/brand/logo" alt="" onerror="this.remove()"><b>"#), "the logo before the name");
+        assert!(logo.contains(r#"<header><img src="/brand/logo" alt="" onerror="this.remove()"><b><i>"#), "the logo before the name");
         assert!(
             logo.contains(r#"<link rel="icon" href="/brand/logo">"#)
                 && logo.contains(r#"<link rel="apple-touch-icon" href="/brand/logo">"#)
         );
         assert!(!logo.contains("/brand.png") && !logo.contains("/mascot.png") && !logo.contains("/brand/picture"));
         let both = decorate(&base(), &full(), true, true).unwrap();
-        assert!(both.contains(r#"<img src="/brand/picture" alt="" onerror="this.remove()">"#), "the picture is the welcome picture");
-        assert!(!both.contains("/mascot.png"));
+        assert!(both.contains(r#"background:center/cover no-repeat url("/brand/picture")"#));
+        assert!(!both.contains(r#"src="/brand/picture""#) && !both.contains("/mascot.png"));
     }
 
     #[test]
@@ -346,7 +352,7 @@ mod tests {
         assert!(idle.contains(r#"<p class="promo">Happy hour: double time until 5pm</p>"#), "the promo is on the idle page");
         assert!(idle.find("class=\"promo\"").unwrap() < idle.find("id=\"hd\"").unwrap(), "above the welcome");
         assert!(
-            idle.contains("Welcome to our shop!") && !idle.contains("Pick a plan, insert a coin and you are online."),
+            idle.contains("Welcome to our shop!") && !idle.contains("Choose a plan. Tap Insert Coin."),
             "the welcome replaces the standard line"
         );
         assert!(
@@ -373,8 +379,8 @@ mod tests {
         for frame in ["class=\"promo\"", "class=\"rules\"", "class=\"foot\""] {
             assert!(!page.contains(frame), "{}", frame);
         }
-        assert!(page.contains("Pick a plan, insert a coin and you are online."), "no welcome set: the standard line stays");
-        assert!(page.contains("<b>Nena</b>") && !page.contains("<b>Nena</b><span>"), "no tagline: just the name");
+        assert!(page.contains("Choose a plan. Tap Insert Coin."), "no welcome set: the standard line stays");
+        assert!(page.contains("<b><i>Nena</i></b>") && !page.contains("<b><i>Nena</i></b><span>"), "no tagline: just the name");
         let hours_only = {
             let mut b = named("Nena");
             b.set_text(Field::Hours, Lang::En, "Open 8 to 10");
@@ -416,8 +422,8 @@ mod tests {
             assert_eq!(count(&page, CREDIT), 1);
             assert_eq!(
                 count(&page, " onerror=\"this.remove()\""),
-                2 + count(&plain, " onerror="),
-                "only the two picture tags have an event attribute"
+                1 + count(&plain, " onerror="),
+                "only the logo tags have an event attribute"
             );
         }
         let mut b = named("x");
@@ -535,7 +541,7 @@ mod tests {
             "a Filipino-only block is hidden in English"
         );
         assert!(
-            page.contains(&format!(r#"data-e="{}" data-f="Maligayang pagdating">{}</span>"#, STANDARD, STANDARD)),
+            page.contains(&format!(r#"<p class="mut" data-e="{}" data-f="Maligayang pagdating">{}</p>"#, STANDARD, STANDARD)),
             "a Filipino-only welcome: the standard line in English"
         );
     }
@@ -644,5 +650,22 @@ mod tests {
             assert!(!p.contains(payload), "the raw name {:?} reached the page", payload);
             assert_eq!(count(&p, "data-shop="), 1);
         }
+    }
+
+    #[test]
+    fn poster_header_glow_adapts_to_light_and_dark_accents() {
+        let mut light = named("Nena");
+        light.palette = "ginto".into(); // accent #ffb81c -> accent_text = #000000
+        light.layout = "poster".into();
+        let page_light = decorate(&base(), &light, false, false).unwrap();
+        assert!(page_light.contains("--bglow:rgba(255,255,255,.78)"), "light accent gets dark-free soft white glow");
+        assert!(page_light.contains(".l-poster header b i{text-shadow:0 0 10px var(--bglow)}"));
+
+        let mut dark = named("Nena");
+        dark.palette = "technet".into();
+        dark.accent = "#1d63d6".into(); // accent_text = #ffffff
+        dark.layout = "poster".into();
+        let page_dark = decorate(&base(), &dark, false, false).unwrap();
+        assert!(page_dark.contains("--bglow:#fff"), "dark accent gets white glow");
     }
 }

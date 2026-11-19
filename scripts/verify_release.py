@@ -48,16 +48,19 @@ def main():
     hdr = open("esp32_firmware/include/LicensePubKey.h").read()
     body = hdr.split("LICENSE_PUBKEY_DER", 1)[1].split("};")[0] if "LICENSE_PUBKEY_DER" in hdr else ""
     der_fw = bytes(int(x, 16) for x in re.findall(r"0x([0-9a-fA-F]{2})", body))
+    wifi_hdr = open("esp32_wifi_firmware/include/OwnerPubKey.h").read()
+    wifi_body = wifi_hdr.split("OWNER_PUBKEY_DER", 1)[1].split("};")[0] if "OWNER_PUBKEY_DER" in wifi_hdr else ""
+    der_wifi = bytes(int(x, 16) for x in re.findall(r"0x([0-9a-fA-F]{2})", wifi_body))
     b64 = open("tools/pisoportal/owner_key.b64").read().strip()
     der_router = base64.b64decode(b64) if b64 else b""
-    if not der_fw or not der_router:
-        report("FAIL", "no owner key installed (firmware: %d bytes, router: %d bytes): boxes would accept UNSIGNED updates and routers none" % (len(der_fw), len(der_router)))
+    if not der_fw or not der_wifi or not der_router:
+        report("FAIL", "no owner key installed (firmware: %d bytes, wifi: %d bytes, router: %d bytes): boxes would accept UNSIGNED updates and routers none" % (len(der_fw), len(der_wifi), len(der_router)))
         pub = None
-    elif der_fw != der_router:
-        report("FAIL", "the owner key in the firmware and the one in the router program differ")
+    elif der_fw != der_router or der_wifi != der_router:
+        report("FAIL", "the owner key in esp32_firmware, esp32_wifi_firmware, and the router program differ")
         pub = None
     else:
-        report("PASS", "the same owner key is in the box firmware and in the router program")
+        report("PASS", "the same owner key is in esp32_firmware, esp32_wifi_firmware, and the router program")
         pub = serialization.load_der_public_key(der_fw)
 
     def verifies(sig_b64, text):
@@ -67,12 +70,14 @@ def main():
         except Exception:
             return False
 
+    fw_version = re.search(r'PISO_FW_VERSION "([^"]+)"', open("esp32_firmware/include/FirmwareVersion.h").read()).group(1)
+    wifi_fw_version = re.search(r'PISO_FW_VERSION "([^"]+)"', open("esp32_wifi_firmware/include/FirmwareVersion.h").read()).group(1)
+
     # --- firmware feeds: the full product's, and the PisoPhone-only and PisoWiFi-only products' when they are published
     for feed_dir, label in (("website/update", "firmware feed"), ("website/update/phone", "PisoPhone-only firmware feed"),
                             ("website/update/wifi", "PisoWiFi-only firmware feed")):
         if feed_dir != "website/update" and not os.path.exists(feed_dir + "/firmware.json"):
             continue
-        fw_version = re.search(r'PISO_FW_VERSION "([^"]+)"', open("esp32_firmware/include/FirmwareVersion.h").read()).group(1)
         feed = json.load(open(feed_dir + "/firmware.json"))
         chip_ids = {"esp32c3": 5, "esp32": 0}
         problems = []
@@ -88,7 +93,16 @@ def main():
                 problems.append("%s: checksum or size differs between the image, its manifest and firmware.json" % chip)
             if img[:1] != b"\xe9" or int.from_bytes(img[12:14], "little") != chip_ids.get(chip, -1):
                 problems.append("%s: not an image for this chip" % chip)
-            if pub and not (verifies(man["sig"], "pisophone-fw-v1|%s|%s|%s|%d" % (chip, man["version"], sha, len(img))) and ent["sig"] == man["sig"]):
+            sig_ok = True
+            if pub:
+                if feed_dir == "website/update/wifi":
+                    ver_tuple = tuple(int(x) for x in man["version"].split("."))
+                    sig_ok = (verifies(man["sig"], "pisowifi-fw-v1|%s|%s|%s|%d" % (chip, man["version"], sha, len(img)))
+                              or (ver_tuple <= (3, 12, 6) and verifies(man["sig"], "pisophone-fw-v1|%s|%s|%s|%d" % (chip, man["version"], sha, len(img)))))
+                else:
+                    sig_ok = verifies(man["sig"], "pisophone-fw-v1|%s|%s|%s|%d" % (chip, man["version"], sha, len(img)))
+                sig_ok = sig_ok and ent["sig"] == man["sig"]
+            if not sig_ok:
                 problems.append("%s: signature does not verify" % chip)
             if man["version"] != feed["version"]:
                 problems.append("%s: manifest says %s, firmware.json says %s" % (chip, man["version"], feed["version"]))
@@ -145,12 +159,29 @@ def main():
             report("PASS", "box firmware changed since %s and its version was raised (%s -> %s)" % (ref, live_ver, fw_version))
         else:
             report("PASS", "box firmware is the same as on %s" % ref)
+
+        live_wifi_fw = git("show", "%s:esp32_wifi_firmware/include/FirmwareVersion.h" % ref)
+        live_wifi_ver = re.search(r'PISO_FW_VERSION "([^"]+)"', live_wifi_fw).group(1) if live_wifi_fw else None
+        wifi_src = ["esp32_wifi_firmware/src", "esp32_wifi_firmware/include", "esp32_wifi_firmware/platformio.ini", "esp32_wifi_firmware/envs"]
+        wifi_changed = [l for l in (git("diff", "--name-only", ref, "HEAD", "--", *wifi_src) or "").splitlines()
+                        if not re.search(r"include/FirmwareVersion\.h$", l)]
+        key = lambda v: tuple(int(x) for x in re.findall(r"\d+", v))
+        if live_wifi_ver is None:
+            if live_ver and key(wifi_fw_version) <= key(live_ver):
+                report("FAIL", "esp32_wifi_firmware version %s must be newer than live %s" % (wifi_fw_version, live_ver))
+            else:
+                report("PASS", "esp32_wifi_firmware added at version %s (live wifi was %s)" % (wifi_fw_version, live_ver or "?"))
+        elif wifi_changed and live_wifi_ver == wifi_fw_version:
+            report("FAIL", "esp32_wifi_firmware changed since %s (%d files) but PISO_FW_VERSION is still %s: raise it in esp32_wifi_firmware/include/FirmwareVersion.h" % (ref, len(wifi_changed), wifi_fw_version))
+        elif wifi_changed:
+            report("PASS", "esp32_wifi_firmware changed since %s and its version was raised (%s -> %s)" % (ref, live_wifi_ver, wifi_fw_version))
+        else:
+            report("PASS", "esp32_wifi_firmware is the same as on %s" % ref)
         live_rel = (git("show", "%s:setup/RELEASE" % ref) or "").strip()
         rel = open("setup/RELEASE").read().strip()
         # only what a router installs: not the tests under router/tests or tools/pisoportal/tests
         rchanged = bool(git("diff", "--name-only", ref, "HEAD", "--", "setup/piso-setup.sh", "setup/src", "router", "tools/pisoportal/src",
                             ":(exclude)router/tests"))
-        key = lambda v: tuple(int(x) for x in re.findall(r"\d+", v))
         if rchanged and live_rel and key(rel) <= key(live_rel):
             report("FAIL", "router software changed since %s but setup/RELEASE is still %s: no router will install it" % (ref, rel))
         else:

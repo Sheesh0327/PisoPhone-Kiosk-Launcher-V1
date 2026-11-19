@@ -51,18 +51,24 @@ PRODUCTS = ("full", "phone", "wifi")
 
 def use_product(product):
     """Points the script at one product's feed: website/update (full) or website/update/<product>."""
-    global UPDATE_DIR, FIRMWARE_JSON, PAGES_UPDATE_URL
+    global UPDATE_DIR, FIRMWARE_JSON, PAGES_UPDATE_URL, PUBKEY_HEADER, VERSION_HEADER
     if product not in PRODUCTS:
         sys.exit(f"Error: --product is one of {', '.join(PRODUCTS)}")
     suffix = "" if product == "full" else "/" + product
     UPDATE_DIR = os.path.join("website", "update") + suffix.replace("/", os.sep)
     FIRMWARE_JSON = os.path.join(UPDATE_DIR, "firmware.json")
     PAGES_UPDATE_URL = "https://pisophone.pages.dev/update" + suffix
+    if product == "wifi":
+        PUBKEY_HEADER = os.path.join(ROOT, "esp32_wifi_firmware", "include", "OwnerPubKey.h")
+        VERSION_HEADER = os.path.join(ROOT, "esp32_wifi_firmware", "include", "FirmwareVersion.h")
+    else:
+        PUBKEY_HEADER = os.path.join(ROOT, "esp32_firmware", "include", "LicensePubKey.h")
+        VERSION_HEADER = os.path.join(ROOT, "esp32_firmware", "include", "FirmwareVersion.h")
 
 
 def firmware_has_owner_key():
     with open(PUBKEY_HEADER, encoding="utf-8") as f:
-        return not re.search(r"LICENSE_PUBKEY_LEN\s*=\s*0\s*;", f.read())
+        return not re.search(r"(LICENSE|OWNER)_PUBKEY_LEN\s*=\s*0\s*;", f.read())
 
 
 def read_json(path):
@@ -157,9 +163,9 @@ def main():
         p.error("--images DIR is required (or --json-only)")
 
     import sign_firmware  # noqa: E402  (scripts/sign_firmware.py; needs the cryptography package)
-    version = sign_firmware.header_version()
+    version = sign_firmware.header_version(args.product)
     if not version:
-        sys.exit("Error: no PISO_FW_VERSION in esp32_firmware/include/FirmwareVersion.h")
+        sys.exit(f"Error: no PISO_FW_VERSION in {VERSION_HEADER}")
 
     images = {}
     for chip in CHIPS:
@@ -188,7 +194,7 @@ def main():
     if published.get("version") == version and any(
             chips.get(c, {}).get("sha256") not in ("", None, hashlib.sha256(images[c]).hexdigest()) for c in CHIPS):
         print(f"::warning::PISO_FW_VERSION is still {version}, but the firmware changed. Boxes already on {version} will say "
-              f"'up to date' and refuse the new image (not newer). Raise PISO_FW_VERSION in esp32_firmware/include/FirmwareVersion.h.")
+              f"'up to date' and refuse the new image (not newer). Raise PISO_FW_VERSION in {VERSION_HEADER}.")
 
     private = sign_firmware.owner_key.load_private(args.key) if args.key else None
     os.makedirs(UPDATE_DIR, exist_ok=True)
@@ -204,7 +210,7 @@ def main():
         if os.path.exists(manifest_path):
             os.remove(manifest_path)   # never leave the signature of an older image next to this one
         if private:
-            manifest = sign_firmware.make_manifest(private, chip, version, images[chip])
+            manifest = sign_firmware.make_manifest(private, chip, version, images[chip], product=args.product)
             with open(manifest_path, "w", encoding="utf-8") as f:
                 json.dump(manifest, f, indent=2)
                 f.write("\n")

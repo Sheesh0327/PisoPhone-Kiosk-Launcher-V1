@@ -1,9 +1,6 @@
 # CLAUDE.md: what this project is and how to work on it
 
-Spec-driven work: read `constitution.md`, then `specs/README.md` (the loop: plan, implement, validate; skills in `.claude/skills/sdd-*`). No code without an approved feature spec.
-
-Read this first. It is short on purpose: the details are in the documents it points to. Section 2 points to where the repository stands
-today (`specs/RELEASE_STATE.md`); update that file whenever a release goes out.
+Read this first. The documents below cover architecture, testing and releases.
 
 ## 1. What this project is, and the goal
 **TechNet PisoHub** sells time with a coin slot, for real shops that run it every day. One ESP32 coin box serves two products:
@@ -24,17 +21,11 @@ key; and the money is always right. Two rules decide every trade-off:
 Real customers use the live release. Prefer a smaller, tested change over a clever one, and say plainly what you did not test.
 
 ## 2. Where the repository is now
-Release state (what is live, what has never run on real hardware, open cleanups) is in `specs/RELEASE_STATE.md`; the board of
-features and owner decisions is `specs/STATUS.md`. Both change often, so they are not kept here: this file stays the same between
-releases. Update `specs/RELEASE_STATE.md` whenever a release goes out. Other pointers: the hardware test checklist and issue log is
-`docs/REAL_WORLD_TESTING.md`; what changed for owners is `CHANGELOG.md`.
+Release history is in `CHANGELOG.md`; signed update feeds are in `website/update/`.
+The hardware test checklist and issue log is `docs/REAL_WORLD_TESTING.md`. Update these records when testing or releasing.
 
 ## 3. Checks to run before you push
-Run every check for the area you touched; the commands are in the table in `CONTRIBUTING.md`, "Before you open a pull request".
-Always run `bash scripts/check_security_rules.sh`. For the router add-on also run `cargo test` and `python3 tests/test_flow.py`
-in `tools/pisoportal`, and `python3 router/tests/test_setup.py`, `test_pisophone_setup.py`, `test_setup_web.py`,
-`test_setup_tools.py`; for the setup program also `test_setup_phone_web.py` and `test_phone_only.py`. CI (`.github/workflows/quality.yml`) runs the same for the parts a change touches. Code style: ktlint
-(Kotlin), clang-format (`esp32_firmware/.clang-format`).
+Run the area-specific checks and always-required checks in `CONTRIBUTING.md`, "Before you open a pull request".
 
 ## 4. Generated and published files: never edit by hand
 Change the source and regenerate. Do not read the big ones either; they cost a lot and tell you nothing.
@@ -49,7 +40,7 @@ Change the source and regenerate. Do not read the big ones either; they cost a l
 | `website/js/*-bundle.js` | vendored; recorded in `website/js/VENDORED.md` (`scripts/check_vendored.py`) |
 
 A change under `setup/src/` or `tools/pisoportal/` changes what routers install: raise `setup/RELEASE`. Firmware code needs a higher
-`PISO_FW_VERSION` or boxes ignore it. A change that only touches docs, tests, the setup program on a computer or the website
+`PISO_FW_VERSION` or boxes ignore it. The app version comes from the CI run number. A change that only touches docs, tests, the setup program on a computer or the website
 pages needs no router, firmware or app release.
 
 ## 5. Branches and releasing

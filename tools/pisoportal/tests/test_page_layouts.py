@@ -46,7 +46,7 @@ CONTRAST = """() => {
     return [[0, 0, 0]];
   };
   const out = [];
-  for (const sel of ['header b', 'header span', 'header em', '.lang', '.promo', '.rules', '.rules summary', '.foot', '.credit', '.hd p', '.hd span', '.btn.coin', '#gos', '.tiers .mut']) {
+  for (const sel of ['header b', 'header span', 'header em', '.lang', '.promo', '.rules', '.rules summary', '.foot', '.credit', '.hd h1', '.hd p', '.btn.coin', '#gos', '.tiers .mut']) {
     const e = document.querySelector(sel);
     if (!e || !(e.offsetWidth || e.offsetHeight)) continue;
     const fg = rgb(getComputedStyle(e).color);
@@ -59,12 +59,20 @@ CHECK = """() => {
   const seen = e => !!e && !!(e.offsetWidth || e.offsetHeight);
   const go = document.getElementById('go');
   const r = go.getBoundingClientRect();
-  const lb = document.querySelector('.lang').getBoundingClientRect();
+  const header = document.querySelector('header');
+  const heading = header.querySelector('b');
+  const lang = document.querySelector('.lang');
+  const lb = lang.getBoundingClientRect();
+  const name = heading.getBoundingClientRect();
+  const hs = getComputedStyle(header);
+  const nameWidth = header.clientWidth - parseFloat(hs.paddingLeft) - parseFloat(hs.paddingRight);
+  const ownRow = Math.abs(name.width - nameWidth) <= 1 && parseFloat(getComputedStyle(heading).fontSize) >= 22;
+  const langBelow = !header.contains(lang) && lb.top >= header.getBoundingClientRect().bottom && innerWidth - lb.right <= 20;
   const over = [...document.querySelectorAll('header b,header span,header em,header img')].filter(seen).some(e => {
     const rs = e.tagName === 'IMG' ? [e.getBoundingClientRect()] : (() => { const g = document.createRange(); g.selectNodeContents(e); return [...g.getClientRects()]; })();
     return rs.some(r => r.width && r.left < lb.right && r.right > lb.left && r.top < lb.bottom && r.bottom > lb.top);
   });
-  return {over, w: document.documentElement.scrollWidth, go: seen(go), pk: seen(document.querySelector('#pk .tiers')), seg: seen(document.querySelector('#pk .seg')),
+  return {over, ownRow, langBelow, w: document.documentElement.scrollWidth, go: seen(go), pk: seen(document.querySelector('#pk .tiers')), seg: seen(document.querySelector('#pk .seg')),
           credit: seen(document.querySelector('.credit')), name: seen(document.querySelector('header b')), lang: seen(document.querySelector('.lang')),
           top: document.elementFromPoint(r.left + r.width / 2, Math.min(r.top + r.height / 2, innerHeight - 2))};
 }"""
@@ -120,6 +128,31 @@ try:
             pg.wait_for_timeout(500)
             return pg, sent
 
+        pg, _ = open_page(G.CASES["idle_new_customer"])
+        motion = "() => ['header b i', '.hd h1', '#go'].map(sel => getComputedStyle(document.querySelector(sel)).animationName)"
+        headline = pg.get_by_role("heading", name="Get online", exact=True)
+        check(headline.is_visible() and headline.evaluate("(el) => getComputedStyle(el).textShadow") != "none",
+              "the welcome is a visible heading with a steady glow")
+        check(pg.evaluate(motion) == ["mq", "lift", "pulse"], "the name scrolls, the heading rises, and Insert Coin pulses")
+        pg.emulate_media(reduced_motion="reduce")
+        check(pg.evaluate(motion) == ["none"] * 3 and headline.is_visible()
+              and pg.locator("#go").evaluate("(e) => getComputedStyle(e).transitionDuration") == "0s",
+              "reduced motion keeps the headings and button still")
+        glows = pg.evaluate("() => ['.tiers', '#v-live', '#ion'].map(sel => getComputedStyle(document.querySelector(sel)).boxShadow)")
+        check(glows[0] != "none" and glows == [glows[0]] * 3, "the price and timer cards share a steady glow")
+        pg.close()
+
+        pg, _ = open_page(G.CASES["idle_with_voucher_choice"])
+        pg.set_viewport_size({"width": 320, "height": 740})
+        voucher = pg.locator('label[for="mv"]')
+        check(voucher.is_visible() and voucher.evaluate("""label => {
+          const box = label.getBoundingClientRect();
+          const text = document.createRange();
+          text.selectNodeContents(label);
+          return [...text.getClientRects()].every(line => line.top >= box.top && line.bottom <= box.bottom);
+        }"""), "the whole voucher label fits its tab at 320 px")
+        pg.close()
+
         n = 0
         for layout in LAYOUTS:
             for i, palette in enumerate(PALETTES):
@@ -131,7 +164,8 @@ try:
                     c = pg.evaluate(CHECK)
                     check(c["go"] and c["pk"] and c["seg"], f"{what}: coin button, plan tabs and price list are on the page")
                     check(c["credit"] and c["name"] and c["lang"], f"{what}: the credit, the name and the language button show")
-                    check(not c["over"], f"{what}: the language button covers none of the heading")
+                    check(not c["over"] and c["ownRow"] and c["langBelow"],
+                          f"{what}: the full-width shop name sits above the right-aligned language switch")
                     check(c["w"] <= 360, f"{what}: nothing spills sideways ({c['w']} px)")
                     pg.click("#go", timeout=3000)
                     pg.wait_for_timeout(150)

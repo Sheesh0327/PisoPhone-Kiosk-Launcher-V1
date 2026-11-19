@@ -43,7 +43,7 @@ DEFAULT_SSID = "PisoWiFi"
 DPI = 300
 W, H = 2480, 3508  # A4 at 300 dpi
 
-# the look of docs/design/GUI_SPEC_OWNER_AND_WIFI.md: navy band, brand blue for actions, gold for money, teal for "connected"
+# the look of docs/UI_DESIGN.md: navy band, brand blue for actions, gold for money, teal for "connected"
 NAVY = (10, 27, 69)
 BRAND = (29, 99, 214)
 GOLD = (255, 184, 28)

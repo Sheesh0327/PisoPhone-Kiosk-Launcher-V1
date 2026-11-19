@@ -78,3 +78,70 @@ with open(path, "w") as f:
     json.dump(out, f, indent=2)
     f.write("\n")
 print("wrote", path)
+
+# Gateway protocol vectors (gw1 HTTP request/response signing and gw1ev UDP coin events).
+gw_requests = [
+    ("arm", "0123456789abcdef-key", "arm", "aa-bb-cc", "00112233445566778899aabbccddeeff"),
+    ("status", "test-gateway-key-123456", "status", "abc123", "0123456789abcdef0123456789abcdef"),
+    ("release", "test-gateway-key-123456", "release", "abc123", "0123456789abcdef0123456789abcdef"),
+    ("ack", "test-gateway-key-123456", "ack", "abc123", "0123456789abcdef0123456789abcdef"),
+    ("colon-session", "test-gateway-key-123456", "arm", "aa:bb:cc:dd:ee:ff", "fedcba9876543210fedcba9876543210"),
+]
+gw_responses = [
+    ("status", "test-gateway-key-123456", "status", "abc123", "0123456789abcdef0123456789abcdef", "armed:0:3:1003:true:0:6"),
+    ("ack", "test-gateway-key-123456", "ack", "abc123", "0123456789abcdef0123456789abcdef", "3"),
+    ("arm", "test-gateway-key-123456", "arm", "abc123", "0123456789abcdef0123456789abcdef", "armed:60:0:1000:false:500:6"),
+    ("release", "test-gateway-key-123456", "release", "abc123", "0123456789abcdef0123456789abcdef", "draining:0:2:1002:false:0:6"),
+]
+gw_events = [
+    ("coin", "0123456789abcdef-key", "ab12", "f00d", 3, "coin", 7),
+    ("ready", "test-gateway-key-123456", "aa:bb:cc:dd:ee:ff", "0123456789abcdef", 1, "ready", 0),
+    ("end", "test-gateway-key-123456", "aa:bb:cc:dd:ee:ff", "0123456789abcdef", 4, "end", 5),
+]
+gw_out = {
+    "version": 1,
+    "requests": [
+        {
+            "name": n,
+            "key": k,
+            "action": a,
+            "session": s,
+            "nonce": nonce,
+            "message": f"gw1:{a}:{s}:{nonce}",
+            "sig": sign(k, f"gw1:{a}:{s}:{nonce}"),
+        }
+        for n, k, a, s, nonce in gw_requests
+    ],
+    "responses": [
+        {
+            "name": n,
+            "key": k,
+            "action": a,
+            "session": s,
+            "nonce": nonce,
+            "facts": facts,
+            "message": f"gw1r:{a}:{s}:{nonce}:{facts}",
+            "rsig": sign(k, f"gw1r:{a}:{s}:{nonce}:{facts}"),
+        }
+        for n, k, a, s, nonce, facts in gw_responses
+    ],
+    "events": [
+        {
+            "name": n,
+            "key": k,
+            "session": s,
+            "wid": wid,
+            "seq": seq,
+            "type": kind,
+            "pulses": pulses,
+            "body": f"gw1ev:{s}:{wid}:{seq}:{kind}:{pulses}",
+            "line": f"gw1ev:{s}:{wid}:{seq}:{kind}:{pulses}:{sign(k, f'gw1ev:{s}:{wid}:{seq}:{kind}:{pulses}')}\n",
+        }
+        for n, k, s, wid, seq, kind, pulses in gw_events
+    ],
+}
+gw_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "gateway_v1.json")
+with open(gw_path, "w") as f:
+    json.dump(gw_out, f, indent=2)
+    f.write("\n")
+print("wrote", gw_path)

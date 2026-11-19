@@ -3,7 +3,7 @@
 commands here with sh, against a fake router (fake wget serving the repository's files from a folder, fake uci, ubus and
 jsonfilter), with the real one-line installer (setup/install.sh) and a stand-in setup file.
 Run with:  python3 router/tests/test_pisophone_setup.py"""
-import base64, hashlib, importlib.util, io, json, os, re, shutil, subprocess, sys, tempfile, time, types, urllib.error, urllib.parse
+import base64, gzip, hashlib, importlib.util, io, json, os, re, shutil, subprocess, sys, tarfile, tempfile, time, types, urllib.error, urllib.parse
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 spec = importlib.util.spec_from_file_location("pisophone_setup", f"{ROOT}/setup/pisophone_setup.py")
@@ -146,15 +146,90 @@ check(down is False, "gives up after the wait")
 
 # ---- the remote commands --------------------------------------------------------------------------------------------------
 cmd = ps.setup_command("beta")
+scmd = ps.staged_setup_command("/tmp/piso-stage")
+icmd = ps.staged_installer_command("/tmp/piso-stage", "update")
 check("https://beta.pisophone.pages.dev/install.sh" in cmd and "--yes" in cmd, "the branch's installer, from its website, --yes")
+check("IFS= read -r ROOT_PASSWORD" in scmd and "sh /tmp/piso-stage/piso-setup.sh --yes" in scmd and "rm -rf /tmp/piso-stage" in scmd,
+      "staged setup reads secrets, runs staged script and cleans up")
+check("sh /tmp/piso-stage/piso-setup.sh --yes update" in icmd and "rm -rf /tmp/piso-stage" in icmd, "staged update passes update and cleans up")
 check(ps.site_url("main") == "https://pisophone.pages.dev" and ps.site_url("Feature/New_UI") == "https://feature-new-ui.pisophone.pages.dev",
       "the website of a branch (Cloudflare's branch alias)")
 check("IFS= read -r ROOT_PASSWORD" in cmd and "export ROOT_PASSWORD" in cmd, "the answers are read from the input")
 check("'x'\"'\"';reboot;'\"'\"''" in ps.installer_command("x';reboot;'"), "installer arguments are quoted")
 bb = shutil.which("busybox")
 for shell in ["sh"] + ([f"{bb} sh"] if bb else []):
-    r = subprocess.run(shell.split() + ["-n", "-c", cmd], capture_output=True, text=True)
-    check(r.returncode == 0, f"the remote command reads as shell ({shell}): {r.stderr}")
+    for c in (cmd, scmd, icmd):
+        r = subprocess.run(shell.split() + ["-n", "-c", c], capture_output=True, text=True)
+        check(r.returncode == 0, f"the remote command reads as shell ({shell}): {r.stderr}")
+
+# ---- CPU family detection and PC-side pre-decoding ------------------------------------------------------------------------
+check(ps.arch_from_release("") == "mipsel"
+      and ps.arch_from_release("DISTRIB_ARCH='mipsel_24kc'") == "mipsel"
+      and ps.arch_from_release("DISTRIB_ARCH='mips_24kc'") == "mips"
+      and ps.arch_from_release("DISTRIB_ARCH='aarch64_cortex-a53'") == "aarch64"
+      and ps.arch_from_release("DISTRIB_ARCH='arm_cortex-a7_neon-vfpv4'") == "armv7"
+      and ps.arch_from_release("DISTRIB_ARCH='x86_64'") == "x86_64",
+      "arch_from_release maps supported DISTRIB_ARCH values identically to install.sh")
+check(ps.bundle_filename("mipsel") == "piso-setup.sh" and ps.bundle_filename("aarch64") == "piso-setup-aarch64.sh",
+      "bundle_filename maps mipsel vs multi-arch setup names")
+try:
+    ps.arch_from_release("DISTRIB_ARCH='riscv64'")
+    check(False, "unsupported DISTRIB_ARCH must raise SetupError")
+except ps.SetupError as e:
+    check("riscv64" in str(e) and "no PisoPhone portal program" in str(e), "unsupported CPU gives clear error: " + str(e))
+
+elf_sample = b"\x7fELF-fake-pisoportal-binary-" + bytes(range(128))
+elf_sha = hashlib.sha256(elf_sample).hexdigest()
+elf_gz_b64 = base64.b64encode(gzip.compress(elf_sample, compresslevel=9, mtime=0)).decode()
+fake_arch_sh = ("#!/bin/sh\necho ok\n# ---- payload: the portal files ----\n"
+                "#@@FILE /etc/demo.conf 644\nhello=1\n"
+                f"#@@B64 /usr/bin/pisoportal 755 {elf_sha} gz\n"
+                + "".join(elf_gz_b64[i:i + 76] + "\n" for i in range(0, len(elf_gz_b64), 76))).encode()
+fake_arch_sha = f"{hashlib.sha256(fake_arch_sh).hexdigest()}  piso-setup-aarch64.sh\n".encode()
+bundle_cache = tempfile.mkdtemp(dir=tmp)
+bundle_fetches = []
+
+
+class FakeHttpResp:
+    def __init__(self, body): self.body = body
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+    def read(self): return self.body
+
+
+class BundleOpener:
+    def __init__(self, files): self.files = files
+    def __call__(self, req, timeout=None):
+        bundle_fetches.append(req.full_url)
+        if req.full_url not in self.files:
+            raise urllib.error.URLError("missing " + req.full_url)
+        return FakeHttpResp(self.files[req.full_url])
+
+
+bo = BundleOpener({
+    "https://pisophone.pages.dev/setup/piso-setup-aarch64.sh.sha256": fake_arch_sha,
+    "https://pisophone.pages.dev/setup/piso-setup-aarch64.sh": fake_arch_sh,
+})
+tar_bytes = ps.prepare_router_bundle("main", "aarch64", bundle_cache, opener=bo, emit=lambda m: None)
+check(len(bundle_fetches) == 2, "first bundle fetch downloads sha256 and setup script: " + str(bundle_fetches))
+with tarfile.open(fileobj=io.BytesIO(tar_bytes), mode="r:*") as tf:
+    names = tf.getnames()
+    sh_txt = tf.extractfile("piso-setup.sh").read().decode()
+    bin_bytes = tf.extractfile("pre/usr/bin/pisoportal").read()
+    bin_info = tf.getmember("pre/usr/bin/pisoportal")
+    sh_info = tf.getmember("piso-setup.sh")
+check("piso-setup.sh" in names and "pre/usr/bin/pisoportal" in names and bin_bytes == elf_sample,
+      "prepared tar contains piso-setup.sh and raw decompressed ELF binary: " + str(names))
+check(sh_info.type == tarfile.REGTYPE and bin_info.mode == 0o755 and bin_info.mtime == 0,
+      "tar entries have executable mode and deterministic mtime=0")
+check("#@@B64" not in sh_txt and f"#@@BIN /usr/bin/pisoportal 755 {elf_sha} pre/usr/bin/pisoportal" in sh_txt
+      and "#@@FILE /etc/demo.conf 644" in sh_txt,
+      "script replaces #@@B64 with #@@BIN while keeping #@@FILE")
+bundle_fetches.clear()
+bo_cached = BundleOpener({"https://pisophone.pages.dev/setup/piso-setup-aarch64.sh.sha256": fake_arch_sha})
+tar_bytes_2 = ps.prepare_router_bundle("main", "aarch64", bundle_cache, opener=bo_cached, emit=lambda m: None)
+check(bundle_fetches == ["https://pisophone.pages.dev/setup/piso-setup-aarch64.sh.sha256"] and tar_bytes_2 == tar_bytes,
+      "second prepare reuses cached .sh file by sha256 without re-downloading")
 
 # ---- end to end, with a fake ssh and a fake router -------------------------------------------------------------------------
 bindir, site, fake_root = f"{tmp}/bin", f"{tmp}/site", f"{tmp}/router"
@@ -202,6 +277,9 @@ case "$(cat {tmp_p}/result 2>/dev/null)" in
   *) echo "DONE all checks passed" > $R/tmp/piso-setup.state ;;
 esac
 printf 'Router password: %s\\nPisoKiosk Wi-Fi password: %s\\n' "$ROOT_PASSWORD" "$KIOSK_PASSWORD" > $R/root/piso-setup-summary.txt
+if [ "$SHOP_PRODUCT" = wifi ]; then
+  printf 'Admin Wi-Fi: PisoAdmin-a1b2 (HIDDEN) password: %s    (owner devices)\\n' "$ADMIN_PASSWORD" >> $R/root/piso-setup-summary.txt
+fi
 echo "<html><body>sheet for $SITE_NAME</body></html>" > $R/root/piso-handout.html
 echo "SETUP COMPLETE."
 exit 0
@@ -244,7 +322,10 @@ if remote == "piso-setup telegram":   # a conversation: the input is passed thro
     env = dict(os.environ, PATH="{bindir_p}" + os.pathsep + os.environ["PATH"])
     sys.exit(subprocess.run(["sh", "-c", remote], env=env).returncode)
 data = sys.stdin.buffer.read() if not sys.stdin.isatty() else b""
-open("{tmp_p}/ssh-input.log", "ab").write(data)
+if "tar -xf - -C" in remote:
+    open("{tmp_p}/ssh-upload.log", "ab").write(data)
+else:
+    open("{tmp_p}/ssh-input.log", "ab").write(data)
 env = dict(os.environ, PATH="{bindir_p}" + os.pathsep + os.environ["PATH"], PISO_INSTALL_DIR="{fake_root_p}/root", PISO_TEST_NONROOT="1",
            PISO_NETWORK_INIT="{bindir_p}/netinit", PISO_TTY="/dev/null", PISO_SELF_PATH="{fake_root_p}/no-such-piso-setup")
 sys.exit(subprocess.run(["sh", "-c", remote], input=data, env=env).returncode)
@@ -254,9 +335,19 @@ PACKAGER_OPKG = "@@RELEASE\nDISTRIB_RELEASE='23.05.5'\n@@APK\nno\n@@OPKG\nyes\n"
 PACKAGER = PACKAGER_OPKG
 
 
+def site_opener(req, timeout=None):
+    """Serves local {site}/<branch>/... files so e2e tests exercise real PC pre-decoding & cache."""
+    p = urllib.parse.urlparse(req.full_url)
+    branch = "main" if p.netloc == "pisophone.pages.dev" else p.netloc.split(".")[0]
+    fpath = os.path.join(site, branch, p.path.lstrip("/"))
+    if not os.path.isfile(fpath):
+        raise urllib.error.URLError("not found: " + req.full_url)
+    return FakeHttpResp(open(fpath, "rb").read())
+
+
 def e2e(answers=(), secrets_=(), lan="192.168.1.1", probe="factory", result="ok", up=lambda h: True, moved=True, needpw=None,
-        saved_pw=None, inet=True, **opts):
-    for f in ("needpw", "ssh.log", "ssh-input.log", "wget.log", "uci.log", "network.log"):
+        saved_pw=None, inet=True, opener=site_opener, flasher="FAKE", **opts):
+    for f in ("needpw", "ssh.log", "ssh-input.log", "ssh-upload.log", "wget.log", "uci.log", "network.log"):
         if os.path.exists(f"{tmp}/{f}"):
             os.remove(f"{tmp}/{f}")
     for f in ("tmp/piso-setup.state", "root/piso-setup-summary.txt", "root/piso-handout.html"):
@@ -285,9 +376,12 @@ def e2e(answers=(), secrets_=(), lan="192.168.1.1", probe="factory", result="ok"
     rc, err = None, None
     try:
         rc = ps.run_setup(types.SimpleNamespace(**a), ps.Ssh(tmp), read=reader(*answers), read_secret=reader(*secrets_),
-                          board_finder=lambda: list(BOARDS), flasher=lambda port, emit: FLASHED.append(port), mac_reader=lambda port: MAC_READ.get("mac", ""),
+                          board_finder=lambda: list(BOARDS),
+                          flasher=(lambda port, emit: FLASHED.append(port)) if flasher == "FAKE" else flasher,
+                          mac_reader=lambda port: MAC_READ.get("mac", ""),
                           probe=lambda h: h == (open(f"{tmp}/lan").read().strip()) and up(h),
-                          wait=lambda probe, renew: moved and probe("10.0.0.1"), open_page=lambda url, chromium=True: opened.append(url))
+                          wait=lambda probe, renew: moved and probe("10.0.0.1"), open_page=lambda url, chromium=True: opened.append(url),
+                          opener=opener)
     except ps.SetupError as e:
         err = str(e)
     finally:
@@ -299,8 +393,9 @@ def e2e(answers=(), secrets_=(), lan="192.168.1.1", probe="factory", result="ok"
     buf.write(cap.read())
     cap.close()
     log = lambda f: open(f"{tmp}/{f}").read() if os.path.exists(f"{tmp}/{f}") else ""
-    return types.SimpleNamespace(rc=rc, err=err, out=buf.getvalue(), ssh=log("ssh.log"), input=log("ssh-input.log"), wget=log("wget.log"),
-                                 uci=log("uci.log"), saved=sorted(os.listdir(outdir)), outdir=outdir, opened=opened)
+    upload = open(f"{tmp}/ssh-upload.log", "rb").read() if os.path.exists(f"{tmp}/ssh-upload.log") else b""
+    return types.SimpleNamespace(rc=rc, err=err, out=buf.getvalue(), ssh=log("ssh.log"), input=log("ssh-input.log"), upload=upload,
+                                 wget=log("wget.log"), uci=log("uci.log"), saved=sorted(os.listdir(outdir)), outdir=outdir, opened=opened)
 
 
 # (the coin box over USB: none here; the flashing has its own tests below)
@@ -311,10 +406,12 @@ check("set network.lan.ipaddr=10.0.0.1" in r.uci and open(f"{tmp}/lan").read().s
 check("SETUP-RAN args=[--yes] root=[routerpass1] kiosk=[kioskpass1] box=[boxadmin99] guest=[Tindahan WiFi] site=[Aling Nena]" in r.out,
       "the setup got every answer, unattended: " + r.out[-600:])
 check("routerpass1" not in r.ssh and "kioskpass1" not in r.ssh and "boxadmin99" not in r.ssh, "no password on any command line")
-check(r.input == "routerpass1\nkioskpass1\nboxadmin99\nTindahan WiFi\nAling Nena\nPH\nboth\n\n", "the answers went over the connection's input: " + repr(r.input))
-check(r.ssh.count("root@192.168.1.1") == 3 and r.ssh.count("root@10.0.0.1") == 2, "probe, package check and installer at 192.168.1.1, the internet test and the setup at 10.0.0.1: " + r.ssh)
+check(r.input == "routerpass1\nkioskpass1\nboxadmin99\n\nTindahan WiFi\nAling Nena\nPH\nboth\n\n", "the answers went over the connection's input: " + repr(r.input))
+check(r.ssh.count("root@192.168.1.1") == 3 and r.ssh.count("root@10.0.0.1") == 3,
+      "probe, package check and move at 192.168.1.1; ping, tar upload and staged setup at 10.0.0.1: " + r.ssh)
 check("HostKeyAlias=pisophone-router" in r.ssh and "StrictHostKeyChecking=accept-new" in r.ssh, "one pinned host key for both addresses")
-check("https://pisophone.pages.dev/install.sh" in r.wget and "https://pisophone.pages.dev/setup/piso-setup.sh" in r.wget, "main's installer and setup file")
+check(r.wget == "" and len(r.upload) > 0 and not os.path.exists(f"{fake_root}/tmp/piso-stage") and not os.path.exists(f"{fake_root}/root/piso-stage"),
+      "PC uploaded tar directly (no router wget) and cleaned up staging dir")
 summary = [f for f in r.saved if f.startswith("pisophone-summary-")]
 sheet = [f for f in r.saved if f.startswith("pisophone-setup-sheet-")]
 check(len(summary) == 1 and "Router password: routerpass1" in open(f"{r.outdir}/{summary[0]}").read(), "the summary is saved: " + str(r.saved))
@@ -330,9 +427,14 @@ check(r.rc == 1 and r.ssh.count("root@") == 1 and r.uci == "", "cancelled at the
 
 # --branch beta, --yes, a router already at 10.0.0.1
 r = e2e(lan="10.0.0.1", yes=True, branch="beta", guest_ssid="Cafe", no_browser=True)
-check(r.rc == 0 and "https://beta.pisophone.pages.dev/install.sh" in r.wget and "guest=[Cafe]" in r.out and "set network.lan.ipaddr" not in r.uci,
-      "--yes --branch beta on a router at 10.0.0.1: " + str(r.err) + r.out[-400:])
-check(r.ssh.count("root@10.0.0.1") == 3 and r.opened == [], "probe, internet test and setup only; --no-browser")
+check(r.rc == 0 and r.wget == "" and len(r.upload) > 0 and "guest=[Cafe]" in r.out and "set network.lan.ipaddr" not in r.uci,
+      "--yes --branch beta on a router at 10.0.0.1 (PC tar upload): " + str(r.err) + r.out[-400:])
+check(r.ssh.count("root@10.0.0.1") == 5 and r.opened == [], "probe, internet test, arch read, upload and setup; --no-browser: " + r.ssh)
+
+# fallback when the computer cannot download from the website: the router downloads it via wget instead
+r = e2e(lan="10.0.0.1", yes=True, no_browser=True, opener=lambda req, timeout=None: (_ for _ in ()).throw(urllib.error.URLError("offline")))
+check(r.rc == 0 and "https://pisophone.pages.dev/install.sh" in r.wget and r.upload == b"" and "letting the router download it itself" in r.out,
+      "PC download failure falls back cleanly to router-side wget install.sh: " + str(r.err) + r.out[-400:])
 
 # set up before: no questions, nothing sent, the router keeps its settings
 for state in ("configured", "denied"):
@@ -398,7 +500,12 @@ shutil.copytree(f"{site}/beta", f"{site}/main")
 
 # --update
 r = e2e(lan="10.0.0.1", probe="denied", update=True)
-check(r.rc == 0 and "SETUP-RAN args=[--yes update]" in r.out and "UPDATE DONE" in r.out, "--update runs the installer's update: " + r.out[-300:])
+check(r.rc == 0 and "SETUP-RAN args=[--yes update]" in r.out and "UPDATE DONE" in r.out
+      and "https://pisophone.pages.dev/install.sh" in r.wget and r.upload == b"",
+      "--update on main keeps signed installer flow (wget install.sh -> self-update): " + r.out[-300:])
+r = e2e(lan="10.0.0.1", probe="denied", update=True, branch="beta")
+check(r.rc == 0 and "SETUP-RAN args=[--yes update]" in r.out and r.wget == "" and len(r.upload) > 0,
+      "--update on beta uploads pre-decoded tar over SSH: " + r.out[-300:])
 r = e2e(lan="10.0.0.1", probe="factory", update=True)
 check(r.err and "not been set up yet" in r.err, "--update on a router that was never set up: refused")
 
@@ -406,7 +513,7 @@ check(r.err and "not been set up yet" in r.err, "--update on a router that was n
 r = e2e(lan="10.0.0.1", yes=True, country="SG", no_browser=True)
 check(r.rc == 0 and r.input.endswith("\nSG\nboth\n\n"), "--country SG is sent (BOX_EXPECT_MAC is the last, empty line): " + repr(r.input))
 r = e2e(answers=("y", "n"), lan="10.0.0.1", probe="configured", country="JP")
-check(r.input == "\n\n\n\n\nJP\n\n\n", "a configured router: only the country is sent (no product was chosen): " + repr(r.input))
+check(r.input == "\n\n\n\n\n\nJP\n\n\n", "a configured router: only the country is sent (no product was chosen): " + repr(r.input))
 
 # Telegram: the router waits for a message to the bot, the owner confirms the chat
 script("piso-setup", f"""[ "$1" = telegram ] || exit 9
@@ -442,6 +549,13 @@ check(found == {"ROOT_PASSWORD": "Rpass2345678", "KIOSK_PASSWORD": "Kpass234567"
 check(ps.parse_summary(SUMMARY.replace("PisoKiosk-a1b2", "PisoKiosk"))["KIOSK_SSID_NAME"] == "PisoKiosk", "a router with the old shared name")
 check("ROOT_PASSWORD" not in ps.parse_summary(SUMMARY.replace("password: Rpass2345678", "password: NOT SET by this setup")),
       "a router password the setup did not set is not shown as one")
+
+admin_summary = "Admin Wi-Fi:           PisoAdmin-a1b2 (HIDDEN)   password: Demo;Pass<&12    (your devices only)\n"
+found_admin = ps.parse_summary(admin_summary)
+check(found_admin == {"ADMIN_PASSWORD": "Demo;Pass<&12", "ADMIN_SSID_NAME": "PisoAdmin-a1b2"}, "the admin name and password are read from the summary")
+check("ADMIN_PASSWORD" not in ps.parse_summary(admin_summary.replace("Demo;Pass<&12", "")), "a summary without a password does not produce a card")
+check(ps.name_problem("PisoAdmin", "wifi") and ps.name_problem("PisoAdmin-a1b2", "wifi"), "admin names are reserved for the hidden network")
+check("Demo;Pass&lt;&amp;12" in ps.admin_card_html("Shop <1>", "PisoAdmin-a1b2", "Demo;Pass<&12"), "the card escapes credentials")
 
 # the password helper of the window mode: ssh runs it and reads the password from it
 s2 = ps.Ssh(tmp)
@@ -601,23 +715,23 @@ for word, want in (("1", "wifi"), ("wifi", "wifi"), ("2", "phone"), ("phone", "p
         sys.stdout = sys.__stdout__
 # answers: the rental-phone Wi-Fi password only for both
 a = ps.collect_answers(types.SimpleNamespace(yes=True, guest_ssid="Cafe", site_name=None, product="wifi"))
-check(a["SHOP_PRODUCT"] == "wifi" and a["KIOSK_PASSWORD"] == "" and len(a["ROOT_PASSWORD"]) == 14, "--yes, wifi: no rental-phone password is made; SHOP_PRODUCT=wifi")
+check(a["SHOP_PRODUCT"] == "wifi" and a["KIOSK_PASSWORD"] == "" and len(a["ADMIN_PASSWORD"]) == 12 and len(a["ROOT_PASSWORD"]) == 14, "--yes, wifi: no rental-phone password is made; SHOP_PRODUCT=wifi")
 ps.check_answers(a)
 a = ps.collect_answers(types.SimpleNamespace(yes=True, guest_ssid="Cafe", site_name=None, product="both"))
-check(a["SHOP_PRODUCT"] == "both" and len(a["KIOSK_PASSWORD"]) == 12, "--yes, both: the password is made")
+check(a["SHOP_PRODUCT"] == "both" and len(a["KIOSK_PASSWORD"]) == 12 and a["ADMIN_PASSWORD"] == "", "--yes, both: the password is made")
 sys.stdout = io.StringIO()
 try:
     a = ps.collect_answers(types.SimpleNamespace(yes=False, guest_ssid=None, site_name=None, product="wifi"), reader("", ""),
-                           reader("routerpass1", "routerpass1", "boxadmin99", "boxadmin99"))
+                           reader("routerpass1", "routerpass1", "boxadmin99", "boxadmin99", "adminWifi12", "adminWifi12"))
 finally:
     sys.stdout = sys.__stdout__
-check(a["KIOSK_PASSWORD"] == "" and a["ROOT_PASSWORD"] == "routerpass1" and a["BOX_NEW_ADMIN_PASSWORD"] == "boxadmin99", "terminal, wifi: the rental-phone password is not asked")
+check(a["KIOSK_PASSWORD"] == "" and a["ROOT_PASSWORD"] == "routerpass1" and a["BOX_NEW_ADMIN_PASSWORD"] == "boxadmin99" and a["ADMIN_PASSWORD"] == "adminWifi12", "terminal, wifi: the rental-phone password is not asked")
 sys.stdout = io.StringIO()
 try:
     ps.review(a)
 finally:
     shown, sys.stdout = sys.stdout.getvalue(), sys.__stdout__
-check("Rental-phone" not in shown and "PisoKiosk" not in shown and "Public Wi-Fi" in shown, "the review of a wifi setup has no rental-phone lines: " + shown)
+check("Rental-phone" not in shown and "PisoKiosk" not in shown and "Public Wi-Fi" in shown and "Admin Wi-Fi password:" in shown, "the review of a wifi setup has no rental-phone lines: " + shown)
 k = ps.kept_answers("PH", "wifi")
 check(k["SHOP_PRODUCT"] == "wifi" and ps.kept_answers("PH")["SHOP_PRODUCT"] == "", "a router that is set up already is sent the product only when one was chosen")
 # main: --product phone runs the PisoPhone-only path; --yes without a product changes nothing
@@ -638,17 +752,24 @@ check(rc_yes == 1 and "choose the product: --product wifi, phone or both" in out
 # the router setup carries the product
 for prod, kiosk_secrets in (("wifi", ()), ("both", ("kioskpass1", "kioskpass1"))):
     secrets_ = ("routerpass1", "routerpass1") + kiosk_secrets + ("boxadmin99", "boxadmin99")
+    if prod == "wifi":
+        secrets_ += ("adminWifi12", "adminWifi12")
     r = e2e(answers=("Tindahan WiFi", "Aling Nena", "y", "n"), secrets_=secrets_, product=prod)
     check(r.rc == 0 and f"product=[{prod}]" in r.out, f"{prod}: the router setup gets SHOP_PRODUCT={prod}: " + r.out[-400:])
     if prod == "wifi":
         check("kiosk=[]" in r.out and "Rental-phone" not in r.out, "wifi: the router gets no rental-phone password")
+        check("adminWifi12" in r.input and "adminWifi12" not in r.ssh, "wifi: the admin password is sent over stdin")
+        cards = [os.path.join(r.outdir, name) for name in r.saved if name.startswith("pisophone-admin-card-")]
+        check(len(cards) == 1 and os.stat(cards[0]).st_mode & 0o777 == 0o600 and "PisoAdmin-a1b2" in open(cards[0]).read(),
+              "wifi: the wizard saves a private Admin Wi-Fi QR card")
     else:
         check("kiosk=[kioskpass1]" in r.out, "both: the router gets the rental-phone password")
+        check(not any(name.startswith("pisophone-admin-card-") for name in r.saved), "both: there is no Admin Wi-Fi QR card")
 
 # ---- QR codes and the Wi-Fi join card -------------------------------------------------------------------------------------------
 check(ps.wifi_qr_text("PisoKiosk", "3hC4RATnpQMJ") == "WIFI:T:WPA;S:PisoKiosk;P:3hC4RATnpQMJ;H:true;;", "the Wi-Fi QR text: " + ps.wifi_qr_text("PisoKiosk", "3hC4RATnpQMJ"))
 check(ps.wifi_qr_text("My;Net", "a:b,c\\d") == "WIFI:T:WPA;S:My\\;Net;P:a\\:b\\,c\\\\d;H:true;;", "special characters are escaped: " + ps.wifi_qr_text("My;Net", "a:b,c\\d"))
-check(ps.wifi_qr_text("Net", "12345678") == 'WIFI:T:WPA;S:Net;P:"12345678";H:true;;', "a password of only hex digits is quoted")
+check(ps.wifi_qr_text("Cafe", "12345678") == 'WIFI:T:WPA;S:"Cafe";P:12345678;H:true;;', "a hex-like SSID is quoted and the numeric passphrase is passed through")
 check(ps.wifi_qr_text("Net", "pw123456", hidden=False) == "WIFI:T:WPA;S:Net;P:pw123456;;", "a visible network has no H:true")
 try:
     ps.qr_matrix("x" * 214)
@@ -839,6 +960,90 @@ err = flash_error(tool=None)
 ps.esptool_module = orig
 check(err and "pip install esptool" in err, "esptool missing: how to get it: " + str(err))
 
+# product selection and binary identity guard for PisoWiFi vs full PisoHub
+check(ps.box_product_for("wifi") == "wifi" and ps.box_product_for("phone") == "phone"
+      and ps.box_product_for("both") == "full" and ps.box_product_for("full") == "full"
+      and ps.box_product_for("") == "full" and ps.box_product_for(None) == "full",
+      "box_product_for maps installer choices to firmware products")
+try:
+    ps.box_product_for("tablet")
+    check(False, "unknown box product must be refused")
+except ps.SetupError as e:
+    check("tablet" in str(e), "unknown box product says what was passed: " + str(e))
+
+WIFI_REAL = b"\xe9" + b"TechNet PisoWiFi" + b"\0" * 100_000
+HUB_REAL = b"\xe9" + b"TechNet PisoHub admin" + b"\0" * 100_000
+MIXED_REAL = b"\xe9" + b"TechNet PisoWiFi" + b"TechNet PisoHub admin" + b"\0" * 100_000
+WIFI32_REAL = b"\xe9" + b"TechNet PisoWiFi" + b"\0" * 100_050
+wmanifest = {"version": "3.12.6", "builds": [
+    {"env": "esp32-c3-dev", "chip": "ESP32-C3", "product": "full", "version": "3.12.6",
+     "file": "esp32-c3-dev.bin", "offset": 0, "size": len(HUB_REAL), "sha256": hashlib.sha256(HUB_REAL).hexdigest()},
+    {"env": "esp32-c3-dev-wifi", "chip": "ESP32-C3", "product": "wifi", "version": "3.12.7",
+     "file": "esp32-c3-dev-wifi.bin", "offset": 0, "size": len(WIFI_REAL), "sha256": hashlib.sha256(WIFI_REAL).hexdigest()},
+    {"env": "esp32dev-dev-wifi", "chip": "ESP32", "product": "wifi", "version": "3.12.7",
+     "file": "esp32dev-dev-wifi.bin", "offset": 4096, "size": len(WIFI32_REAL), "sha256": hashlib.sha256(WIFI32_REAL).hexdigest()},
+]}
+wfiles = {
+    "flash/esp32-c3-dev.bin": HUB_REAL,
+    "flash/esp32-c3-dev-wifi.bin": WIFI_REAL,
+    "flash/esp32dev-dev-wifi.bin": WIFI32_REAL,
+}
+wreqs, wlines = [], []
+wtool = FakeEsptool("4.8.1")
+wchip, wver = ps.flash_box("main", "COM5", wlines.append, tempfile.mkdtemp(dir=tmp),
+                           website(wreqs, files=wfiles, manifest=wmanifest), wtool, product="wifi")
+check((wchip, wver) == ("ESP32-C3", "3.12.7") and wreqs == ["flash/manifest.json", "flash/esp32-c3-dev-wifi.bin"],
+      f"flash_box(product='wifi') selects esp32-c3-dev-wifi.bin and its version: chip={wchip} ver={wver} reqs={wreqs}")
+check(wtool.calls[1][-1].endswith("esp32-c3-dev-wifi.bin") and any("wifi: esp32-c3-dev-wifi.bin" in l for l in wlines),
+      "wifi firmware filename and product are logged and written")
+
+mixed_path = os.path.join(tmp, "mixed.bin")
+open(mixed_path, "wb").write(MIXED_REAL)
+try:
+    ps.verify_product_image(mixed_path, "wifi")
+    check(False, "verify_product_image must reject mixed PisoHub/PisoWiFi strings")
+except ps.SetupError as e:
+    check("PisoHub" in str(e) or "PisoWiFi" in str(e), "mixed image refused cleanly: " + str(e))
+
+bad_wifi_manifest = {"version": "3.12.7", "builds": [
+    {"env": "esp32-c3-dev-wifi", "chip": "ESP32-C3", "product": "wifi", "version": "3.12.7",
+     "file": "esp32-c3-dev-wifi.bin", "offset": 0, "size": len(HUB_REAL), "sha256": hashlib.sha256(HUB_REAL).hexdigest()},
+]}
+bad_tool = FakeEsptool("4.8.1")
+try:
+    ps.flash_box("main", "COM5", lambda l: None, tempfile.mkdtemp(dir=tmp),
+                 website([], files={"flash/esp32-c3-dev-wifi.bin": HUB_REAL}, manifest=bad_wifi_manifest), bad_tool, product="wifi")
+    check(False, "full PisoHub binary must be refused before write_flash when product='wifi'")
+except ps.SetupError as e:
+    check(len(bad_tool.calls) == 1 and str(e),
+          f"wifi mode refuses full PisoHub binary before write_flash (calls={len(bad_tool.calls)}): {e}")
+
+bad_full_manifest = {"version": "3.12.6", "builds": [
+    {"env": "esp32-c3-dev", "chip": "ESP32-C3", "product": "full", "version": "3.12.6",
+     "file": "esp32-c3-dev.bin", "offset": 0, "size": len(WIFI_REAL), "sha256": hashlib.sha256(WIFI_REAL).hexdigest()},
+]}
+bad_full_tool = FakeEsptool("4.8.1")
+try:
+    ps.flash_box("main", "COM5", lambda l: None, tempfile.mkdtemp(dir=tmp),
+                 website([], files={"flash/esp32-c3-dev.bin": WIFI_REAL}, manifest=bad_full_manifest), bad_full_tool, product="full")
+    check(False, "PisoWiFi binary must be refused before write_flash when product='full'")
+except ps.SetupError as e:
+    check(len(bad_full_tool.calls) == 1 and str(e),
+          f"full mode refuses PisoWiFi binary before write_flash (calls={len(bad_full_tool.calls)}): {e}")
+
+full_only_manifest = {"version": "3.12.6", "builds": [
+    {"env": "esp32-c3-dev", "chip": "ESP32-C3", "product": "full",
+     "file": "esp32-c3-dev.bin", "offset": 0, "size": len(HUB_REAL), "sha256": hashlib.sha256(HUB_REAL).hexdigest()},
+]}
+no_wifi_tool = FakeEsptool("4.8.1")
+try:
+    ps.flash_box("main", "COM5", lambda l: None, tempfile.mkdtemp(dir=tmp),
+                 website([], files={"flash/esp32-c3-dev.bin": HUB_REAL}, manifest=full_only_manifest), no_wifi_tool, product="wifi")
+    check(False, "missing wifi build in manifest must fail instead of falling back to full")
+except ps.SetupError as e:
+    check(len(no_wifi_tool.calls) == 1 and "wifi" in str(e).lower(),
+          f"missing wifi build never falls back to full (calls={len(no_wifi_tool.calls)}): {e}")
+
 # the terminal flow: a board is written before the router; --no-flash, several boards, none
 BOARDS[:] = [("COM5", "CH340")]
 FLASHED.clear()
@@ -861,6 +1066,27 @@ check(r.rc != 0 and r.err and "several USB boards" in r.err and FLASHED == [], "
 BOARDS[:] = []
 r = e2e(answers=("Tindahan WiFi", "Aling Nena", "y", "n"), secrets_=("routerpass1", "routerpass1", "kioskpass1", "kioskpass1", "boxadmin99", "boxadmin99"))
 check(r.rc == 0 and "No coin box board found on USB" in r.out, "no board: it says so and goes on with the router")
+
+BOARDS[:] = [("COM5", "CH340")]
+seen_flash = []
+orig_flash_box = ps.flash_box
+
+
+def rec_flash_box(branch, port, emit, cache_dir, opener=None, tool=None, image=None, product="full"):
+    seen_flash.append((branch, port, product))
+    return ("ESP32-C3", "3.12.7")
+
+
+ps.flash_box = rec_flash_box
+try:
+    r = e2e(answers=("Tindahan WiFi", "Aling Nena", "y", "", "n"),
+            secrets_=("routerpass1", "routerpass1", "kioskpass1", "kioskpass1", "boxadmin99", "boxadmin99"),
+            product="wifi", flasher=None)
+finally:
+    ps.flash_box = orig_flash_box
+    BOARDS[:] = []
+check(r.rc == 0 and "product=[wifi]" in r.out and seen_flash == [("main", "COM5", "wifi")],
+      f"CLI run_setup default flasher passes product='wifi' to flash_box: seen={seen_flash} out={r.out[-300:]}")
 
 # main(): options and the missing ssh
 sys.stdout, sys.stderr = io.StringIO(), io.StringIO()
@@ -1034,13 +1260,14 @@ def commands(r):
 
 SHOP = dict(answers=("Tindahan WiFi", "Aling Nena", "y", "n"), secrets_=("routerpass1", "routerpass1", "kioskpass1", "kioskpass1", "boxadmin99", "boxadmin99"))
 
-# a factory router with internet: tested, moved, set up end to end
+# a factory router with internet: tested, moved, pre-decoded tar uploaded from PC and set up end to end
 r = e2e(inet=True, **SHOP)
 cmds = commands(r)
 check(r.rc == 0 and r.err is None, f"a first setup against a router with internet runs to its end ({r.err}): " + r.out[-600:])
-check(any("ping -c 1" in c for c in cmds) and any("--yes" in c and "IFS= read -r ROOT_PASSWORD" in c for c in cmds) and "https://pisophone.pages.dev/install.sh" in r.wget,
-      "the router's internet was tested, then the setup ran and the router downloaded the installer itself: " + str(cmds)[:400])
-check("local" not in " ".join(cmds).lower().replace("localhost", "") and not any("cat >" in c for c in cmds), "and nothing was copied to the router from this computer")
+check(any("ping -c 1" in c for c in cmds) and any("tar -xf - -C" in c for c in cmds)
+      and any("--yes" in c and "IFS= read -r ROOT_PASSWORD" in c for c in cmds) and r.wget == "" and len(r.upload) > 0,
+      "the router's internet was tested, then the pre-decoded bundle uploaded over SSH and staged setup ran: " + str(cmds)[:400])
+check(not any("cat >" in c for c in cmds), "staged tar uses BusyBox tar without cat > shell loops")
 
 # a factory router without internet: the router is moved (its own installer download works only with internet, so here it is
 # the test after the move that stops it), and the message names the requirement

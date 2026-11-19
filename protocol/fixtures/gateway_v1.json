@@ -1,0 +1,127 @@
+{
+  "version": 1,
+  "requests": [
+    {
+      "name": "arm",
+      "key": "0123456789abcdef-key",
+      "action": "arm",
+      "session": "aa-bb-cc",
+      "nonce": "00112233445566778899aabbccddeeff",
+      "message": "gw1:arm:aa-bb-cc:00112233445566778899aabbccddeeff",
+      "sig": "b73b6b4b4ed7ae1d4663508cb338eea0b3d95f3d0efffcdbb4ec0c9cfea75834"
+    },
+    {
+      "name": "status",
+      "key": "test-gateway-key-123456",
+      "action": "status",
+      "session": "abc123",
+      "nonce": "0123456789abcdef0123456789abcdef",
+      "message": "gw1:status:abc123:0123456789abcdef0123456789abcdef",
+      "sig": "9d7c62e3378c0d31b9e8b23f8b46aec9b1c6fa2122127b307aa02137a39054ee"
+    },
+    {
+      "name": "release",
+      "key": "test-gateway-key-123456",
+      "action": "release",
+      "session": "abc123",
+      "nonce": "0123456789abcdef0123456789abcdef",
+      "message": "gw1:release:abc123:0123456789abcdef0123456789abcdef",
+      "sig": "afe36c8bbcecc712a4c9bf9f36422883102672ef0eaf6d5e5423e4bcc8613b47"
+    },
+    {
+      "name": "ack",
+      "key": "test-gateway-key-123456",
+      "action": "ack",
+      "session": "abc123",
+      "nonce": "0123456789abcdef0123456789abcdef",
+      "message": "gw1:ack:abc123:0123456789abcdef0123456789abcdef",
+      "sig": "e0a2e3fb0f47ffc87749539dbbd92784da628aa067153893cf766e61684ba031"
+    },
+    {
+      "name": "colon-session",
+      "key": "test-gateway-key-123456",
+      "action": "arm",
+      "session": "aa:bb:cc:dd:ee:ff",
+      "nonce": "fedcba9876543210fedcba9876543210",
+      "message": "gw1:arm:aa:bb:cc:dd:ee:ff:fedcba9876543210fedcba9876543210",
+      "sig": "6d37a7a35db387dcb172e709dc1a92e61372e2bbd4c50a526ba1db8aa4cff13e"
+    }
+  ],
+  "responses": [
+    {
+      "name": "status",
+      "key": "test-gateway-key-123456",
+      "action": "status",
+      "session": "abc123",
+      "nonce": "0123456789abcdef0123456789abcdef",
+      "facts": "armed:0:3:1003:true:0:6",
+      "message": "gw1r:status:abc123:0123456789abcdef0123456789abcdef:armed:0:3:1003:true:0:6",
+      "rsig": "d157e75cb7dede9c1d465137ab7bd9fad325d1df9001bab95ad4da0b0a484441"
+    },
+    {
+      "name": "ack",
+      "key": "test-gateway-key-123456",
+      "action": "ack",
+      "session": "abc123",
+      "nonce": "0123456789abcdef0123456789abcdef",
+      "facts": "3",
+      "message": "gw1r:ack:abc123:0123456789abcdef0123456789abcdef:3",
+      "rsig": "19a2eb098dccbd7a39adcb42e3d5cc9361d19e23769345d443dc16cde21fc692"
+    },
+    {
+      "name": "arm",
+      "key": "test-gateway-key-123456",
+      "action": "arm",
+      "session": "abc123",
+      "nonce": "0123456789abcdef0123456789abcdef",
+      "facts": "armed:60:0:1000:false:500:6",
+      "message": "gw1r:arm:abc123:0123456789abcdef0123456789abcdef:armed:60:0:1000:false:500:6",
+      "rsig": "d4a191fc6b5e35d3d1f77287a6f447889783f4a467429ce845f5a191b090da28"
+    },
+    {
+      "name": "release",
+      "key": "test-gateway-key-123456",
+      "action": "release",
+      "session": "abc123",
+      "nonce": "0123456789abcdef0123456789abcdef",
+      "facts": "draining:0:2:1002:false:0:6",
+      "message": "gw1r:release:abc123:0123456789abcdef0123456789abcdef:draining:0:2:1002:false:0:6",
+      "rsig": "73a513a4b55e8308396d9d701e74510cbc21847473af07bbafd636ba22d6324e"
+    }
+  ],
+  "events": [
+    {
+      "name": "coin",
+      "key": "0123456789abcdef-key",
+      "session": "ab12",
+      "wid": "f00d",
+      "seq": 3,
+      "type": "coin",
+      "pulses": 7,
+      "body": "gw1ev:ab12:f00d:3:coin:7",
+      "line": "gw1ev:ab12:f00d:3:coin:7:8cdd2d26be0003967ad769d3dfaf7e62d63bb1f2838c1efdcd7c91f4131b7004\n"
+    },
+    {
+      "name": "ready",
+      "key": "test-gateway-key-123456",
+      "session": "aa:bb:cc:dd:ee:ff",
+      "wid": "0123456789abcdef",
+      "seq": 1,
+      "type": "ready",
+      "pulses": 0,
+      "body": "gw1ev:aa:bb:cc:dd:ee:ff:0123456789abcdef:1:ready:0",
+      "line": "gw1ev:aa:bb:cc:dd:ee:ff:0123456789abcdef:1:ready:0:556ba185bb7f27826ab5a2e6cee38ca1b16b765e6c3a7dcb135ef262ff89c1ca\n"
+    },
+    {
+      "name": "end",
+      "key": "test-gateway-key-123456",
+      "session": "aa:bb:cc:dd:ee:ff",
+      "wid": "0123456789abcdef",
+      "seq": 4,
+      "type": "end",
+      "pulses": 5,
+      "body": "gw1ev:aa:bb:cc:dd:ee:ff:0123456789abcdef:4:end:5",
+      "line": "gw1ev:aa:bb:cc:dd:ee:ff:0123456789abcdef:4:end:5:529cd32e03fe2063f872d53d28934f9c519b66b04b468267552bfcd3e29dc6e5\n"
+    }
+  ]
+}

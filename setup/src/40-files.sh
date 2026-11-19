@@ -4,9 +4,9 @@
 # b64d <in> <out>: base64 decoding with nothing but awk and printf, for a BusyBox without base64 (the OpenWrt default)
 # and without openssl. About a minute for the portal program on a router.
 b64d() {
-	awk 'BEGIN { a = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"; for (i = 0; i < 64; i++) v[substr(a, i + 1, 1)] = i }
+	awk 'BEGIN { a = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"; for (i = 0; i < 64; i++) v[substr(a, i + 1, 1)] = i; o = "" }
 	{
-		s = s $0; n = length(s) - length(s) % 4; o = ""
+		s = s $0; n = length(s) - length(s) % 4
 		for (i = 1; i <= n; i += 4) {
 			c3 = substr(s, i + 2, 1); c4 = substr(s, i + 3, 1)
 			b = v[substr(s, i, 1)] * 262144 + v[substr(s, i + 1, 1)] * 4096 + (c3 == "=" ? 0 : v[c3] * 64) + (c4 == "=" ? 0 : v[c4])
@@ -15,29 +15,45 @@ b64d() {
 			if (c4 != "=") o = o sprintf("\\%03o", b % 256)
 		}
 		s = substr(s, n + 1)
-		if (o != "") print o
-	}' "$1" | while IFS= read -r _l; do
+		if (NR % 8 == 0 && o != "") { print o; o = "" }
+	}
+	END { if (o != "") print o }' "$1" | while IFS= read -r _l; do
 		# shellcheck disable=SC2059 # the line is the format on purpose: it holds the \ooo escapes printf turns into bytes
 		printf "$_l"
 	done > "$2"
 }
 
-# decode_b64 <in> <out> <sha256 or empty>: the first decoder this router has whose result has the expected checksum
+# decode_b64 <in> <out> <sha256 or empty> [gz]: the first decoder this router has whose result has the expected checksum
 decode_b64() {
 	for _how in base64 openssl awk; do
-		rm -f "$2"
+		rm -f "$2" "$2.raw"
+		_target="$2"
+		[ "$4" = gz ] && _target="$2.raw"
 		case "$_how" in
-			base64) command -v base64 > /dev/null 2>&1 && base64 -d "$1" > "$2" 2> /dev/null ;;
-			openssl) command -v openssl > /dev/null 2>&1 && openssl base64 -d -in "$1" -out "$2" 2> /dev/null ;;
-			awk) log "decoding with awk (this router has no base64 tool): about a minute"; b64d "$1" "$2" ;;
+			base64) command -v base64 > /dev/null 2>&1 && base64 -d "$1" > "$_target" 2> /dev/null ;;
+			openssl) command -v openssl > /dev/null 2>&1 && openssl base64 -d -in "$1" -out "$_target" 2> /dev/null ;;
+			awk) log "decoding with awk (this router has no base64 tool)"; b64d "$1" "$_target" ;;
 		esac
+		if [ "$4" = gz ]; then
+			[ -s "$_target" ] && gzip -dc "$_target" > "$2" 2> /dev/null
+			rm -f "$_target"
+		fi
 		[ -s "$2" ] || continue
 		if [ -z "$3" ] || ! command -v sha256sum > /dev/null 2>&1; then return 0; fi
 		[ "$(sha256sum "$2" | cut -d' ' -f1)" = "$3" ] && return 0
 		log "the $_how decoder gave a different file; trying the next one"
 	done
-	rm -f "$2"
+	rm -f "$2" "$2.raw"
 	return 1
+}
+
+# install_prog <src> <dest> <mode> <clean1> [clean2]: copy a binary atomically and clean staging dirs on failure
+install_prog() {
+	{ cp "$1" "$2.new" && chmod "$3" "$2.new" && mv "$2.new" "$2"; } && return 0
+	rm -f "$2.new"
+	[ -n "$4" ] && rm -rf "$4"
+	[ -n "$5" ] && rm -rf "$5"
+	die "could not install $2 (is the router's flash full? df -h /overlay)"
 }
 
 extract_payload() {
@@ -51,7 +67,7 @@ extract_payload() {
 	# in the middle leaves the old files working (each was emptied first, and a cut left an empty init script: no portal after a reboot)
 	sed -n 's/^#@@FILE //p' "$_self" | while read -r _dest _mode; do mkdir -p "$(dirname "$PISO_ROOT$_dest")"; : > "$PISO_ROOT$_dest.new"; chmod "$_mode" "$PISO_ROOT$_dest.new"; done
 	# a program is only replaced once its new copy is decoded and checked: a failed update leaves the old one working
-	sed -n 's/^#@@B64 //p' "$_self" | while read -r _dest _rest; do mkdir -p "$(dirname "$PISO_ROOT$_dest")"; done
+	sed -n 's/^#@@B64 //p; s/^#@@BIN //p' "$_self" | while read -r _dest _rest; do mkdir -p "$(dirname "$PISO_ROOT$_dest")"; done
 	# text files are copied as they are; a binary (the portal program) is stored as base64 lines, decoded in RAM (/tmp: the
 	# flash may be nearly full) and then moved into place
 	_tmpd="${TMPDIR:-/tmp}/piso-payload.$$"
@@ -71,18 +87,32 @@ extract_payload() {
 	done
 	sync
 	# (a for loop, not a pipe: die must end the whole setup, not a subshell)
-	# shellcheck disable=SC2013 # one word per program: path|mode|sha256
-	for _e in $(sed -n 's/^#@@B64 \([^ ]*\) \([^ ]*\) *\([^ ]*\).*/\1|\2|\3/p' "$_self"); do
-		_dest="${_e%%|*}"; _r="${_e#*|}"; _mode="${_r%%|*}"; _sum="${_r#*|}"
+	# shellcheck disable=SC2013 # one word per program: path|mode|sha256|enc
+	for _e in $(sed -n 's/^#@@B64 \([^ ]*\) \([^ ]*\) *\([^ ]*\) *\([^ ]*\).*/\1|\2|\3|\4/p' "$_self"); do
+		_dest="${_e%%|*}"; _r="${_e#*|}"; _mode="${_r%%|*}"; _r2="${_r#*|}"; _sum="${_r2%%|*}"; _enc="${_r2#*|}"
 		f="$PISO_ROOT$_dest"; _t="$_tmpd/${_dest##*/}"
 		[ -s "$_t.b64" ] || { rm -rf "$_tmpd"; die "could not unpack $_dest"; }
 		tr -d '\r' < "$_t.b64" > "$_t.clean"
-		decode_b64 "$_t.clean" "$_t.new" "$_sum" || { rm -rf "$_tmpd"; die "could not decode $_dest (the setup file may be damaged: copy it again)"; }
+		decode_b64 "$_t.clean" "$_t.new" "$_sum" "$_enc" || { rm -rf "$_tmpd"; die "could not decode $_dest (the setup file may be damaged: copy it again)"; }
 		# copied next to the old one, then renamed over it: never a half-written program, even after a power cut
-		{ cp "$_t.new" "$f.new" && chmod "$_mode" "$f.new" && mv "$f.new" "$f"; } || { rm -f "$f.new"; rm -rf "$_tmpd"; die "could not install $f (is the router's flash full? df -h /overlay)"; }
+		install_prog "$_t.new" "$f" "$_mode" "$_tmpd"
 		log "installed $f"
 	done
-	rm -rf "$_tmpd"
+	_sdir=$(dirname "$_self")
+	# pre-decoded binaries uploaded from a computer sit under pre/ next to this script
+	# shellcheck disable=SC2013 # one word per program: path|mode|sha256|relpath
+	for _e in $(sed -n 's/^#@@BIN \([^ ]*\) \([^ ]*\) *\([^ ]*\) *\([^ ]*\).*/\1|\2|\3|\4/p' "$_self"); do
+		_dest="${_e%%|*}"; _r="${_e#*|}"; _mode="${_r%%|*}"; _r2="${_r#*|}"; _sum="${_r2%%|*}"; _rel="${_r2#*|}"
+		case "$_rel" in /* | ../* | */../* | */.. | .. | "") rm -rf "$_tmpd" "$_sdir/pre"; die "invalid pre-decoded path for $_dest" ;; esac
+		f="$PISO_ROOT$_dest"; _src="$_sdir/$_rel"
+		[ -s "$_src" ] || { rm -rf "$_tmpd" "$_sdir/pre"; die "could not find pre-decoded $_dest"; }
+		if [ -n "$_sum" ] && command -v sha256sum > /dev/null 2>&1 && [ "$(sha256sum "$_src" | cut -d' ' -f1)" != "$_sum" ]; then
+			rm -rf "$_tmpd" "$_sdir/pre"; die "pre-decoded $_dest failed checksum (copy it again)"
+		fi
+		install_prog "$_src" "$f" "$_mode" "$_tmpd" "$_sdir/pre"
+		log "installed $f (pre-decoded binary)"
+	done
+	rm -rf "$_tmpd" "$_sdir/pre"
 	# the installed command without the payload (about 1 MB of flash): it is only used for the commands, never to install
 	# (written next to it and renamed: this file may be the one being run, and the shell is still reading it)
 	if sed '/^# ---- payload: the portal files/,$d' "$_self" > "$SELF_PATH.new" 2> /dev/null; then
@@ -127,7 +157,7 @@ EOT
 	if grep -q '^GW_KEY=' "$_cf.new"; then mv "$_cf.new" "$_cf"; else rm -f "$_cf.new"; umask 022; die "could not write $_cf (is the router's flash full? piso-setup space)"; fi
 	umask 022
 	chmod 600 "$_cf"
-	apply_isolation   # (the coin box's address is in it: the rules for the rental phones name it)
+	[ "${PISO_SKIP_ISOLATION:-0}" = 1 ] || apply_isolation   # (the coin box's address is in it: the rules for the rental phones name it)
 }
 
 # abs_path <file>: the file's absolute path (install.sh starts the setup as ./piso-setup.sh from inside its folder)
@@ -143,6 +173,7 @@ abs_path() {
 drop_installer_copy() {
 	case "$SELF_COPY" in
 		"$PISO_ROOT/tmp/piso-setup.sh" | "$PISO_ROOT/root/piso-setup.sh") rm -f "$SELF_COPY"; log "removed the installer copy $SELF_COPY (the installed command is $SELF_PATH)" ;;
+		"$PISO_ROOT/tmp/piso-stage/piso-setup.sh" | "$PISO_ROOT/root/piso-stage/piso-setup.sh") rm -rf "$(dirname "$SELF_COPY")"; log "removed the staged installer $(dirname "$SELF_COPY") (the installed command is $SELF_PATH)" ;;
 	esac
 	return 0
 }

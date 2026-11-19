@@ -3,8 +3,7 @@
 #   front page http://admin.hub        (the normal state since 1.5.12: the router answers that name itself; http://10.0.0.1 works too;
 #                                       LuCI moves to 8080 / 8443, still there as "Advanced")
 #   behind LuCI http://10.0.0.1:8081   (piso-setup console off: LuCI stays on its own ports 80 / 443)
-# CONSOLE_MODE: front, back (the owner chose piso-setup console off: an update keeps it) or empty (never chosen: new setups and the first
-# update to 1.5.12 make the console the front page).
+# CONSOLE_MODE: front, back (console off), or unset (defaults to front on setup or update).
 # ---------------------------------------------------------------------------------------------------------------------
 console_front() { [ "$(conf_get CONSOLE_MODE)" = front ]; }
 console_port() { if console_front; then echo 80; else echo 8081; fi; }
@@ -21,9 +20,10 @@ console_answers() { curl -s -m 4 "http://$LAN_IP:$1/" 2> /dev/null | grep -q "Pi
 # console_apply: the settings of the current mode on the portal program and on LuCI (uhttpd)
 console_apply() {
 	write_coinslot_conf "$(conf_get GW_KEY)" "$(conf_get BOX_MAC)"
-	(umask 077; router_access_uci > /tmp/piso-console.uci)
+	(umask 077; { router_access_uci; if wifi_only; then admin_firewall_uci; fi; } > /tmp/piso-console.uci)
 	uci_apply /tmp/piso-console.uci; rm -f /tmp/piso-console.uci
 	uci commit uhttpd 2> /dev/null
+	if wifi_only; then uci commit firewall 2> /dev/null && /etc/init.d/firewall reload > /dev/null 2>&1; fi
 	[ -x /etc/init.d/uhttpd ] && /etc/init.d/uhttpd restart > /dev/null 2>&1
 	[ -x /etc/init.d/pisoportal ] && /etc/init.d/pisoportal restart > /dev/null 2>&1
 }

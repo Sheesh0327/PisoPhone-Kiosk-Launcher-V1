@@ -4,10 +4,12 @@
 //!
 //! Routes: `/` the page; `/api/login`, `/api/logout`; `/api/overview`, `/api/clients`, `/api/phones` (needs a session); `/api/kick` (POST).
 use crate::boxlink::{with_port, BoxLink};
+use crate::config::Config;
 use crate::core::Core;
 use crate::http::{bind_retry, read_request, respond, respond_bytes, Incoming, Request, BRAND_LOGO, BRAND_MASCOT};
 use crate::nds::ClientInfo;
 use crate::pricing::{parse_tier_list, Plan, Pricing, MAX_KBPS, MAX_PRORATA_MIN};
+use crate::qr::{qr_svg, wifi_qr_text};
 use crate::util::{b64_encode, jget, json_esc, now_secs, random_hex, valid_mac};
 use std::collections::{HashMap, VecDeque};
 use std::io::Read;
@@ -62,12 +64,28 @@ struct Sample {
     tx: u64,
 }
 
+#[derive(Clone, Debug)]
+struct PairState {
+    state: String,
+    since: u64,
+    detail: String,
+    pid: Option<u32>,
+    generation: u64,
+}
+
+impl Default for PairState {
+    fn default() -> Self {
+        PairState { state: "idle".into(), since: 0, detail: String::new(), pid: None, generation: 0 }
+    }
+}
+
 pub struct Console {
     pub(crate) core: Arc<Core>,
     sessions: Mutex<HashMap<String, u64>>,
     fails: Mutex<HashMap<String, (u32, u64)>>,
     wan: Mutex<VecDeque<Sample>>,
     prev: Mutex<HashMap<String, (u64, u64, u64)>>,
+    pair: Mutex<PairState>,
 }
 
 // ---- reading the router (pure parts first: they are tested) -----------------------------------------------------------------------
@@ -266,6 +284,88 @@ pub(crate) fn conf_value(path: &str, key: &str) -> String {
         .unwrap_or_default()
 }
 
+fn html_esc(value: &str) -> String {
+    value.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;").replace('\'', "&#39;")
+}
+
+struct AdminWifi {
+    ssid: String,
+    password: String,
+    url: String,
+    wifi_svg: String,
+    console_svg: String,
+}
+
+fn admin_ssid(stored: String, previous: &[String]) -> String {
+    if !stored.is_empty() {
+        return stored;
+    }
+    previous
+        .iter()
+        .filter_map(|name| name.rsplit_once('-').map(|(_, suffix)| suffix))
+        .find(|suffix| suffix.len() == 4 && suffix.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        .map_or_else(|| "PisoAdmin".to_string(), |suffix| format!("PisoAdmin-{suffix}"))
+}
+
+fn admin_wifi_info(cfg: &Config) -> Option<AdminWifi> {
+    if cfg.shop_product != "wifi" {
+        return None;
+    }
+    let get = |key| conf_value(&cfg.setup_conf, key);
+    let password = get("ADMIN_PASS");
+    if password.is_empty() {
+        return None;
+    }
+    let ssid = admin_ssid(get("ADMIN_SSID_NAME"), &[get("KIOSK_SSID_NAME"), get("BOX_SSID_NAME")]);
+    let url = match cfg.console_port {
+        0 | 80 => "http://admin.hub/".to_string(),
+        port => format!("http://admin.hub:{port}/"),
+    };
+    let wifi_svg = qr_svg(&wifi_qr_text(&ssid, &password, true), 4, 4)?;
+    let console_svg = qr_svg(&url, 4, 4)?;
+    Some(AdminWifi { ssid, password, url, wifi_svg, console_svg })
+}
+
+impl AdminWifi {
+    fn json(&self) -> String {
+        format!(
+            r#"{{"enabled":true,"ssid":"{}","password":"{}","hidden":true,"console_url":"{}","wifi_svg":"{}","console_svg":"{}"}}"#,
+            json_esc(&self.ssid),
+            json_esc(&self.password),
+            json_esc(&self.url),
+            json_esc(&self.wifi_svg),
+            json_esc(&self.console_svg),
+        )
+    }
+
+    fn card(&self) -> String {
+        format!(
+            r#"<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Admin Wi-Fi QR card</title>
+<style>
+*{{box-sizing:border-box}}body{{font:16px/1.5 system-ui,sans-serif;background:#f2f5fa;color:#142036;margin:0;padding:24px}}
+main{{max-width:740px;margin:auto}}h1{{margin:0}}h2{{font-size:1.15rem;margin:0}}p{{margin:.5rem 0}}
+.cards{{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,270px),1fr));gap:16px;margin:1.2rem 0}}
+section{{padding:20px;background:#fff;border:1px solid #b9c4d6;border-radius:12px;break-inside:avoid}}
+.qr{{background:#fff;padding:8px;border-radius:8px;display:inline-block}}svg{{display:block;max-width:100%;height:auto}}
+code{{overflow-wrap:anywhere}}@media print{{body{{background:#fff;padding:0}}}}
+</style></head><body><main><h1>Admin Wi-Fi</h1><p>Keep this card private. It contains your Wi-Fi password.</p>
+<div class="cards"><section><h2>Join the hidden network</h2><div class="qr">{}</div>
+<p>Network <code>{}</code><br>Password <code>{}</code><br>Security WPA2-Personal</p></section>
+<section><h2>Open the Console</h2><div class="qr">{}</div>
+<p>Once connected, scan this code or open <code>{}</code>.</p></section></div></main></body></html>"#,
+            self.wifi_svg,
+            html_esc(&self.ssid),
+            html_esc(&self.password),
+            self.console_svg,
+            html_esc(&self.url),
+        )
+    }
+}
+
+const ADMIN_CARD_HEADERS: &str = "Cache-Control: no-store\r\n\
+Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'\r\n";
+
 /// One plain HTTP GET with Basic auth (the coin box's dashboard API).
 fn http_get_auth(addr: &str, path: &str, user: &str, pass: &str) -> Result<String, String> {
     use std::io::Write;
@@ -286,6 +386,302 @@ fn http_get_auth(addr: &str, path: &str, user: &str, pass: &str) -> Result<Strin
     Ok(body.to_string())
 }
 
+static TG_LOCK: Mutex<()> = Mutex::new(());
+
+fn clean_tg_token(raw: &str) -> String {
+    let t = raw.trim().trim_matches(|c| c == '\'' || c == '"').trim();
+    let b = t.as_bytes();
+    if b.len() > 3 && b[..3].eq_ignore_ascii_case(b"bot") && b[3].is_ascii_digit() {
+        t[3..].to_string()
+    } else {
+        t.to_string()
+    }
+}
+
+fn tg_bot_id(tok: &str) -> Option<&str> {
+    tok.split_once(':').map(|(id, _)| id).filter(|id| !id.is_empty())
+}
+
+fn valid_tg_token(s: &str) -> bool {
+    let Some((id, sec)) = s.split_once(':') else { return false };
+    (5..=15).contains(&id.len())
+        && id.bytes().all(|b| b.is_ascii_digit())
+        && (20..=80).contains(&sec.len())
+        && sec.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+}
+
+fn valid_tg_chat(s: &str) -> bool {
+    let rest = s.strip_prefix('-').unwrap_or(s);
+    (1..=20).contains(&rest.len()) && rest.bytes().all(|b| b.is_ascii_digit())
+}
+
+fn mask_tg_token(s: &str) -> String {
+    let n = s.chars().count();
+    if n == 0 {
+        return String::new();
+    }
+    if !s.is_ascii() || n <= 10 {
+        return "****".into();
+    }
+    let head = match s.find(':') {
+        Some(i) if (4..=12).contains(&i) => i,
+        _ => 6,
+    };
+    if head + 4 >= n {
+        return "****".into();
+    }
+    format!("{}...{}", &s[..head], &s[n - 4..])
+}
+
+fn upsert_tg_conf(old: &str, token: Option<&str>, chat: Option<&str>) -> String {
+    let (mut out, mut saw_tok, mut saw_chat) = (String::new(), false, false);
+    for line in old.lines() {
+        let t = line.trim_start();
+        let key = (!t.starts_with('#')).then(|| t.split_once('=').map(|(k, _)| k.trim())).flatten();
+        match (key, token, chat) {
+            (Some("TG_TOKEN"), Some(tok), _) => {
+                if !saw_tok {
+                    out.push_str(&format!("TG_TOKEN='{}'\n", tok));
+                    saw_tok = true;
+                }
+            }
+            (Some("TG_CHAT"), _, Some(ch)) => {
+                if !saw_chat && !ch.is_empty() {
+                    out.push_str(&format!("TG_CHAT='{}'\n", ch));
+                }
+                saw_chat = true;
+            }
+            _ => {
+                out.push_str(line);
+                out.push('\n');
+            }
+        }
+    }
+    if let (Some(tok), false) = (token, saw_tok) {
+        out.push_str(&format!("TG_TOKEN='{}'\n", tok));
+    }
+    if let (Some(ch), false) = (chat, saw_chat) {
+        if !ch.is_empty() {
+            out.push_str(&format!("TG_CHAT='{}'\n", ch));
+        }
+    }
+    out
+}
+
+fn tg_state_json(cfg: &crate::config::Config) -> String {
+    tg_state_json_bot(cfg, "")
+}
+
+fn tg_state_json_bot(cfg: &crate::config::Config, bot: &str) -> String {
+    let tok = conf_value(&cfg.monitor_conf, "TG_TOKEN");
+    let chat = conf_value(&cfg.monitor_conf, "TG_CHAT");
+    if bot.is_empty() {
+        format!(
+            "{{\"ok\":true,\"set\":{},\"hint\":\"{}\",\"chat\":\"{}\"}}",
+            !tok.is_empty(),
+            json_esc(&mask_tg_token(&tok)),
+            json_esc(&chat)
+        )
+    } else {
+        format!(
+            "{{\"ok\":true,\"set\":{},\"hint\":\"{}\",\"chat\":\"{}\",\"bot\":\"{}\"}}",
+            !tok.is_empty(),
+            json_esc(&mask_tg_token(&tok)),
+            json_esc(&chat),
+            json_esc(bot)
+        )
+    }
+}
+
+fn run_monitor_out(bin: &str, conf: &str, state: &str, args: &[&str]) -> Option<(i32, String, String)> {
+    let out = Command::new(bin).env("PISO_MONITOR_CONF", conf).env("MON_STATE", state).args(args).output().ok()?;
+    let code = out.status.code().unwrap_or(if out.status.success() { 0 } else { 1 });
+    Some((code, String::from_utf8_lossy(&out.stdout).into_owned(), String::from_utf8_lossy(&out.stderr).into_owned()))
+}
+
+fn run_monitor(bin: &str, cfg: &crate::config::Config, args: &[&str]) -> bool {
+    matches!(run_monitor_out(bin, &cfg.monitor_conf, &cfg.monitor_state, args), Some((0, _, _)))
+}
+
+fn verify_tg_token(cfg: &crate::config::Config, tok: &str) -> Result<String, &'static str> {
+    if !std::path::Path::new(&cfg.monitor_bin).exists() {
+        return Ok(String::new());
+    }
+    let tmp = format!("{}/pisotg-v-{}.conf", std::env::temp_dir().to_string_lossy(), random_hex(8));
+    if crate::util::write_atomic_private(&tmp, format!("TG_TOKEN='{}'\n", tok).as_bytes()).is_err() {
+        return Ok(String::new());
+    }
+    let res = run_monitor_out(&cfg.monitor_bin, &tmp, &cfg.monitor_state, &["verify"]);
+    let _ = std::fs::remove_file(&tmp);
+    match res {
+        Some((2, _, _)) => Err("Telegram rejected this API key. Check @BotFather."),
+        Some((0, out, _)) => Ok(out
+            .lines()
+            .find_map(|l| l.trim().strip_prefix("OK ").map(|s| s.trim().trim_start_matches('@').to_string()))
+            .unwrap_or_default()),
+        _ => Ok(String::new()),
+    }
+}
+
+fn tg_test(cfg: &crate::config::Config) -> (&'static str, String) {
+    if conf_value(&cfg.monitor_conf, "TG_TOKEN").is_empty() {
+        return ("400 Bad Request", "{\"error\":\"NO_TOKEN\",\"why\":\"Save a bot API key first\"}".into());
+    }
+    if conf_value(&cfg.monitor_conf, "TG_CHAT").is_empty() {
+        return ("400 Bad Request", "{\"error\":\"NO_CHAT\",\"why\":\"Set a chat ID or click Detect chat first\"}".into());
+    }
+    match run_monitor_out(&cfg.monitor_bin, &cfg.monitor_conf, &cfg.monitor_state, &["send", "Test message from PisoHub Console."]) {
+        Some((0, _, _)) => ("200 OK", "{\"ok\":true,\"sent\":true}".into()),
+        Some((_, _, err)) => {
+            let line = err.lines().rev().find(|l| l.contains("TG_ERR:")).unwrap_or("");
+            let why = if line.contains("TG_ERR:403:") {
+                if line.contains("to the bot") {
+                    "Chat ID cannot be the bot ID. Click Detect chat after messaging your bot."
+                } else {
+                    "Send /start to your bot in Telegram first, then click Test again."
+                }
+            } else if line.contains("TG_ERR:401:") || line.contains("TG_ERR:404:") {
+                "Telegram rejected the Bot API key. Check @BotFather."
+            } else if line.contains("TG_ERR:400:") {
+                "Chat ID was not found by Telegram. Send /start and click Detect chat."
+            } else {
+                "Could not send to Telegram"
+            };
+            ("502 Bad Gateway", format!("{{\"error\":\"SEND_FAILED\",\"why\":\"{}\"}}", json_esc(why)))
+        }
+        None => ("502 Bad Gateway", "{\"error\":\"SEND_FAILED\",\"why\":\"Could not send to Telegram\"}".into()),
+    }
+}
+
+fn tg_apply_conf(cfg: &crate::config::Config, tok: Option<&str>, chat: Option<&str>, reset_cmd: bool) -> Result<(), &'static str> {
+    let _g = TG_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let old = read(&cfg.monitor_conf);
+    let next = upsert_tg_conf(&old, tok, chat);
+    if crate::util::write_atomic_private(&cfg.monitor_conf, next.as_bytes()).is_err() {
+        return Err("WRITE_FAILED");
+    }
+    let _ = std::fs::remove_file(format!("{}/offset", cfg.monitor_state));
+    if reset_cmd {
+        let _ = std::fs::remove_file(format!("{}/commands.set", cfg.monitor_state));
+    }
+    if std::path::Path::new(&cfg.monitor_service).exists() {
+        let _ = run_monitor(&cfg.monitor_service, cfg, &["enable"]);
+        if !run_monitor(&cfg.monitor_service, cfg, &["restart"]) {
+            return Err("RESTART_FAILED");
+        }
+    }
+    Ok(())
+}
+
+fn tg_save_inner(cfg: &crate::config::Config, tok: &str, chat: &str) -> Result<String, (&'static str, String)> {
+    if tok.is_empty() && chat.is_empty() {
+        return Err(("400 Bad Request", "{\"error\":\"EMPTY\",\"why\":\"Enter a bot API key or chat ID\"}".into()));
+    }
+    if !tok.is_empty() && !valid_tg_token(tok) {
+        return Err(("400 Bad Request", "{\"error\":\"BAD_TOKEN\",\"why\":\"Invalid bot API key format\"}".into()));
+    }
+    if !chat.is_empty() && !valid_tg_chat(chat) {
+        return Err(("400 Bad Request", "{\"error\":\"BAD_CHAT\",\"why\":\"Chat ID must be digits (optional -)\"}".into()));
+    }
+    let old_tok = conf_value(&cfg.monitor_conf, "TG_TOKEN");
+    let old_chat = conf_value(&cfg.monitor_conf, "TG_CHAT");
+    let eff_tok = if !tok.is_empty() { tok } else { old_tok.as_str() };
+    if !chat.is_empty() && tg_bot_id(eff_tok) == Some(chat) {
+        return Err((
+            "400 Bad Request",
+            "{\"error\":\"BOT_ID_AS_CHAT\",\"why\":\"That is the bot ID, not your personal Chat ID. Leave Chat ID blank and click Detect chat.\"}".into(),
+        ));
+    }
+    let bot = if !tok.is_empty() {
+        verify_tg_token(cfg, tok)
+            .map_err(|why| ("400 Bad Request", format!("{{\"error\":\"BAD_TOKEN\",\"why\":\"{}\"}}", json_esc(why))))?
+    } else {
+        String::new()
+    };
+    let stale_bot_chat = !tok.is_empty()
+        && chat.is_empty()
+        && !old_chat.is_empty()
+        && (tg_bot_id(&old_tok) == Some(old_chat.as_str()) || tg_bot_id(tok) == Some(old_chat.as_str()));
+    let chat_arg = if !chat.is_empty() {
+        Some(chat)
+    } else if stale_bot_chat {
+        Some("")
+    } else {
+        None
+    };
+    match tg_apply_conf(cfg, (!tok.is_empty()).then_some(tok), chat_arg, true) {
+        Ok(()) => Ok(tg_state_json_bot(cfg, &bot)),
+        Err("WRITE_FAILED") => {
+            Err(("500 Internal Server Error", "{\"error\":\"WRITE_FAILED\",\"why\":\"Could not write monitor settings\"}".into()))
+        }
+        Err(_) => Err(("500 Internal Server Error", "{\"error\":\"RESTART_FAILED\",\"why\":\"Monitor restart failed\"}".into())),
+    }
+}
+
+fn tg_pair(cfg: &crate::config::Config, body: &str) -> (&'static str, String) {
+    let tok_in = clean_tg_token(&jget(body, "token"));
+    if !tok_in.is_empty() {
+        if let Err(e) = tg_save_inner(cfg, &tok_in, "") {
+            return e;
+        }
+    }
+    let eff_tok = conf_value(&cfg.monitor_conf, "TG_TOKEN");
+    if eff_tok.is_empty() {
+        return ("400 Bad Request", "{\"error\":\"NO_TOKEN\",\"why\":\"Enter and save a bot API key first\"}".into());
+    }
+    let has_svc = std::path::Path::new(&cfg.monitor_service).exists();
+    if has_svc {
+        let _ = run_monitor(&cfg.monitor_service, cfg, &["stop"]);
+    }
+    let res = run_monitor_out(&cfg.monitor_bin, &cfg.monitor_conf, &cfg.monitor_state, &["detect"]);
+    let detected = res.as_ref().and_then(|(code, out, _)| {
+        (*code == 0)
+            .then(|| out.lines().find_map(|l| l.trim().strip_prefix("CHAT ")).map(|s| s.trim().to_string()))
+            .flatten()
+            .filter(|c| valid_tg_chat(c) && tg_bot_id(&eff_tok) != Some(c.as_str()))
+    });
+    if let Some(chat) = detected {
+        return match tg_apply_conf(cfg, None, Some(&chat), false) {
+            Ok(()) => ("200 OK", tg_state_json(cfg)),
+            Err("WRITE_FAILED") => {
+                ("500 Internal Server Error", "{\"error\":\"WRITE_FAILED\",\"why\":\"Could not write monitor settings\"}".into())
+            }
+            Err(_) => ("500 Internal Server Error", "{\"error\":\"RESTART_FAILED\",\"why\":\"Monitor restart failed\"}".into()),
+        };
+    }
+    if has_svc {
+        let _ = run_monitor(&cfg.monitor_service, cfg, &["restart"]);
+    }
+    match res {
+        Some((2, _, _)) => {
+            ("400 Bad Request", "{\"error\":\"BAD_TOKEN\",\"why\":\"Telegram rejected this API key. Check @BotFather.\"}".into())
+        }
+        Some((3, _, _)) => ("502 Bad Gateway", "{\"error\":\"NET\",\"why\":\"Could not reach Telegram. Check router internet.\"}".into()),
+        _ => (
+            "404 Not Found",
+            "{\"error\":\"NO_CHAT\",\"why\":\"No message found yet. Open your bot in Telegram, send /start, then click Detect chat.\"}"
+                .into(),
+        ),
+    }
+}
+
+fn tg_save(cfg: &crate::config::Config, body: &str) -> (&'static str, String) {
+    let act = jget(body, "action");
+    if act == "test" {
+        return tg_test(cfg);
+    }
+    if act == "pair" {
+        return tg_pair(cfg, body);
+    }
+    let tok = clean_tg_token(&jget(body, "token"));
+    let chat_s = jget(body, "chat");
+    let chat = chat_s.trim();
+    match tg_save_inner(cfg, &tok, chat) {
+        Ok(out) => ("200 OK", out),
+        Err(e) => e,
+    }
+}
+
 impl Console {
     fn new(core: Arc<Core>) -> Arc<Console> {
         Arc::new(Console {
@@ -294,6 +690,7 @@ impl Console {
             fails: Mutex::new(HashMap::new()),
             wan: Mutex::new(VecDeque::new()),
             prev: Mutex::new(HashMap::new()),
+            pair: Mutex::new(PairState::default()),
         })
     }
 
@@ -531,6 +928,142 @@ impl Console {
             Err(_) => "{\"error\":\"BOX_DOWN\"}".into(),
         }
     }
+
+    fn pair_json(&self, p: &PairState) -> String {
+        let mac = conf_value(&self.core.cfg.setup_conf, "BOX_MAC");
+        format!(
+            "{{\"ok\":true,\"state\":\"{}\",\"mac\":\"{}\",\"since\":{},\"detail\":\"{}\"}}",
+            json_esc(&p.state),
+            json_esc(&mac),
+            p.since,
+            json_esc(&p.detail)
+        )
+    }
+
+    fn pair_get(&self) -> String {
+        let p = self.pair.lock().unwrap();
+        self.pair_json(&p)
+    }
+
+    fn pair_post(c: &Arc<Console>, body: &str) -> (&'static str, String) {
+        if jget(body, "cancel") == "1" {
+            let (pid, resp) = {
+                let mut p = c.pair.lock().unwrap();
+                let pid = if p.state == "running" { p.pid } else { None };
+                if pid.is_some() {
+                    p.state = "cancelling".into();
+                    p.since = now_secs();
+                    p.detail = "Cancelling pairing and restoring previous settings...".into();
+                } else if p.state != "cancelling" {
+                    p.state = "idle".into();
+                    p.since = now_secs();
+                    p.detail.clear();
+                }
+                (pid, c.pair_json(&p))
+            };
+            if let Some(pid) = pid {
+                let _ = Command::new("kill").args(["-TERM", &pid.to_string()]).output();
+            }
+            return ("200 OK", resp);
+        }
+        if c.core.has_open_window() {
+            return (
+                "409 Conflict",
+                "{\"error\":\"WINDOW_OPEN\",\"why\":\"A customer's coin window is open right now; try again in a minute.\"}".into(),
+            );
+        }
+        let mut p = c.pair.lock().unwrap();
+        if p.state == "running" || p.state == "cancelling" {
+            return ("200 OK", c.pair_json(&p));
+        }
+        let mut child = match Command::new("sh")
+            .args(["-c", "exec \"$1\" pair 2>&1", "_", &c.core.cfg.piso_setup])
+            .env("PISO_FROM_CONSOLE", "1")
+            .env("ASSUME_YES", "1")
+            .env("PISO_CONF", &c.core.cfg.setup_conf)
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+        {
+            Ok(ch) => ch,
+            Err(e) => {
+                let why = json_esc(&format!("could not start {}: {}", c.core.cfg.piso_setup, e));
+                return ("500 Internal Server Error", format!("{{\"error\":\"SPAWN_FAILED\",\"why\":\"{}\"}}", why));
+            }
+        };
+        p.generation += 1;
+        let gen = p.generation;
+        p.state = "running".into();
+        p.since = now_secs();
+        p.detail = "Opening pairing network...".into();
+        p.pid = Some(child.id());
+        let resp = c.pair_json(&p);
+        drop(p);
+
+        let console = Arc::clone(c);
+        std::thread::spawn(move || {
+            use std::io::BufRead;
+            let reader = child.stdout.take().map(|out| {
+                let c2 = Arc::clone(&console);
+                std::thread::spawn(move || {
+                    let mut last_err = String::new();
+                    for line in std::io::BufReader::new(out).lines().map_while(Result::ok) {
+                        let cleaned = clean_pair_line(&line);
+                        if cleaned.is_empty() {
+                            continue;
+                        }
+                        if let Some(err) = cleaned.strip_prefix("ERROR:") {
+                            last_err = err.trim().to_string();
+                        }
+                        let mut p = c2.pair.lock().unwrap();
+                        if p.generation != gen || p.state != "running" {
+                            break;
+                        }
+                        p.detail = cleaned;
+                    }
+                    last_err
+                })
+            });
+            let ok = child.wait().map(|s| s.success()).unwrap_or(false);
+            let cancelling = console.pair.lock().unwrap().state == "cancelling";
+            let last_err = if cancelling { String::new() } else { reader.and_then(|r| r.join().ok()).unwrap_or_default() };
+            if ok {
+                crate::reconcile::clear_cache();
+            }
+            let mut p = console.pair.lock().unwrap();
+            if p.generation != gen {
+                return;
+            }
+            p.pid = None;
+            p.since = now_secs();
+            if p.state == "cancelling" {
+                p.state = "idle".into();
+                p.detail = "Pairing cancelled. Previous coin box settings restored.".into();
+            } else if ok {
+                p.state = "done".into();
+                let mac = conf_value(&console.core.cfg.setup_conf, "BOX_MAC");
+                p.detail = if mac.is_empty() {
+                    "The new coin box is paired and ready.".into()
+                } else {
+                    format!("Paired with {}. The new coin box is ready.", mac)
+                };
+            } else {
+                p.state = "failed".into();
+                if !last_err.is_empty() {
+                    p.detail = last_err;
+                } else if p.detail.is_empty() {
+                    p.detail = "Pairing did not finish. Check power and Wi-Fi.".into();
+                }
+            }
+        });
+        ("200 OK", resp)
+    }
+}
+
+/// Strip setup formatting prefixes so console status shows plain progress messages.
+fn clean_pair_line(line: &str) -> String {
+    let s = line.trim();
+    let s = s.strip_prefix("== ").or_else(|| s.strip_prefix("TIP: ")).unwrap_or(s).trim();
+    s.chars().take(240).collect()
 }
 
 // ---- the server ---------------------------------------------------------------------------------------------------------------------
@@ -563,16 +1096,17 @@ fn pricing_json(core: &Core) -> String {
     )
 }
 
-/// The most a request body may be: the little forms 4 KB, the branding form 24 KB (twelve texts, escaped), a brand pack its own file limit.
+/// The most a request body may be: the little forms 4 KB, the branding form 24 KB (twelve texts, escaped), an image or brand pack its own file limit.
 fn body_limit(path: &str) -> usize {
     match path {
         "/api/brand" => 24 * 1024,
+        "/api/brand/logo" | "/api/brand/picture" => crate::brandpack::MAX_IMAGE + 1,
         "/api/brand/pack" => crate::brandpack::MAX_FILE + 1,
         _ => 4096,
     }
 }
 
-fn body_of(req: &Request, conn: &mut Incoming) -> String {
+fn body_bytes_of(req: &Request, conn: &mut Incoming) -> Vec<u8> {
     let len: usize = req.header("content-length").and_then(|v| v.parse().ok()).unwrap_or(0).min(body_limit(&req.path));
     let mut buf = vec![0u8; len];
     let mut got = 0;
@@ -582,12 +1116,13 @@ fn body_of(req: &Request, conn: &mut Incoming) -> String {
             Ok(n) => got += n,
         }
     }
-    String::from_utf8_lossy(&buf[..got]).into_owned()
+    buf.truncate(got);
+    buf
 }
 
 fn same_origin(req: &Request) -> bool {
     match (req.header("origin"), req.header("host")) {
-        (Some(o), Some(h)) => o.trim_start_matches("http://") == h,
+        (Some(o), Some(h)) => o.strip_prefix("http://").is_some_and(|s| s.trim_end_matches('/').eq_ignore_ascii_case(h)),
         (None, _) => true,
         _ => false,
     }
@@ -597,11 +1132,12 @@ fn json(conn: &mut Incoming, code: &str, body: &str, extra: &str) {
     respond(&mut conn.s, code, "application/json", body, &format!("Cache-Control: no-store\r\n{}{}", CSP, extra));
 }
 
-fn handle(c: &Console, req: Request, mut conn: Incoming) {
+fn handle(c: &Arc<Console>, req: Request, mut conn: Incoming) {
     let ip = conn.s.peer_addr().map(|a| a.ip().to_string()).unwrap_or_default();
     let head_only = req.method == "HEAD";
     // a request's body is always read, whatever the answer: closing a connection with unread bytes resets it and the client sees an error
-    let body = if req.method == "POST" { body_of(&req, &mut conn) } else { String::new() };
+    let body_bytes = if req.method == "POST" { body_bytes_of(&req, &mut conn) } else { Vec::new() };
+    let body = String::from_utf8_lossy(&body_bytes);
     match (req.method.as_str(), req.path.as_str()) {
         ("GET" | "HEAD", "/") => {
             let page = page_html(&c.core.cfg.shop_product).replace("@OWNER_KEY@", &crate::update::owner_key());
@@ -650,6 +1186,16 @@ fn handle(c: &Console, req: Request, mut conn: Incoming) {
                 ),
                 None => respond(&mut conn.s, "404 Not Found", "text/plain", "No picture", "Cache-Control: no-store\r\n"),
             }
+        }
+        ("GET" | "HEAD", "/admin-wifi/card") => {
+            let (status, mime, page) = if !c.session_ok(&req) {
+                ("401 Unauthorized", "text/plain", "Sign in to the console first.".into())
+            } else if let Some(info) = admin_wifi_info(&c.core.cfg) {
+                ("200 OK", "text/html; charset=utf-8", info.card())
+            } else {
+                ("404 Not Found", "text/plain", "Admin Wi-Fi is unavailable.".into())
+            };
+            respond_bytes(&mut conn.s, status, mime, page.as_bytes(), ADMIN_CARD_HEADERS, !head_only);
         }
         ("POST", "/api/login") => {
             if req.header("x-piso") != Some("1") || !same_origin(&req) {
@@ -732,6 +1278,10 @@ fn handle(c: &Console, req: Request, mut conn: Incoming) {
                     )
                 }
                 ("GET", "/api/vouchers") => json(&mut conn, "200 OK", &c.core.vouchers_json(), ""),
+                ("GET", "/api/admin-wifi") => {
+                    let info = admin_wifi_info(&c.core.cfg).map_or_else(|| "{\"enabled\":false}".into(), |wifi| wifi.json());
+                    json(&mut conn, "200 OK", &info, "");
+                }
                 ("GET", "/api/settings") => json(&mut conn, "200 OK", &settings_json(&c.core), ""),
                 ("POST", "/api/settings") => {
                     // (only the settings named in the body change)
@@ -800,8 +1350,8 @@ fn handle(c: &Console, req: Request, mut conn: Incoming) {
                     Err(_) => json(&mut conn, "500 Internal Server Error", "{\"error\":\"IO\"}", ""),
                 },
                 ("POST", "/api/brand/pack") => {
-                    // (the file is checked against the owner's key: a shop owner cannot make a pack, only install one the owner signed)
-                    match crate::brandpack::install(&c.core.cfg.data_dir, &crate::update::owner_key(), body.as_bytes()) {
+                    // (optional CLI/legacy signed pack install)
+                    match crate::brandpack::install(&c.core.cfg.data_dir, &crate::update::owner_key(), &body_bytes) {
                         Ok(s) => json(
                             &mut conn,
                             "200 OK",
@@ -811,6 +1361,22 @@ fn handle(c: &Console, req: Request, mut conn: Incoming) {
                         Err(why) => {
                             json(&mut conn, "400 Bad Request", &format!("{{\"error\":\"BAD_PACK\",\"why\":\"{}\"}}", json_esc(&why)), "")
                         }
+                    }
+                }
+                ("POST", p @ ("/api/brand/logo" | "/api/brand/picture")) => {
+                    let slot = if p == "/api/brand/logo" { crate::brandpack::Slot::Logo } else { crate::brandpack::Slot::Picture };
+                    match crate::brandpack::install_image(&c.core.cfg.data_dir, slot, &body_bytes) {
+                        Ok(bytes) => json(&mut conn, "200 OK", &format!("{{\"ok\":true,\"bytes\":{}}}", bytes), ""),
+                        Err(why) => {
+                            json(&mut conn, "400 Bad Request", &format!("{{\"error\":\"BAD_IMAGE\",\"why\":\"{}\"}}", json_esc(&why)), "")
+                        }
+                    }
+                }
+                ("POST", p @ ("/api/brand/logo/remove" | "/api/brand/picture/remove")) => {
+                    let slot = if p == "/api/brand/logo/remove" { crate::brandpack::Slot::Logo } else { crate::brandpack::Slot::Picture };
+                    match crate::brandpack::remove_image(&c.core.cfg.data_dir, slot) {
+                        Ok(_) => json(&mut conn, "200 OK", "{\"ok\":true}", ""),
+                        Err(_) => json(&mut conn, "500 Internal Server Error", "{\"error\":\"IO\"}", ""),
                     }
                 }
                 ("GET", "/api/pricing") => json(&mut conn, "200 OK", &pricing_json(&c.core), ""),
@@ -874,6 +1440,16 @@ fn handle(c: &Console, req: Request, mut conn: Incoming) {
                     c.core.nds.deauth(&mac);
                     json(&mut conn, "200 OK", "{\"ok\":true}", "");
                 }
+                ("GET", "/api/pair") => json(&mut conn, "200 OK", &c.pair_get(), ""),
+                ("POST", "/api/pair") => {
+                    let (code, out) = Console::pair_post(c, &body);
+                    json(&mut conn, code, &out, "");
+                }
+                ("GET", "/api/telegram") => json(&mut conn, "200 OK", &tg_state_json(&c.core.cfg), ""),
+                ("POST", "/api/telegram") => {
+                    let (code, out) = tg_save(&c.core.cfg, &body);
+                    json(&mut conn, code, &out, "");
+                }
                 _ => json(&mut conn, "404 Not Found", "{\"error\":\"NOT_FOUND\"}", ""),
             }
         }
@@ -910,6 +1486,14 @@ pub fn start(core: Arc<Core>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn admin_wifi_name_uses_the_stored_name_or_a_router_suffix() {
+        assert_eq!(admin_ssid("PisoAdmin-test".into(), &["PisoKiosk-abcd".into()]), "PisoAdmin-test");
+        assert_eq!(admin_ssid(String::new(), &["PisoKiosk-abcd".into(), "PisoCoinBox-9876".into()]), "PisoAdmin-abcd");
+        assert_eq!(admin_ssid(String::new(), &["PisoKiosk".into(), "PisoCoinBox-9876".into()]), "PisoAdmin-9876");
+        assert_eq!(admin_ssid(String::new(), &["PisoKiosk-zzzz".into()]), "PisoAdmin");
+    }
 
     #[test]
     fn the_coin_box_tab_is_named_for_the_product() {
@@ -1026,8 +1610,164 @@ mod tests {
         assert_eq!((today, total), (5, 26));
         assert_eq!(week, [0, 0, 0, 3, 0, 17, 5]);
         let (today_p, total_p, week_p, week_total, month_total) = revenue_period_stats(&text, now, tz);
-        assert_eq!((today_p, total_p, week_p), (today, total, week));
+        assert_eq!(today_p, today);
+        assert_eq!(total_p, total);
+        assert_eq!(week_p, week);
         assert_eq!(week_total, 25);
         assert_eq!(month_total, 25);
+    }
+
+    #[test]
+    fn clean_pair_line_strips_prefixes_and_bounds_length() {
+        assert_eq!(clean_pair_line("== Pairing the coin box "), "Pairing the coin box");
+        assert_eq!(clean_pair_line("  TIP: found it."), "found it.");
+        assert_eq!(clean_pair_line(&"x".repeat(300)).len(), 240);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn pair_job_runs_completes_and_can_cancel() {
+        use std::os::unix::fs::PermissionsExt;
+        let d = std::env::temp_dir().join(format!("pisoportal-pair-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let conf = d.join("setup.conf");
+        std::fs::write(&conf, "BOX_MAC='AA:BB:CC:DD:EE:01'\n").unwrap();
+        let script = d.join("fake-setup.sh");
+        std::fs::write(
+            &script,
+            format!(
+                "#!/bin/sh\nset -e\n[ \"$1\" = pair ]\nif [ \"${{PAIR_MODE:-ok}}\" = slow ]; then\n  echo \"== Pairing the coin box\"\n  sleep 10\n  exit 0\nfi\necho \"== Pairing the coin box\"\necho \"BOX_MAC='11:22:33:44:55:66'\" > \"{}\"\necho \"the new coin box is paired\"\n",
+                conf.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let mut cfg = crate::config::Config::from_map(std::collections::HashMap::new());
+        cfg.data_dir = d.to_string_lossy().into_owned();
+        cfg.setup_conf = conf.to_string_lossy().into_owned();
+        cfg.piso_setup = script.to_string_lossy().into_owned();
+        let console = Console::new(Core::new(cfg));
+
+        assert!(console.pair_get().contains("\"state\":\"idle\""));
+        assert!(console.pair_get().contains("\"mac\":\"AA:BB:CC:DD:EE:01\""));
+
+        let (code, body) = Console::pair_post(&console, "{}");
+        assert_eq!(code, "200 OK");
+        assert!(body.contains("\"state\":\"running\""), "{}", body);
+        for _ in 0..50 {
+            if console.pair_get().contains("\"state\":\"done\"") {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let done = console.pair_get();
+        assert!(done.contains("\"state\":\"done\"") && done.contains("\"mac\":\"11:22:33:44:55:66\""), "{}", done);
+
+        // Cancel a running job cleanly
+        console.core.nds.state("00:00:00:00:00:00");
+        std::fs::write(
+            &script,
+            "#!/bin/sh\np=''\ntrap '[ -n \"$p\" ] && kill \"$p\" 2>/dev/null; exit 1' TERM\necho \"== Waiting\"\nsleep 10 >/dev/null 2>&1 &\np=$!\nwait \"$p\"\n",
+        )
+        .unwrap();
+        let (code, body) = Console::pair_post(&console, "{}");
+        assert_eq!(code, "200 OK", "{}", body);
+        let (ccode, cbody) = Console::pair_post(&console, "{\"cancel\":\"1\"}");
+        assert_eq!(ccode, "200 OK", "{}", cbody);
+        for _ in 0..50 {
+            if console.pair_get().contains("\"state\":\"idle\"") {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(console.pair_get().contains("\"state\":\"idle\""), "{}", console.pair_get());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn telegram_validation_and_mask() {
+        assert!(valid_tg_token("123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"));
+        assert_eq!(clean_tg_token("  bot123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11 "), "123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11");
+        assert!(!valid_tg_token("1234:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"));
+        assert!(!valid_tg_token("123456:short"));
+        assert!(!valid_tg_token("123456:ABC'DEF1234ghIkl-zyx57W2v1u123ew11"));
+        assert!(!valid_tg_token("123456:ABC$DEF1234ghIkl-zyx57W2v1u123ew11"));
+        assert!(valid_tg_chat("123456789"));
+        assert!(valid_tg_chat("-1001234567890"));
+        assert!(!valid_tg_chat("'123"));
+        assert!(!valid_tg_chat(""));
+        assert_eq!(mask_tg_token(""), "");
+        assert_eq!(mask_tg_token("123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"), "123456...ew11");
+    }
+
+    #[test]
+    fn telegram_save_preserves_conf_clears_state_and_restarts() {
+        let d = format!("/tmp/pisotg-{}", crate::util::random_hex(8));
+        let st = format!("{}/state", d);
+        let conf = format!("{}/piso-monitor.conf", d);
+        let svc = format!("{}/svc.sh", d);
+        let bin = format!("{}/mon.sh", d);
+        let log = format!("{}/log", d);
+        std::fs::create_dir_all(&st).unwrap();
+        std::fs::write(&conf, "SITE_NAME='Shop'\nREPORT_HOUR='21'\n#HEALTHCHECK_URL='https://hc.example/1'\n").unwrap();
+        std::fs::write(format!("{}/offset", st), "99").unwrap();
+        std::fs::write(format!("{}/commands.set", st), "1").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::write(&svc, format!("#!/bin/sh\necho \"svc:$1\" >> {}\n", log)).unwrap();
+            std::fs::set_permissions(&svc, std::fs::Permissions::from_mode(0o755)).unwrap();
+            std::fs::write(
+                &bin,
+                format!(
+                    "#!/bin/sh\necho \"bin:$*\" >> {}\n[ \"$1\" = verify ] && {{ echo \"OK shopbot\"; exit 0; }}\n[ \"$1\" = detect ] && {{ echo \"CHAT 6184345139\"; exit 0; }}\nexit 0\n",
+                    log
+                ),
+            )
+            .unwrap();
+            std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let mut cfg = crate::config::Config::from_map(HashMap::new());
+        cfg.monitor_conf = conf.clone();
+        cfg.monitor_state = st.clone();
+        cfg.monitor_service = svc;
+        cfg.monitor_bin = bin;
+
+        let (code, body) = tg_save(&cfg, "{\"token\":\"bad\"}");
+        assert_eq!(code, "400 Bad Request", "{}", body);
+        assert!(std::path::Path::new(&format!("{}/offset", st)).exists());
+
+        let tok = "987654:ABC-DEF1234ghIkl-zyx57W2v1u123ew11";
+        let (code, body) = tg_save(&cfg, &format!("{{\"token\":\"{}\",\"chat\":\"987654\"}}", tok));
+        assert_eq!(code, "400 Bad Request", "bot ID rejected as chat: {}", body);
+        assert!(body.contains("BOT_ID_AS_CHAT"), "{}", body);
+
+        let (code, body) = tg_save(&cfg, &format!("{{\"token\":\"bot{}\",\"chat\":\"-10055\"}}", tok));
+        assert_eq!(code, "200 OK", "{}", body);
+        assert!(body.contains("\"set\":true") && body.contains("\"hint\":\"987654...ew11\""), "{}", body);
+        assert!(body.contains("\"chat\":\"-10055\"") && body.contains("\"bot\":\"shopbot\""), "{}", body);
+        assert!(!body.contains(tok), "raw token leaked: {}", body);
+        let saved = std::fs::read_to_string(&conf).unwrap();
+        assert!(saved.contains("SITE_NAME='Shop'") && saved.contains("#HEALTHCHECK_URL='https://hc.example/1'"), "{}", saved);
+        assert!(saved.contains(&format!("TG_TOKEN='{}'", tok)) && saved.contains("TG_CHAT='-10055'"), "{}", saved);
+        assert!(!std::path::Path::new(&format!("{}/offset", st)).exists());
+        assert!(!std::path::Path::new(&format!("{}/commands.set", st)).exists());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&conf).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600);
+            let calls = std::fs::read_to_string(&log).unwrap();
+            assert!(calls.contains("svc:enable\n") && calls.contains("svc:restart\n"), "{}", calls);
+            let (pcode, pbody) = tg_save(&cfg, "{\"action\":\"pair\"}");
+            assert_eq!(pcode, "200 OK", "{}", pbody);
+            assert!(pbody.contains("\"chat\":\"6184345139\""), "{}", pbody);
+            let (tcode, tbody) = tg_save(&cfg, "{\"action\":\"test\"}");
+            assert_eq!(tcode, "200 OK", "{}", tbody);
+            assert!(std::fs::read_to_string(&log).unwrap().contains("bin:send Test message"), "{}", log);
+        }
+        let _ = std::fs::remove_dir_all(&d);
     }
 }

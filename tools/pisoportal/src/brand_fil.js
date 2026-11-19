@@ -2,10 +2,10 @@
 /* Filipino for a branded page (feature 049). The page itself only knows English; every text it writes is turned into Filipino here, as it is
    written, when the customer chose Filipino. A text that is not listed stays English. The wording is a draft the owner reads before release. */
 var X={
-"Getting your connection ready.":"Inihahanda ang iyong koneksyon.",
+"Connecting…":"Kumokonekta…",
 "Reload":"I-reload",
-"Buy Wi-Fi time":"Bumili ng Wi-Fi time",
-"Pick a plan, insert a coin and you are online.":"Pumili ng plano, magpasok ng barya, at online ka na.",
+"Get online":"Mag-online",
+"Choose a plan. Tap Insert Coin.":"Pumili ng plano. I-tap ang Magpasok ng Barya.",
 "Connected":"Nakakonekta",
 "Almost out":"Malapit nang maubos",
 "Paused":"Naka-pause",
@@ -22,7 +22,7 @@ var X={
 "You get a code to use later, within 30 days. You are not connected after paying.":"Makakakuha ka ng code na magagamit mamaya, sa loob ng 30 araw. Hindi ka makakakonekta pagkatapos magbayad.",
 "Insert Coin":"Magpasok ng Barya",
 "Add more time":"Dagdagan ang oras",
-"Coins add up: every coin adds more time":"Nagsasama-sama ang mga barya: bawat barya ay dagdag na oras",
+"Each coin adds time.":"Bawat barya ay dagdag na oras.",
 "Your voucher codes":"Ang iyong mga voucher code",
 "Use":"Gamitin",
 "Have a voucher?":"May voucher ka ba?",
