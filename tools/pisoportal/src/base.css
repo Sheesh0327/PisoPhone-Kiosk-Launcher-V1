@@ -13,7 +13,9 @@ header span{font-weight:500;color:var(--mut);flex:none}
 .w{width:100%;max-width:420px;margin:0 auto;padding:14px 14px 24px}
 .card{background:var(--s1);border:1px solid var(--ln);border-radius:10px;padding:16px}
 .v{display:none}
-.mut{color:var(--mut);font-size:14px;line-height:20px;margin:0}
+.mut,.sub,.msg{font-size:14px;line-height:20px}
+.mut,.sub{color:var(--mut)}
+.mut{margin:0}
 .c{text-align:center}
 .big{font-size:44px;line-height:48px;font-weight:700;text-align:center;margin:4px 0}
 button,.btn{font:inherit}
@@ -22,8 +24,8 @@ button,.btn{font:inherit}
 .btn:disabled,.btn[aria-disabled=true]{opacity:.55}
 .btn.alt{min-height:48px;background:none;color:var(--tx);border:1px solid var(--ln2);font-weight:600}
 .btn:focus-visible,summary:focus-visible,input:focus-visible+.seg{outline:2px solid var(--bfg);outline-offset:2px}
-.sub{margin:6px 0 0;color:var(--mut);font-size:14px;line-height:20px;text-align:center}
-.msg{margin:12px 0 0;padding:10px 12px;border-left:4px solid var(--bad);border-radius:0 6px 6px 0;background:var(--s1);color:var(--tx);font-size:14px;line-height:20px}
+.sub{margin:6px 0 0;text-align:center}
+.msg{margin:12px 0 0;padding:10px 12px;border-left:4px solid var(--bad);border-radius:0 6px 6px 0;background:var(--s1);color:var(--tx)}
 .msg.ok{border-color:var(--teal)}
 .msg.w{border-color:var(--gold)}
 .bar{height:6px;background:var(--s2);border-radius:3px;overflow:hidden;margin:12px 0 6px}
