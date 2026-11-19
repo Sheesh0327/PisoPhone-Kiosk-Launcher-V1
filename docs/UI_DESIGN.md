@@ -100,7 +100,7 @@ Every state also needs a text label or recognizable icon. Use existing theme tok
 
 ## Motion and performance
 
-- Web state transitions are brief (about 150ms), without ambient animation or shimmer. Respect prefers-reduced-motion.
+- Web state transitions are brief (about 150ms), without ambient animation or shimmer, except the portal header shop title (`header b i`) which runs a slow right-to-left marquee and subtle blinking glow (`text-shadow` using `--bfg`/`--brand` or `--bglow`) so shops stand out cleanly. Respect prefers-reduced-motion (`animation:none;padding-left:0`).
 - Android honors disabled system animations, lifecycle, battery and thermal policies. Stop idle effects when hidden or dimmed.
 - Keep the mascot and backdrop cached. Avoid blur, animated shadows, per-frame allocation and excessive particles (maximum 16).
 - Mascot states communicate idle, listening, success, low time, offline and completion without requiring sound.

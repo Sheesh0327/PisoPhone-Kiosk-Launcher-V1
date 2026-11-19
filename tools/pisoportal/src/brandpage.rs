@@ -12,7 +12,7 @@ use crate::http::squeeze;
 const TITLE: &str = "<title>TechNet PisoWifi</title>";
 const ICON: &str = r#"<link rel="icon" href="/brand.png">"#;
 const TOUCH: &str = r#"<link rel="apple-touch-icon" href="/brand.png">"#;
-const HEADER: &str = r#"<header><img src="/brand.png" alt="" width="28" height="28"><b>TechNet</b><span>PisoWifi</span></header>"#;
+const HEADER: &str = r#"<header><img src="/brand.png" alt="" width="28" height="28"><b><i>TechNet</i></b><span>PisoWifi</span></header>"#;
 const WELCOME: &str = r#"<div class="hd" id="hd"><img src="/mascot.png" alt="" width="72" height="74"><p>Buy Wi-Fi time<span class="mut" style="display:block;font-weight:400">Pick a plan, insert a coin and you are online.</span></p></div>"#;
 const GOS: &str = r#"<p class="sub" id="gos">Coins add up: every coin adds more time</p>"#;
 const FOOT: &str = r#"<p class="foot">TechNet Solutions &middot; Connect &middot; Play &middot; More Possibilities</p>"#;
@@ -98,8 +98,9 @@ fn contact_hours(b: &Brand, sep: &str) -> (String, String) {
 }
 
 fn style(t: &Theme) -> String {
+    let glow = if t.accent_text == 0 { "rgba(255,255,255,.78)" } else { "#fff" };
     let mut s = format!(
-        ":root{{--bg:{};--band:{};--s1:{};--s2:{};--ln:{};--ln2:{};--brand:{};--bfg:{};--bt:{}}}",
+        ":root{{--bg:{};--band:{};--s1:{};--s2:{};--ln:{};--ln2:{};--brand:{};--bfg:{};--bt:{};--bglow:{}}}",
         hex(t.bg),
         hex(t.band),
         hex(t.s1),
@@ -108,7 +109,8 @@ fn style(t: &Theme) -> String {
         hex(t.ln2),
         hex(t.accent),
         hex(t.accent),
-        hex(t.accent_text)
+        hex(t.accent_text),
+        glow
     );
     if t.accent != 0x1d63d6 {
         s.push_str(&format!(".sl{{background:{}}}", hex(t.accent)));
@@ -180,7 +182,7 @@ pub fn decorate(page: &str, b: &Brand, logo: bool, picture: bool) -> Result<Stri
         "poster" => r#" class="poster""#,
         _ => "",
     };
-    put(HEADER, &format!("<header{}>{}<b>{}</b>{}{}{}</header>", class, img, name, tagline, poster_line, LANG_BUTTON));
+    put(HEADER, &format!("<header{}>{}<b><i>{}</i></b>{}{}{}</header>", class, img, name, tagline, poster_line, LANG_BUTTON));
 
     let (promo_en, promo_fil) = both(b, Field::Promo, &esc);
     let promo = slot("p", r#" class="promo""#, &promo_en, &promo_fil);
@@ -315,8 +317,8 @@ mod tests {
     fn f049_the_shops_name_replaces_technet_in_the_title_and_header_and_the_credit_stays() {
         let page = decorate(&base(), &full(), false, false).unwrap();
         assert!(page.contains("<title>Aling Nena&#39;s Net Cafe</title>"), "title");
-        assert!(page.contains("<b>Aling Nena&#39;s Net Cafe</b><span>Mabilis. Mura. Malinis.</span>"), "header");
-        assert!(!page.contains("<b>TechNet</b>") && !page.contains("<title>TechNet PisoWifi</title>"));
+        assert!(page.contains("<b><i>Aling Nena&#39;s Net Cafe</i></b><span>Mabilis. Mura. Malinis.</span>"), "header");
+        assert!(!page.contains("<b><i>TechNet</i></b>") && !page.contains("<title>TechNet PisoWifi</title>"));
         assert_eq!(count(&page, CREDIT), 1);
         assert!(!page.contains("Connect &middot; Play"), "the TechNet slogan footer is replaced by the credit");
     }
@@ -328,7 +330,7 @@ mod tests {
             assert!(!none.contains(gone), "a branded page with no pictures must not mention {}", gone);
         }
         let logo = decorate(&base(), &full(), true, false).unwrap();
-        assert!(logo.contains(r#"<header><img src="/brand/logo" alt="" onerror="this.remove()"><b>"#), "the logo before the name");
+        assert!(logo.contains(r#"<header><img src="/brand/logo" alt="" onerror="this.remove()"><b><i>"#), "the logo before the name");
         assert!(
             logo.contains(r#"<link rel="icon" href="/brand/logo">"#)
                 && logo.contains(r#"<link rel="apple-touch-icon" href="/brand/logo">"#)
@@ -374,7 +376,7 @@ mod tests {
             assert!(!page.contains(frame), "{}", frame);
         }
         assert!(page.contains("Pick a plan, insert a coin and you are online."), "no welcome set: the standard line stays");
-        assert!(page.contains("<b>Nena</b>") && !page.contains("<b>Nena</b><span>"), "no tagline: just the name");
+        assert!(page.contains("<b><i>Nena</i></b>") && !page.contains("<b><i>Nena</i></b><span>"), "no tagline: just the name");
         let hours_only = {
             let mut b = named("Nena");
             b.set_text(Field::Hours, Lang::En, "Open 8 to 10");
@@ -645,4 +647,22 @@ mod tests {
             assert_eq!(count(&p, "data-shop="), 1);
         }
     }
+
+    #[test]
+    fn poster_header_glow_adapts_to_light_and_dark_accents() {
+        let mut light = named("Nena");
+        light.palette = "ginto".into(); // accent #ffb81c -> accent_text = #000000
+        light.layout = "poster".into();
+        let page_light = decorate(&base(), &light, false, false).unwrap();
+        assert!(page_light.contains("--bglow:rgba(255,255,255,.78)"), "light accent gets dark-free soft white glow");
+        assert!(page_light.contains("pglow") && page_light.contains("var(--bglow)"));
+
+        let mut dark = named("Nena");
+        dark.palette = "technet".into();
+        dark.accent = "#1d63d6".into(); // accent_text = #ffffff
+        dark.layout = "poster".into();
+        let page_dark = decorate(&base(), &dark, false, false).unwrap();
+        assert!(page_dark.contains("--bglow:#fff"), "dark accent gets white glow");
+    }
 }
+

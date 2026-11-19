@@ -136,7 +136,9 @@ try:
         return hashlib.sha256(guest()).hexdigest() == today
 
     # ---- nobody signed in gets anything --------------------------------------------------------------------------------------------------
-    for m, p in [("GET", "/api/brand"), ("POST", "/api/brand"), ("POST", "/api/brand/publish"), ("POST", "/api/brand/restore"), ("POST", "/api/brand/pack"),
+    for m, p in [("GET", "/api/brand"), ("POST", "/api/brand"), ("POST", "/api/brand/publish"), ("POST", "/api/brand/restore"),
+                 ("POST", "/api/brand/pack"), ("POST", "/api/brand/logo"), ("POST", "/api/brand/picture"),
+                 ("POST", "/api/brand/logo/remove"), ("POST", "/api/brand/picture/remove"),
                  ("GET", "/brand/preview"), ("GET", "/brand/logo"), ("GET", "/brand/picture")]:
         s = call(m, p, {} if m == "POST" else None)[0]
         check(s == 401, f"{m} {p} without signing in: {s}")
@@ -145,7 +147,8 @@ try:
     check(s == 200 and cookie.startswith("piso_console="), "signed in")
 
     # ---- the same rules as the rest of the console ---------------------------------------------------------------------------------------
-    for p in ["/api/brand", "/api/brand/publish", "/api/brand/restore", "/api/brand/pack"]:
+    for p in ["/api/brand", "/api/brand/publish", "/api/brand/restore", "/api/brand/pack",
+              "/api/brand/logo", "/api/brand/picture", "/api/brand/logo/remove", "/api/brand/picture/remove"]:
         check(call("POST", p, FORM, cookie=cookie, x_piso=False)[0] == 403, f"POST {p} needs the X-Piso header")
         check(call("POST", p, FORM, cookie=cookie, origin="http://evil.example")[0] == 403, f"POST {p} refuses a foreign origin")
     check(not os.path.exists(f"{env.data}/brand/draft.txt"), "and the refused ones saved nothing")
@@ -193,24 +196,40 @@ try:
     j = json.loads(call("GET", "/api/brand", cookie=cookie)[2])
     check(j["live"] == "default" and j["draft"]["name"] == "Second name", "and the draft is kept")
 
-    # ---- a brand pack from the console ---------------------------------------------------------------------------------------------------
+    # ---- direct unsigned logo and picture upload (plus optional signed pack) from the console -----------------------------------------------
     s, j = jcall("POST", "/api/brand/pack", b"not a pack at all", cookie=cookie, raw=True)
-    check(s == 400 and j["error"] == "BAD_PACK" and j["why"], f"garbage is refused with a reason: {j}")
+    check(s == 400 and j["error"] == "BAD_PACK" and j["why"], f"garbage pack is refused with a reason: {j}")
     s, j = jcall("POST", "/api/brand/pack", forged_pack, cookie=cookie, raw=True)
     check(s == 400 and "signature" in j["why"], f"a pack signed by someone else is refused: {j}")
     s, j = jcall("POST", "/api/brand/pack", good_pack[:-5], cookie=cookie, raw=True)
     check(s == 400, "a pack with its end cut off is refused")
+    s, j = jcall("POST", "/api/brand/logo", b"<svg xmlns='http://www.w3.org/2000/svg'/>", cookie=cookie, raw=True)
+    check(s == 400 and j["error"] == "BAD_IMAGE" and "PNG or JPEG" in j["why"], f"non-PNG/JPEG is refused: {j}")
+    s, j = jcall("POST", "/api/brand/logo", b"not an image", cookie=cookie, raw=True)
+    check(s == 400 and j["error"] == "BAD_IMAGE", f"garbage is refused: {j}")
     check(not os.path.exists(f"{env.data}/brand/images.txt"), "and the refused ones installed nothing")
     check(call("GET", "/brand/logo", cookie=cookie)[0] == 404, "no logo yet")
-    s, j = jcall("POST", "/api/brand/pack", good_pack, cookie=cookie, raw=True)
-    check(s == 200 and j["ok"] and j["logo_bytes"] > 50, f"the owner's pack installs: {j}")
+    logo_bytes = png(96, 64)
+    pic_bytes = png(120, 80)
+    s, j = jcall("POST", "/api/brand/logo", logo_bytes, cookie=cookie, raw=True)
+    check(s == 200 and j["ok"] and j["bytes"] == len(logo_bytes), f"an unsigned logo installs directly: {j}")
+    s, j = jcall("POST", "/api/brand/picture", pic_bytes, cookie=cookie, raw=True)
+    check(s == 200 and j["ok"] and j["bytes"] == len(pic_bytes), f"an unsigned welcome picture installs directly: {j}")
     s, h, b = call("GET", "/brand/logo", cookie=cookie)
-    check(s == 200 and h["Content-Type"] == "image/png" and b[:4] == b"\x89PNG" and h.get("X-Content-Type-Options") == "nosniff", "the console shows the installed logo")
+    check(s == 200 and h["Content-Type"] == "image/png" and b == logo_bytes and h.get("X-Content-Type-Options") == "nosniff", "the console shows the uploaded logo")
+    s, h, b = call("GET", "/brand/picture", cookie=cookie)
+    check(s == 200 and h["Content-Type"] == "image/png" and b == pic_bytes, "and the uploaded welcome picture")
     check(call("GET", "/brand/logo")[0] == 401, "but not to someone who is not signed in")
     check(call("GET", "/brand/logo", port=env.PP, x_piso=False)[0] == 404, "customers do not get it while the branding is not published")
-    check(json.loads(call("GET", "/api/brand", cookie=cookie)[2])["logo"] is True, "the editor knows the logo is installed")
+    s, j = jcall("GET", "/api/brand", cookie=cookie)
+    check(j["logo"] is True and j["picture"] is True, "the editor knows both are installed")
     s, h, b = call("GET", "/brand/preview", cookie=cookie)
-    check(b'src="/brand/logo"' in b, "and the preview shows it")
+    check(b'src="/brand/logo"' in b and b'src="/brand/picture"' in b, "and the preview shows both")
+    check(jcall("POST", "/api/brand/picture/remove", {}, cookie=cookie)[1] == {"ok": True}, "removing welcome picture")
+    check(call("GET", "/brand/picture", cookie=cookie)[0] == 404 and call("GET", "/brand/logo", cookie=cookie)[0] == 200, "removing picture keeps the logo")
+    s, j = jcall("POST", "/api/brand/pack", good_pack, cookie=cookie, raw=True)
+    check(s == 200 and j["ok"] and j["logo_bytes"] > 50, f"optional signed brand pack still installs: {j}")
+
 
     # ---- the screen ---------------------------------------------------------------------------------------------------------------------------
     with sync_playwright() as pw:
@@ -261,23 +280,31 @@ try:
         check(pg.evaluate("document.getElementById('bprev').contentDocument.getElementById('go').offsetWidth > 0"), "the coin button is on the preview, to look at, and pressing it does nothing")
         check(pg.evaluate("document.getElementById('bprev').contentDocument.getElementById('v-live').offsetWidth === 0"), "the preview did not go to a coin window screen")
 
-        # a bad pack from the screen
-        bad = os.path.join(tmp, "bad.brand")
-        with open(bad, "wb") as f:
-            f.write(forged_pack)
-        pg.set_input_files("#bpk", bad)
+        # direct unsigned logo and picture uploads (plus refusing non-PNG/JPEG and auto-resizing oversized images)
+        bad_svg = os.path.join(tmp, "bad.svg")
+        with open(bad_svg, "wb") as f:
+            f.write(b"<svg xmlns='http://www.w3.org/2000/svg'/>")
+        pg.set_input_files("#blogo", bad_svg)
         pg.wait_for_function("document.getElementById('bpkm').textContent.indexOf('Not installed') === 0", timeout=5000)
-        check("signature" in pg.text_content("#bpkm"), "a forged pack is refused on the screen with its reason: " + pg.text_content("#bpkm"))
-        huge = os.path.join(tmp, "huge.brand")
-        with open(huge, "wb") as f:
-            f.write(b"x" * 310000)
-        pg.set_input_files("#bpk", huge)
-        pg.wait_for_function("document.getElementById('bpkm').textContent.indexOf('too big') > 0", timeout=5000)
-        good = os.path.join(tmp, "good2.brand")
-        with open(good, "wb") as f:
-            f.write(good_pack)
-        pg.set_input_files("#bpk", good)
-        pg.wait_for_function("document.getElementById('bpkm').textContent.indexOf('Installed') === 0", timeout=5000)
+        check("PNG or JPEG" in pg.text_content("#bpkm"), "SVG is refused with its reason: " + pg.text_content("#bpkm"))
+
+        big_png = os.path.join(tmp, "big.png")
+        with open(big_png, "wb") as f:
+            f.write(png(800, 600))
+        pg.set_input_files("#blogo", big_png)
+        pg.wait_for_function("document.getElementById('bpkm').textContent.indexOf('Logo saved') === 0", timeout=8000)
+        check(pg.eval_on_selector("#bpics img", "i => i.naturalWidth") == 512, "oversized logo is automatically resized to fit <= 512 px")
+
+        pic_png = os.path.join(tmp, "pic.png")
+        with open(pic_png, "wb") as f:
+            f.write(png(160, 120))
+        pg.set_input_files("#bpic", pic_png)
+        pg.wait_for_function("document.getElementById('bpkm').textContent.indexOf('Welcome picture saved') === 0", timeout=5000)
+        check(pg.locator("#bpics img").count() == 2, "both logo and welcome picture show")
+
+        pg.click('#bpics button[data-rm="picture"]')
+        pg.wait_for_function("document.getElementById('bpkm').textContent.indexOf('Welcome picture removed') === 0", timeout=5000)
+        check(pg.locator("#bpics img").count() == 1, "removing the welcome picture leaves the logo")
 
         # Publish asks first, then customers get it
         pg.click("#bpub")

@@ -314,6 +314,88 @@ pub fn read_image(dir: &str, slot: Slot) -> Option<(Kind, Vec<u8>)> {
     Some((kind, bytes))
 }
 
+fn clean_unused(base: &str, keep: &[String]) {
+    if let Ok(rd) = fs::read_dir(base) {
+        for e in rd.flatten() {
+            let n = e.file_name().to_string_lossy().into_owned();
+            if (own_name(Slot::Logo, &n) || own_name(Slot::Picture, &n)) && !keep.contains(&n) {
+                let _ = fs::remove_file(e.path());
+            }
+        }
+    }
+}
+
+fn save_index(base: &str, entries: &[(Slot, &Stored)]) -> Result<(), String> {
+    let keep: Vec<String> = entries.iter().map(|(_, s)| s.file.clone()).collect();
+    if entries.is_empty() {
+        if let Err(e) = fs::remove_file(format!("{}/images.txt", base)) {
+            if e.kind() != std::io::ErrorKind::NotFound {
+                return Err(format!("could not update the pictures' list: {}", e));
+            }
+        }
+    } else {
+        let mut index = String::new();
+        for (slot, s) in entries {
+            index.push_str(&format!("{} {} {}\n", slot.name(), s.file, s.sha256));
+        }
+        write_atomic(&format!("{}/images.txt", base), index.as_bytes()).map_err(|e| format!("could not save the pictures' list: {}", e))?;
+    }
+    clean_unused(base, &keep);
+    Ok(())
+}
+
+/// Checks a raw PNG or JPEG (`check_image`), stores it in `DATA_DIR/brand/`, and updates `images.txt` for that slot without touching the
+/// other slot. Invalid or oversized files change nothing, not even by creating the folder.
+pub fn install_image(dir: &str, slot: Slot, bytes: &[u8]) -> Result<usize, String> {
+    let (kind, ..) = check_image(bytes)?;
+    let base = brand_dir(dir);
+    let sha = sha256_hex(bytes);
+    let name = format!("{}-{}.{}", slot.name(), &sha[..12], kind.ext());
+    write_atomic(&format!("{}/{}", base, name), bytes).map_err(|e| format!("could not save the {}: {}", slot.name(), e))?;
+    let (cur_logo, cur_pic) = installed(dir);
+    let next = Stored { file: name, sha256: sha };
+    let mut entries: Vec<(Slot, &Stored)> = Vec::new();
+    match slot {
+        Slot::Logo => {
+            entries.push((Slot::Logo, &next));
+            if let Some(ref p) = cur_pic {
+                entries.push((Slot::Picture, p));
+            }
+        }
+        Slot::Picture => {
+            if let Some(ref l) = cur_logo {
+                entries.push((Slot::Logo, l));
+            }
+            entries.push((Slot::Picture, &next));
+        }
+    }
+    save_index(&base, &entries)?;
+    Ok(bytes.len())
+}
+
+/// Removes one installed image slot (`logo` or `picture`) and its file, keeping the other slot intact.
+pub fn remove_image(dir: &str, slot: Slot) -> Result<bool, String> {
+    let (cur_logo, cur_pic) = installed(dir);
+    let had = match slot {
+        Slot::Logo => cur_logo.is_some(),
+        Slot::Picture => cur_pic.is_some(),
+    };
+    let mut entries: Vec<(Slot, &Stored)> = Vec::new();
+    if slot != Slot::Logo {
+        if let Some(ref l) = cur_logo {
+            entries.push((Slot::Logo, l));
+        }
+    }
+    if slot != Slot::Picture {
+        if let Some(ref p) = cur_pic {
+            entries.push((Slot::Picture, p));
+        }
+    }
+    let base = brand_dir(dir);
+    save_index(&base, &entries)?;
+    Ok(had)
+}
+
 /// Verifies the pack, then keeps its pictures: the files first, `images.txt` last (the moment the new pictures count), then the files of
 /// the earlier pack are removed. A refused pack changes nothing, not even by creating the folder.
 pub fn install(dir: &str, key_b64: &str, pack: &[u8]) -> Result<Summary, String> {
@@ -330,14 +412,7 @@ pub fn install(dir: &str, key_b64: &str, pack: &[u8]) -> Result<Summary, String>
         keep.push(name);
     }
     write_atomic(&format!("{}/images.txt", base), index.as_bytes()).map_err(|e| format!("could not save the pictures' list: {}", e))?;
-    if let Ok(rd) = fs::read_dir(&base) {
-        for e in rd.flatten() {
-            let n = e.file_name().to_string_lossy().into_owned();
-            if (own_name(Slot::Logo, &n) || own_name(Slot::Picture, &n)) && !keep.contains(&n) {
-                let _ = fs::remove_file(e.path());
-            }
-        }
-    }
+    clean_unused(&base, &keep);
     Ok(Summary { logo_bytes: p.logo.bytes.len(), picture_bytes: p.picture.map(|i| i.bytes.len()).unwrap_or(0) })
 }
 
@@ -640,5 +715,37 @@ mod tests {
         let empty = tmp("refused-empty");
         assert!(install(&empty, PUB, bad.as_bytes()).is_err());
         assert!(!std::path::Path::new(&format!("{}/brand", empty)).exists(), "nothing was written");
+    }
+
+    #[test]
+    fn f049_direct_image_install_and_remove_work_independently_and_reject_bad_files() {
+        let dir = tmp("direct-image");
+        let empty = tmp("direct-empty");
+        assert!(install_image(&empty, Slot::Logo, b"<svg/>").is_err());
+        assert!(!std::path::Path::new(&format!("{}/brand", empty)).exists(), "bad image writes nothing");
+        let pic = jpeg(300, 200);
+        // welcome picture can be installed without a logo
+        assert_eq!(install_image(&dir, Slot::Picture, &pic).unwrap(), pic.len());
+        assert!(read_image(&dir, Slot::Logo).is_none());
+        assert_eq!(read_image(&dir, Slot::Picture).unwrap(), (Kind::Jpeg, pic.clone()));
+        // installing a logo keeps the welcome picture
+        let logo = png(64, 64, 0);
+        assert_eq!(install_image(&dir, Slot::Logo, &logo).unwrap(), logo.len());
+        assert_eq!(read_image(&dir, Slot::Logo).unwrap(), (Kind::Png, logo.clone()));
+        assert_eq!(read_image(&dir, Slot::Picture).unwrap(), (Kind::Jpeg, pic.clone()));
+        // replacing the logo removes the old logo file and keeps the picture
+        let logo2 = png(96, 96, 0);
+        install_image(&dir, Slot::Logo, &logo2).unwrap();
+        assert_eq!(read_image(&dir, Slot::Logo).unwrap().1, logo2);
+        assert_eq!(read_image(&dir, Slot::Picture).unwrap().1, pic);
+        // removing the picture keeps the logo
+        assert!(remove_image(&dir, Slot::Picture).unwrap());
+        assert!(!remove_image(&dir, Slot::Picture).unwrap());
+        assert!(read_image(&dir, Slot::Picture).is_none());
+        assert_eq!(read_image(&dir, Slot::Logo).unwrap().1, logo2);
+        // removing the logo cleans everything
+        assert!(remove_image(&dir, Slot::Logo).unwrap());
+        assert!(read_image(&dir, Slot::Logo).is_none());
+        assert!(!std::path::Path::new(&format!("{}/brand/images.txt", dir)).exists());
     }
 }

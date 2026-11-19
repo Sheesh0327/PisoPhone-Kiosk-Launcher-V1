@@ -1012,16 +1012,17 @@ fn pricing_json(core: &Core) -> String {
     )
 }
 
-/// The most a request body may be: the little forms 4 KB, the branding form 24 KB (twelve texts, escaped), a brand pack its own file limit.
+/// The most a request body may be: the little forms 4 KB, the branding form 24 KB (twelve texts, escaped), an image or brand pack its own file limit.
 fn body_limit(path: &str) -> usize {
     match path {
         "/api/brand" => 24 * 1024,
+        "/api/brand/logo" | "/api/brand/picture" => crate::brandpack::MAX_IMAGE + 1,
         "/api/brand/pack" => crate::brandpack::MAX_FILE + 1,
         _ => 4096,
     }
 }
 
-fn body_of(req: &Request, conn: &mut Incoming) -> String {
+fn body_bytes_of(req: &Request, conn: &mut Incoming) -> Vec<u8> {
     let len: usize = req.header("content-length").and_then(|v| v.parse().ok()).unwrap_or(0).min(body_limit(&req.path));
     let mut buf = vec![0u8; len];
     let mut got = 0;
@@ -1031,7 +1032,8 @@ fn body_of(req: &Request, conn: &mut Incoming) -> String {
             Ok(n) => got += n,
         }
     }
-    String::from_utf8_lossy(&buf[..got]).into_owned()
+    buf.truncate(got);
+    buf
 }
 
 fn same_origin(req: &Request) -> bool {
@@ -1050,7 +1052,8 @@ fn handle(c: &Arc<Console>, req: Request, mut conn: Incoming) {
     let ip = conn.s.peer_addr().map(|a| a.ip().to_string()).unwrap_or_default();
     let head_only = req.method == "HEAD";
     // a request's body is always read, whatever the answer: closing a connection with unread bytes resets it and the client sees an error
-    let body = if req.method == "POST" { body_of(&req, &mut conn) } else { String::new() };
+    let body_bytes = if req.method == "POST" { body_bytes_of(&req, &mut conn) } else { Vec::new() };
+    let body = String::from_utf8_lossy(&body_bytes);
     match (req.method.as_str(), req.path.as_str()) {
         ("GET" | "HEAD", "/") => {
             let page = page_html(&c.core.cfg.shop_product).replace("@OWNER_KEY@", &crate::update::owner_key());
@@ -1249,8 +1252,8 @@ fn handle(c: &Arc<Console>, req: Request, mut conn: Incoming) {
                     Err(_) => json(&mut conn, "500 Internal Server Error", "{\"error\":\"IO\"}", ""),
                 },
                 ("POST", "/api/brand/pack") => {
-                    // (the file is checked against the owner's key: a shop owner cannot make a pack, only install one the owner signed)
-                    match crate::brandpack::install(&c.core.cfg.data_dir, &crate::update::owner_key(), body.as_bytes()) {
+                    // (optional CLI/legacy signed pack install)
+                    match crate::brandpack::install(&c.core.cfg.data_dir, &crate::update::owner_key(), &body_bytes) {
                         Ok(s) => json(
                             &mut conn,
                             "200 OK",
@@ -1260,6 +1263,22 @@ fn handle(c: &Arc<Console>, req: Request, mut conn: Incoming) {
                         Err(why) => {
                             json(&mut conn, "400 Bad Request", &format!("{{\"error\":\"BAD_PACK\",\"why\":\"{}\"}}", json_esc(&why)), "")
                         }
+                    }
+                }
+                ("POST", p @ ("/api/brand/logo" | "/api/brand/picture")) => {
+                    let slot = if p == "/api/brand/logo" { crate::brandpack::Slot::Logo } else { crate::brandpack::Slot::Picture };
+                    match crate::brandpack::install_image(&c.core.cfg.data_dir, slot, &body_bytes) {
+                        Ok(bytes) => json(&mut conn, "200 OK", &format!("{{\"ok\":true,\"bytes\":{}}}", bytes), ""),
+                        Err(why) => {
+                            json(&mut conn, "400 Bad Request", &format!("{{\"error\":\"BAD_IMAGE\",\"why\":\"{}\"}}", json_esc(&why)), "")
+                        }
+                    }
+                }
+                ("POST", p @ ("/api/brand/logo/remove" | "/api/brand/picture/remove")) => {
+                    let slot = if p == "/api/brand/logo/remove" { crate::brandpack::Slot::Logo } else { crate::brandpack::Slot::Picture };
+                    match crate::brandpack::remove_image(&c.core.cfg.data_dir, slot) {
+                        Ok(_) => json(&mut conn, "200 OK", "{\"ok\":true}", ""),
+                        Err(_) => json(&mut conn, "500 Internal Server Error", "{\"error\":\"IO\"}", ""),
                     }
                 }
                 ("GET", "/api/pricing") => json(&mut conn, "200 OK", &pricing_json(&c.core), ""),

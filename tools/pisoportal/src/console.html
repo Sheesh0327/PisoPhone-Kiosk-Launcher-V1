@@ -64,7 +64,7 @@ footer{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;paddin
 .ly{display:grid;gap:6px}.ly label{display:flex;gap:10px;align-items:flex-start;margin:0;padding:8px 10px;border:1px solid var(--ln);border-radius:8px;color:var(--tx);font-size:13px;cursor:pointer}.ly input{width:auto;height:auto;margin-top:3px}.ly span{color:var(--mut);display:block;font-size:12px}
 .lt{display:inline-flex;margin:0 0 12px;padding:3px;border:1px solid var(--ln);border-radius:9px}.lt button{height:30px;padding:0 14px;border:0;border-radius:6px;background:none;color:var(--mut);font:inherit;font-size:13px;font-weight:550;cursor:pointer}.lt button.on{color:var(--tx);background:var(--sel)}
 textarea{width:100%;padding:8px 12px;border-radius:8px;border:1px solid var(--ln2);background:var(--bg);color:var(--tx);font:inherit;resize:vertical}
-.tx1{max-width:520px}.tx1>div{margin-bottom:12px}.bg h3{font-size:13px;font-weight:650;margin:20px 0 8px}.bg .card>h3:first-child{margin-top:0}.bg .f>div{margin-bottom:8px}.pic{display:flex;gap:12px;align-items:center;margin:8px 0}.pic img{width:56px;height:56px;object-fit:contain;border:1px solid var(--ln);border-radius:8px;background:#fff}
+.tx1{max-width:520px}.tx1>div{margin-bottom:12px}.bg h3{font-size:13px;font-weight:650;margin:20px 0 8px}.bg .card>h3:first-child{margin-top:0}.bg .f>div{margin-bottom:8px}.pic{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:8px 0}.pic img{width:56px;height:56px;object-fit:contain;border:1px solid var(--ln);border-radius:8px;background:#fff}.pitem{display:flex;gap:8px;align-items:center}.bf2{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}#blogo,#bpic{padding:6px 8px}
 @media(max-width:1179px){.bg{grid-template-columns:minmax(0,1fr)}.bp{position:static}}
 @media(max-width:899px){#app{display:block}#col{min-height:100vh}
 #side{position:fixed;left:0;top:0;bottom:0;height:auto;width:min(300px,86vw);z-index:30;transform:translateX(-100%);visibility:hidden;transition:transform .2s,visibility 0s .2s;box-shadow:0 8px 24px rgba(0,0,0,.45)}
@@ -125,8 +125,8 @@ main{padding:16px 16px 40px}footer{padding:12px 16px}.hm{display:none}
 <div><label for="t-rules">House rules (one rule on each line)</label><textarea id="t-rules" data-k="rules" rows="5" maxlength="600"></textarea><div class="s" id="c-rules"></div></div></div>
 <p class="s">Texts are shown exactly as you type them: no links and no formatting.</p></div>
 <div class="card" style="margin-top:12px"><h3 style="margin-top:0">Logo and picture</h3><div class="pic" id="bpics"></div>
-<p class="s">Your logo comes as a <b>brand pack</b>: one small file that TechNet signs for you. Choose it here to install it. A file that is not a genuine brand pack is refused and nothing changes.</p>
-<div class="f" style="max-width:420px"><div><label for="bpk">Brand pack file</label><input id="bpk" type="file"></div></div><p class="s" id="bpkm" role="status"></p></div>
+<p class="s">Upload your own logo and welcome picture (PNG or JPEG). Big photos are resized automatically to fit. Press <b>Publish</b> when ready for customers to see them.</p>
+<div class="bf2"><div><label for="blogo">Logo (PNG or JPEG)</label><input id="blogo" type="file" accept="image/png,image/jpeg"></div><div><label for="bpic">Welcome picture (PNG or JPEG)</label><input id="bpic" type="file" accept="image/png,image/jpeg"></div></div><input id="bpk" type="file" hidden><p class="s" id="bpkm" role="status"></p></div>
 <div class="acts"><button class="go" id="bpub">Publish</button><button class="b dg" id="brest">Restore the standard TechNet look</button><span id="bchips"></span></div>
 <p class="s" id="bmsg" role="status"></p></div>
 <div class="bp"><div class="k" style="margin-bottom:6px">Preview: what customers see first</div><iframe id="bprev" title="Preview of the customer page"></iframe><p class="s">The preview cannot start a coin window or take a payment.</p></div></div></section>

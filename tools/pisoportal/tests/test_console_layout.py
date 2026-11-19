@@ -358,7 +358,8 @@ try:
             pg.click("#gobtn")
             pg.wait_for_selector("#app:not(.hide)", timeout=8000)
             pg.wait_for_timeout(800)
-            check(pg.evaluate("window.PISO_UI_VERSION") == (11 if name.startswith("old script") else 14), f"{name}: the script that runs is the one chosen: {pg.evaluate('window.PISO_UI_VERSION')}")
+            built_v = int(re.search(r"PISO_UI_VERSION\s*=\s*(\d+)", pathlib.Path(f"{HERE}/../src/console-ui.js").read_text()).group(1))
+            check(pg.evaluate("window.PISO_UI_VERSION") == (11 if name.startswith("old script") else built_v), f"{name}: the script that runs is the one chosen: {pg.evaluate('window.PISO_UI_VERSION')}")
             for t, label in SCREENS:
                 pg.click(f'#tabs button[data-t="{t}"]')
                 pg.wait_for_timeout(500)
