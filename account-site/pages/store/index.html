@@ -33,7 +33,7 @@
         </aside>
         <main class="store-main">
             <header class="store-header">
-                <p class="header-title" id="view-label">Catalog</p>
+                <p class="preview-note"><strong>Test preview</strong><span>No real payments</span></p>
                 <label class="order-search" id="order-search-field" hidden>
                     <span class="sr-only">Search orders</span>
                     <input id="order-search" type="search" placeholder="Search order reference or buyer">
@@ -42,12 +42,11 @@
                     <span id="account-initial" aria-hidden="true">TP</span>
                 </a>
             </header>
-            <p class="preview-note">Test preview <span>Sample prices and payment references. No real payments.</span></p>
 
             <div id="shop-view">
                 <section class="store-intro" id="catalog">
                     <h1>Choose your Piso system</h1>
-                    <p>Compare prepared DIY kits and assembled systems. Each includes a router and is made to order.</p>
+                    <p>Prepared DIY kits and assembled systems. Router included.</p>
                 </section>
                 <div class="store-grid">
                     <section aria-labelledby="catalog-title">
@@ -76,7 +75,7 @@
                             <div class="field" id="address-field" hidden>
                                 <label for="address">Test delivery address</label>
                                 <textarea id="address" name="address" maxlength="600" rows="3"></textarea>
-                                <small>Use a sample address. The seller will quote shipping before payment.</small>
+                                <small>Use a sample address for the shipping quote.</small>
                             </div>
                             <label id="direct-field" class="check-line" hidden>
                                 <input type="checkbox" name="direct"> Record as a direct sale
@@ -138,7 +137,8 @@
 
             <section id="listings" class="store-section" aria-labelledby="listings-title" hidden>
                 <h1 id="listings-title">Product listings</h1>
-                <div id="product-editor" class="order-list"></div>
+                <p id="listing-status" role="status"></p>
+                <div id="product-editor" class="listing-grid"></div>
             </section>
         </main>
     </div>

@@ -3,6 +3,7 @@ import { accountApi, supabase } from "../auth.js";
 const el = (id) => document.getElementById(id);
 const php = new Intl.NumberFormat("en-PH", { style: "currency", currency: "PHP" });
 const money = (cents) => php.format(cents / 100);
+const orderDate = new Intl.DateTimeFormat("en-PH", { dateStyle: "medium" });
 const checkout = el("checkout-form");
 const cart = new Map();
 const cartStorage = "pisophone-preview-cart";
@@ -66,7 +67,7 @@ function renderCart() {
 
 function productCard(product) {
     const card = node("article", "", { class: "card product" });
-    card.append(node("p", product.format === "kit" ? "DIY kit" : "Assembled system", { class: "format" }),
+    card.append(node("p", listingFormat(product), { class: "format" }),
         node("h3", product.name), node("p", product.contents), node("p", money(product.price), { class: "price" }),
         node("p", `Made to order · ${product.lead_days} day(s) to prepare`, { class: "metadata" }));
     if (product.phone_price) card.append(node("p", `Optional rental phone ${money(product.phone_price)}`, { class: "metadata" }));
@@ -185,27 +186,58 @@ function actionForm(buttonText, inputs, run, status, after) {
     return form;
 }
 
+function listingFormat(product) {
+    return product.format === "kit" ? "DIY kit" : "Assembled system";
+}
+
 function productEditor(product) {
-    const card = node("article", "", { class: "card order-card" });
+    const card = node("article", "", { class: "card listing-card" });
+    const header = node("div", "", { class: "card-heading" });
+    const title = node("div");
+    title.append(node("p", listingFormat(product), { class: "card-meta" }), node("h2", product.name));
+    header.append(title, node("span", product.published ? "Listed" : "Hidden", {
+        class: `order-status${product.published ? " paid" : ""}`
+    }));
+
+    const facts = node("dl", "", { class: "listing-facts" });
+    facts.append(orderFact("Price", money(product.price)), orderFact("Lead time", `${product.lead_days} days`));
+    if (product.phone_price) facts.append(orderFact("Rental phone", money(product.phone_price)));
+
+    const details = node("details", "", { class: "listing-edit" });
     const status = node("p", "", { role: "status" });
     const description = node("textarea", product.contents, { name: "contents", maxlength: 500, rows: 2, required: "" });
     const listed = node("input", "", { type: "checkbox", name: "published" });
     listed.checked = product.published;
+    const publishedLabel = node("label", "Show in catalog", { class: "check-line editor-wide" });
+    publishedLabel.prepend(listed);
+
     const inputs = [
-        field("Sample price in PHP", numberInput("price", 0.01, 100000, product.price / 100, 0.01)),
-        field("Preparation days", numberInput("days", 1, 365, product.lead_days)),
-        field("Box contents", description),
-        field("Published in test catalog", listed)
+        field("Price (PHP)", numberInput("price", 0.01, 100000, product.price / 100, 0.01)),
+        field("Lead time (days)", numberInput("days", 1, 365, product.lead_days)),
+        field("Box contents", description)
     ];
+    inputs[2].classList.add("editor-wide");
     const eligible = product.format === "assembled" && product.edition !== "wifi";
-    if (eligible) inputs.push(field("Phone add-on in PHP (0 to remove)",
-        numberInput("phone", 0, 100000, (product.phone_price ?? 0) / 100, 0.01)));
-    card.append(node("h3", `${product.name} · ${product.format}`), status,
-        actionForm("Save sample listing", inputs, (form) => supabase.rpc("store_seller_product", {
-            p_sku: product.sku, p_price: Math.round(Number(form.get("price")) * 100),
-            p_phone_price: eligible && Number(form.get("phone")) > 0 ? Math.round(Number(form.get("phone")) * 100) : null,
-            p_lead_days: Number(form.get("days")), p_contents: form.get("contents"), p_published: form.has("published")
-        }), status, () => loadCatalog()));
+    if (eligible) {
+        const phonePrice = field("Phone add-on (PHP)", numberInput("phone", 0, 100000, (product.phone_price ?? 0) / 100, 0.01));
+        phonePrice.append(node("small", "Set to zero to remove the add-on."));
+        phonePrice.classList.add("editor-wide");
+        inputs.push(phonePrice);
+    }
+    inputs.push(publishedLabel);
+
+    const form = actionForm("Save listing", inputs, (values) => supabase.rpc("store_seller_product", {
+        p_sku: product.sku, p_price: Math.round(Number(values.get("price")) * 100),
+        p_phone_price: eligible && Number(values.get("phone")) > 0 ? Math.round(Number(values.get("phone")) * 100) : null,
+        p_lead_days: Number(values.get("days")), p_contents: values.get("contents"), p_published: values.has("published")
+    }), status, async () => {
+        await loadCatalog();
+        el("listing-status").textContent = `${product.name} · ${listingFormat(product)} saved.`;
+        el(`edit-${product.sku}`)?.focus();
+    });
+    const summary = node("summary", "Edit listing", { id: `edit-${product.sku}` });
+    details.append(summary, form, status);
+    card.append(header, facts, details);
     return card;
 }
 
@@ -245,7 +277,7 @@ function sellerControls(card, order, notice, status) {
         }));
     }
     if (notice) {
-        card.append(node("small", `Quote email: ${notice.status}`));
+        card.append(node("small", `Quote email: ${notice.status}`, { class: "email-status" }));
         if (notice.status !== "sent") card.append(actionForm("Send or retry quote email", [], async () => ({
             error: await sendNotice(order.id) ? null : { code: "22023", message: "Email is unavailable or still sending. The quote is visible to the buyer." }
         }), status, loadOrders));
@@ -263,28 +295,59 @@ function sellerControls(card, order, notice, status) {
     }
 }
 
+function orderFact(label, value) {
+    const entry = node("div");
+    entry.append(node("dt", label), node("dd", value));
+    return entry;
+}
+
 function orderCard(order, staff, notice) {
     const prefix = staff ? "seller" : "buyer";
     const status = node("p", "", { role: "status" });
     const card = node("article", "", { class: "card order-card", id: `${prefix}-${order.id}` });
-    const products = node("ul");
-    for (const line of order.store_order_lines) products.append(node("li",
-        `${line.quantity} × ${line.name} (${line.sku.endsWith("-kit") ? "DIY kit" : "assembled"}) at ${money(line.price)}${line.phone_quantity ? ` · ${line.phone_quantity} rental phone(s) at ${money(line.phone_price)}` : ""}`));
-    card.append(node("p", `${order.source === "direct" ? "Direct sale" : "Web order"} · ${order.delivery}`, { class: "order-label" }),
-        node("h3", statusNames[order.status]), node("small", `Order reference ${order.id}`), products,
-        node("p", `Subtotal ${money(order.subtotal)}`));
-    if (staff) card.append(node("p", `Buyer ${order.buyer_name}`));
-    if (order.address) card.append(node("p", `Test address ${order.address}`));
-    if (order.shipping !== null) card.append(node("p", `Shipping ${money(order.shipping)} · Total ${money(order.total)}`));
-    if (order.payment_reference) card.append(node("p", `${methods[order.payment_method]} · ${order.payment_reference}`));
-    card.append(status);
+    const header = node("div", "", { class: "card-heading order-heading" });
+    const title = node("div");
+    const date = orderDate.format(new Date(order.created_at));
+    title.append(node("h3", `Order #${order.id.slice(0, 8)}`),
+        node("p", `${order.delivery === "shipping" ? "Shipping" : "Pickup"} · ${date}${order.source === "direct" ? " · Direct sale" : ""}`, { class: "card-meta" }));
+    header.append(title, node("span", statusNames[order.status], { class: `order-status ${order.status}` }));
 
-    if (order.status === "awaiting_payment" && (!staff || order.source === "direct")) {
-        if (order.delivery === "pickup") card.append(node("p", "Pickup details will be provided by the seller."));
-        card.append(node("p", "Use a sample GCash, Maya, or bank reference. This preview has no payment destination."),
-            paymentForm(order, status));
+    const lines = node("ul", "", { class: "order-items", "aria-label": "Items" });
+    for (const line of order.store_order_lines) {
+        const item = node("li");
+        const description = node("div");
+        description.append(node("strong", line.name), node("span",
+            `${line.quantity} × ${line.sku.endsWith("-kit") ? "DIY kit" : "Assembled system"}`, { class: "card-meta" }));
+        if (line.phone_quantity) description.append(node("span", `${line.phone_quantity} × rental phone`, { class: "card-meta" }));
+        const amount = line.quantity * line.price + line.phone_quantity * line.phone_price;
+        item.append(description, node("span", money(amount), { class: "item-cost" }));
+        lines.append(item);
     }
-    if (staff) sellerControls(card, order, notice, status);
+    const totals = node("dl", "", { class: "order-totals" });
+    if (order.shipping !== null && order.delivery === "shipping") {
+        totals.append(orderFact("Subtotal", money(order.subtotal)), orderFact("Shipping", money(order.shipping)));
+    }
+    totals.append(orderFact(order.total === null ? "Subtotal" : "Total", money(order.total ?? order.subtotal)));
+
+    const metadata = node("details", "", { class: "order-metadata" });
+    const facts = node("dl", "", { class: "order-facts" });
+    facts.append(orderFact("Full order reference", order.id));
+    if (order.address) facts.append(orderFact("Test delivery address", order.address));
+    if (order.payment_reference) facts.append(orderFact(methods[order.payment_method], order.payment_reference));
+    metadata.append(node("summary", "Order details"), facts);
+    if (staff) metadata.open = true;
+    card.append(header, lines, totals, metadata);
+
+    const actions = node("div", "", { class: "order-actions" });
+    if (order.status === "awaiting_payment" && (!staff || order.source === "direct")) {
+        if (order.delivery === "pickup") actions.append(node("small", "The seller will provide pickup details."));
+        actions.append(paymentForm(order, status));
+    }
+    if (staff) sellerControls(actions, order, notice, status);
+    if (actions.childElementCount) {
+        actions.append(status);
+        card.append(actions);
+    }
     return card;
 }
 
@@ -294,7 +357,6 @@ const filters = {
     payment_review: "Payment review",
     paid: "Verified"
 };
-const viewNames = { catalog: "Catalog", orders: "My orders", seller: "Overview", listings: "Product listings" };
 let sellerOrders = [];
 let noticesByOrder = new Map();
 let selectedOrderId;
@@ -310,7 +372,6 @@ function activeView() {
 
 function renderView(scroll = false) {
     const view = activeView();
-    el("view-label").textContent = viewNames[view];
     el("shop-view").hidden = view !== "catalog";
     el("orders").hidden = view !== "orders";
     el("seller").hidden = view !== "seller";
@@ -338,8 +399,8 @@ function renderSellerSummary() {
     }
     const metrics = [
         ["Test orders", sellerOrders.length],
-        ["Needs shipping quote", counts.needs_quote],
-        ["Payment review", counts.payment_review],
+        ["Needs action", counts.needs_quote + counts.payment_review],
+        ["Awaiting reference", counts.awaiting_payment],
         ["Verified test payments", money(paidTotal)]
     ];
     el("seller-metrics").replaceChildren(...metrics.map(([caption, value]) => {
@@ -365,7 +426,7 @@ function renderSellerSummary() {
             el("order-filter").focus();
         });
         return button;
-    }) : [node("p", "No shipping quotes or payments to review.")]));
+    }) : [node("p", "All caught up.")]));
 }
 
 function renderSellerTable() {
@@ -387,7 +448,7 @@ function renderSellerTable() {
         const row = node("tr");
         const reference = node("td");
         reference.append(node("strong", `#${order.id.slice(0, 8)}`, { class: "order-ref", title: order.id }),
-            node("time", new Date(order.created_at).toLocaleDateString("en-PH"), { datetime: order.created_at }));
+            node("time", orderDate.format(new Date(order.created_at)), { datetime: order.created_at }));
         const badge = node("td");
         badge.append(node("span", filters[order.status], { class: `order-status ${order.status}` }));
         const action = node("td");
