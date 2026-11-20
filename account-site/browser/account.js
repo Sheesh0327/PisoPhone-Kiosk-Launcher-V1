@@ -27,7 +27,7 @@ async function showSession(nextSession) {
     signedIn.hidden = !session;
     signedOut.hidden = Boolean(session);
     retry.hidden = true;
-    status.textContent = session ? "Checking your account…" : "";
+    status.textContent = session ? "Checking your accountâ€¦" : "";
     if (!session) return;
 
     const controller = new AbortController();
@@ -53,6 +53,14 @@ async function showSession(nextSession) {
         element("verified-email").textContent = user.email ?? "Unavailable";
         identity.hidden = false;
         status.textContent = "Signed in.";
+        const returnKey = "pisophone-preview-store-return";
+        const returnTo = sessionStorage.getItem(returnKey);
+        if (returnTo) {
+            sessionStorage.removeItem(returnKey);
+            const store = new URL("/account/store/", location.origin);
+            if (/^[0-9a-f-]{36}$/i.test(returnTo)) store.searchParams.set("order", returnTo);
+            location.replace(store.href);
+        }
     } catch {
         if (controller.signal.aborted) return;
         status.textContent = "Account verification is unavailable. Try again in a moment.";
@@ -76,7 +84,7 @@ async function submit(action, failureMessage) {
 
 element("google").addEventListener("click", () => {
     submit(async () => {
-        status.textContent = "Opening Google…";
+        status.textContent = "Opening Googleâ€¦";
         const { error } = await supabase.auth.signInWithOAuth({
             provider: "google",
             options: { redirectTo: new URL("/account/callback/", location.origin).href }
@@ -88,7 +96,7 @@ element("google").addEventListener("click", () => {
 requestCode.addEventListener("submit", (event) => {
     event.preventDefault();
     submit(async () => {
-        status.textContent = "Requesting a code…";
+        status.textContent = "Requesting a codeâ€¦";
         const address = email.value.trim();
         const { error } = await supabase.auth.signInWithOtp({ email: address });
         if (error) throw error;
@@ -103,7 +111,7 @@ requestCode.addEventListener("submit", (event) => {
 verifyCode.addEventListener("submit", (event) => {
     event.preventDefault();
     submit(async () => {
-        status.textContent = "Verifying your code…";
+        status.textContent = "Verifying your codeâ€¦";
         const { error } = await supabase.auth.verifyOtp({
             email: email.value,
             token: code.value.trim(),

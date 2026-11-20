@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>PisoPhone Store Preview</title>
+    <link rel="icon" href="/img/technet-logo-64.png">
+    <link rel="stylesheet" href="/css/site.css">
+    <link rel="stylesheet" href="/account/store/store.css">
+    <script defer src="/account/supabase.js"></script>
+    <script type="module" src="/account/store/store.js"></script>
+</head>
+<body>
+    <div class="store">
+        <header class="store-header">
+            <a class="store-brand" href="/account/store/">
+                <img src="/img/technet-logo-64.png" width="40" height="40" alt="">
+                <span>TechNet PisoHub</span>
+            </a>
+            <nav aria-label="Store">
+                <a href="#catalog">Products</a>
+                <a href="#orders" id="orders-link" hidden>My orders</a>
+                <a href="/account/">Account</a>
+            </nav>
+        </header>
+        <main>
+            <section class="store-intro">
+                <p class="preview-note">Test store Â· Sample pricing. Do not send real payments.</p>
+                <h1>Choose your Piso system</h1>
+                <p>Pick a prepared DIY kit or a complete assembled system. Each is made to order and includes a router.</p>
+            </section>
+            <div class="store-grid">
+                <section id="catalog" aria-labelledby="catalog-title">
+                    <h2 id="catalog-title">Products</h2>
+                    <p id="catalog-status" role="status">Loading productsâ€¦</p>
+                    <div id="products" class="catalog"></div>
+                </section>
+                <section id="checkout" class="card checkout" aria-labelledby="checkout-title">
+                    <h2 id="checkout-title">Your test order</h2>
+                    <div id="cart" class="cart" aria-live="polite">Choose a product to get started.</div>
+                    <p id="cart-total" class="cart-total"></p>
+                    <p id="checkout-status" role="status"></p>
+                    <a id="sign-in" class="btn primary" href="/account/">Sign in to place an order</a>
+                    <form id="checkout-form" class="stack" hidden>
+                        <div class="field">
+                            <label for="buyer-name">Test buyer name</label>
+                            <input id="buyer-name" name="name" maxlength="120" autocomplete="name" required>
+                        </div>
+                        <div class="field">
+                            <label for="delivery">Delivery</label>
+                            <select id="delivery" name="delivery">
+                                <option value="pickup">Local pickup</option>
+                                <option value="shipping">Shipping quote</option>
+                            </select>
+                        </div>
+                        <div class="field" id="address-field" hidden>
+                            <label for="address">Test delivery address</label>
+                            <textarea id="address" name="address" maxlength="600" rows="3"></textarea>
+                            <small>Use a sample address. The seller will quote shipping before payment.</small>
+                        </div>
+                        <label id="direct-field" class="check-line" hidden>
+                            <input type="checkbox" name="direct"> Record as a direct sale
+                        </label>
+                        <button id="place-order" class="btn primary" type="submit" disabled>Place test order</button>
+                    </form>
+                </section>
+            </div>
+            <section id="orders" class="store-section" aria-labelledby="orders-title" hidden>
+                <h2 id="orders-title">My orders</h2>
+                <p id="orders-status" role="status"></p>
+                <div id="order-list" class="order-list"></div>
+            </section>
+            <section id="seller" class="store-section" aria-labelledby="seller-title" hidden>
+                <h2 id="seller-title">Seller dashboard</h2>
+                <p id="seller-status" role="status"></p>
+                <div id="seller-orders" class="order-list"></div>
+                <details class="catalog-editor">
+                    <summary>Edit test catalog</summary>
+                    <div id="product-editor" class="order-list"></div>
+                </details>
+            </section>
+        </main>
+    </div>
+</body>
+</html>
