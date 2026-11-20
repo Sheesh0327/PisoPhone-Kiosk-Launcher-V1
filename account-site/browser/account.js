@@ -27,7 +27,7 @@ async function showSession(nextSession) {
     signedIn.hidden = !session;
     signedOut.hidden = Boolean(session);
     retry.hidden = true;
-    status.textContent = session ? "Checking your accountâ€¦" : "";
+    status.textContent = session ? "Checking your account…" : "";
     if (!session) return;
 
     const controller = new AbortController();
@@ -84,7 +84,7 @@ async function submit(action, failureMessage) {
 
 element("google").addEventListener("click", () => {
     submit(async () => {
-        status.textContent = "Opening Googleâ€¦";
+        status.textContent = "Opening Google…";
         const { error } = await supabase.auth.signInWithOAuth({
             provider: "google",
             options: { redirectTo: new URL("/account/callback/", location.origin).href }
@@ -96,7 +96,7 @@ element("google").addEventListener("click", () => {
 requestCode.addEventListener("submit", (event) => {
     event.preventDefault();
     submit(async () => {
-        status.textContent = "Requesting a codeâ€¦";
+        status.textContent = "Requesting a code…";
         const address = email.value.trim();
         const { error } = await supabase.auth.signInWithOtp({ email: address });
         if (error) throw error;
@@ -111,7 +111,7 @@ requestCode.addEventListener("submit", (event) => {
 verifyCode.addEventListener("submit", (event) => {
     event.preventDefault();
     submit(async () => {
-        status.textContent = "Verifying your codeâ€¦";
+        status.textContent = "Verifying your code…";
         const { error } = await supabase.auth.verifyOtp({
             email: email.value,
             token: code.value.trim(),

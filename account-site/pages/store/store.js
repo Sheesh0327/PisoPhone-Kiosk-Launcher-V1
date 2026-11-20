@@ -56,7 +56,7 @@ function numberInput(name, min, max, value, step = 1) {
 
 function renderCart() {
     el("cart").replaceChildren(...Array.from(cart.values(), ({ product, quantity, phone_quantity }) =>
-        node("p", `${quantity} Ã— ${product.name} ${product.format === "kit" ? "DIY kit" : "assembled"}${phone_quantity ? ` + ${phone_quantity} rental phone(s)` : ""}`)));
+        node("p", `${quantity} × ${product.name} ${product.format === "kit" ? "DIY kit" : "assembled"}${phone_quantity ? ` + ${phone_quantity} rental phone(s)` : ""}`)));
     el("cart-total").textContent = cart.size
         ? `Subtotal ${money(Array.from(cart.values()).reduce((sum, item) =>
             sum + item.product.price * item.quantity + (item.product.phone_price ?? 0) * item.phone_quantity, 0))}`
@@ -68,7 +68,7 @@ function productCard(product) {
     const card = node("article", "", { class: "card product" });
     card.append(node("p", product.format === "kit" ? "DIY kit" : "Assembled system", { class: "format" }),
         node("h3", product.name), node("p", product.contents), node("p", money(product.price), { class: "price" }),
-        node("p", `Made to order Â· ${product.lead_days} day(s) to prepare`, { class: "metadata" }));
+        node("p", `Made to order · ${product.lead_days} day(s) to prepare`, { class: "metadata" }));
     if (product.phone_price) card.append(node("p", `Optional rental phone ${money(product.phone_price)}`, { class: "metadata" }));
 
     const controls = node("form", "", { class: "product-controls" });
@@ -165,7 +165,7 @@ function actionForm(buttonText, inputs, run, status, after) {
     form.addEventListener("submit", async (event) => {
         event.preventDefault();
         submit.disabled = true;
-        status.textContent = "Savingâ€¦";
+        status.textContent = "Saving…";
         try {
             const { error } = await run(new FormData(form));
             status.textContent = error ? rpcError(error) : "Saved.";
@@ -194,7 +194,7 @@ function productEditor(product) {
     const eligible = product.format === "assembled" && product.edition !== "wifi";
     if (eligible) inputs.push(field("Phone add-on in PHP (0 to remove)",
         numberInput("phone", 0, 100000, (product.phone_price ?? 0) / 100, 0.01)));
-    card.append(node("h3", `${product.name} Â· ${product.format}`), status,
+    card.append(node("h3", `${product.name} · ${product.format}`), status,
         actionForm("Save sample listing", inputs, (form) => supabase.rpc("store_seller_product", {
             p_sku: product.sku, p_price: Math.round(Number(form.get("price")) * 100),
             p_phone_price: eligible && Number(form.get("phone")) > 0 ? Math.round(Number(form.get("phone")) * 100) : null,
@@ -263,14 +263,14 @@ function orderCard(order, staff, notice) {
     const card = node("article", "", { class: "card order-card", id: `${prefix}-${order.id}` });
     const products = node("ul");
     for (const line of order.store_order_lines) products.append(node("li",
-        `${line.quantity} Ã— ${line.name} (${line.sku.endsWith("-kit") ? "DIY kit" : "assembled"}) at ${money(line.price)}${line.phone_quantity ? ` Â· ${line.phone_quantity} rental phone(s) at ${money(line.phone_price)}` : ""}`));
-    card.append(node("p", `${order.source === "direct" ? "Direct sale" : "Web order"} Â· ${order.delivery}`, { class: "order-label" }),
+        `${line.quantity} × ${line.name} (${line.sku.endsWith("-kit") ? "DIY kit" : "assembled"}) at ${money(line.price)}${line.phone_quantity ? ` · ${line.phone_quantity} rental phone(s) at ${money(line.phone_price)}` : ""}`));
+    card.append(node("p", `${order.source === "direct" ? "Direct sale" : "Web order"} · ${order.delivery}`, { class: "order-label" }),
         node("h3", statusNames[order.status]), node("small", `Order reference ${order.id}`), products,
         node("p", `Subtotal ${money(order.subtotal)}`));
     if (staff) card.append(node("p", `Buyer ${order.buyer_name}`));
     if (order.address) card.append(node("p", `Test address ${order.address}`));
-    if (order.shipping !== null) card.append(node("p", `Shipping ${money(order.shipping)} Â· Total ${money(order.total)}`));
-    if (order.payment_reference) card.append(node("p", `${methods[order.payment_method]} Â· ${order.payment_reference}`));
+    if (order.shipping !== null) card.append(node("p", `Shipping ${money(order.shipping)} · Total ${money(order.total)}`));
+    if (order.payment_reference) card.append(node("p", `${methods[order.payment_method]} · ${order.payment_reference}`));
     card.append(status);
 
     if (order.status === "awaiting_payment" && (!staff || order.source === "direct")) {

@@ -28,7 +28,7 @@ From `account-site`, run these checks. The isolated PGlite install is for local 
 ```powershell
 npm.cmd test
 npm.cmd install --prefix .wrangler/db-test --no-package-lock @electric-sql/pglite
-node scripts/test-storefront.mjs
+node scripts/storefront-db-check.mjs
 ```
 
 On the hosted preview, use a buyer profile to submit a sample shipping order. Use the seller profile to enter a shipping charge. Reopen the buyer order, submit a synthetic reference and confirm that the seller can verify the exact total. Check pickup and direct sales separately. Log in as a second buyer and verify the first buyer's order and its lines are inaccessible. Confirm the existing phone enrollment entry point still loads.
