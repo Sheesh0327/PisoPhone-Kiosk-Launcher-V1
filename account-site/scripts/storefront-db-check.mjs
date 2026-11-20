@@ -28,8 +28,17 @@ try {
         create function auth.uid() returns uuid language sql as
             $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
         grant usage on schema auth to anon, authenticated;
+        create schema storage;
+        create table storage.buckets (
+            id text primary key, name text, public boolean, file_size_limit bigint, allowed_mime_types text[]
+        );
+        create table storage.objects (bucket_id text, name text, primary key (bucket_id, name));
+        alter table storage.objects enable row level security;
+        grant usage on schema storage to authenticated;
+        grant select, insert, delete on storage.objects to authenticated;
     `);
     await db.exec(await readFile(new URL("../supabase/storefront.sql", import.meta.url), "utf8"));
+    await db.exec(await readFile(new URL("../supabase/product-photos.sql", import.meta.url), "utf8"));
     await db.query("insert into auth.users values ($1,'buyer@example.test'),($2,'other@example.test'),($3,'seller@example.test')", [buyer, other, seller]);
     await db.query("insert into public.store_sellers values ($1)", [seller]);
 
@@ -87,7 +96,28 @@ try {
     assert.equal((await order(direct)).status, "payment_review");
     await actAs("authenticated", buyer);
     assert.equal(await order(direct), undefined);
-    console.log("Passed storefront catalog, access, exact pricing, order flow, quote retries, duplicate references and direct-sale checks.");
+    const photo = "hub-kit/00000000-0000-0000-0000-000000000009.png";
+    const otherPhoto = "wifi-kit/00000000-0000-0000-0000-000000000009.png";
+    const upload = (path) => db.query("insert into storage.objects values ('store-product-photos', $1)", [path]);
+    const setPhoto = (sku, prior, path) => db.query("select public.store_seller_photo($1,$2,$3)", [sku, prior, path]);
+    const deletePhoto = (path) => db.query("delete from storage.objects where name = $1", [path]);
+    await assert.rejects(upload(photo), { code: "42501" });
+    await assert.rejects(setPhoto("hub-kit", null, photo), { code: "42501" });
+    await actAs("authenticated", seller);
+    await assert.rejects(upload("not-a-product/00000000-0000-0000-0000-000000000009.png"), { code: "42501" });
+    await assert.rejects(setPhoto("hub-kit", null, photo), { code: "22023" });
+    await upload(photo);
+    await upload(otherPhoto);
+    await assert.rejects(setPhoto("hub-kit", null, otherPhoto), { code: "22023" });
+    await setPhoto("hub-kit", null, photo);
+    await assert.rejects(setPhoto("hub-kit", null, photo), { code: "22023" });
+    assert.equal((await deletePhoto(photo)).affectedRows, 0);
+    await actAs("anon");
+    assert.equal((await db.query("select image_path from public.store_products where sku='hub-kit'")).rows[0].image_path, photo);
+    await actAs("authenticated", seller);
+    await setPhoto("hub-kit", photo, null);
+    assert.equal((await deletePhoto(photo)).affectedRows, 1);
+    console.log("Passed storefront order, catalog, permission, and product photo checks.");
 } finally {
     await db.close();
 }

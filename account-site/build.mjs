@@ -46,7 +46,7 @@ await writeFile(join(account, "config.js"),
 await appendFile(join(output, "_headers"), `
 /account/*
   ! Content-Security-Policy
-  Content-Security-Policy: default-src 'self'; connect-src 'self' ${supabaseUrl} ${workerUrl}; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'self'; connect-src 'self' ${supabaseUrl} ${workerUrl}; img-src 'self' ${supabaseUrl}; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
   ! Referrer-Policy
   Referrer-Policy: no-referrer
   X-Robots-Tag: noindex

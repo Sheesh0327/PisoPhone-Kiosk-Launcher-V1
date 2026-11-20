@@ -6,6 +6,8 @@ The account preview adds a test store at `/account/store/` using the existing Su
 
 Run [storefront.sql](supabase/storefront.sql) once in the **PisoPhone test project** SQL Editor. It adds the test catalog, orders with price snapshots, a seller role, and quote notification records. Authentication settings and existing users are reused.
 
+Apply [product-photos.sql](supabase/product-photos.sql) after the storefront migration. The public photo bucket serves the catalog, and the seller role controls uploads and listing changes. In **Product listings → Edit listing → Product photo**, upload, replace, or remove a JPG, PNG, or WebP image up to 5 MB. Once uploaded, a photo can be opened by anyone with its URL.
+
 Grant seller access to a specific existing test user's UUID from **Authentication → Users**. Run the following as the database owner with the UUID substituted.
 
 ```sql

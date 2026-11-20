@@ -65,9 +65,98 @@ function renderCart() {
     el("place-order").disabled = !cart.size || !session || submitting;
 }
 
+const productPhotos = supabase.storage.from("store-product-photos");
+const photoExtensions = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
+const photoLimit = 5 * 1024 * 1024;
+
+function productPhoto(product, variant) {
+    const frame = node("div", "", { class: `product-photo photo-${variant}`, "data-photo-sku": product.sku });
+    showPhoto(frame, product);
+    return frame;
+}
+
+function showPhoto(frame, product) {
+    frame.replaceChildren();
+    frame.hidden = !product.image_path;
+    if (!product.image_path) return;
+    const { data } = productPhotos.getPublicUrl(product.image_path);
+    const img = node("img", "", {
+        src: data.publicUrl, alt: `${product.name} · ${listingFormat(product)}`,
+        loading: "lazy", decoding: "async"
+    });
+    img.addEventListener("error", () => { frame.hidden = true; });
+    frame.append(img);
+}
+
+function listingPhotoForm(product) {
+    const form = node("form", "", { class: "listing-photo-form" });
+    const file = node("input", "", { type: "file", accept: Object.keys(photoExtensions).join(","), required: "" });
+    const upload = node("button", product.image_path ? "Replace photo" : "Upload photo", { class: "btn", type: "submit" });
+    const remove = node("button", "Remove photo", { class: "btn", type: "button" });
+    const status = node("p", "", { role: "status" });
+    const help = node("small", "JPG, PNG, or WebP · up to 5 MB", { id: `photo-help-${product.sku}` });
+    file.setAttribute("aria-describedby", help.id);
+    const controls = node("div", "", { class: "photo-buttons" });
+    controls.append(upload, remove);
+    remove.hidden = !product.image_path;
+    form.append(field("Product photo", file), help, controls, status);
+
+    async function changePhoto(nextFile) {
+        const previous = product.image_path ?? null;
+        let path = null;
+        upload.disabled = remove.disabled = file.disabled = true;
+        status.textContent = nextFile ? "Uploading photo…" : "Removing photo…";
+        try {
+            if (nextFile) {
+                const ext = photoExtensions[nextFile.type];
+                if (!ext || nextFile.size < 1 || nextFile.size > photoLimit) {
+                    status.textContent = "Choose a JPG, PNG, or WebP file up to 5 MB.";
+                    return;
+                }
+                path = `${product.sku}/${crypto.randomUUID()}.${ext}`;
+                const uploaded = await productPhotos.upload(path, nextFile, { contentType: nextFile.type });
+                if (uploaded.error) {
+                    status.textContent = "Upload failed. Try again.";
+                    return;
+                }
+            }
+
+            const { error } = await supabase.rpc("store_seller_photo", {
+                p_sku: product.sku, p_previous: previous, p_path: path
+            });
+            if (error) {
+                if (path && error.code === "22023") await productPhotos.remove([path]);
+                status.textContent = rpcError(error);
+                return;
+            }
+
+            product.image_path = path;
+            for (const frame of document.querySelectorAll("[data-photo-sku]")) {
+                if (frame.dataset.photoSku === product.sku) showPhoto(frame, product);
+            }
+            file.value = "";
+            upload.textContent = path ? "Replace photo" : "Upload photo";
+            remove.hidden = !path;
+            status.textContent = path ? "Product photo saved." : "Product photo removed.";
+            if (previous) await productPhotos.remove([previous]);
+        } catch {
+            status.textContent = "Could not complete the photo change. Reload the listing to check its current photo.";
+        } finally {
+            upload.disabled = remove.disabled = file.disabled = false;
+        }
+    }
+
+    form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        if (file.files[0]) changePhoto(file.files[0]);
+    });
+    remove.addEventListener("click", () => changePhoto(null));
+    return form;
+}
+
 function productCard(product) {
     const card = node("article", "", { class: "card product" });
-    card.append(node("p", listingFormat(product), { class: "format" }),
+    card.append(productPhoto(product, "catalog"), node("p", listingFormat(product), { class: "format" }),
         node("h3", product.name), node("p", product.contents), node("p", money(product.price), { class: "price" }),
         node("p", `Made to order · ${product.lead_days} day(s) to prepare`, { class: "metadata" }));
     if (product.phone_price) card.append(node("p", `Optional rental phone ${money(product.phone_price)}`, { class: "metadata" }));
@@ -195,7 +284,7 @@ function productEditor(product) {
     const header = node("div", "", { class: "card-heading" });
     const title = node("div");
     title.append(node("p", listingFormat(product), { class: "card-meta" }), node("h2", product.name));
-    header.append(title, node("span", product.published ? "Listed" : "Hidden", {
+    header.append(title, productPhoto(product, "thumbnail"), node("span", product.published ? "Listed" : "Hidden", {
         class: `order-status${product.published ? " paid" : ""}`
     }));
 
@@ -236,7 +325,7 @@ function productEditor(product) {
         el(`edit-${product.sku}`)?.focus();
     });
     const summary = node("summary", "Edit listing", { id: `edit-${product.sku}` });
-    details.append(summary, form, status);
+    details.append(summary, listingPhotoForm(product), form, status);
     card.append(header, facts, details);
     return card;
 }
