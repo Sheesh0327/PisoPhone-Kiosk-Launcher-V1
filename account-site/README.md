@@ -21,7 +21,7 @@ Confirm that Wrangler is using your Cloudflare account. Use a new Pages project 
 1. Create a test Supabase project. Copy its **Project URL** and **publishable key** (starts with `sb_publishable_`).
 2. In **Authentication → URL Configuration**, set **Site URL** to the stable Pages test origin. Add its full `/account/callback/` URL to **Redirect URLs**. Use that exact hostname to open the test site, including when Wrangler also prints a deployment-specific hostname.
 3. In Google Cloud, create an OAuth client for a **Web application**. Copy the Google callback URL displayed by the Supabase Google provider settings into Google's **Authorized redirect URIs**. Enable Google in the Supabase project and enter the Google client ID and secret there. If the Google app is in testing mode, add the Google accounts you will use as test users.
-4. For email codes, edit the **Magic Link** template in Supabase Auth and display `{{ .Token }}` as the sign-in code. Supabase's default SMTP is restricted to team addresses. Use a permitted test email first or configure custom SMTP to test other addresses.
+4. For email codes, edit the **Magic Link** template in Supabase Auth and display `{{ .Token }}` as the sign-in code. The hosted dashboard requires custom SMTP before enabling email template edits. Configure it first, then save the template and test delivery.
 
 [Google sign-in](https://supabase.com/docs/guides/auth/social-login/auth-google) · [Email OTP](https://supabase.com/docs/guides/auth/auth-email-passwordless) · [Custom SMTP](https://supabase.com/docs/guides/auth/auth-smtp)
 

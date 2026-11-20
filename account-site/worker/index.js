@@ -45,7 +45,7 @@ export default {
                     apikey: env.SUPABASE_PUBLISHABLE_KEY,
                     Authorization: `Bearer ${token}`
                 },
-                redirect: "error",
+                redirect: "manual",
                 signal: AbortSignal.timeout(8000)
             });
             if ([400, 401, 403].includes(userResponse.status)) {
