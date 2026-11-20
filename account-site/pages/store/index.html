@@ -12,72 +12,133 @@
 </head>
 <body>
     <div class="store">
-        <header class="store-header">
-            <a class="store-brand" href="/account/store/">
+        <aside class="store-sidebar">
+            <a class="store-brand" href="#catalog">
                 <img src="/img/technet-logo-64.png" width="40" height="40" alt="">
-                <span>TechNet PisoHub</span>
+                <span><strong>TechNet</strong><span>PisoHub Store</span></span>
             </a>
-            <nav aria-label="Store">
-                <a href="#catalog">Products</a>
-                <a href="#orders" id="orders-link" hidden>My orders</a>
-                <a href="/account/">Account</a>
+            <nav aria-label="Store" class="store-nav">
+                <div class="nav-group" id="seller-nav" hidden>
+                    <p>Seller workspace</p>
+                    <a href="#seller" data-view="seller">Overview</a>
+                    <a href="#listings" data-view="listings">Product listings</a>
+                </div>
+                <div class="nav-group">
+                    <p>Store</p>
+                    <a href="#catalog" data-view="catalog">Catalog</a>
+                    <a href="#orders" data-view="orders" id="orders-link" hidden>My orders</a>
+                </div>
             </nav>
-        </header>
-        <main>
-            <section class="store-intro">
-                <p class="preview-note">Test store · Sample pricing. Do not send real payments.</p>
-                <h1>Choose your Piso system</h1>
-                <p>Pick a prepared DIY kit or a complete assembled system. Each is made to order and includes a router.</p>
-            </section>
-            <div class="store-grid">
-                <section id="catalog" aria-labelledby="catalog-title">
-                    <h2 id="catalog-title">Products</h2>
-                    <p id="catalog-status" role="status">Loading products…</p>
-                    <div id="products" class="catalog"></div>
+            <a class="sidebar-account" href="/account/">My account</a>
+        </aside>
+        <main class="store-main">
+            <header class="store-header">
+                <p class="header-title" id="view-label">Catalog</p>
+                <label class="order-search" id="order-search-field" hidden>
+                    <span class="sr-only">Search orders</span>
+                    <input id="order-search" type="search" placeholder="Search order reference or buyer">
+                </label>
+                <a class="account-link" href="/account/" aria-label="My account">
+                    <span id="account-initial" aria-hidden="true">TP</span>
+                </a>
+            </header>
+            <p class="preview-note">Test preview <span>Sample prices and payment references. No real payments.</span></p>
+
+            <div id="shop-view">
+                <section class="store-intro" id="catalog">
+                    <h1>Choose your Piso system</h1>
+                    <p>Compare prepared DIY kits and assembled systems. Each includes a router and is made to order.</p>
                 </section>
-                <section id="checkout" class="card checkout" aria-labelledby="checkout-title">
-                    <h2 id="checkout-title">Your test order</h2>
-                    <div id="cart" class="cart" aria-live="polite">Choose a product to get started.</div>
-                    <p id="cart-total" class="cart-total"></p>
-                    <p id="checkout-status" role="status"></p>
-                    <a id="sign-in" class="btn primary" href="/account/">Sign in to place an order</a>
-                    <form id="checkout-form" class="stack" hidden>
-                        <div class="field">
-                            <label for="buyer-name">Test buyer name</label>
-                            <input id="buyer-name" name="name" maxlength="120" autocomplete="name" required>
-                        </div>
-                        <div class="field">
-                            <label for="delivery">Delivery</label>
-                            <select id="delivery" name="delivery">
-                                <option value="pickup">Local pickup</option>
-                                <option value="shipping">Shipping quote</option>
-                            </select>
-                        </div>
-                        <div class="field" id="address-field" hidden>
-                            <label for="address">Test delivery address</label>
-                            <textarea id="address" name="address" maxlength="600" rows="3"></textarea>
-                            <small>Use a sample address. The seller will quote shipping before payment.</small>
-                        </div>
-                        <label id="direct-field" class="check-line" hidden>
-                            <input type="checkbox" name="direct"> Record as a direct sale
-                        </label>
-                        <button id="place-order" class="btn primary" type="submit" disabled>Place test order</button>
-                    </form>
-                </section>
+                <div class="store-grid">
+                    <section aria-labelledby="catalog-title">
+                        <h2 id="catalog-title">Products</h2>
+                        <p id="catalog-status" role="status">Loading products…</p>
+                        <div id="products" class="catalog"></div>
+                    </section>
+                    <section id="checkout" class="card checkout" aria-labelledby="checkout-title">
+                        <h2 id="checkout-title">Your test order</h2>
+                        <div id="cart" class="cart" aria-live="polite"></div>
+                        <p id="cart-total" class="cart-total">Choose a product to get started.</p>
+                        <p id="checkout-status" role="status"></p>
+                        <a id="sign-in" class="btn primary" href="/account/">Sign in to place an order</a>
+                        <form id="checkout-form" class="stack" hidden>
+                            <div class="field">
+                                <label for="buyer-name">Test buyer name</label>
+                                <input id="buyer-name" name="name" maxlength="120" autocomplete="name" required>
+                            </div>
+                            <div class="field">
+                                <label for="delivery">Delivery</label>
+                                <select id="delivery" name="delivery">
+                                    <option value="pickup">Local pickup</option>
+                                    <option value="shipping">Shipping quote</option>
+                                </select>
+                            </div>
+                            <div class="field" id="address-field" hidden>
+                                <label for="address">Test delivery address</label>
+                                <textarea id="address" name="address" maxlength="600" rows="3"></textarea>
+                                <small>Use a sample address. The seller will quote shipping before payment.</small>
+                            </div>
+                            <label id="direct-field" class="check-line" hidden>
+                                <input type="checkbox" name="direct"> Record as a direct sale
+                            </label>
+                            <button id="place-order" class="btn primary" type="submit" disabled>Place test order</button>
+                        </form>
+                    </section>
+                </div>
             </div>
+
             <section id="orders" class="store-section" aria-labelledby="orders-title" hidden>
-                <h2 id="orders-title">My orders</h2>
+                <h1 id="orders-title">My orders</h1>
                 <p id="orders-status" role="status"></p>
                 <div id="order-list" class="order-list"></div>
             </section>
+
             <section id="seller" class="store-section" aria-labelledby="seller-title" hidden>
-                <h2 id="seller-title">Seller dashboard</h2>
-                <p id="seller-status" role="status"></p>
-                <div id="seller-orders" class="order-list"></div>
-                <details class="catalog-editor">
-                    <summary>Edit test catalog</summary>
-                    <div id="product-editor" class="order-list"></div>
-                </details>
+                <div class="view-heading">
+                    <h1 id="seller-title">Seller dashboard</h1>
+                    <a href="#checkout" class="btn">New test order</a>
+                </div>
+                <div id="seller-metrics" class="metrics" aria-label="Order summary"></div>
+                <div class="dashboard-grid">
+                    <section class="card dashboard-panel" aria-labelledby="pipeline-title">
+                        <h2 id="pipeline-title">Orders by status</h2>
+                        <div id="seller-pipeline" class="pipeline"></div>
+                    </section>
+                    <section class="card dashboard-panel" aria-labelledby="attention-title">
+                        <h2 id="attention-title">Needs attention</h2>
+                        <div id="seller-queue" class="queue"></div>
+                    </section>
+                </div>
+                <section class="card seller-table-panel" aria-labelledby="seller-orders-title">
+                    <div class="table-heading">
+                        <h2 id="seller-orders-title">Orders</h2>
+                        <label class="field table-filter">
+                            <span>Status</span>
+                            <select id="order-filter">
+                                <option value="">All statuses</option>
+                                <option value="needs_quote">Needs shipping quote</option>
+                                <option value="awaiting_payment">Awaiting reference</option>
+                                <option value="payment_review">Payment review</option>
+                                <option value="paid">Verified</option>
+                            </select>
+                        </label>
+                    </div>
+                    <p id="seller-status" role="status"></p>
+                    <div class="table-scroll" tabindex="0" aria-label="Seller orders table">
+                        <table>
+                            <thead>
+                                <tr><th scope="col">Order</th><th scope="col">Buyer</th><th scope="col">Delivery</th>
+                                    <th scope="col">Status</th><th scope="col">Total</th><th scope="col">Action</th></tr>
+                            </thead>
+                            <tbody id="seller-orders"></tbody>
+                        </table>
+                    </div>
+                </section>
+            </section>
+
+            <section id="listings" class="store-section" aria-labelledby="listings-title" hidden>
+                <h1 id="listings-title">Product listings</h1>
+                <div id="product-editor" class="order-list"></div>
             </section>
         </main>
     </div>

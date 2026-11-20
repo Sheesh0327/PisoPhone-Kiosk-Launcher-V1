@@ -146,6 +146,12 @@ async function placeOrder(event) {
         checkout.reset();
         updateDelivery();
         el("checkout-status").textContent = direct ? "Direct sale recorded." : "Test order placed.";
+        if (direct) {
+            selectedOrderId = data;
+            el("order-search").value = "";
+            el("order-filter").value = "";
+        }
+        selectView(direct ? "seller" : "orders");
         await Promise.all([loadCatalog(), loadOrders()]);
         document.getElementById(`${direct ? "seller" : "buyer"}-${data}`)?.scrollIntoView({ block: "center" });
     }
@@ -282,6 +288,133 @@ function orderCard(order, staff, notice) {
     return card;
 }
 
+const filters = {
+    needs_quote: "Needs shipping quote",
+    awaiting_payment: "Awaiting reference",
+    payment_review: "Payment review",
+    paid: "Verified"
+};
+const viewNames = { catalog: "Catalog", orders: "My orders", seller: "Overview", listings: "Product listings" };
+let sellerOrders = [];
+let noticesByOrder = new Map();
+let selectedOrderId;
+
+function activeView() {
+    const hash = location.hash.slice(1);
+    if (hash === "catalog" || hash === "checkout") return "catalog";
+    if (hash === "orders" || (!hash && new URLSearchParams(location.search).has("order"))) return session ? "orders" : "catalog";
+    if (hash === "listings" && seller) return "listings";
+    if (hash === "seller" || !hash) return seller ? "seller" : "catalog";
+    return "catalog";
+}
+
+function renderView(scroll = false) {
+    const view = activeView();
+    el("view-label").textContent = viewNames[view];
+    el("shop-view").hidden = view !== "catalog";
+    el("orders").hidden = view !== "orders";
+    el("seller").hidden = view !== "seller";
+    el("listings").hidden = view !== "listings";
+    el("order-search-field").hidden = view !== "seller";
+    for (const link of document.querySelectorAll(".store-nav [data-view]")) {
+        if (link.dataset.view === view) link.setAttribute("aria-current", "page");
+        else link.removeAttribute("aria-current");
+    }
+    if (scroll && location.hash === "#checkout") el("checkout").scrollIntoView({ block: "start" });
+    else if (scroll) window.scrollTo(0, 0);
+}
+
+function selectView(view) {
+    if (location.hash === `#${view}`) renderView();
+    else location.hash = view;
+}
+
+function renderSellerSummary() {
+    const counts = Object.fromEntries(Object.keys(filters).map((status) => [status, 0]));
+    let paidTotal = 0;
+    for (const order of sellerOrders) {
+        counts[order.status] += 1;
+        if (order.status === "paid") paidTotal += Number(order.total);
+    }
+    const metrics = [
+        ["Test orders", sellerOrders.length],
+        ["Needs shipping quote", counts.needs_quote],
+        ["Payment review", counts.payment_review],
+        ["Verified test payments", money(paidTotal)]
+    ];
+    el("seller-metrics").replaceChildren(...metrics.map(([caption, value]) => {
+        const card = node("dl", "", { class: "card metric" });
+        card.append(node("dt", caption), node("dd", String(value)));
+        return card;
+    }));
+    el("seller-pipeline").replaceChildren(...Object.entries(filters).map(([status, label]) => {
+        const row = node("div", "", { class: "pipeline-row" });
+        row.append(node("span", label), node("meter", "", {
+            min: 0, max: Math.max(sellerOrders.length, 1), value: counts[status], "aria-label": label
+        }), node("strong", String(counts[status])));
+        return row;
+    }));
+    const attention = ["needs_quote", "payment_review"].filter((status) => counts[status] > 0);
+    el("seller-queue").replaceChildren(...(attention.length ? attention.map((status) => {
+        const button = node("button", filters[status], { type: "button" });
+        button.append(node("strong", String(counts[status])));
+        button.addEventListener("click", () => {
+            el("order-filter").value = status;
+            el("order-search").value = "";
+            renderSellerTable();
+            el("order-filter").focus();
+        });
+        return button;
+    }) : [node("p", "No shipping quotes or payments to review.")]));
+}
+
+function renderSellerTable() {
+    const filter = el("order-filter").value;
+    const query = el("order-search").value.trim().toLowerCase();
+    const matching = sellerOrders.filter((order) => (!filter || order.status === filter)
+        && (!query || [order.id, order.buyer_name, order.payment_reference].some((value) => value?.toLowerCase().includes(query))));
+    const table = el("seller-orders");
+    table.replaceChildren();
+    if (!matching.length) {
+        const row = node("tr");
+        row.append(node("td", sellerOrders.length ? "No orders match these filters." : "No orders yet.",
+            { colspan: "6", class: "table-empty" }));
+        table.append(row);
+    }
+
+    for (const order of matching) {
+        const expanded = selectedOrderId === order.id;
+        const row = node("tr");
+        const reference = node("td");
+        reference.append(node("strong", `#${order.id.slice(0, 8)}`, { class: "order-ref", title: order.id }),
+            node("time", new Date(order.created_at).toLocaleDateString("en-PH"), { datetime: order.created_at }));
+        const badge = node("td");
+        badge.append(node("span", filters[order.status], { class: `order-status ${order.status}` }));
+        const action = node("td");
+        const button = node("button", expanded ? "Close" : "View", {
+            type: "button", class: "btn", id: `open-${order.id}`,
+            "aria-label": `${expanded ? "Close" : "View"} order ${order.id.slice(0, 8)}`,
+            "aria-expanded": String(expanded)
+        });
+        button.addEventListener("click", () => {
+            selectedOrderId = expanded ? undefined : order.id;
+            renderSellerTable();
+            el(button.id)?.focus();
+        });
+        action.append(button);
+        row.append(reference, node("td", order.buyer_name), node("td", order.delivery === "shipping" ? "Shipping" : "Pickup"),
+            badge, node("td", order.total === null ? "Pending quote" : money(order.total)), action);
+        table.append(row);
+        if (expanded) {
+            const detail = node("tr", "", { class: "order-detail" });
+            const content = node("td", "", { colspan: "6" });
+            content.append(orderCard(order, true, noticesByOrder.get(order.id)));
+            detail.append(content);
+            table.append(detail);
+        }
+    }
+}
+
 async function loadOrders() {
     const revision = ++ordersRevision;
     if (!session) return;
@@ -295,10 +428,12 @@ async function loadOrders() {
     el("orders-status").textContent = orders.error ? "Orders could not be loaded." : mine.length ? "" : "No orders yet.";
     el("order-list").replaceChildren(...mine.map((order) => orderCard(order, false)));
     if (seller) {
-        const byOrder = new Map((notices.data ?? []).map((notice) => [notice.order_id, notice]));
+        sellerOrders = data;
+        noticesByOrder = new Map((notices.data ?? []).map((notice) => [notice.order_id, notice]));
         el("seller-status").textContent = orders.error ? "Orders could not be loaded." :
-            notices.error ? "Email statuses could not be loaded." : data.length ? "" : "No orders yet.";
-        el("seller-orders").replaceChildren(...data.map((order) => orderCard(order, true, byOrder.get(order.id))));
+            notices.error ? "Email statuses could not be loaded." : "";
+        renderSellerSummary();
+        renderSellerTable();
     }
 }
 
@@ -313,10 +448,11 @@ async function showSession(next, revision) {
     }
     el("checkout-form").hidden = !session;
     el("sign-in").hidden = Boolean(session);
-    el("orders").hidden = !session;
     el("orders-link").hidden = !session;
     el("direct-field").hidden = !seller;
-    el("seller").hidden = !seller;
+    el("seller-nav").hidden = !seller;
+    el("account-initial").textContent = session?.user.email?.slice(0, 2).toUpperCase() ?? "TP";
+    renderView();
     renderCart();
     await Promise.all([loadCatalog(revision), loadOrders()]);
     if (revision !== authRevision) return;
@@ -328,6 +464,9 @@ el("sign-in").addEventListener("click", () => {
     const orderId = new URLSearchParams(location.search).get("order");
     sessionStorage.setItem(returnStorage, orderId && /^[0-9a-f-]{36}$/i.test(orderId) ? orderId : "store");
 });
+window.addEventListener("hashchange", () => renderView(true));
+el("order-filter").addEventListener("change", renderSellerTable);
+el("order-search").addEventListener("input", renderSellerTable);
 checkout.addEventListener("submit", placeOrder);
 el("delivery").addEventListener("change", updateDelivery);
 supabase.auth.onAuthStateChange((_event, next) => {
@@ -337,6 +476,13 @@ supabase.auth.onAuthStateChange((_event, next) => {
     }
     el("orders").hidden = true;
     el("seller").hidden = true;
+    el("listings").hidden = true;
+    el("seller-nav").hidden = true;
+    el("order-search-field").hidden = true;
+    sellerOrders = [];
+    noticesByOrder.clear();
+    selectedOrderId = undefined;
+    el("order-search").value = "";
     el("checkout-form").hidden = true;
     const revision = ++authRevision;
     ++ordersRevision;
