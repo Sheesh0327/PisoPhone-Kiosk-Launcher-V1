@@ -57,6 +57,16 @@
                 <input id="slot-limit" type="number" min="2" max="12" value="2" required>
                 <button class="pilot-button" type="submit">Register board</button>
             </form>
+            <form id="configure-board-wifi">
+                <h3>Connect the test board to Wi-Fi</h3>
+                <label for="pilot-wifi-name">Shop Wi-Fi name</label>
+                <input id="pilot-wifi-name" autocomplete="off" required maxlength="32">
+                <label for="pilot-wifi-password">Shop Wi-Fi password</label>
+                <input id="pilot-wifi-password" type="password" autocomplete="off" required minlength="8" maxlength="63">
+                <button class="pilot-button secondary" type="submit">Set Wi-Fi over USB</button>
+                <p>Wi-Fi details go directly to the board over USB.</p>
+            </form>
+            <p id="workshop-usb-status" role="status"></p>
             <div id="workshop-result" hidden>
                 <p id="workshop-status" role="status"></p>
                 <dl class="kit-data">
@@ -64,6 +74,7 @@
                     <div id="card-code-row"><dt>Claim code</dt><dd id="card-code"></dd></div>
                     <div><dt>Board credential</dt><dd id="board-credential"></dd></div>
                 </dl>
+                <button class="pilot-button" id="save-board-credential" type="button">Save credential over USB</button>
                 <button class="pilot-button secondary" id="clear-workshop" type="button">Clear credentials from screen</button>
             </div>
         </section>

@@ -1,4 +1,5 @@
 import { supabase } from "../../auth.js";
+import { pilotWifiCommand, sendToWorkshopBoard } from "./workshop-usb.js";
 
 const byId = (id) => document.getElementById(id);
 const status = byId("activation-status");
@@ -124,7 +125,7 @@ byId("prepare-board").addEventListener("submit", (event) => {
             byId("card-code").textContent = "";
             byId("board-credential").textContent = "";
             pendingRegistration = {
-                key: registrationKey, credential: hex(crypto.getRandomValues(new Uint8Array(32))),
+                key: registrationKey, mac, credential: hex(crypto.getRandomValues(new Uint8Array(32))),
                 code: kitId ? null : hex(crypto.getRandomValues(new Uint8Array(16)))
             };
         }
@@ -150,6 +151,38 @@ byId("prepare-board").addEventListener("submit", (event) => {
         setStatus("Board registration saved.");
     });
 });
+
+const usbStatus = byId("workshop-usb-status");
+
+byId("configure-board-wifi").addEventListener("submit", (event) => {
+    event.preventDefault();
+    runAction(async () => {
+        const mac = byId("board-mac").value.trim().toLowerCase().replaceAll(/[:-]/g, "");
+        const name = byId("pilot-wifi-name");
+        const password = byId("pilot-wifi-password");
+        try {
+            const command = pilotWifiCommand(name.value, password.value);
+            const result = await sendToWorkshopBoard(mac, command, "PISO-PILOT-WIFI-");
+            if (result !== "PISO-PILOT-WIFI-OK") throw new Error("The ESP32 could not save the Wi-Fi settings.");
+            usbStatus.textContent = "Wi-Fi saved. The ESP32 is restarting to join the network.";
+            password.value = "";
+        } catch (error) {
+            usbStatus.textContent = error instanceof Error ? error.message : "USB Wi-Fi setup failed.";
+        }
+    });
+});
+
+byId("save-board-credential").addEventListener("click", () => runAction(async () => {
+    if (!pendingRegistration || byId("workshop-result").hidden) return;
+    try {
+        const { mac, credential } = pendingRegistration;
+        const result = await sendToWorkshopBoard(mac, "PISO-PILOT-CREDENTIAL " + credential, "PISO-PILOT-CREDENTIAL-");
+        if (result !== "PISO-PILOT-CREDENTIAL-OK") throw new Error("The ESP32 refused the new credential. Check whether it was already provisioned.");
+        usbStatus.textContent = "Credential saved on the assigned board.";
+    } catch (error) {
+        usbStatus.textContent = error instanceof Error ? error.message : "USB credential provisioning failed.";
+    }
+}));
 
 byId("clear-workshop").addEventListener("click", () => {
     pendingRegistration = undefined;

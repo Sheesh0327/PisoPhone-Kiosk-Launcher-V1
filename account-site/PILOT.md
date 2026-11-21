@@ -2,6 +2,8 @@
 
 The operator flow runs at https://pisophone-accounts-test.pages.dev/account/pilot/activate/. It uses the beta Supabase account session. Workshop staff register dedicated hardware and issue the claim card. The claiming operator can see only their own kits, request activation of an assigned replacement, and refresh the board's confirmed state.
 
+In desktop Chrome or Edge, enter the expected ESP32 MAC address under Workshop registration. Use **Set Wi-Fi over USB** to enter the shop network locally. Use **Save credential over USB** after registering the board. Both actions check the connected board's serial identity and workshop firmware before sending anything. The browser sends Wi-Fi credentials directly to the ESP32.
+
 ## Beta services
 
 - Apply `supabase/pisophone-pilot.sql` once to the beta Supabase project after the storefront schema. Set the singleton `piso_pilot.service_credential.secret_sha` to the SHA-256 hex digest of the dedicated licensing service credential. The RPC checks this credential before looking up a board.

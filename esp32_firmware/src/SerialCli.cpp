@@ -83,6 +83,42 @@ static void applySetup(const String& rest) {
     ESP.restart();
 }
 
+#if defined(PISO_WORKSHOP_PILOT)
+static void applyPilotWifi(const String& args) {
+    const int separator = args.indexOf(' ');
+    std::string name, password;
+    if (separator < 0 || !provision::hexDecode(args.substring(0, separator).c_str(), name, 32) ||
+        !provision::hexDecode(args.substring(separator + 1).c_str(), password, 63) ||
+        name.find('\0') != std::string::npos || password.find('\0') != std::string::npos ||
+        !setupgate::wifiSsidValid(name.c_str()) || !setupgate::wifiPasswordValid(password.c_str())) {
+        Serial.println("PISO-PILOT-WIFI-ERR invalid-network");
+        return;
+    }
+    if (!canPerformRebootOrOta()) {
+        Serial.println("PISO-PILOT-WIFI-ERR busy");
+        return;
+    }
+    if (!prefs.begin(NVS_NAMESPACE, false)) {
+        Serial.println("PISO-PILOT-WIFI-ERR could-not-save");
+        return;
+    }
+    const bool saved = prefs.putString(NVS_KEY_WIFI_SSID, name.c_str()) == name.size() &&
+                       prefs.putString(NVS_KEY_WIFI_PASS, password.c_str()) == password.size() &&
+                       prefs.putString(NVS_KEY_KIOSK_WIFI_SSID, name.c_str()) == name.size() &&
+                       prefs.putString(NVS_KEY_KIOSK_WIFI_PASS, password.c_str()) == password.size();
+    prefs.end();
+    if (!saved) {
+        Serial.println("PISO-PILOT-WIFI-ERR could-not-save");
+        return;
+    }
+    Serial.println("PISO-PILOT-WIFI-OK");
+    Serial.flush();
+    delay(250);
+    diagNoteRestartReason("pilot-usb-wifi");
+    ESP.restart();
+}
+#endif
+
 void processSerialCli() {
     if (!Serial.available()) return;
     String line = Serial.readStringUntil('\n');
@@ -92,6 +128,11 @@ void processSerialCli() {
 #if defined(PISO_WORKSHOP_PILOT)
     if (line == "PISO-PILOT-STATUS") {
         Serial.printf("PISO-PILOT state=%s slots=%d\n", pilotLicenseState(), pilotLicensedSlots());
+        return;
+    }
+    constexpr const char wifiPrefix[] = "PISO-PILOT-WIFI ";
+    if (line.startsWith(wifiPrefix)) {
+        applyPilotWifi(line.substring(sizeof(wifiPrefix) - 1));
         return;
     }
     constexpr const char prefix[] = "PISO-PILOT-CREDENTIAL ";
