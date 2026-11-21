@@ -1,6 +1,7 @@
 // Persistent configuration (NVS): defaults, loading and saving of pins, Wi-Fi, passwords,
 // slots and revenue counters, plus the locked accessor for the shared secret.
 
+#include "PilotLicense.h"
 #include "Config.h"
 #if PISO_HAS_PHONES
 #include "PhoneProfileStore.h"
@@ -538,7 +539,11 @@ int getLicenseKeyCount() {
 }
 
 int getDeviceCap() {
+#if defined(PISO_WORKSHOP_PILOT)
+    return pilotLicensedSlots();
+#else
     return slotlicense::capWithFloor(getLicenseKeyCount(), licenseFloor);
+#endif
 }
 
 int pairedDeviceCount() {

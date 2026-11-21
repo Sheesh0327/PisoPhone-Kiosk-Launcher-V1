@@ -3,6 +3,7 @@
 // super-admin sync, coin-slot session, payment retries, web server, WebSocket, UDP discovery).
 // Nothing in loop() may block for long: the coin pulse counter and the 15 s watchdog depend on it.
 
+#include "PilotLicense.h"
 #include <Arduino.h>
 #include <WiFi.h>
 #include <Preferences.h>
@@ -281,6 +282,9 @@ void setup() {
     }
 
     setupWebServer();
+#if defined(PISO_WORKSHOP_PILOT)
+    startPilotLicense();
+#endif
 
     lastWifiCheckTime = millis();
 }

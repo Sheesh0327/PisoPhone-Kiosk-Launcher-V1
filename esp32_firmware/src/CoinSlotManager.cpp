@@ -1,3 +1,4 @@
+#include "PilotLicense.h"
 #include "CoinSlotManager.h"
 #include "SetupGate.h"
 #include "CoinSettle.h"
@@ -209,6 +210,9 @@ CoinSlotOwnerType getActiveCoinOwnerType() {
 bool reserveCoinSlot(const String& sessionId, CoinSlotOwnerType ownerType, unsigned long ttlMs,
                      CoinPaymentCallback onPayment, CoinSessionEndCallback onSessionEnd) {
     if (sessionId.length() == 0) return false;
+#if defined(PISO_WORKSHOP_PILOT)
+    if (pilotLicensedSlots() == 0) return false;
+#endif
 
     if (!setupgate::usageAllowed(adminPwChanged)) {
         diagLog("[🪙 COIN SLOT] Reservation rejected for '%s': the default admin password has not been changed.\n",
@@ -288,6 +292,9 @@ bool reserveCoinSlot(const String& sessionId, CoinSlotOwnerType ownerType, unsig
 }
 
 bool refreshCoinSlotTtl(const String& sessionId, CoinSlotOwnerType ownerType, unsigned long ttlMs) {
+#if defined(PISO_WORKSHOP_PILOT)
+    if (pilotLicensedSlots() == 0) return false;
+#endif
     if (activeSessionId.length() > 0 && activeSessionId == sessionId &&
         (ownerType == CoinSlotOwnerType::ANY || activeOwnerType == ownerType) && currentState == CoinSlotState::ARMED) {
         unsigned long now = millis();

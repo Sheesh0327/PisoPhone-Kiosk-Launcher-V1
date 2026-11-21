@@ -191,8 +191,9 @@ void setupWebServer() {
                           : "{\"status\":\"error\",\"message\":\"No such payment, or it could not be saved.\"}");
     });
 
-    // Port 80: Web OTA Firmware Update Endpoints
     registerWebAssetRoutes();
+#if !defined(PISO_WORKSHOP_PILOT)
+    // Port 80: Web OTA Firmware Update Endpoints
     webServer.on("/update", HTTP_GET, handleOtaForm);
     webServer.on("/api/ota/manifest", HTTP_POST, handleApiOtaManifest);
     webServer.on(
@@ -346,6 +347,7 @@ void setupWebServer() {
                 Serial.println("[OTA] Upload aborted by client.");
             }
         });
+#endif
     // Needed so the login throttle can tell a wrong password from the browser's first probe.
     // (and the cookie of the owner's admin QR login)
     // (Origin, Referer and Host tell a request made by the dashboard itself from one made by another site's page: OriginCheck.h)

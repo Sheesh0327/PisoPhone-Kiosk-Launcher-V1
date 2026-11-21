@@ -1,4 +1,5 @@
 // USB first-time setup and local maintenance commands. Physical USB access is trusted.
+#include "PilotLicense.h"
 #include "SerialCli.h"
 #include "Config.h"
 #include "DeviceNetwork.h"
@@ -88,6 +89,18 @@ void processSerialCli() {
     line.trim();
     if (line.length() == 0) return;
 
+#if defined(PISO_WORKSHOP_PILOT)
+    if (line == "PISO-PILOT-STATUS") {
+        Serial.printf("PISO-PILOT state=%s slots=%d\n", pilotLicenseState(), pilotLicensedSlots());
+        return;
+    }
+    constexpr const char prefix[] = "PISO-PILOT-CREDENTIAL ";
+    if (line.startsWith(prefix)) {
+        bool saved = provisionPilotCredential(line.substring(sizeof(prefix) - 1));
+        Serial.println(saved ? "PISO-PILOT-CREDENTIAL-OK" : "PISO-PILOT-CREDENTIAL-ERR");
+        return;
+    }
+#endif
     if (line == "PISO-HELLO") {
         answerHello();
         return;

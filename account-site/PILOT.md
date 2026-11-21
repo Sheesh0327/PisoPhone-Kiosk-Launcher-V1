@@ -16,6 +16,8 @@ The signed grant message is ASCII `piso-pilot-v1|kind|kit-uuid|mac|revision|slot
 
 ## Hardware acceptance
 
-The browser and licensing service cover kit ownership, same-kit slot capacity, and board cutover. The ESP32 firmware still needs to implement check-in and enforce the verified grant. The Android app still needs kit enrollment and proof that a discovered replacement is assigned to that kit. Use dedicated boards and phones to verify both, including reconnecting to the same slot after the old board is unplugged. Check existing shop behavior with the unmodified release builds. Keep pilot builds out of the production update feeds.
+Build the dedicated bench firmware with `pio run -d esp32_firmware -e esp32-c3-workshop-pilot`. Its USB CLI accepts `PISO-PILOT-CREDENTIAL <credential>` for the assigned board and reports `PISO-PILOT-STATUS` without printing its credential. Verify the hardware identity over USB before provisioning. The pilot target requires a saved active grant to arm the acceptor and excludes browser OTA. ESP32-C3 bench boot and the initial zero-slot state have been verified. A licensed coin session and offline reboot still require testing on shop Wi-Fi.
+
+The Android app still needs kit enrollment and proof that a discovered replacement is assigned to that kit. Verify reconnection to the same slot after the old board is unplugged. Check existing shop behavior with the release builds. Keep pilot builds out of the production update feeds. Evaluate hardware secure boot and protected credential storage before qualifying a shipping board.
 
 Run `npm test` from the account-site directory to exercise the Postgres lifecycle and signed grant contract locally.
