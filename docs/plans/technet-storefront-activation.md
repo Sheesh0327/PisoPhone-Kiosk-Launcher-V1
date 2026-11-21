@@ -38,6 +38,12 @@ First qualify PisoPhone-only on ordinary shop Wi-Fi. Activate from a phone, enro
 
 Run each edition from order through the first real coin-funded session. Cover a multi-kit order, direct-sale gift claim, concurrent claims, interrupted flashing and pairing, offline restart, warranty replacement, phone-only router recovery, paid-slot recovery, seller-assisted transfer, and return after activation. Verify buyer, operator, and staff access separately. Verify that an existing shop can update without losing paid time, vouchers, phone pairings, or slots. Test restoration of ownership and slot records from backup.
 
+### Beta isolation for phone reconnection
+
+Keep the interactive pilot and automatic reconnection work on the `pisophone-accounts-test` Pages project and the test backend. Use opt-in workshop kits and dedicated rental phones with separately distributed test builds. Keep pilot APKs, firmware, assignments, and credentials out of production feeds and services. Existing shops continue to use their installed pairing and update paths without a migration or enrollment step.
+
+For enrolled pilot phones, verify automatic reconnection to the same slots after the old board becomes unavailable. Require proof that the replacement is assigned to the kit. Also test that a representative legacy setup still pairs, reconnects, and runs paid sessions with its existing phone and board builds. Before each beta publication, confirm the target Pages project and check that the pilot is absent from `pisophone.pages.dev`.
+
 ## Open decisions and launch inputs
 
 - Decide which historical evidence qualifies grandfathered legacy phone capacity for restoration on a replacement board.
