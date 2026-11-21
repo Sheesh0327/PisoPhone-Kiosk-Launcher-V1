@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>PisoPhone Hardware Pilot | TechNet</title>
+    <link rel="icon" href="/img/technet-logo-64.png">
+    <link rel="stylesheet" href="/css/site.css">
+    <link rel="stylesheet" href="/account/pilot/pilot.css">
+    <script type="module" src="/account/pilot/pilot.js"></script>
+</head>
+<body class="pilot">
+    <header class="pilot-header">
+        <div class="pilot-wrap header-inner">
+            <a class="pilot-brand" href="/account/store/">
+                <img src="/img/technet-logo-64.png" width="38" height="38" alt="">
+                <span>TechNet <small>PisoHub</small></span>
+            </a>
+            <a class="store-back" href="/account/store/">Back to store <span aria-hidden="true">↗</span></a>
+        </div>
+    </header>
+
+    <main class="pilot-wrap">
+        <section class="pilot-intro" aria-labelledby="pilot-title">
+            <p class="mode"><span aria-hidden="true"></span> Interactive beta · simulated hardware</p>
+            <h1 id="pilot-title">PisoPhone hardware pilot</h1>
+            <p>Try activating a kit on shop Wi-Fi, enrolling a rental phone, and recovering your slots on a replacement ESP32.</p>
+        </section>
+
+        <div class="pilot-layout">
+            <section class="pilot-card workflow" aria-labelledby="workflow-title">
+                <div class="workflow-heading">
+                    <h2 id="workflow-title">Activate your kit</h2>
+                    <p id="workflow-details"></p>
+                </div>
+                <form id="claim-form" hidden>
+                    <label for="claim-code">Claim code</label>
+                    <div class="claim-row">
+                        <input id="claim-code" name="code" required maxlength="32" autocomplete="off" spellcheck="false">
+                        <button class="pilot-button" type="submit">Claim sample kit</button>
+                    </div>
+                    <p class="claim-hint">Sample code <button class="code-button" id="fill-code" type="button">PISO-PILOT</button></p>
+                </form>
+                <div id="actions" class="pilot-actions"></div>
+                <p id="feedback" class="pilot-feedback" role="status" aria-live="polite" hidden></p>
+            </section>
+
+            <aside class="pilot-card summary" aria-labelledby="kit-title">
+                <p class="kit-label">Sample kit PP-0142</p>
+                <h2 id="kit-title">PisoPhone only</h2>
+                <dl class="kit-data">
+                    <div><dt>Active ESP32</dt><dd id="active-board"></dd></div>
+                    <div><dt>Shop Wi-Fi</dt><dd id="network"></dd></div>
+                    <div><dt>Licensed slots</dt><dd id="slots"></dd></div>
+                    <div><dt>Paid sessions</dt><dd id="session-count"></dd></div>
+                </dl>
+                <ol id="readiness" class="readiness" aria-label="Readiness checklist">
+                    <li id="check-claim">Kit claimed</li>
+                    <li id="check-grant">License saved on the board</li>
+                    <li id="check-phone">Rental phone paired and online</li>
+                </ol>
+            </aside>
+        </div>
+        <footer class="pilot-footer">
+            <p>Sample activity stays in this browser. Real hardware verification is pending.</p>
+            <button id="reset" type="button">Reset sample kit</button>
+        </footer>
+    </main>
+</body>
+</html>
