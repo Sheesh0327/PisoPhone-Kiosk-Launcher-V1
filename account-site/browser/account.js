@@ -53,6 +53,11 @@ async function showSession(nextSession) {
         element("verified-email").textContent = user.email ?? "Unavailable";
         identity.hidden = false;
         status.textContent = "Signed in.";
+        if (sessionStorage.getItem("pisophone-preview-pilot-return")) {
+            sessionStorage.removeItem("pisophone-preview-pilot-return");
+            location.replace("/account/pilot/activate/");
+            return;
+        }
         const returnKey = "pisophone-preview-store-return";
         const returnTo = sessionStorage.getItem(returnKey);
         if (returnTo) {

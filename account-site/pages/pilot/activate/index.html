@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>PisoPhone Workshop Activation | TechNet</title>
+    <link rel="icon" href="/img/technet-logo-64.png">
+    <link rel="stylesheet" href="/css/site.css">
+    <link rel="stylesheet" href="/account/pilot/pilot.css">
+    <script defer src="/account/supabase.js"></script>
+    <script type="module" src="./activate.js"></script>
+</head>
+<body class="pilot">
+    <header class="pilot-header">
+        <div class="pilot-wrap header-inner">
+            <a class="pilot-brand" href="/account/store/">
+                <img src="/img/technet-logo-64.png" width="38" height="38" alt="">
+                <span>TechNet <small>PisoHub</small></span>
+            </a>
+            <a class="store-back" href="/account/pilot/">Sample walkthrough</a>
+        </div>
+    </header>
+    <main class="pilot-wrap">
+        <section class="pilot-intro">
+            <p class="mode"><span aria-hidden="true"></span> Beta · workshop kits</p>
+            <h1>Activate a PisoPhone kit</h1>
+            <p>Claim the kit with its workshop code, then connect its assigned ESP32 to shop Wi-Fi.</p>
+        </section>
+        <p id="activation-status" role="status">Checking your beta account…</p>
+        <a id="pilot-sign-in" class="pilot-button pilot-link" href="/account/" hidden>Sign in to your beta account</a>
+        <div class="pilot-layout" id="operator" hidden>
+            <section class="pilot-card">
+                <h2>Claim a kit</h2>
+                <form id="claim-kit">
+                    <label for="workshop-code">Workshop claim code</label>
+                    <div class="claim-row">
+                        <input id="workshop-code" autocomplete="off" spellcheck="false" maxlength="32" required>
+                        <button class="pilot-button" type="submit">Claim kit</button>
+                    </div>
+                </form>
+            </section>
+            <section class="pilot-card">
+                <h2>My kits</h2>
+                <div id="my-kits"></div>
+                <button class="pilot-button secondary" id="reload-kits" type="button">Refresh status</button>
+            </section>
+        </div>
+        <section class="pilot-card workshop" id="workshop" hidden>
+            <h2>Workshop registration</h2>
+            <p>Use dedicated beta hardware. Keep the claim code for the kit card and provision the credential only on the assigned board.</p>
+            <form id="prepare-board">
+                <label for="board-mac">ESP32 MAC address</label>
+                <input id="board-mac" required autocomplete="off" spellcheck="false" maxlength="17">
+                <label for="replacement-kit">Kit ID for a replacement</label>
+                <input id="replacement-kit" autocomplete="off" spellcheck="false" maxlength="36" placeholder="Leave blank for a new kit">
+                <label for="slot-limit">Licensed slots for a new kit</label>
+                <input id="slot-limit" type="number" min="2" max="12" value="2" required>
+                <button class="pilot-button" type="submit">Register board</button>
+            </form>
+            <div id="workshop-result" hidden>
+                <p id="workshop-status" role="status"></p>
+                <dl class="kit-data">
+                    <div><dt>Kit ID</dt><dd id="registered-id"></dd></div>
+                    <div id="card-code-row"><dt>Claim code</dt><dd id="card-code"></dd></div>
+                    <div><dt>Board credential</dt><dd id="board-credential"></dd></div>
+                </dl>
+                <button class="pilot-button secondary" id="clear-workshop" type="button">Clear credentials from screen</button>
+            </div>
+        </section>
+        <footer class="pilot-footer"><p>Keep pilot software and test kits outside running shops.</p></footer>
+    </main>
+</body>
+</html>
