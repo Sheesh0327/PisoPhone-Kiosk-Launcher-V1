@@ -86,11 +86,13 @@ static void applySetup(const String& rest) {
 #if defined(PISO_WORKSHOP_PILOT)
 static void applyPilotWifi(const String& args) {
     const int separator = args.indexOf(' ');
+    const String encodedPassword = args.substring(separator + 1);
+    const bool openNetwork = encodedPassword == "-";
     std::string name, password;
     if (separator < 0 || !provision::hexDecode(args.substring(0, separator).c_str(), name, 32) ||
-        !provision::hexDecode(args.substring(separator + 1).c_str(), password, 63) ||
+        (!openNetwork && !provision::hexDecode(encodedPassword.c_str(), password, 63)) ||
         name.find('\0') != std::string::npos || password.find('\0') != std::string::npos ||
-        !setupgate::wifiSsidValid(name.c_str()) || !setupgate::wifiPasswordValid(password.c_str())) {
+        !setupgate::wifiSsidValid(name.c_str()) || (!openNetwork && !setupgate::wifiPasswordValid(password.c_str()))) {
         Serial.println("PISO-PILOT-WIFI-ERR invalid-network");
         return;
     }
@@ -102,10 +104,15 @@ static void applyPilotWifi(const String& args) {
         Serial.println("PISO-PILOT-WIFI-ERR could-not-save");
         return;
     }
-    const bool saved = prefs.putString(NVS_KEY_WIFI_SSID, name.c_str()) == name.size() &&
-                       prefs.putString(NVS_KEY_WIFI_PASS, password.c_str()) == password.size() &&
-                       prefs.putString(NVS_KEY_KIOSK_WIFI_SSID, name.c_str()) == name.size() &&
-                       prefs.putString(NVS_KEY_KIOSK_WIFI_PASS, password.c_str()) == password.size();
+    const auto saveNetworkValue = [](const char* key, const std::string& value) {
+        if (!value.empty()) return prefs.putString(key, value.c_str()) == value.size();
+        prefs.putString(key, "");
+        return prefs.isKey(key) && prefs.getString(key, "missing") == "";
+    };
+    const bool saved = saveNetworkValue(NVS_KEY_WIFI_SSID, name) &&
+                       saveNetworkValue(NVS_KEY_WIFI_PASS, password) &&
+                       saveNetworkValue(NVS_KEY_KIOSK_WIFI_SSID, name) &&
+                       saveNetworkValue(NVS_KEY_KIOSK_WIFI_PASS, password);
     prefs.end();
     if (!saved) {
         Serial.println("PISO-PILOT-WIFI-ERR could-not-save");

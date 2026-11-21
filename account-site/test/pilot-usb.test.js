@@ -6,7 +6,8 @@ test("workshop Wi-Fi settings stay in the USB command and require a matching pil
     const command = pilotWifiCommand("Workshop", "test-password");
     assert.equal(command, "PISO-PILOT-WIFI 576f726b73686f70 746573742d70617373776f7264");
     assert.throws(() => pilotWifiCommand("a".repeat(33), "test-password"), /32 bytes/);
-    assert.throws(() => pilotWifiCommand("Workshop", "short"), /8 and 63/);
+    assert.throws(() => pilotWifiCommand("Workshop", "short"), /8 to 63/);
+    assert.equal(pilotWifiCommand("Workshop", ""), "PISO-PILOT-WIFI 576f726b73686f70 -");
 
     const writes = [];
     let mac = "aabbccddee01";

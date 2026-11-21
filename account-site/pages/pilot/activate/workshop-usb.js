@@ -7,10 +7,10 @@ function encodeHex(text) {
 export function pilotWifiCommand(name, password) {
     const size = encoder.encode(name).length;
     const passwordSize = encoder.encode(password).length;
-    if (size < 1 || size > 32 || passwordSize < 8 || passwordSize > 63 || name.includes("\0") || password.includes("\0")) {
-        throw new Error("Use a Wi-Fi name up to 32 bytes and a password between 8 and 63 bytes.");
+    if (size < 1 || size > 32 || (passwordSize > 0 && passwordSize < 8) || passwordSize > 63 || name.includes("\0") || password.includes("\0")) {
+        throw new Error("Use a Wi-Fi name up to 32 bytes and leave the password blank for open Wi-Fi or use 8 to 63 bytes.");
     }
-    return "PISO-PILOT-WIFI " + encodeHex(name) + " " + encodeHex(password);
+    return "PISO-PILOT-WIFI " + encodeHex(name) + " " + (password ? encodeHex(password) : "-");
 }
 
 export async function sendToWorkshopBoard(mac, command, responsePrefix) {
