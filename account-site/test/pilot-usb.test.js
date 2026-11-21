@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { pilotWifiCommand, sendToWorkshopBoard } from "../pages/pilot/activate/workshop-usb.js";
+import { pilotWifiCommand, readWorkshopBoard, sendToWorkshopBoard } from "../pages/pilot/activate/workshop-usb.js";
 
 test("workshop Wi-Fi settings stay in the USB command and require a matching pilot board", async (t) => {
     const command = pilotWifiCommand("Workshop", "test-password");
@@ -11,6 +11,8 @@ test("workshop Wi-Fi settings stay in the USB command and require a matching pil
 
     const writes = [];
     let mac = "aabbccddee01";
+    let address = "10.0.0.228";
+    let license = "PISO-PILOT state=awaiting_license slots=0";
     let responses;
     Object.defineProperty(navigator, "serial", {
         configurable: true,
@@ -23,8 +25,8 @@ test("workshop Wi-Fi settings stay in the USB command and require a matching pil
                             write(bytes) {
                                 const input = new TextDecoder().decode(bytes).trim();
                                 writes.push(input);
-                                const result = input === "PISO-HELLO" ? "PISO-BOX fw=test mac=" + mac :
-                                    input === "PISO-PILOT-STATUS" ? "PISO-PILOT state=awaiting_license slots=0" :
+                                const result = input === "PISO-HELLO" ? `PISO-BOX fw=test mac=${mac} setup=done wifi=up ip=${address} why=none` :
+                                    input === "PISO-PILOT-STATUS" ? license :
                                     "PISO-PILOT-WIFI-OK";
                                 responses.enqueue(new TextEncoder().encode(result + "\r\n"));
                             }
@@ -42,4 +44,10 @@ test("workshop Wi-Fi settings stay in the USB command and require a matching pil
     mac = "aa:bb:cc:dd:ee:02";
     assert.equal(await sendToWorkshopBoard("aabbccddee02", command, "PISO-PILOT-WIFI-"), "PISO-PILOT-WIFI-OK");
     assert.deepEqual(writes.slice(1), ["PISO-HELLO", "PISO-PILOT-STATUS", command]);
+
+    license = "PISO-PILOT state=active slots=2";
+    assert.deepEqual(await readWorkshopBoard("aabbccddee02"), { ip: "10.0.0.228", state: "active", slots: 2 });
+    assert.deepEqual(writes.slice(4), ["PISO-HELLO", "PISO-PILOT-STATUS"]);
+    address = "10.0.0.999";
+    assert.deepEqual(await readWorkshopBoard("aabbccddee02"), { ip: null, state: "active", slots: 2 });
 });

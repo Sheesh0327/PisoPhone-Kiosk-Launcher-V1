@@ -1,8 +1,11 @@
 # PisoPhone workshop pilot
 
-The operator flow runs at https://pisophone-accounts-test.pages.dev/account/pilot/activate/. It uses the beta Supabase account session. Workshop staff register dedicated hardware and issue the claim card. The claiming operator can see only their own kits, request activation of an assigned replacement, and refresh the board's confirmed state.
+The operator flow runs at https://pisophone-accounts-test.pages.dev/account/pilot/activate/ and uses the beta Supabase account session.
 
-In desktop Chrome or Edge, enter the expected ESP32 MAC address under Workshop registration. Use **Set Wi-Fi over USB** to enter the shop network locally. Use **Save credential over USB** after registering the board. Both actions check the connected board's serial identity and workshop firmware before sending anything. The browser sends Wi-Fi credentials directly to the ESP32.
+1. In **Workshop registration**, staff enter the prepared ESP32 MAC address and register a kit. Use **Save credential over USB** and record the claim code for the kit card before leaving the page. To assign a prepared replacement, enter the existing kit ID and the new board's MAC address. The kit keeps its licensed slot count.
+2. Sign in as the operator and claim the kit with the card. Choose the assigned board in **My kits**. For a replacement, give the workshop the kit ID, then use **Activate replacement** after the assignment appears. The old ESP32 retires when the replacement acknowledges the license through the beta service.
+3. In desktop Chrome or Edge, use **Save Wi-Fi over USB** to connect the assigned ESP32 to the shop's 2.4 GHz network. The website sends the Wi-Fi details directly to the board. Both Wi-Fi setup and credential provisioning check the connected ESP32 MAC and workshop firmware before sending configuration.
+4. Use **Refresh kit status** to see whether the beta service accepted activation. Use **Check ESP32 over USB** to verify the license saved locally and get the dashboard link. On the same Wi-Fi, open the dashboard and verify a paired rental phone is online under **Tools → Phone slots**.
 
 ## Beta services
 
@@ -18,7 +21,7 @@ The signed grant message is ASCII `piso-pilot-v1|kind|kit-uuid|mac|revision|slot
 
 ## Hardware acceptance
 
-Build the dedicated bench firmware with `pio run -d esp32_firmware -e esp32-c3-workshop-pilot`. Its USB CLI accepts `PISO-PILOT-CREDENTIAL <credential>` for the assigned board and reports `PISO-PILOT-STATUS` without printing its credential. Verify the hardware identity over USB before provisioning. The pilot target requires a saved active grant to arm the acceptor and excludes browser OTA. ESP32-C3 bench boot and the initial zero-slot state have been verified. A licensed coin session and offline reboot still require testing on shop Wi-Fi.
+Build the dedicated bench firmware with `pio run -d esp32_firmware -e esp32-c3-workshop-pilot`. Its USB CLI accepts `PISO-PILOT-CREDENTIAL <credential>` for the assigned board and reports `PISO-PILOT-STATUS` without printing its credential. Verify the hardware identity over USB before provisioning. The pilot target requires a saved active grant to arm the acceptor and excludes browser OTA. The first ESP32-C3 was verified on shop Wi-Fi through activation and an offline reboot. A coin-funded session and a physical replacement still require testing.
 
 The Android app still needs kit enrollment and proof that a discovered replacement is assigned to that kit. Verify reconnection to the same slot after the old board is unplugged. Check existing shop behavior with the release builds. Keep pilot builds out of the production update feeds. Evaluate hardware secure boot and protected credential storage before qualifying a shipping board.
 

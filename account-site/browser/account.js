@@ -10,6 +10,10 @@ const email = element("email");
 const code = element("code");
 const retry = element("retry");
 const identity = element("identity");
+const pilotReturn = "pisophone-preview-pilot-return";
+if (new URLSearchParams(location.search).get("next") === "pilot") {
+    sessionStorage.setItem(pilotReturn, "1");
+}
 let session;
 let accountRequest;
 let busy = false;
@@ -53,8 +57,9 @@ async function showSession(nextSession) {
         element("verified-email").textContent = user.email ?? "Unavailable";
         identity.hidden = false;
         status.textContent = "Signed in.";
-        if (sessionStorage.getItem("pisophone-preview-pilot-return")) {
-            sessionStorage.removeItem("pisophone-preview-pilot-return");
+        if (sessionStorage.getItem(pilotReturn)) {
+            sessionStorage.removeItem(pilotReturn);
+            sessionStorage.removeItem("pisophone-preview-store-return");
             location.replace("/account/pilot/activate/");
             return;
         }

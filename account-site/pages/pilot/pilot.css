@@ -62,10 +62,17 @@
 }
 
 .pilot-link { display: inline-flex; align-items: center; text-decoration: none; }
-.owner-kit { border-top: 1px solid var(--line); padding: 12px 0; font-size: .9rem; overflow-wrap: anywhere; }
+.pilot-nav { display: flex; gap: 16px; }
+.pilot-text-link { color: var(--blue); }
+.pilot-button:disabled { opacity: .65; cursor: wait; }
+#activation-status:empty, #workshop-status:empty { display: none; }
+.owner-kit { border-top: 1px solid var(--line); padding: 16px 0; font-size: .9rem; overflow-wrap: anywhere; }
 .owner-kit h3, .owner-kit p { margin: 0 0 6px; }
-.workshop { margin-top: 20px; }
-.workshop form { display: grid; gap: 8px; max-width: 450px; }
-.workshop input { min-height: 44px; border: 1px solid #b4c0d7; border-radius: 9px; padding: 9px 12px; font: inherit; }
-.workshop label:not(:first-child), .workshop form button { margin-top: 8px; }
+.owner-kit .pilot-actions { margin-top: 12px; }
+.workshop, .board-setup { margin-top: 20px; }
+.workshop form, .board-setup form { display: grid; gap: 8px; max-width: 480px; }
+.workshop input, .board-setup input { min-height: 44px; min-width: 0; border: 1px solid #b4c0d7; border-radius: 9px; padding: 9px 12px; font: inherit; }
+.workshop label:not(:first-child), .board-setup label:not(:first-child),
+.workshop form .pilot-actions, .board-setup form .pilot-actions { margin-top: 8px; }
+.workshop label, .board-setup label { margin-bottom: 0; }
 .workshop dd { overflow-wrap: anywhere; }

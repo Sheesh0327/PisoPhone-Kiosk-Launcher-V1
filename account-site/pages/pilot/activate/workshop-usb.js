@@ -13,8 +13,8 @@ export function pilotWifiCommand(name, password) {
     return "PISO-PILOT-WIFI " + encodeHex(name) + " " + (password ? encodeHex(password) : "-");
 }
 
-export async function sendToWorkshopBoard(mac, command, responsePrefix) {
-    if (!/^[0-9a-f]{12}$/.test(mac)) throw new Error("Enter the ESP32 MAC address in Workshop registration first.");
+async function withWorkshopBoard(mac, action) {
+    if (!/^[0-9a-f]{12}$/.test(mac)) throw new Error("Choose an ESP32 with a valid MAC address.");
     if (!navigator.serial) throw new Error("USB setup requires desktop Chrome or Edge on the computer connected to the board.");
     let port;
     try {
@@ -24,8 +24,8 @@ export async function sendToWorkshopBoard(mac, command, responsePrefix) {
         throw new Error("The USB port could not be opened. Select the connected workshop ESP32 and close other serial tools.");
     }
 
-    const reader = port.readable.getReader();
-    const writer = port.writable.getWriter();
+    let reader;
+    let writer;
     const decoder = new TextDecoder();
     let buffered = "";
 
@@ -52,14 +52,31 @@ export async function sendToWorkshopBoard(mac, command, responsePrefix) {
     }
 
     try {
+        reader = port.readable.getReader();
+        writer = port.writable.getWriter();
         const hello = await exchange("PISO-HELLO", "PISO-BOX ");
         const actual = /\bmac=([a-f0-9:]+)\b/i.exec(hello)?.[1]?.replaceAll(":", "").toLowerCase();
-        if (actual !== mac) throw new Error("The connected board does not match the workshop MAC address.");
-        await exchange("PISO-PILOT-STATUS", "PISO-PILOT state=");
-        return await exchange(command, responsePrefix);
+        if (actual !== mac) throw new Error("The connected board does not match the selected ESP32.");
+        const license = await exchange("PISO-PILOT-STATUS", "PISO-PILOT state=");
+        return await action({ exchange, hello, license });
     } finally {
-        reader.releaseLock();
-        writer.releaseLock();
+        reader?.releaseLock();
+        writer?.releaseLock();
         await port.close().catch(() => {});
     }
+}
+
+export function sendToWorkshopBoard(mac, command, responsePrefix) {
+    return withWorkshopBoard(mac, ({ exchange }) => exchange(command, responsePrefix));
+}
+
+export function readWorkshopBoard(mac) {
+    return withWorkshopBoard(mac, ({ hello, license }) => {
+        const ip = /\bwifi=up ip=(\S+)/.exec(hello)?.[1];
+        const octets = ip?.split(".");
+        const hasAddress = octets?.length === 4 && octets.every((part) => /^(0|[1-9]\d{0,2})$/.test(part) && Number(part) <= 255);
+        const status = /^PISO-PILOT state=(active|awaiting_license|retired) slots=(\d{1,2})$/.exec(license);
+        if (!status) throw new Error("The ESP32 returned an unknown license status.");
+        return { ip: hasAddress && ip !== "0.0.0.0" ? ip : null, state: status[1], slots: Number(status[2]) };
+    });
 }

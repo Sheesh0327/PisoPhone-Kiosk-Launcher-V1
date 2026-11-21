@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>PisoPhone Workshop Activation | TechNet</title>
+    <title>My PisoPhone Kits | TechNet Beta</title>
     <link rel="icon" href="/img/technet-logo-64.png">
     <link rel="stylesheet" href="/css/site.css">
     <link rel="stylesheet" href="/account/pilot/pilot.css">
@@ -17,17 +17,22 @@
                 <img src="/img/technet-logo-64.png" width="38" height="38" alt="">
                 <span>TechNet <small>PisoHub</small></span>
             </a>
-            <a class="store-back" href="/account/pilot/">Sample walkthrough</a>
+            <nav class="pilot-nav" aria-label="Beta navigation">
+                <a class="store-back" href="/account/store/">Store</a>
+                <a class="store-back" href="/account/">Account</a>
+            </nav>
         </div>
     </header>
     <main class="pilot-wrap">
         <section class="pilot-intro">
-            <p class="mode"><span aria-hidden="true"></span> Beta · workshop kits</p>
-            <h1>Activate a PisoPhone kit</h1>
-            <p>Claim the kit with its workshop code, then connect its assigned ESP32 to shop Wi-Fi.</p>
+            <p class="mode"><span aria-hidden="true"></span> PisoPhone beta</p>
+            <h1>My PisoPhone kits</h1>
+            <p>Claim a workshop kit, connect its ESP32 to shop Wi-Fi, or activate a replacement assigned by the workshop.</p>
         </section>
         <p id="activation-status" role="status">Checking your beta account…</p>
-        <a id="pilot-sign-in" class="pilot-button pilot-link" href="/account/" hidden>Sign in to your beta account</a>
+        <a id="pilot-sign-in" class="pilot-button pilot-link" href="/account/?next=pilot" hidden>Sign in to your beta account</a>
+        <button class="pilot-button secondary" id="retry-pilot" type="button" hidden>Retry loading kits</button>
+        <noscript>Enable JavaScript to claim or manage a kit.</noscript>
         <div class="pilot-layout" id="operator" hidden>
             <section class="pilot-card">
                 <h2>Claim a kit</h2>
@@ -41,10 +46,28 @@
             </section>
             <section class="pilot-card">
                 <h2>My kits</h2>
-                <div id="my-kits"></div>
-                <button class="pilot-button secondary" id="reload-kits" type="button">Refresh status</button>
+                <p id="kits-intro">Board activation usually updates shortly after the ESP32 reaches the internet.</p>
+                <div id="my-kits" aria-describedby="kits-intro"></div>
+                <button class="pilot-button secondary" id="reload-kits" type="button">Refresh kit status</button>
             </section>
         </div>
+        <section class="pilot-card board-setup" id="board-setup" aria-labelledby="board-setup-title" hidden>
+            <h2 id="board-setup-title" tabindex="-1">Connect the ESP32</h2>
+            <p id="setup-board"></p>
+            <p>Use desktop Chrome or Edge and a USB data cable. Choose a 2.4 GHz network shared by the ESP32 and the rental phones.</p>
+            <form id="configure-board-wifi">
+                <label for="pilot-wifi-name">Shop Wi-Fi name</label>
+                <input id="pilot-wifi-name" autocomplete="off" spellcheck="false" required maxlength="32">
+                <label for="pilot-wifi-password">Shop Wi-Fi password (blank for an open network)</label>
+                <input id="pilot-wifi-password" type="password" autocomplete="off" minlength="8" maxlength="63">
+                <div class="pilot-actions">
+                    <button class="pilot-button" type="submit">Save Wi-Fi over USB</button>
+                    <button class="pilot-button secondary" id="read-board-status" type="button">Check ESP32 over USB</button>
+                </div>
+            </form>
+            <p id="board-status" role="status">Wi-Fi details go directly to the board over USB.</p>
+            <a class="pilot-button secondary pilot-link" id="local-dashboard" target="_blank" rel="noopener noreferrer" hidden>Open local dashboard</a>
+        </section>
         <section class="pilot-card workshop" id="workshop" hidden>
             <h2>Workshop registration</h2>
             <p>Use dedicated beta hardware. Keep the claim code for the kit card and provision the credential only on the assigned board.</p>
@@ -55,30 +78,27 @@
                 <input id="replacement-kit" autocomplete="off" spellcheck="false" maxlength="36" placeholder="Leave blank for a new kit">
                 <label for="slot-limit">Licensed slots for a new kit</label>
                 <input id="slot-limit" type="number" min="2" max="12" value="2" required>
-                <button class="pilot-button" type="submit">Register board</button>
+                <div class="pilot-actions">
+                    <button class="pilot-button" type="submit">Register board</button>
+                    <button class="pilot-button secondary" id="setup-workshop-board" type="button">Connect this ESP32</button>
+                </div>
             </form>
-            <form id="configure-board-wifi">
-                <h3>Connect the test board to Wi-Fi</h3>
-                <label for="pilot-wifi-name">Shop Wi-Fi name</label>
-                <input id="pilot-wifi-name" autocomplete="off" required maxlength="32">
-                <label for="pilot-wifi-password">Shop Wi-Fi password (blank for an open network)</label>
-                <input id="pilot-wifi-password" type="password" autocomplete="off" minlength="8" maxlength="63">
-                <button class="pilot-button secondary" type="submit">Set Wi-Fi over USB</button>
-                <p>Wi-Fi details go directly to the board over USB.</p>
-            </form>
-            <p id="workshop-usb-status" role="status"></p>
+            <p id="workshop-status" role="status"></p>
             <div id="workshop-result" hidden>
-                <p id="workshop-status" role="status"></p>
+                <p>Keep this page open until the credential is saved on the board and the claim code is recorded for handover.</p>
                 <dl class="kit-data">
                     <div><dt>Kit ID</dt><dd id="registered-id"></dd></div>
                     <div id="card-code-row"><dt>Claim code</dt><dd id="card-code"></dd></div>
                     <div><dt>Board credential</dt><dd id="board-credential"></dd></div>
                 </dl>
-                <button class="pilot-button" id="save-board-credential" type="button">Save credential over USB</button>
-                <button class="pilot-button secondary" id="clear-workshop" type="button">Clear credentials from screen</button>
+                <div class="pilot-actions">
+                    <button class="pilot-button" id="save-board-credential" type="button">Save credential over USB</button>
+                    <button class="pilot-button secondary" id="setup-registered-board" type="button">Connect this ESP32</button>
+                    <button class="pilot-button secondary" id="clear-workshop" type="button">Clear credentials from screen</button>
+                </div>
             </div>
         </section>
-        <footer class="pilot-footer"><p>Keep pilot software and test kits outside running shops.</p></footer>
+        <footer class="pilot-footer"><a class="pilot-text-link" href="/account/pilot/">Sample walkthrough</a></footer>
     </main>
 </body>
 </html>
