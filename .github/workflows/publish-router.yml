@@ -44,7 +44,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: production-signing
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install the signing library
         run: pip install cryptography==44.0.0
       - name: Check the keys
